@@ -1,0 +1,40 @@
+name: Generate SDKs
+
+# Triggered when OpenAPI spec changes
+on:
+  push:
+    branches: [main]
+    paths:
+      - "packages/api/src/routes/**"
+      - "packages/shared/src/validation.ts"
+
+permissions:
+  contents: write
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: "pnpm"
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm build
+
+      # TODO P1D.04: Configure Speakeasy SDK generation
+      # - uses: speakeasy-api/sdk-generation-action@v15
+      #   with:
+      #     speakeasy_api_key: ${{ secrets.SPEAKEASY_API_KEY }}
+      #     openapi_doc_location: packages/api/openapi.json
+      #     languages: |-
+      #       - typescript
+      #       - python
+
+      - run: echo "SDK generation not yet configured — see P1D.04"

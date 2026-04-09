@@ -1,0 +1,65 @@
+/// <reference path="./.sst/platform/config.d.ts" />
+
+export default $config({
+  app(input) {
+    return {
+      name: "prontiq-platform",
+      removal: input?.stage === "prod" ? "retain" : "remove",
+      protect: ["prod"].includes(input?.stage ?? ""),
+      home: "aws",
+      providers: {
+        aws: {
+          region: "ap-southeast-2",
+        },
+      },
+    };
+  },
+  async run() {
+    // -- DynamoDB: API key verification + usage counters --
+    const keyTable = new sst.aws.Dynamo("ApiKeyTable", {
+      fields: {
+        apiKey: "string",
+      },
+      primaryIndex: { hashKey: "apiKey" },
+    });
+
+    // -- API: Hono on Lambda (single handler for all routes) --
+    const api = new sst.aws.ApiGatewayV2("Api", {
+      cors: {
+        allowOrigins: ["*"],
+        allowMethods: ["GET", "OPTIONS"],
+        allowHeaders: ["X-Api-Key", "Content-Type"],
+      },
+    });
+
+    api.route("$default", {
+      handler: "packages/api/src/index.handler",
+      architecture: "arm64",
+      runtime: "nodejs20.x",
+      memory: "512 MB",
+      timeout: "30 seconds",
+      link: [keyTable],
+      environment: {
+        OPENSEARCH_ENDPOINT: process.env.OPENSEARCH_ENDPOINT ?? "",
+        API_KEY_TABLE_NAME: keyTable.name,
+      },
+    });
+
+    // -- Dashboard: Next.js --
+    const dashboard = new sst.aws.Nextjs("Dashboard", {
+      path: "packages/dashboard",
+      environment: {
+        NEXT_PUBLIC_API_URL: api.url,
+        NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:
+          process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY ?? "",
+        CLERK_SECRET_KEY: process.env.CLERK_SECRET_KEY ?? "",
+        CLERK_WEBHOOK_SECRET: process.env.CLERK_WEBHOOK_SECRET ?? "",
+      },
+    });
+
+    return {
+      api: api.url,
+      dashboard: dashboard.url,
+    };
+  },
+});

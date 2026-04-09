@@ -1,0 +1,30 @@
+{
+  "name": "@prontiq/api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src/",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@prontiq/shared": "workspace:*",
+    "hono": "^4.7.0",
+    "@hono/zod-openapi": "^0.19.0",
+    "@hono/node-server": "^1.13.0",
+    "zod": "^3.24.0",
+    "@aws-sdk/client-dynamodb": "^3.750.0",
+    "@aws-sdk/lib-dynamodb": "^3.750.0",
+    "@opensearch-project/opensearch": "^3.2.0"
+  }
+}

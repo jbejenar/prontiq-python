@@ -1,0 +1,45 @@
+{
+  "$schema": "https://mintlify.com/schema.json",
+  "name": "Prontiq",
+  "logo": {
+    "light": "/logo/light.svg",
+    "dark": "/logo/dark.svg"
+  },
+  "favicon": "/favicon.svg",
+  "colors": {
+    "primary": "#0D9373",
+    "light": "#07C983",
+    "dark": "#0D9373"
+  },
+  "navigation": [
+    {
+      "group": "Getting Started",
+      "pages": ["pages/introduction", "pages/authentication", "pages/rate-limits"]
+    },
+    {
+      "group": "Address API",
+      "pages": [
+        "pages/address/autocomplete",
+        "pages/address/validate",
+        "pages/address/enrich",
+        "pages/address/reverse",
+        "pages/address/lookup"
+      ]
+    },
+    {
+      "group": "ABN Verification",
+      "pages": ["pages/abn/verify", "pages/abn/search"]
+    },
+    {
+      "group": "LEI Lookup",
+      "pages": ["pages/lei/lookup", "pages/lei/search"]
+    },
+    {
+      "group": "SDKs",
+      "pages": ["pages/sdks/typescript", "pages/sdks/python"]
+    }
+  ],
+  "api": {
+    "baseUrl": "https://api.prontiq.dev"
+  }
+}

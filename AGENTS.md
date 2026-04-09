@@ -1,0 +1,69 @@
+# AGENTS.md
+
+## Build & Test Commands
+
+```bash
+pnpm install          # Install all dependencies (workspace-aware)
+pnpm build            # Build all packages (via Turborepo)
+pnpm typecheck        # Type-check all packages
+pnpm lint             # Lint all packages
+pnpm test             # Run all tests
+pnpm dev              # Start SST dev mode (live Lambda + Next.js)
+
+# Per-package
+pnpm --filter @prontiq/api build
+pnpm --filter @prontiq/shared typecheck
+pnpm --filter @prontiq/dashboard dev
+```
+
+## Architecture
+
+**Unified data API platform** for Australian and global open data. See `ARCHITECTURE.MD` for the full design.
+
+**Pattern:** Free open dataset -> independent pipeline -> S3 (NDJSON + manifest.json) -> event-driven indexing -> OpenSearch -> commercial API -> auth / billing / docs / SDKs.
+
+**Stack:** SST v3 + Pulumi, Hono + @hono/zod-openapi on Lambda (ARM64), OpenSearch, DynamoDB, Clerk, Unkey, Stripe.
+
+## Monorepo Structure
+
+```
+packages/
+  shared/       -> @prontiq/shared     Types, constants, Zod schemas (depended on by all)
+  api/          -> @prontiq/api        Hono API on Lambda (address, ABN, LEI routes)
+  dashboard/    -> @prontiq/dashboard  Next.js developer portal (Clerk + shadcn/ui)
+  ingestion/    -> @prontiq/ingestion  Step Functions + Lambda bulk indexing
+  webhooks/     -> @prontiq/webhooks   Clerk, Stripe, Unkey webhook handlers
+  docs/         -> @prontiq/docs       Mintlify documentation
+  plugins/
+    shopify/    -> Checkout UI Extension
+    woocommerce/ -> WP plugin
+    web-component/ -> <prontiq-address> widget
+```
+
+**Dependency graph:** `shared` -> `api`, `ingestion`, `webhooks`, `plugins/*`
+
+## Constraints
+
+- **ESM only.** All packages use `"type": "module"`. Import extensions must use `.js`.
+- **Strict TypeScript.** `noUncheckedIndexedAccess`, `noUnusedLocals`, `noUnusedParameters` enabled.
+- **No vendor in the hot path.** API key verification uses DynamoDB, never Unkey directly. See `ARCHITECTURE.MD` section 5.4.
+- **OpenAPI spec is the single source of truth.** Routes are defined with `@hono/zod-openapi` — never add API endpoints without Zod schemas.
+- **Manifest contract is sacred.** See `ARCHITECTURE.MD` section 5.1.2. Pipelines produce NDJSON + manifest. Platform consumes.
+- **Index names follow `{product}-{version}` convention.** Aliases are from the product registry. Never hardcode alias names in route handlers.
+
+## Testing Patterns
+
+- **Framework:** Vitest
+- **Test files:** Co-located as `*.test.ts` next to source files
+- **Mocking:** Use dependency injection (StorageProvider interface pattern). Never mock OpenSearch client directly — use the abstraction layer in `packages/shared`.
+- **Integration tests** hit real DynamoDB Local and OpenSearch (via docker-compose).
+
+## Do NOT
+
+- Don't use `any` type — use `unknown` with type narrowing
+- Don't import without `.js` extension (ESM requirement)
+- Don't add `console.log` — use structured logging
+- Don't put secrets in code — all secrets come from SST Resource linking or environment variables
+- Don't query OpenSearch by versioned index name — always use the alias
+- Don't add dependencies to the root package.json unless they're truly shared dev tools
+- Don't modify the manifest contract without updating `ARCHITECTURE.MD` section 5.1.2

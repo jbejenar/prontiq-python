@@ -1,0 +1,32 @@
+---
+title: "Introduction"
+description: "One API for Australian address validation, ABN verification, LEI lookup, and more."
+---
+
+# Welcome to Prontiq
+
+Prontiq is a unified data API platform. One subscription. One API key. One SDK.
+
+## Quick Start
+
+```bash
+npm install @prontiq/sdk
+```
+
+```typescript
+import { Prontiq } from "@prontiq/sdk";
+
+const prontiq = new Prontiq({ apiKey: "pq_live_..." });
+
+const { suggestions } = await prontiq.address.autocomplete({
+  q: "16 heath cres",
+});
+```
+
+## Products
+
+| Product | Endpoint | Status |
+| --- | --- | --- |
+| Address Validation (G-NAF) | `/v1/address/*` | Live |
+| ABN Verification | `/v1/abn/*` | Coming soon |
+| LEI Lookup | `/v1/lei/*` | Coming soon |
