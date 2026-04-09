@@ -39,7 +39,7 @@ export const apiErrorSchema = z.object({
     message: z.string(),
     status: z.number().int(),
     request_id: z.string(),
-    details: z.record(z.unknown()).optional(),
+    details: z.record(z.string(), z.unknown()).optional(),
   }),
 });
 
