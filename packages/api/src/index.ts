@@ -5,6 +5,7 @@ import { requestId } from "./middleware/request-id.js";
 import { auth } from "./middleware/auth.js";
 import { usage } from "./middleware/usage.js";
 import { addressRoutes } from "./routes/address.js";
+import { getOpenSearchClient } from "./search/client.js";
 
 const app = new Hono();
 
@@ -45,6 +46,19 @@ app.onError((err, c) => {
 // Health check — no auth required
 app.get("/v1/health", (c) => {
   return c.json({ status: "ok", timestamp: new Date().toISOString() });
+});
+
+// OpenSearch diagnostic — no auth (remove before prod)
+app.get("/v1/health/opensearch", async (c) => {
+  const client = getOpenSearchClient();
+  const health = await client.cluster.health();
+  const aliases = await client.cat.aliases({ format: "json" });
+  const indices = await client.cat.indices({ format: "json" });
+  return c.json({
+    cluster: health.body,
+    aliases: aliases.body,
+    indices: indices.body,
+  });
 });
 
 // Authenticated routes

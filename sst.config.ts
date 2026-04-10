@@ -1,5 +1,10 @@
 /// <reference path="./.sst/platform/config.d.ts" />
 
+const OPENSEARCH_DOMAIN_ARN =
+  "arn:aws:es:ap-southeast-2:493712557159:domain/flat-white";
+const OPENSEARCH_ENDPOINT_DEFAULT =
+  "https://search-flat-white-lrsdymw7a4u56cu2lrvxa3ggve.ap-southeast-2.es.amazonaws.com";
+
 export default $config({
   app(input) {
     return {
@@ -39,8 +44,14 @@ export default $config({
       memory: "512 MB",
       timeout: "30 seconds",
       link: [keyTable],
+      permissions: [
+        {
+          actions: ["es:ESHttpGet", "es:ESHttpPost", "es:ESHttpHead"],
+          resources: [`${OPENSEARCH_DOMAIN_ARN}/*`],
+        },
+      ],
       environment: {
-        OPENSEARCH_ENDPOINT: process.env.OPENSEARCH_ENDPOINT ?? "",
+        OPENSEARCH_ENDPOINT: process.env.OPENSEARCH_ENDPOINT ?? OPENSEARCH_ENDPOINT_DEFAULT,
         API_KEY_TABLE_NAME: keyTable.name,
       },
     });
