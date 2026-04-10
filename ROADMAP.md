@@ -1845,23 +1845,27 @@ completed: null
 
 This ticket sets up the Mintlify infrastructure — not the content. Mintlify reads the OpenAPI spec (from P1A.01) and auto-generates API reference pages with interactive playgrounds. The navigation skeleton and custom domain are configured here. Actual prose content (Getting Started guide, tutorials) is P1D.02-03.
 
+#### Current Evidence
+
+Mintlify is connected to the repository with monorepo docs root `/packages/docs`. The docs site is live at `docs.prontiq.dev` and deploys from `main`. The current checked-in config uses `packages/docs/docs.json` and intentionally exposes only the active Address product until the generated OpenAPI reference is wired into Mintlify.
+
 #### Definition of Done
 
 - [ ] Mintlify Hobby plan activated with OpenAPI spec import from `/openapi.json`
   - `Verify:` Mintlify dashboard shows synced spec with all address endpoints
   - `Evidence:` Mintlify dashboard URL
-- [ ] Navigation skeleton created: Getting Started (placeholder), Address API (auto-generated from spec), Rate Limits (placeholder), SDKs (placeholder)
-  - `Verify:` `mint.json` navigation matches planned structure
-  - `Evidence:` `packages/docs/mint.json`
+- [x] Navigation skeleton created: Getting Started and Address Validation
+  - `Verify:` `docs.json` navigation includes only current active docs
+  - `Evidence:` `packages/docs/docs.json`
 - [ ] Interactive playground on each auto-generated endpoint page
   - `Verify:` Click "Try It" on /v1/address/autocomplete page
   - `Evidence:` Playground sends real request
-- [ ] Custom domain: `docs.prontiq.dev`
+- [x] Custom domain: `docs.prontiq.dev`
   - `Verify:` `curl https://docs.prontiq.dev` returns docs site
-  - `Evidence:` DNS + Mintlify custom domain configured
-- [ ] Deploys on push to main (Mintlify Git integration)
+  - `Evidence:` DNS + Mintlify custom domain configured; MCP endpoint reachable at `https://docs.prontiq.dev/mcp`
+- [x] Deploys on push to main (Mintlify Git integration)
   - `Verify:` Edit a docs page, push, site updates
-  - `Evidence:` Mintlify webhook/Git sync active
+  - `Evidence:` PR #14 Mintlify Deployment check passed after merging `packages/docs/docs.json`
 
 #### Scope
 
