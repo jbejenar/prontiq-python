@@ -136,9 +136,9 @@ Without a running deployment, all API development is blind — no Lambda executi
 
 - [x] `sst deploy --stage dev` completes successfully
   - `Verify:` Command exits 0, outputs resource URLs
-  - `Evidence:` API: `https://j56p881012.execute-api.ap-southeast-2.amazonaws.com`, Dashboard: `https://d3rq87cgl3jjig.cloudfront.net`
+  - `Evidence:` API: `https://59jym47ia1.execute-api.ap-southeast-2.amazonaws.com`, Dashboard: `https://d2ttwndpb06ei3.cloudfront.net`
 - [x] API Gateway V2 endpoint is reachable and returns health check JSON
-  - `Verify:` `curl https://j56p881012.execute-api.ap-southeast-2.amazonaws.com/v1/health`
+  - `Verify:` `curl https://59jym47ia1.execute-api.ap-southeast-2.amazonaws.com/v1/health`
   - `Evidence:` Returns `{"status":"ok","timestamp":"2026-04-09T12:36:36.126Z"}`
 - [x] Auth middleware works — unauthenticated requests return 401 with request_id
   - `Verify:` `curl .../v1/address/autocomplete?q=test`
@@ -150,7 +150,7 @@ Without a running deployment, all API development is blind — no Lambda executi
   - `Verify:` Lambda configuration in AWS console
   - `Evidence:` ARM64 architecture, nodejs20.x runtime
 - [x] Dashboard (Next.js) deployed via CloudFront
-  - `Verify:` `curl https://d3rq87cgl3jjig.cloudfront.net`
+  - `Verify:` `curl https://d2ttwndpb06ei3.cloudfront.net`
   - `Evidence:` Returns rendered HTML with "Prontiq" heading
 - [x] CloudWatch logs visible for Lambda invocations
   - `Verify:` `aws logs describe-log-groups --log-group-name-prefix /aws/lambda/prontiq-platform-dev`
@@ -2402,7 +2402,7 @@ As a builder, the API and dashboard are accessible at branded domains so that th
 
 #### Problem Statement
 
-Currently the API is at a random AWS URL (`j56p881012.execute-api...`) and the dashboard at a CloudFront hash (`d3rq87cgl3jjig.cloudfront.net`). Custom domains (`api.prontiq.dev`, `app.prontiq.dev`, `docs.prontiq.dev`) are essential for credibility, documentation examples, and SDK defaults.
+Currently the API is at a random AWS URL (`59jym47ia1.execute-api...`) and the dashboard at a CloudFront hash (`d2ttwndpb06ei3.cloudfront.net`). Custom domains (`api.prontiq.dev`, `app.prontiq.dev`, `docs.prontiq.dev`) are essential for credibility, documentation examples, and SDK defaults.
 
 #### Definition of Done
 

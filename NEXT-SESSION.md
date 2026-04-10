@@ -20,8 +20,8 @@
   - Fixed: Clerk `<UserButton>` crashes prerender → removed from initial scaffold
   - Fixed: OpenSearch client crashes Lambda init with empty endpoint → lazy initialization
   - Fixed: duplicate `deploy:staging` in package.json
-  - API live: `https://j56p881012.execute-api.ap-southeast-2.amazonaws.com`
-  - Dashboard live: `https://d3rq87cgl3jjig.cloudfront.net`
+  - API live: `https://59jym47ia1.execute-api.ap-southeast-2.amazonaws.com`
+  - Dashboard live: `https://d2ttwndpb06ei3.cloudfront.net`
   - Health: `/v1/health` → `{"status":"ok"}`
   - Auth: `/v1/address/autocomplete` → `401 MISSING_API_KEY` with request_id
 - [x] ROADMAP.md created: 69 tickets across 11 epics, 5 phases

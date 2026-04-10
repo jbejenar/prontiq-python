@@ -32,7 +32,7 @@
 ## Completed
 
 - [x] P0.1 — IAM deploy role created (OIDC, Pulumi state, full resource perms)
-- [x] P0.2 — SST bootstrap + first deploy (API: `j56p881012.execute-api.ap-southeast-2.amazonaws.com`, Dashboard: `d3rq87cgl3jjig.cloudfront.net`)
+- [x] P0.2 — SST bootstrap + first deploy (API: `59jym47ia1.execute-api.ap-southeast-2.amazonaws.com`, Dashboard: `d2ttwndpb06ei3.cloudfront.net`)
 - [x] P0.4 — ESLint 9 flat config + Prettier + lint-staged
 - [x] P0.5 — Dependabot configured (npm, weekly, grouped AWS SDK)
 - [x] Health check live: `/v1/health` returns `{"status":"ok"}`
@@ -42,8 +42,8 @@
 
 | Endpoint | URL |
 |----------|-----|
-| API | `https://j56p881012.execute-api.ap-southeast-2.amazonaws.com` |
-| Dashboard | `https://d3rq87cgl3jjig.cloudfront.net` |
+| API | `https://59jym47ia1.execute-api.ap-southeast-2.amazonaws.com` |
+| Dashboard | `https://d2ttwndpb06ei3.cloudfront.net` |
 
 ## Reference Files
 
