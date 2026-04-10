@@ -1,5 +1,17 @@
 /// <reference path="./.sst/platform/config.d.ts" />
 
+/**
+ * Naming convention:
+ * SST generates AWS names as: {app}-{stage}-{componentName}{ResourceType}-{hash}
+ *
+ * Component names are chosen so generated AWS names read naturally:
+ *   "PqKeys"     → prontiq-dev-PqKeysTable-xxx           (DynamoDB)
+ *   "PqApi"      → prontiq-dev-PqApiApi-xxx               (API Gateway)
+ *   "PqPortal"   → prontiq-dev-PqPortalAssetsBucket-xxx   (Dashboard S3/CloudFront)
+ *
+ * App name: "prontiq" (short, clean AWS console names)
+ */
+
 const OPENSEARCH_DOMAIN_ARN =
   "arn:aws:es:ap-southeast-2:493712557159:domain/flat-white";
 const OPENSEARCH_ENDPOINT_DEFAULT =
@@ -8,7 +20,7 @@ const OPENSEARCH_ENDPOINT_DEFAULT =
 export default $config({
   app(input) {
     return {
-      name: "prontiq-platform",
+      name: "prontiq",
       removal: input?.stage === "prod" ? "retain" : "remove",
       protect: ["prod"].includes(input?.stage ?? ""),
       home: "aws",
@@ -21,7 +33,7 @@ export default $config({
   },
   async run() {
     // -- DynamoDB: API key verification + usage counters --
-    const keyTable = new sst.aws.Dynamo("ApiKeyTable", {
+    const keyTable = new sst.aws.Dynamo("PqKeys", {
       fields: {
         apiKey: "string",
       },
@@ -29,7 +41,7 @@ export default $config({
     });
 
     // -- API: Hono on Lambda (single handler for all routes) --
-    const api = new sst.aws.ApiGatewayV2("Api", {
+    const api = new sst.aws.ApiGatewayV2("PqApi", {
       cors: {
         allowOrigins: ["*"],
         allowMethods: ["GET", "OPTIONS"],
@@ -56,8 +68,8 @@ export default $config({
       },
     });
 
-    // -- Dashboard: Next.js --
-    const dashboard = new sst.aws.Nextjs("Dashboard", {
+    // -- Dashboard: Next.js developer portal --
+    const portal = new sst.aws.Nextjs("PqPortal", {
       path: "packages/dashboard",
       environment: {
         NEXT_PUBLIC_API_URL: api.url,
@@ -70,7 +82,7 @@ export default $config({
 
     return {
       api: api.url,
-      dashboard: dashboard.url,
+      portal: portal.url,
     };
   },
 });
