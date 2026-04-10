@@ -14,29 +14,11 @@
   "navigation": [
     {
       "group": "Getting Started",
-      "pages": ["pages/introduction", "pages/authentication", "pages/rate-limits"]
+      "pages": ["pages/introduction"]
     },
     {
-      "group": "Address API",
-      "pages": [
-        "pages/address/autocomplete",
-        "pages/address/validate",
-        "pages/address/enrich",
-        "pages/address/reverse",
-        "pages/address/lookup"
-      ]
-    },
-    {
-      "group": "ABN Verification",
-      "pages": ["pages/abn/verify", "pages/abn/search"]
-    },
-    {
-      "group": "LEI Lookup",
-      "pages": ["pages/lei/lookup", "pages/lei/search"]
-    },
-    {
-      "group": "SDKs",
-      "pages": ["pages/sdks/typescript", "pages/sdks/python"]
+      "group": "Products",
+      "pages": ["products/address-validation"]
     }
   ],
   "api": {

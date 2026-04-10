@@ -1,18 +1,16 @@
 # Prontiq Platform
 
-> One API. One SDK. One invoice. Australian address validation, ABN verification, LEI lookup, and more.
+> Australian address validation powered by G-NAF.
 
-A unified data API platform for Australian and global open data, commercialised with obsessive developer experience.
+Prontiq is starting with developer-friendly Australian address validation. The broader open data platform roadmap is tracked in [`ROADMAP.md`](ROADMAP.md).
 
-## Products
+## Current Product
 
-| Product                        | Endpoint        | Data Source          | Status  |
-| ------------------------------ | --------------- | -------------------- | ------- |
-| **Address Validation** (G-NAF) | `/v1/address/*` | data.gov.au          | Phase 1 |
-| **ABN/ASIC Verification**      | `/v1/abn/*`     | ABR bulk extract     | Phase 2 |
-| **LEI Lookup**                 | `/v1/lei/*`     | GLEIF Golden Copy    | Phase 3 |
-| **CVE/NVD Intel**              | `/v1/cve/*`     | NVD JSON feeds       | Phase 5 |
-| **Patent Search**              | `/v1/patents/*` | IP Australia + USPTO | Phase 5 |
+| Product                        | Endpoint        | Data Source | Status      |
+| ------------------------------ | --------------- | ----------- | ----------- |
+| **Address Validation** (G-NAF) | `/v1/address/*` | data.gov.au | In progress |
+
+Future products are roadmap items, not active docs/API surfaces yet.
 
 ## Quick Start
 
@@ -46,7 +44,7 @@ pnpm deploy:prod    # sst deploy --stage prod (manual dispatch in CI)
 ```
 Free open dataset → independent pipeline → S3 (NDJSON + manifest.json)
     → event-driven indexing → OpenSearch → commercial API
-    → auth / billing / docs / SDKs
+    → auth / billing / docs
 ```
 
 See [`ARCHITECTURE.MD`](ARCHITECTURE.MD) for the full design (1,451 lines).
@@ -79,7 +77,7 @@ packages/
 | Billing        | Stripe (metered, per-product)                          |
 | Dashboard      | Next.js 15 + Clerk + shadcn/ui                         |
 | Docs           | Mintlify (from OpenAPI spec)                           |
-| SDKs           | Speakeasy (from OpenAPI spec)                          |
+| SDKs           | Planned: Speakeasy (from OpenAPI spec)                 |
 | CI/CD          | GitHub Actions + OIDC (no stored credentials)          |
 
 ## Roadmap Progress
@@ -114,10 +112,14 @@ pnpm format           # Prettier format all files
 
 ## Related Repos
 
-| Repo                                                             | Purpose                                                     |
-| ---------------------------------------------------------------- | ----------------------------------------------------------- |
-| [`flat-white`](https://github.com/jbejenar/flat-white)           | G-NAF address pipeline (data source for address product)    |
-| [`prontiq-ariscan`](https://github.com/jbejenar/prontiq-ariscan) | AI readiness scanner (open-source, integrates with CVE API) |
+| Repo                                                             | Purpose                                                  |
+| ---------------------------------------------------------------- | -------------------------------------------------------- |
+| [`flat-white`](https://github.com/jbejenar/flat-white)           | G-NAF address pipeline (data source for address product) |
+| [`prontiq-ariscan`](https://github.com/jbejenar/prontiq-ariscan) | AI readiness scanner (open-source companion project)     |
+
+## Brand
+
+Use **Prontiq** in prose and **prontiq** for the logo wordmark, domains, packages, and code identifiers. See [`docs/BRAND.md`](docs/BRAND.md).
 
 ## Licence
 

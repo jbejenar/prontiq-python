@@ -1,0 +1,32 @@
+---
+title: "Address Validation"
+description: "Autocomplete, validate, enrich, reverse geocode, and look up Australian addresses."
+---
+
+# Address Validation
+
+The Address API is the only active Prontiq product today. It uses Australian G-NAF data and is exposed under `/v1/address/*`.
+
+## Endpoints
+
+| Endpoint                          | Purpose                                             |
+| --------------------------------- | --------------------------------------------------- |
+| `GET /v1/address/autocomplete`    | Return address suggestions for a partial query.     |
+| `GET /v1/address/validate`        | Return the best match for a full address string.    |
+| `GET /v1/address/enrich`          | Return the full address record for an address ID.   |
+| `GET /v1/address/reverse`         | Return nearby addresses for latitude and longitude. |
+| `GET /v1/address/lookup/postcode` | Return localities for a postcode.                   |
+| `GET /v1/address/lookup/suburb`   | Return postcodes and bounds for a suburb.           |
+
+## Authentication
+
+Send your API key in the `X-Api-Key` header.
+
+```bash
+curl "https://api.prontiq.dev/v1/address/autocomplete?q=16%20heath%20cres" \
+  -H "X-Api-Key: pq_live_..."
+```
+
+## API Reference
+
+The generated OpenAPI spec currently includes only the address endpoints. Future products should stay off the docs navigation until their `/v1/*` routes are implemented.
