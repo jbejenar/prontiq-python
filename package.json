@@ -12,14 +12,19 @@
     "lint": "turbo lint",
     "typecheck": "turbo typecheck",
     "test": "turbo test",
-    "deploy:staging": "sst deploy --stage staging",
+    "deploy:dev": "sst deploy --stage dev",
     "deploy:prod": "sst deploy --stage prod",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },
   "lint-staged": {
-    "*.{ts,tsx}": ["eslint --fix", "prettier --write"],
-    "*.{json,md,yml,yaml}": ["prettier --write"]
+    "*.{ts,tsx}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{json,md,yml,yaml}": [
+      "prettier --write"
+    ]
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

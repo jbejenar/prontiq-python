@@ -19,20 +19,20 @@
 
 ## Summary
 
-| Phase | Epic | Tickets | Done | Target |
-|-------|------|---------|------|--------|
-| **P0** | Infrastructure Foundation | 6 | 5/6 | Week 1 |
-| **P1A** | API Core (Address) | 10 | 0/10 | Weeks 2-3 |
-| **P1B** | Auth & Billing | 9 | 0/9 | Weeks 3-4 |
-| **P1C** | Dashboard | 7 | 0/7 | Weeks 4-5 |
-| **P1D** | Docs & SDK | 5 | 0/5 | Week 5 |
-| **P1E** | Ingestion (Phase 1) | 6 | 0/6 | Week 6 |
-| **P1F** | Distribution | 2 | 0/2 | Week 6 |
-| **P2** | ABN/ASIC Verification | 8 | 0/8 | Weeks 7-10 |
-| **P3** | GLEIF/LEI + Full Dashboard | 7 | 0/7 | Weeks 11-13 |
-| **P4** | Shopify + WooCommerce | 5 | 0/5 | Weeks 14-17 |
-| **P5** | CVE/NVD + Patents | 4 | 0/4 | Weeks 18-21 |
-| **Total** | | **69** | **5/69** | |
+| Phase     | Epic                       | Tickets | Done     | Target      |
+| --------- | -------------------------- | ------- | -------- | ----------- |
+| **P0**    | Infrastructure Foundation  | 6       | 5/6      | Week 1      |
+| **P1A**   | API Core (Address)         | 10      | 0/10     | Weeks 2-3   |
+| **P1B**   | Auth & Billing             | 9       | 0/9      | Weeks 3-4   |
+| **P1C**   | Dashboard                  | 7       | 0/7      | Weeks 4-5   |
+| **P1D**   | Docs & SDK                 | 5       | 0/5      | Week 5      |
+| **P1E**   | Ingestion (Phase 1)        | 6       | 0/6      | Week 6      |
+| **P1F**   | Distribution               | 2       | 0/2      | Week 6      |
+| **P2**    | ABN/ASIC Verification      | 8       | 0/8      | Weeks 7-10  |
+| **P3**    | GLEIF/LEI + Full Dashboard | 7       | 0/7      | Weeks 11-13 |
+| **P4**    | Shopify + WooCommerce      | 5       | 0/5      | Weeks 14-17 |
+| **P5**    | CVE/NVD + Patents          | 4       | 0/4      | Weeks 18-21 |
+| **Total** |                            | **69**  | **5/69** |             |
 
 ---
 
@@ -96,6 +96,7 @@ SST v3 uses Pulumi under the hood (not CloudFormation). The deploy role needs S3
 **In:** IAM role, trust policy, inline permissions policy
 
 **Out — Do Not Implement:**
+
 - CI/CD workflow testing → P0.03
 - SST resource definitions → P0.02
 - OpenSearch domain access verification → P0.06
@@ -175,6 +176,7 @@ Without a running deployment, all API development is blind — no Lambda executi
 **In:** SST bootstrap, API Gateway V2, Lambda (single $default handler), DynamoDB table, Next.js dashboard via CloudFront, initial deploy verification
 
 **Out — Do Not Implement:**
+
 - OpenSearch connectivity → P0.06
 - CI/CD deploy from GitHub Actions → P0.03
 - WAF / throttling → P1A.10
@@ -202,11 +204,11 @@ tech_stack:
 
 #### User Story
 
-As a builder, pushing to `main` automatically runs lint/typecheck/build and deploys to staging, so that I never ship broken code.
+As a builder, pushing to `main` automatically runs lint/typecheck/build and deploys to dev, while production remains a manual dispatch.
 
 #### Problem Statement
 
-The CI workflow file (`.github/workflows/ci.yml`) exists but has never been tested against the actual GitHub repository. OIDC credential exchange, pnpm caching, and `sst deploy --stage staging` need end-to-end verification. Without CI, every deploy is manual and error-prone.
+The CI workflow file (`.github/workflows/ci.yml`) exists but has never been tested against the actual GitHub repository. OIDC credential exchange, pnpm caching, and `sst deploy --stage dev` need end-to-end verification. Production remains manual so releases stay deliberate.
 
 #### Definition of Done
 
@@ -227,21 +229,22 @@ The CI workflow file (`.github/workflows/ci.yml`) exists but has never been test
 - [ ] `pnpm lint` passes in CI
   - `Verify:` Job log
   - `Evidence:` Zero lint errors
-- [ ] OIDC credential exchange works in `deploy-staging` job
+- [ ] OIDC credential exchange works in `deploy-dev` job
   - `Verify:` `aws-actions/configure-aws-credentials` step succeeds
   - `Evidence:` "Successfully assumed role" in job log
-- [ ] `sst deploy --stage staging` succeeds from CI
+- [ ] `sst deploy --stage dev` succeeds from CI
   - `Verify:` SST output shows "Complete" with resource URLs
-  - `Evidence:` Staging API URL accessible
+  - `Evidence:` Dev API URL accessible
 - [ ] Manual dispatch workflow for `sst deploy --stage prod` exists
   - `Verify:` "Run workflow" button visible on Actions tab
   - `Evidence:` workflow_dispatch trigger in CI yaml
 
 #### Scope
 
-**In:** CI workflow validation, OIDC exchange, staging deploy, manual prod trigger
+**In:** CI workflow validation, OIDC exchange, dev deploy, manual prod trigger
 
 **Out — Do Not Implement:**
+
 - Test execution (no tests yet) → P1B.09
 - Preview deployments per PR → future
 - SDK generation workflow → P1D.04
@@ -298,6 +301,7 @@ Without a linter and formatter, AI agents and human contributors produce inconsi
 **In:** ESLint flat config, Prettier, lint-staged, husky pre-commit hook
 
 **Out — Do Not Implement:**
+
 - Next.js ESLint plugin (dashboard handles separately) → P1C.07
 - Test-specific lint rules → P1B.09
 - Commit message linting (conventional commits) → future
@@ -344,6 +348,7 @@ npm ecosystem moves fast. Outdated dependencies accumulate security vulnerabilit
 **In:** Dependabot config file
 
 **Out — Do Not Implement:**
+
 - Renovate (alternative tool) — Dependabot is simpler for this stage
 - Auto-merge rules → future
 
@@ -403,6 +408,7 @@ The OpenSearch domain `flat-white` already exists with ~15M G-NAF addresses inde
 **In:** OpenSearch endpoint configuration, SigV4 connectivity, IAM permissions verification, live query test
 
 **Out — Do Not Implement:**
+
 - Index creation or data ingestion → P1E
 - Search query tuning → P1A.02-07
 - Connection pooling optimization → future (current config is sufficient for Phase 1)
@@ -470,6 +476,7 @@ The current routes use `addressRoutes.get()` (standard Hono) with manual `safePa
 **In:** Route migration to `createRoute()`, OpenAPI spec endpoint, request/response schema wiring
 
 **Out — Do Not Implement:**
+
 - OpenSearch query changes (queries stay the same) → P1A.02-07
 - SDK generation (needs the spec first) → P1D.04
 - Docs generation (needs the spec first) → P1D.01
@@ -531,6 +538,7 @@ Address autocomplete is the flagship endpoint — the first thing developers try
 **In:** Autocomplete query against real data, state filter, limit, response format
 
 **Out — Do Not Implement:**
+
 - Proximity biasing (lat/lon boost) → future enhancement
 - Fuzzy matching for typos → future enhancement
 - Address component parsing → P1A.03 (validate handles this)
@@ -579,6 +587,7 @@ Address validation is the core business use case. Users paste a full address str
 **In:** Full-string address matching, confidence scoring, single-best-match response
 
 **Out — Do Not Implement:**
+
 - Bulk validation (array of addresses) → future
 - Address correction/suggestion ("did you mean?") → future
 
@@ -624,6 +633,7 @@ Enrichment is the premium feature — boundaries (LGA, electorates, mesh blocks,
 **In:** Document retrieval by ID, full field return, tier gating
 
 **Out — Do Not Implement:**
+
 - Batch enrichment (array of IDs) → future
 - Selective field return (field filtering) → future
 
@@ -668,6 +678,7 @@ As an API consumer, `GET /v1/address/reverse?lat=-37.93&lon=145.02` returns near
 **In:** Reverse geocoding, distance sort, radius filter
 
 **Out — Do Not Implement:**
+
 - Nearest-neighbor with ML ranking → future
 - Interpolated street addresses (address between two G-NAF points) → not possible with G-NAF data
 
@@ -709,6 +720,7 @@ As an API consumer, `GET /v1/address/lookup/postcode?postcode=3188` returns all 
 **In:** Postcode-to-locality aggregation, format validation
 
 **Out — Do Not Implement:**
+
 - Postcode boundary geometry (GeoJSON polygon) → future
 - Postcode distance/route calculation → future
 
@@ -750,6 +762,7 @@ As an API consumer, `GET /v1/address/lookup/suburb?suburb=hampton+east` returns 
 **In:** Suburb lookup with postcode aggregation and geographic bounds
 
 **Out — Do Not Implement:**
+
 - Suburb boundary polygon (GeoJSON) → future
 - Population/demographics data → requires ABS integration
 
@@ -798,6 +811,7 @@ Consistent error responses are the difference between a developer-friendly API a
 **In:** Error envelope format, request ID, rate limit headers, global error handler
 
 **Out — Do Not Implement:**
+
 - Error analytics/dashboarding → P1F.02
 - Error retry guidance in docs → P1D.02
 
@@ -852,6 +866,7 @@ Address data changes quarterly. The same "16 heath cres" query from 1000 differe
 **In:** API Gateway cache setup, TTL configuration, invalidation endpoint
 
 **Out — Do Not Implement:**
+
 - CloudFront CDN caching → future (API Gateway cache is sufficient for Phase 1)
 - Per-product TTL configuration in SST → future (single TTL for now)
 
@@ -903,6 +918,7 @@ A t3.small OpenSearch node with ~128 max connections can be overwhelmed by a sin
 **In:** WAF web ACL, rate-based rule, managed rule groups, API Gateway default throttling
 
 **Out — Do Not Implement:**
+
 - Per-key per-second rate limiting (token bucket / sliding window) → P2 (per ARCHITECTURE.MD: "deferred to Phase 2+")
 - Geographic restrictions → not needed (LEI is international)
 - Custom WAF rules per customer → future
@@ -967,6 +983,7 @@ Clerk handles human identity: sign-up, login, OAuth (Google/GitHub), organisatio
 **In:** Clerk app creation, OAuth config, webhook config, secret management
 
 **Out — Do Not Implement:**
+
 - Webhook handler implementation → P1B.04
 - Dashboard Clerk components → P1C.02
 - Team/org management → P3.03
@@ -1014,6 +1031,7 @@ As a builder, I need Unkey configured for API key issuance with the `pq_live_` p
 **In:** Unkey API creation, root key, prefix config, webhook config
 
 **Out — Do Not Implement:**
+
 - Webhook handler → P1B.06
 - Reconciliation Lambda → P1B.07
 - Management UI in dashboard → P1C.03
@@ -1068,6 +1086,7 @@ Stripe metered billing uses one subscription per organisation with per-product u
 **In:** Stripe products, prices, meters, pricing table, webhook config, secrets
 
 **Out — Do Not Implement:**
+
 - Webhook handler → P1B.05
 - Usage reporting Lambda → P1B.08
 - Dashboard billing page → P1C.05
@@ -1121,6 +1140,7 @@ The provisioning chain is the most critical webhook handler. It connects three v
 **In:** Webhook verification, Stripe customer + subscription, Unkey key, DynamoDB record, idempotency
 
 **Out — Do Not Implement:**
+
 - Welcome email → deferred (can add later)
 - Team/org provisioning → P3.03
 - Sandbox key creation → future
@@ -1169,6 +1189,7 @@ As a developer upgrading from Free to Starter, my API key limits update automati
 **In:** Stripe webhook verification, tier mapping, Unkey key update, DynamoDB update, downgrade handling
 
 **Out — Do Not Implement:**
+
 - Prorated billing → Stripe handles this automatically
 - Cancellation flow → P1C.05
 
@@ -1216,6 +1237,7 @@ As a platform operator, when a key is created/updated/deleted in Unkey (via dash
 **In:** Key lifecycle sync to DynamoDB (create, update, delete)
 
 **Out — Do Not Implement:**
+
 - Reconciliation (catch missed webhooks) → P1B.07
 - Key rotation flow → P1C.03
 
@@ -1270,6 +1292,7 @@ Webhooks can fail: Lambda cold start timeout, network issues, Unkey webhook deli
 **In:** Scheduled reconciliation, diff logic, fix orphaned/missing/stale keys, logging
 
 **Out — Do Not Implement:**
+
 - Real-time consistency (webhooks handle the common case) → P1B.06
 - Alerting on high discrepancy count → P1F.02
 
@@ -1327,6 +1350,7 @@ Usage counters accumulate in DynamoDB (atomic `ADD` per request). Stripe needs t
 **In:** Hourly batch, delta reporting, idempotency, DLQ, end-of-month sweep
 
 **Out — Do Not Implement:**
+
 - Real-time usage reporting → overkill for Phase 1 volumes
 - Usage analytics dashboard → P1C.04
 
@@ -1392,6 +1416,7 @@ As a builder, I need an integration test that verifies the full auth chain end-t
 **In:** Auth chain integration tests, seed script, all error code verification
 
 **Out — Do Not Implement:**
+
 - Load testing → future
 - Rate limiting tests (per-second) → future (only monthly quota tested)
 
@@ -1451,6 +1476,7 @@ The landing page IS the product pitch. A live autocomplete demo (type an address
 **In:** Landing page, hero demo, pricing table, sign-up CTA, responsive design
 
 **Out — Do Not Implement:**
+
 - SEO optimization → future
 - Analytics/tracking → future
 - Marketing copy refinement → ongoing
@@ -1499,6 +1525,7 @@ As a logged-in developer, I see my API key, usage summary, and quick-start code 
 **In:** Overview dashboard, key display, usage chart, quick-start, upgrade nudge
 
 **Out — Do Not Implement:**
+
 - Multi-key management → P1C.03
 - Detailed per-product usage charts → P1C.04
 - Billing management → P1C.05
@@ -1554,6 +1581,7 @@ Developers need multiple keys: one for production, one for staging, one for each
 **In:** Key CRUD, rotation, sandbox/live toggle, Unkey API integration
 
 **Out — Do Not Implement:**
+
 - Per-key rate limit customization → future
 - Key expiration dates → future
 - IP allowlisting per key → future
@@ -1607,6 +1635,7 @@ Usage data lives in DynamoDB as atomic counters (per-key, per-product, per-month
 **In:** Usage visualization, granularity toggle, CSV export, Recharts
 
 **Out — Do Not Implement:**
+
 - Real-time streaming usage (WebSocket) → future
 - Org-level aggregation across multiple keys → P3.03 (team management)
 - Cost projections → future
@@ -1661,6 +1690,7 @@ Stripe's embedded customer portal handles 90% of billing needs out of the box: p
 **In:** Stripe embedded portal, plan changes, invoices, cancellation
 
 **Out — Do Not Implement:**
+
 - Custom pricing page (Stripe hosted handles this) → use embedded pricing table
 - Custom invoice generation → Stripe handles this
 - Enterprise custom billing → future
@@ -1719,6 +1749,7 @@ Mintlify has playgrounds too (P1D.01), but the dashboard playground is pre-authe
 **In:** Interactive API explorer, all address endpoints, pre-authenticated, curl export
 
 **Out — Do Not Implement:**
+
 - Request history / saved queries → future
 - WebSocket streaming → future
 - Response schema validation → future
@@ -1774,6 +1805,7 @@ Without a design system, each dashboard page will look different — inconsisten
 **In:** Component library init, layout shell, dark mode, responsive sidebar
 
 **Out — Do Not Implement:**
+
 - Custom branded theme (colors, fonts) → future (shadcn defaults for MVP)
 - Animation library → future
 - Custom icon set → use Lucide icons (bundled with shadcn)
@@ -1828,6 +1860,7 @@ This ticket sets up the Mintlify infrastructure — not the content. Mintlify re
 **In:** Mintlify infrastructure, OpenAPI import, navigation skeleton, domain, deploy pipeline
 
 **Out — Do Not Implement:**
+
 - Getting Started prose content → P1D.02
 - Per-endpoint documentation prose → P1D.03
 - SDK documentation → P1D.04
@@ -1877,6 +1910,7 @@ The Getting Started guide is the highest-traffic page on any API docs site. If a
 **In:** Quick start, authentication, rate limits, error handling pages
 
 **Out — Do Not Implement:**
+
 - Per-endpoint API reference (auto-generated from spec) → P1D.03
 - SDK installation/usage guide → P1D.04
 - Tutorials/cookbooks → future
@@ -1929,6 +1963,7 @@ Mintlify auto-generates API reference from the OpenAPI spec (P1D.01), but the au
 **In:** Per-endpoint prose docs, field descriptions, code examples, playground
 
 **Out — Do Not Implement:**
+
 - Tutorials/cookbooks (e.g., "Build an address form") → future
 - Video walkthroughs → future
 
@@ -1987,6 +2022,7 @@ Hand-written SDK clients drift from the API. Speakeasy auto-generates from the O
 **In:** Speakeasy config, TypeScript SDK generation, npm publish, CI pipeline
 
 **Out — Do Not Implement:**
+
 - Python SDK → P5.04 (when all products are live)
 - PHP/Go/Ruby SDKs → future
 - SDK changelog automation → future
@@ -2049,6 +2085,7 @@ The web component is three things: (1) the hero demo on the landing page that co
 **In:** Web Component, CDN publish, debounced API calls, select event, framework-agnostic
 
 **Out — Do Not Implement:**
+
 - Address form auto-fill (populate separate fields) → future enhancement
 - Styling customization beyond CSS custom properties → future
 - Offline/cached suggestions → future
@@ -2108,6 +2145,7 @@ The flat-white pipeline currently outputs NDJSON files to S3 but doesn't produce
 **In:** Verification that flat-white output conforms to manifest contract (work done in flat-white repo)
 
 **Out — Do Not Implement (in this repo):**
+
 - flat-white pipeline code changes (done in jbejenar/flat-white)
 - Initial index creation (that's what P1E.03 does when the first manifest triggers ingestion)
 
@@ -2162,6 +2200,7 @@ Phase 1 uses GitHub Actions cron instead of EventBridge + Step Functions (that's
 **In:** Cron workflow, manifest discovery, version comparison, sequential ingestion trigger
 
 **Out — Do Not Implement:**
+
 - EventBridge + Step Functions (that's P2.04) → replaces this workflow
 - Parallel file processing (sequential is fine for Phase 1 with 8 files)
 - Multi-product support (only address in Phase 1)
@@ -2215,9 +2254,10 @@ Blue-green deployment for OpenSearch: create `address-{version}` with mappings, 
 
 #### Scope
 
-**In:** Index creation, mappings application, S3 streaming, _bulk ingestion, error handling
+**In:** Index creation, mappings application, S3 streaming, \_bulk ingestion, error handling
 
 **Out — Do Not Implement:**
+
 - Parallel file processing (sequential for Phase 1) → P2.04 adds parallelism
 - NDJSON content sampling → P2.04 adds this
 - Health check → P1E.04
@@ -2274,6 +2314,7 @@ The health check is the gate between "data is indexed" and "data is live." It ve
 **In:** Doc count check, sample queries, force merge, atomic alias swap, retention, failure alerting
 
 **Out — Do Not Implement:**
+
 - Automated rollback (manual procedure documented in ARCHITECTURE.MD 5.2.4) → future
 - Pre-swap latency benchmarking → future
 
@@ -2316,6 +2357,7 @@ Without cache invalidation, clients could receive stale data for up to 1 hour (t
 **In:** Cache flush API call post-swap
 
 **Out — Do Not Implement:**
+
 - Selective cache invalidation (flush all, not per-route) → future optimization
 - CloudFront invalidation (dashboard) → not needed (API only)
 
@@ -2370,6 +2412,7 @@ After each alias swap, the old index stays around for rollback (7 days for addre
 **In:** Scheduled cleanup, retention enforcement, snapshot verification, alerting
 
 **Out — Do Not Implement:**
+
 - Manual snapshot creation → ARCHITECTURE.MD 5.2.5 documents the procedure
 - Cross-region snapshot replication → future
 
@@ -2429,6 +2472,7 @@ Currently the API is at a random AWS URL (`59jym47ia1.execute-api...`) and the d
 **In:** Three custom domains, SSL certs, DNS configuration
 
 **Out — Do Not Implement:**
+
 - CDN distribution (CloudFront for API) → future optimization (API Gateway is sufficient)
 - `cdn.prontiq.dev` for web component → P1D.05
 
@@ -2483,6 +2527,7 @@ Without monitoring, failures are discovered by customer complaints. CloudWatch a
 **In:** CloudWatch alarms, SNS alerting, dashboard, X-Ray tracing, structured logging
 
 **Out — Do Not Implement:**
+
 - Third-party monitoring (Datadog, Sentry) → future (CloudWatch is sufficient for Phase 1)
 - PagerDuty/OpsGenie integration → future
 - Uptime monitoring (external) → future (Pingdom, Better Uptime)
@@ -2549,6 +2594,7 @@ ABR provides daily bulk extracts of all Australian Business Numbers (~3M entitie
 **In:** ABR download, XML→NDJSON transform, S3 upload, manifest generation (in separate repo)
 
 **Out — Do Not Implement:**
+
 - ASIC director data → P2.08 (separate dataset)
 - OpenSearch index creation → handled by Step Functions (P2.04)
 - API routes → P2.03
@@ -2595,6 +2641,7 @@ ABN search has different requirements than address search: exact ABN lookup (11-
 **In:** Mappings design, sample query verification
 
 **Out — Do Not Implement:**
+
 - API routes → P2.03
 - Ingestion pipeline → P2.04 (Step Functions handles this generically)
 
@@ -2649,6 +2696,7 @@ ABN verification is the second product — the one that demonstrates the platfor
 **In:** ABN verify + search routes, OpenSearch queries, OpenAPI spec, SDK update
 
 **Out — Do Not Implement:**
+
 - ABN directors → P2.08
 - Bulk ABN verification → future
 
@@ -2723,6 +2771,7 @@ As an API consumer, I find ABN documentation and SDK methods alongside the exist
 **In:** ABN docs section, SDK regeneration, getting started update
 
 **Out — Do Not Implement:**
+
 - ABN-specific tutorials → future
 - Directors endpoint docs → P2.08
 
@@ -2768,6 +2817,7 @@ The usage batch Lambda (P1B.08) already reports address usage to Stripe. Adding 
 **In:** Stripe ABN meter, batch Lambda update, invoice verification
 
 **Out — Do Not Implement:**
+
 - Per-product overage pricing changes → use existing tier pricing
 
 ---
@@ -2849,6 +2899,7 @@ Director data comes from ASIC (separate dataset from ABR). This is a premium end
 **In:** ASIC director lookup, ACN parameter, tier gating, docs + SDK
 
 **Out — Do Not Implement:**
+
 - Historical directors (only current) → future
 - Director search by name → future
 - Beneficial ownership → not available in public ASIC data
@@ -2911,6 +2962,7 @@ LEI (Legal Entity Identifier) is the first international product — used by ban
 **In:** GLEIF download, transform, S3 upload, manifest (in separate repo)
 
 **Out — Do Not Implement:**
+
 - LEI renewal tracking → future
 - Relationship data (parent/child entities) → future
 
@@ -2954,6 +3006,7 @@ As an API consumer, `GET /v1/lei/lookup?lei=549300MLUDYVRQOOXS22` returns entity
 **In:** LEI lookup + search routes, OpenSearch queries, spec, SDK
 
 **Out — Do Not Implement:**
+
 - LEI validation (checksum) → future enhancement
 - Bulk LEI lookup → future
 
@@ -3003,6 +3056,7 @@ Solo developers sign up individually. Teams need shared access: one billing acco
 **In:** Clerk org management, invitations, roles, member removal
 
 **Out — Do Not Implement:**
+
 - Custom role definitions → use Clerk's built-in roles
 - SSO/SAML → Clerk handles this on higher plans
 - Per-member API key scoping → future
@@ -3044,6 +3098,7 @@ As a developer, I find integration options (Shopify, WooCommerce, web component)
 **In:** Integration cards, web component embed code
 
 **Out — Do Not Implement:**
+
 - Shopify OAuth flow → P4.02
 - WooCommerce plugin → P4.03
 
@@ -3088,6 +3143,7 @@ Webhook URLs allow developers to receive events (quota warnings, key changes) in
 **In:** Webhook config, notification preferences, account deletion
 
 **Out — Do Not Implement:**
+
 - Audit log → future
 - Two-factor authentication settings → Clerk handles this
 - API access logs → future
@@ -3126,6 +3182,7 @@ As a platform operator, LEI usage is metered and billed so that the invoice show
 **In:** Stripe LEI meter, batch Lambda update, invoice verification
 
 **Out — Do Not Implement:**
+
 - Custom per-product pricing → use tier-based pricing
 
 ---
@@ -3169,6 +3226,7 @@ API versioning is needed before the first breaking change ships. The `/v1/` pref
 **In:** Sunset header middleware, `/v2/` route group infrastructure, docs
 
 **Out — Do Not Implement:**
+
 - Actual `/v2/` endpoints (no breaking changes planned yet) → when needed
 - Per-client version pinning → future
 
@@ -3225,6 +3283,7 @@ Shopify is the largest e-commerce platform in Australia. A checkout UI extension
 **In:** Checkout UI extension, address autocomplete, ABN field, OAuth install
 
 **Out — Do Not Implement:**
+
 - Address enrichment at checkout → future (autocomplete is sufficient)
 - Custom checkout styling → merchant uses Shopify's theme settings
 - Shopify Admin app → future (only checkout extension for now)
@@ -3276,6 +3335,7 @@ The Shopify install flow must be frictionless: click install → OAuth consent �
 **In:** Shopify OAuth, store-scoped key provisioning, install/uninstall webhooks
 
 **Out — Do Not Implement:**
+
 - Shopify billing (use Prontiq billing, not Shopify's app billing) → keeps pricing consistent
 - Multi-store support per account → future
 
@@ -3323,6 +3383,7 @@ WooCommerce is the second-largest e-commerce platform in Australia. The plugin h
 **In:** WooCommerce checkout integration, settings page, Plugin Directory submission
 
 **Out — Do Not Implement:**
+
 - Auto-provisioned keys (merchant enters key manually, unlike Shopify) → simplicity
 - ABN verification at WooCommerce checkout → future
 - Gutenberg block → future
@@ -3364,6 +3425,7 @@ As a developer, I see store-scoped keys separately from personal keys on the das
 **In:** Store key display, product restriction, per-key usage tracking
 
 **Out — Do Not Implement:**
+
 - Per-store billing (all keys bill to account owner) → simplicity
 - Store-to-store key migration → future
 
@@ -3404,6 +3466,7 @@ As a Shopify/WooCommerce merchant, I find clear integration guides so that I can
 **In:** Shopify + WooCommerce guides, screenshots
 
 **Out — Do Not Implement:**
+
 - Video production → can be added later
 - Merchant-facing FAQ → future
 
@@ -3467,6 +3530,7 @@ CVE/NVD data is the bridge between Prontiq's data platform and ariscan (the open
 **In:** NVD pipeline, CVE lookup + search, ariscan integration, docs, SDK
 
 **Out — Do Not Implement:**
+
 - CVE alerting/notifications → future
 - Dependency scanning (that's ariscan's job) → ariscan uses this API
 - CVE remediation guidance → future
@@ -3523,6 +3587,7 @@ Patent search is an expensive niche — commercial providers charge $500-2K per 
 **In:** Patent/trademark pipeline, search + lookup routes, fuzzy matching, docs, SDK
 
 **Out — Do Not Implement:**
+
 - Patent analytics (citation networks, patent landscaping) → future
 - International patents beyond AU/US → future
 - Trademark monitoring/alerts → future
@@ -3568,6 +3633,7 @@ With 5 products live, the invoice must show 5 separate usage line items. The bat
 **In:** Stripe meters for CVE + Patents, batch Lambda update, invoice verification
 
 **Out — Do Not Implement:**
+
 - Per-product pricing tiers → use unified tier pricing
 
 ---
@@ -3621,6 +3687,7 @@ This is the capstone: one SDK, 5 product namespaces, 2 languages. The TypeScript
 **In:** TypeScript + Python SDKs, all 5 products, npm + PyPI publish, CI pipeline
 
 **Out — Do Not Implement:**
+
 - PHP/Go/Ruby SDKs → future (Speakeasy supports them, but 2 languages is enough for launch)
 - SDK changelog automation → future
 - SDK versioning independent of API versioning → future
@@ -3630,6 +3697,7 @@ This is the capstone: one SDK, 5 product namespaces, 2 languages. The TypeScript
 ## End State
 
 At completion of Phase 5:
+
 - **5 products** on one platform
 - **One API key, one SDK, one invoice**
 - **Typed SDKs** in TypeScript + Python

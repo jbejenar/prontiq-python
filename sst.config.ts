@@ -12,8 +12,7 @@
  * App name: "prontiq" (short, clean AWS console names)
  */
 
-const OPENSEARCH_DOMAIN_ARN =
-  "arn:aws:es:ap-southeast-2:493712557159:domain/flat-white";
+const OPENSEARCH_DOMAIN_ARN = "arn:aws:es:ap-southeast-2:493712557159:domain/flat-white";
 const OPENSEARCH_ENDPOINT_DEFAULT =
   "https://search-flat-white-lrsdymw7a4u56cu2lrvxa3ggve.ap-southeast-2.es.amazonaws.com";
 
@@ -73,8 +72,7 @@ export default $config({
       path: "packages/dashboard",
       environment: {
         NEXT_PUBLIC_API_URL: api.url,
-        NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:
-          process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY ?? "",
+        NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY ?? "",
         CLERK_SECRET_KEY: process.env.CLERK_SECRET_KEY ?? "",
         CLERK_WEBHOOK_SECRET: process.env.CLERK_WEBHOOK_SECRET ?? "",
       },

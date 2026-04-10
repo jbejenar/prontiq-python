@@ -27,5 +27,5 @@ Proposed | Accepted | Deprecated | Superseded by [ADR-NNN](./NNN-title.md)
 
 ---
 
-*Date: YYYY-MM-DD*
-*Decision makers: @team*
+_Date: YYYY-MM-DD_
+_Decision makers: @team_

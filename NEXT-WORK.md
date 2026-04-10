@@ -8,6 +8,7 @@
 ### P0 Remaining (1 ticket)
 
 **P0.6 — OpenSearch connectivity verification**
+
 - [ ] Lambda can reach `flat-white` OpenSearch domain via SigV4
 - [ ] IAM role has `es:ESHttp*` permissions on the domain
 - [ ] Health check endpoint returns OpenSearch cluster status
@@ -19,12 +20,14 @@
 ### Ready to Start: P1A — API Core
 
 **P1A.1 — Migrate routes to @hono/zod-openapi**
+
 - [ ] All 6 address routes use `createRoute()` with request/response schemas
 - [ ] `app.doc("/openapi.json")` returns valid OpenAPI 3.1 spec
 - [ ] Spec includes all query parameters, response shapes, error codes
 - [ ] Spec is accessible at `/openapi.json` (no auth required)
 
 **P1A.2 — Address autocomplete endpoint** (verify against real data)
+
 - [ ] Returns suggestions with correct fields
 - [ ] `search_as_you_type` query works against OpenSearch `addresses` alias
 - [ ] Response time < 50ms (warm)
@@ -40,17 +43,17 @@
 
 ## Live Endpoints
 
-| Endpoint | URL |
-|----------|-----|
-| API | `https://59jym47ia1.execute-api.ap-southeast-2.amazonaws.com` |
-| Dashboard | `https://d2ttwndpb06ei3.cloudfront.net` |
+| Endpoint  | URL                                                           |
+| --------- | ------------------------------------------------------------- |
+| API       | `https://59jym47ia1.execute-api.ap-southeast-2.amazonaws.com` |
+| Dashboard | `https://d2ttwndpb06ei3.cloudfront.net`                       |
 
 ## Reference Files
 
-| File | Purpose | When to Read |
-|------|---------|--------------|
-| `ARCHITECTURE.MD` | Full platform design (1,451 lines) | When you need design context |
-| `ROADMAP.md` | Master plan (69 tickets) | When you need the full scope |
-| `sst.config.ts` | Infrastructure definition | When working on infra |
-| `packages/shared/src/constants.ts` | Product registry, tier limits | When working on auth/billing |
-| `packages/api/src/index.ts` | API entry point | When working on P1A routes |
+| File                               | Purpose                            | When to Read                 |
+| ---------------------------------- | ---------------------------------- | ---------------------------- |
+| `ARCHITECTURE.MD`                  | Full platform design (1,451 lines) | When you need design context |
+| `ROADMAP.md`                       | Master plan (69 tickets)           | When you need the full scope |
+| `sst.config.ts`                    | Infrastructure definition          | When working on infra        |
+| `packages/shared/src/constants.ts` | Product registry, tier limits      | When working on auth/billing |
+| `packages/api/src/index.ts`        | API entry point                    | When working on P1A routes   |

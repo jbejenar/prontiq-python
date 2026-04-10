@@ -30,25 +30,25 @@ Nobody else bundles Australian address validation with ABN verification with LEI
 
 ### Tier 1 — Build first, prints money
 
-| Product | Data Source | Licence | Update Cadence | Market Gap | Status |
-|---|---|---|---|---|---|
-| **Address validation** (G-NAF) | data.gov.au | CC BY 4.0 | Quarterly | Incumbents (Loqate, Aust Post) are expensive, clunky, and lack enrichment | Pipeline built (`flat-white`) |
-| **ABN/ASIC verification** | ABR bulk extract | Open | Daily | Zero free developer-friendly API. CreditorWatch charges $3-5/lookup. Regulatory demand. | Next |
-| **GLEIF/LEI lookup** | GLEIF Golden Copy | Open | Daily | International play. Banks, cross-border payments, compliance teams need LEI resolution. | After ABN |
+| Product                        | Data Source       | Licence   | Update Cadence | Market Gap                                                                              | Status                        |
+| ------------------------------ | ----------------- | --------- | -------------- | --------------------------------------------------------------------------------------- | ----------------------------- |
+| **Address validation** (G-NAF) | data.gov.au       | CC BY 4.0 | Quarterly      | Incumbents (Loqate, Aust Post) are expensive, clunky, and lack enrichment               | Pipeline built (`flat-white`) |
+| **ABN/ASIC verification**      | ABR bulk extract  | Open      | Daily          | Zero free developer-friendly API. CreditorWatch charges $3-5/lookup. Regulatory demand. | Next                          |
+| **GLEIF/LEI lookup**           | GLEIF Golden Copy | Open      | Daily          | International play. Banks, cross-border payments, compliance teams need LEI resolution. | After ABN                     |
 
 ### Tier 2 — Strong revenue, longer sales cycle
 
-| Product | Data Source | Licence | Update Cadence | Market Gap |
-|---|---|---|---|---|
-| **CVE/NVD vulnerability intel** | NVD JSON feeds | Open | Continuous | Free-tier alternative to Snyk ($20-100K/yr). Integrates with [`ariscan`](https://github.com/jbejenar/prontiq-ariscan) — Prontiq's open-source AI readiness scanner. |
-| **Patent/trademark search** | IP Australia + USPTO | Open | Periodic | $500-2K per search via commercial providers. OpenSearch fuzzy matching is proven. |
+| Product                         | Data Source          | Licence | Update Cadence | Market Gap                                                                                                                                                          |
+| ------------------------------- | -------------------- | ------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **CVE/NVD vulnerability intel** | NVD JSON feeds       | Open    | Continuous     | Free-tier alternative to Snyk ($20-100K/yr). Integrates with [`ariscan`](https://github.com/jbejenar/prontiq-ariscan) — Prontiq's open-source AI readiness scanner. |
+| **Patent/trademark search**     | IP Australia + USPTO | Open    | Periodic       | $500-2K per search via commercial providers. OpenSearch fuzzy matching is proven.                                                                                   |
 
 ### Tier 3 — Viable, more crowded
 
-| Product | Data Source | Notes |
-|---|---|---|
+| Product                        | Data Source            | Notes                                                                |
+| ------------------------------ | ---------------------- | -------------------------------------------------------------------- |
 | **Property zoning & planning** | State planning portals | Wedge: API for PropTech devs, not competing with CoreLogic end-users |
-| **SEC EDGAR financials** | SEC | Later addition once platform pattern proven |
+| **SEC EDGAR financials**       | SEC                    | Later addition once platform pattern proven                          |
 
 ---
 
@@ -158,31 +158,31 @@ Nobody else bundles Australian address validation with ABN verification with LEI
 
 ### 3.2 Stack Decision Table
 
-| Layer | Tool | Free Tier | First Paid Tier | Why This One |
-|---|---|---|---|---|
-| **Infrastructure** | SST v3 + Pulumi | — | — | Deploys API + dashboard from one repo. `sst dev` for live Lambda dev. No CloudFormation synth step. |
-| **API framework** | Hono + `@hono/zod-openapi` on Lambda (ARM64) | — | — | Route groups per product, shared middleware, auto OpenAPI 3.1 spec from Zod route schemas. The spec is the atom from which docs and SDKs are derived. |
-| **Search** | OpenSearch managed | ~$35/mo (t3.small) | ~$150/mo (2× t3.medium) | One cluster, index per product, alias-swap for zero-downtime updates. |
-| **Data pipelines** | Independent per product | — | — | Each ships NDJSON + manifest.json to S3. Platform reacts. |
-| **Ingestion** | EventBridge → Step Functions | AWS free tier | — | S3 manifest trigger → parallel bulk index → health check → alias swap. |
-| **Auth (portal)** | Clerk | **50,000 MAUs free** | $20/mo (Pro) | Sign-up, login, OAuth, orgs, teams. Pre-built Next.js components. Won't hit paid for years. |
-| **API key mgmt** | Unkey | **150,000 verifications/mo free** | $25/mo | Key issuance, per-product scoping, management UI. Not in the hot request path. |
-| **Hot-path verification** | DynamoDB (+ DAX from Phase 3) | AWS free tier | — | Sub-ms key verification. Synced from Unkey via webhooks. No external dependency per request. Plain DynamoDB in Phase 1-2; DAX added when sub-ms latency matters at scale. |
-| **Billing** | Stripe (metered) | **Processing fees only** | 2.9% + 30¢/txn | One subscription, per-product usage line items. Embedded pricing table + customer portal. $0 until revenue. |
-| **Docs** | Mintlify | **Free Hobby plan** (1 editor, custom domain, playground) | ~$250-300/mo (Pro) | Beautiful docs from OpenAPI spec. Free tier covers a solo founder. AI assistant and team collaboration only on paid. |
-| **SDKs** | Speakeasy | **1 SDK, up to 50 API methods, free forever** | Contact for pricing | Auto-generated typed SDKs. 50 methods covers entire address + ABN + LEI surface. |
-| **Dashboard** | Next.js + Clerk + shadcn/ui | Deployed to Lambda via SST ($0) | — | Your code. No vendor fee. |
-| **CI/CD** | GitHub Actions + OIDC | Free tier | — | No stored AWS credentials. Short-lived STS tokens per run. |
-| **Monitoring** | CloudWatch + X-Ray | Included with AWS | — | Per-handler latency, error rates, usage dashboards. |
+| Layer                     | Tool                                         | Free Tier                                                 | First Paid Tier         | Why This One                                                                                                                                                              |
+| ------------------------- | -------------------------------------------- | --------------------------------------------------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Infrastructure**        | SST v3 + Pulumi                              | —                                                         | —                       | Deploys API + dashboard from one repo. `sst dev` for live Lambda dev. No CloudFormation synth step.                                                                       |
+| **API framework**         | Hono + `@hono/zod-openapi` on Lambda (ARM64) | —                                                         | —                       | Route groups per product, shared middleware, auto OpenAPI 3.1 spec from Zod route schemas. The spec is the atom from which docs and SDKs are derived.                     |
+| **Search**                | OpenSearch managed                           | ~$35/mo (t3.small)                                        | ~$150/mo (2× t3.medium) | One cluster, index per product, alias-swap for zero-downtime updates.                                                                                                     |
+| **Data pipelines**        | Independent per product                      | —                                                         | —                       | Each ships NDJSON + manifest.json to S3. Platform reacts.                                                                                                                 |
+| **Ingestion**             | EventBridge → Step Functions                 | AWS free tier                                             | —                       | S3 manifest trigger → parallel bulk index → health check → alias swap.                                                                                                    |
+| **Auth (portal)**         | Clerk                                        | **50,000 MAUs free**                                      | $20/mo (Pro)            | Sign-up, login, OAuth, orgs, teams. Pre-built Next.js components. Won't hit paid for years.                                                                               |
+| **API key mgmt**          | Unkey                                        | **150,000 verifications/mo free**                         | $25/mo                  | Key issuance, per-product scoping, management UI. Not in the hot request path.                                                                                            |
+| **Hot-path verification** | DynamoDB (+ DAX from Phase 3)                | AWS free tier                                             | —                       | Sub-ms key verification. Synced from Unkey via webhooks. No external dependency per request. Plain DynamoDB in Phase 1-2; DAX added when sub-ms latency matters at scale. |
+| **Billing**               | Stripe (metered)                             | **Processing fees only**                                  | 2.9% + 30¢/txn          | One subscription, per-product usage line items. Embedded pricing table + customer portal. $0 until revenue.                                                               |
+| **Docs**                  | Mintlify                                     | **Free Hobby plan** (1 editor, custom domain, playground) | ~$250-300/mo (Pro)      | Beautiful docs from OpenAPI spec. Free tier covers a solo founder. AI assistant and team collaboration only on paid.                                                      |
+| **SDKs**                  | Speakeasy                                    | **1 SDK, up to 50 API methods, free forever**             | Contact for pricing     | Auto-generated typed SDKs. 50 methods covers entire address + ABN + LEI surface.                                                                                          |
+| **Dashboard**             | Next.js + Clerk + shadcn/ui                  | Deployed to Lambda via SST ($0)                           | —                       | Your code. No vendor fee.                                                                                                                                                 |
+| **CI/CD**                 | GitHub Actions + OIDC                        | Free tier                                                 | —                       | No stored AWS credentials. Short-lived STS tokens per run.                                                                                                                |
+| **Monitoring**            | CloudWatch + X-Ray                           | Included with AWS                                         | —                       | Per-handler latency, error rates, usage dashboards.                                                                                                                       |
 
 ### 3.3 Monthly Cost Model
 
-| Stage | OpenSearch | Clerk | Unkey | Mintlify | Speakeasy | Stripe | Total |
-|---|---|---|---|---|---|---|---|
-| **Phase 1** (0-100 devs) | $35 | $0 | $0 | $0 | $0 | $0 | **~$35/mo** |
-| **Phase 2** (100-1K devs) | $150 (scale to 2-node — see trigger below) | $0 | $0 | $0 | $0 | Processing fees | **~$170/mo + fees** |
-| **Phase 3** (1K-10K devs) | $150 | $0 | $0 | $0 | $0 | Processing fees | **~$170/mo + fees** |
-| **Phase 4** (10K+ devs) | $150+ | $0 (still under 50K MAU) | $0 (only key CRUD, not verification — well under 150K) | ~$250 (need team collab) | Contact | Processing fees | **~$400/mo + fees** |
+| Stage                     | OpenSearch                                 | Clerk                    | Unkey                                                  | Mintlify                 | Speakeasy | Stripe          | Total               |
+| ------------------------- | ------------------------------------------ | ------------------------ | ------------------------------------------------------ | ------------------------ | --------- | --------------- | ------------------- |
+| **Phase 1** (0-100 devs)  | $35                                        | $0                       | $0                                                     | $0                       | $0        | $0              | **~$35/mo**         |
+| **Phase 2** (100-1K devs) | $150 (scale to 2-node — see trigger below) | $0                       | $0                                                     | $0                       | $0        | Processing fees | **~$170/mo + fees** |
+| **Phase 3** (1K-10K devs) | $150                                       | $0                       | $0                                                     | $0                       | $0        | Processing fees | **~$170/mo + fees** |
+| **Phase 4** (10K+ devs)   | $150+                                      | $0 (still under 50K MAU) | $0 (only key CRUD, not verification — well under 150K) | ~$250 (need team collab) | Contact   | Processing fees | **~$400/mo + fees** |
 
 You reach $420/month only when you have 10,000+ developers generating significant revenue. Until then: **$35/month** (Phase 1), scaling to **$170/month** when the HA trigger fires.
 
@@ -192,17 +192,17 @@ You reach $420/month only when you have 10,000+ developers generating significan
 
 ## 4. Existing AWS Resources
 
-| Resource | Value |
-|---|---|
-| Account | `493712557159` |
-| Region | `ap-southeast-2` (Sydney) |
-| S3 bucket | `flat-white-address-493712557159-ap-southeast-2-an` (all products, all phases) |
-| IAM role (pipelines) | `arn:aws:iam::493712557159:role/flat-white-role` |
-| IAM role (platform) | `prontiq-platform-deploy-role` (to be created — needs CF, Lambda, APIGW, DynamoDB, IAM, CW, OpenSearch) |
-| IAM policy | `arn:aws:iam::493712557159:policy/flat-white-s3-access` |
-| OpenSearch domain | `flat-white` — t3.small.search × 1, 20GB gp3, OpenSearch 2.13. Name is historical; OpenSearch doesn't support domain renaming. All products share this domain. |
-| GitHub OIDC | Provider configured for `token.actions.githubusercontent.com` |
-| Encryption | HTTPS enforced, encryption at rest disabled (open data) |
+| Resource             | Value                                                                                                                                                          |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Account              | `493712557159`                                                                                                                                                 |
+| Region               | `ap-southeast-2` (Sydney)                                                                                                                                      |
+| S3 bucket            | `flat-white-address-493712557159-ap-southeast-2-an` (all products, all phases)                                                                                 |
+| IAM role (pipelines) | `arn:aws:iam::493712557159:role/flat-white-role`                                                                                                               |
+| IAM role (platform)  | `prontiq-platform-deploy-role` (to be created — needs CF, Lambda, APIGW, DynamoDB, IAM, CW, OpenSearch)                                                        |
+| IAM policy           | `arn:aws:iam::493712557159:policy/flat-white-s3-access`                                                                                                        |
+| OpenSearch domain    | `flat-white` — t3.small.search × 1, 20GB gp3, OpenSearch 2.13. Name is historical; OpenSearch doesn't support domain renaming. All products share this domain. |
+| GitHub OIDC          | Provider configured for `token.actions.githubusercontent.com`                                                                                                  |
+| Encryption           | HTTPS enforced, encryption at rest disabled (open data)                                                                                                        |
 
 ---
 
@@ -413,34 +413,34 @@ The manifest is the platform's API boundary. Every field has been considered for
 
 **Field-by-field rationale:**
 
-| Field | Type | Why It Exists | What Happens If It's Wrong |
-|---|---|---|---|
-| `manifest_version` | `integer` | Forward compatibility. If the contract changes, the Step Function can handle v1 and v2 manifests differently. | Step Function rejects unknown versions with an explicit error. |
-| `product` | `string` | The platform's product registry key. Derives the index name pattern (`{product}-{version}`) and the alias name. | Step Function validates against a known product registry (DynamoDB or hardcoded). Unknown product → reject. |
-| `version` | `string` | Opaque version identifier. Combined with `product` to form the index name. | Duplicate version → Step Function detects existing index, skips or overwrites based on config. |
-| `created_at` | `ISO 8601` | Audit trail. Also used to reject stale manifests — Step Function can refuse to ingest a manifest older than the current live version. | Missing → warning, not fatal. Wrong → stale detection may misfire. |
-| `pipeline.repo` | `string` | Traceability. Every dataset can be traced back to a specific repo, commit, and CI run. | Missing → acceptable (manual uploads), but logged as a warning. |
-| `pipeline.commit` | `string` | Pinpoints the exact code that produced this data. Essential for debugging bad data. | Same as above. |
-| `pipeline.run_id` | `string` | Links to the GitHub Actions run for full logs. | Same as above. |
-| `source.name` | `string` | Human-readable upstream data source name. Documentation, not machine-consumed. | Missing → acceptable. |
-| `source.release` | `string` | Upstream release identifier. For G-NAF this is "February 2026". For ABR it might be "2026-04-09". | Missing → acceptable. |
-| `source.url` | `string` | Link to the upstream data source. Provenance documentation. | Missing → acceptable. |
-| `files[].key` | `string` | S3 key relative to the bucket root (e.g., `data/address/2026-02/vic.ndjson`). The Step Function resolves against the same bucket the manifest was uploaded to. NOT a full `s3://` URI — keeps the manifest portable across environments (staging vs prod buckets). | Step Function verifies each key exists in S3 before proceeding. Missing file → abort. |
-| `files[].records` | `integer` | Expected record count in this file. Summed across files must equal `total_records`. Used by health check post-ingestion to verify doc count. | Mismatch → health check fails → alias swap blocked. |
-| `files[].bytes` | `integer` | Expected file size. Step Function verifies against S3 `ContentLength` before ingestion. Catches truncated uploads. | Mismatch → abort before wasting time on bulk indexing. |
-| `files[].sha256` | `string` | Content integrity. Step Function computes SHA-256 of the S3 object and compares. Catches corruption, partial uploads, and man-in-the-middle. | Mismatch → abort with explicit error identifying the corrupted file. |
-| `total_records` | `integer` | Sum of all `files[].records`. Health check queries OpenSearch `_count` after ingestion and compares. | Mismatch → health check fails → alias swap blocked → old index stays live → alert fires. |
-| `index.mappings_key` | `string` | S3 key for the OpenSearch index mappings file (e.g., `data/address/2026-02/mappings.json`). Per-version so that any version can be re-ingested with its original schema — essential for rollback and disaster recovery. Most versions copy the mappings forward unchanged; when a schema change happens, the old version's mappings are preserved. | Step Function reads this file and applies it when creating the versioned index. Missing → abort. |
-| `index.settings` | `object` | Per-product index settings (shards, replicas). Different products have different scale characteristics — address (15M records) needs 3 shards, ABN (3M) might need 1. The pipeline author knows their data. | Missing → Step Function applies sensible defaults (1 shard, 0 replicas). |
+| Field                | Type       | Why It Exists                                                                                                                                                                                                                                                                                                                                      | What Happens If It's Wrong                                                                                  |
+| -------------------- | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `manifest_version`   | `integer`  | Forward compatibility. If the contract changes, the Step Function can handle v1 and v2 manifests differently.                                                                                                                                                                                                                                      | Step Function rejects unknown versions with an explicit error.                                              |
+| `product`            | `string`   | The platform's product registry key. Derives the index name pattern (`{product}-{version}`) and the alias name.                                                                                                                                                                                                                                    | Step Function validates against a known product registry (DynamoDB or hardcoded). Unknown product → reject. |
+| `version`            | `string`   | Opaque version identifier. Combined with `product` to form the index name.                                                                                                                                                                                                                                                                         | Duplicate version → Step Function detects existing index, skips or overwrites based on config.              |
+| `created_at`         | `ISO 8601` | Audit trail. Also used to reject stale manifests — Step Function can refuse to ingest a manifest older than the current live version.                                                                                                                                                                                                              | Missing → warning, not fatal. Wrong → stale detection may misfire.                                          |
+| `pipeline.repo`      | `string`   | Traceability. Every dataset can be traced back to a specific repo, commit, and CI run.                                                                                                                                                                                                                                                             | Missing → acceptable (manual uploads), but logged as a warning.                                             |
+| `pipeline.commit`    | `string`   | Pinpoints the exact code that produced this data. Essential for debugging bad data.                                                                                                                                                                                                                                                                | Same as above.                                                                                              |
+| `pipeline.run_id`    | `string`   | Links to the GitHub Actions run for full logs.                                                                                                                                                                                                                                                                                                     | Same as above.                                                                                              |
+| `source.name`        | `string`   | Human-readable upstream data source name. Documentation, not machine-consumed.                                                                                                                                                                                                                                                                     | Missing → acceptable.                                                                                       |
+| `source.release`     | `string`   | Upstream release identifier. For G-NAF this is "February 2026". For ABR it might be "2026-04-09".                                                                                                                                                                                                                                                  | Missing → acceptable.                                                                                       |
+| `source.url`         | `string`   | Link to the upstream data source. Provenance documentation.                                                                                                                                                                                                                                                                                        | Missing → acceptable.                                                                                       |
+| `files[].key`        | `string`   | S3 key relative to the bucket root (e.g., `data/address/2026-02/vic.ndjson`). The Step Function resolves against the same bucket the manifest was uploaded to. NOT a full `s3://` URI — keeps the manifest portable across environments (dev vs prod buckets).                                                                                     | Step Function verifies each key exists in S3 before proceeding. Missing file → abort.                       |
+| `files[].records`    | `integer`  | Expected record count in this file. Summed across files must equal `total_records`. Used by health check post-ingestion to verify doc count.                                                                                                                                                                                                       | Mismatch → health check fails → alias swap blocked.                                                         |
+| `files[].bytes`      | `integer`  | Expected file size. Step Function verifies against S3 `ContentLength` before ingestion. Catches truncated uploads.                                                                                                                                                                                                                                 | Mismatch → abort before wasting time on bulk indexing.                                                      |
+| `files[].sha256`     | `string`   | Content integrity. Step Function computes SHA-256 of the S3 object and compares. Catches corruption, partial uploads, and man-in-the-middle.                                                                                                                                                                                                       | Mismatch → abort with explicit error identifying the corrupted file.                                        |
+| `total_records`      | `integer`  | Sum of all `files[].records`. Health check queries OpenSearch `_count` after ingestion and compares.                                                                                                                                                                                                                                               | Mismatch → health check fails → alias swap blocked → old index stays live → alert fires.                    |
+| `index.mappings_key` | `string`   | S3 key for the OpenSearch index mappings file (e.g., `data/address/2026-02/mappings.json`). Per-version so that any version can be re-ingested with its original schema — essential for rollback and disaster recovery. Most versions copy the mappings forward unchanged; when a schema change happens, the old version's mappings are preserved. | Step Function reads this file and applies it when creating the versioned index. Missing → abort.            |
+| `index.settings`     | `object`   | Per-product index settings (shards, replicas). Different products have different scale characteristics — address (15M records) needs 3 shards, ABN (3M) might need 1. The pipeline author knows their data.                                                                                                                                        | Missing → Step Function applies sensible defaults (1 shard, 0 replicas).                                    |
 
 **What the pipeline does NOT specify:**
 
-| Concern | Who Owns It | Why |
-|---|---|---|
-| **Index name** | Platform derives it as `{product}-{version}` | Prevents naming collisions and ensures consistency. |
-| **Alias name** | Platform derives it from a product registry | A bug in any pipeline cannot corrupt the alias mapping. The platform maintains a product→alias lookup (e.g. `address` → `addresses`, `abn` → `abn-entities`). |
-| **Refresh interval** | Platform always sets `-1` during bulk, `1s` after | Ingestion optimisation is the platform's concern, not the pipeline's. |
-| **Force merge** | Platform always runs post-ingestion | Same — read optimisation is standardised. |
+| Concern              | Who Owns It                                       | Why                                                                                                                                                           |
+| -------------------- | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Index name**       | Platform derives it as `{product}-{version}`      | Prevents naming collisions and ensures consistency.                                                                                                           |
+| **Alias name**       | Platform derives it from a product registry       | A bug in any pipeline cannot corrupt the alias mapping. The platform maintains a product→alias lookup (e.g. `address` → `addresses`, `abn` → `abn-entities`). |
+| **Refresh interval** | Platform always sets `-1` during bulk, `1s` after | Ingestion optimisation is the platform's concern, not the pipeline's.                                                                                         |
+| **Force merge**      | Platform always runs post-ingestion               | Same — read optimisation is standardised.                                                                                                                     |
 
 **Product registry** (maintained by the platform, not by pipelines):
 
@@ -675,6 +675,7 @@ POST /_aliases
 This is atomic — both actions execute in a single cluster state update. There is no moment where the alias points to zero indices or two indices. Zero downtime. The application always queries `addresses`, never `address-2026-05`.
 
 **What happens to in-flight requests during the swap:**
+
 - Requests that started before the swap continue to execute against the old index (OpenSearch resolves the alias at query parse time, and the query holds a search context on the resolved index).
 - Requests arriving after the swap hit the new index.
 - No requests fail. No requests see partial data. No requests see a mix.
@@ -699,13 +700,13 @@ After a successful alias swap, the old index is NOT deleted immediately. It rema
 
 **Retention periods (configured per product in the product registry):**
 
-| Product | Update Cadence | Retention | Why |
-|---|---|---|---|
-| Address | Quarterly | 7 days | Re-running the pipeline takes hours. Keep the old index for a week. |
-| ABN | Daily | 48 hours | Yesterday's data is always available. Day-before-yesterday is the safety net. |
-| LEI | Daily | 48 hours | Same as ABN. |
-| CVE | Continuous | 24 hours | Fast-moving data, short rollback window is acceptable. |
-| Patents | Periodic | 7 days | Same rationale as address. |
+| Product | Update Cadence | Retention | Why                                                                           |
+| ------- | -------------- | --------- | ----------------------------------------------------------------------------- |
+| Address | Quarterly      | 7 days    | Re-running the pipeline takes hours. Keep the old index for a week.           |
+| ABN     | Daily          | 48 hours  | Yesterday's data is always available. Day-before-yesterday is the safety net. |
+| LEI     | Daily          | 48 hours  | Same as ABN.                                                                  |
+| CVE     | Continuous     | 24 hours  | Fast-moving data, short rollback window is acceptable.                        |
+| Patents | Periodic       | 7 days    | Same rationale as address.                                                    |
 
 **Automated cleanup:** A scheduled Lambda runs every 6 hours. For each product, it lists all indices matching `{product}-*`, identifies which one the alias currently points to, and deletes any index older than the product's retention period. Indices are never deleted if they're the only index for that product (safety net).
 
@@ -742,12 +743,12 @@ OpenSearch managed service provides automated daily snapshots (retained for 14 d
 
 **When to use snapshots vs. alias rollback:**
 
-| Scenario | Use Alias Rollback | Use Snapshot Restore |
-|---|---|---|
-| Bad data from a pipeline run | ✅ Instant, swap alias back | ❌ Overkill |
-| Accidental index deletion | ❌ Index is gone | ✅ Restore from snapshot |
-| OpenSearch cluster corruption | ❌ Can't swap aliases on a broken cluster | ✅ Restore entire cluster |
-| Mappings migration gone wrong | ✅ If old index still exists | ✅ If old index was deleted |
+| Scenario                      | Use Alias Rollback                        | Use Snapshot Restore        |
+| ----------------------------- | ----------------------------------------- | --------------------------- |
+| Bad data from a pipeline run  | ✅ Instant, swap alias back               | ❌ Overkill                 |
+| Accidental index deletion     | ❌ Index is gone                          | ✅ Restore from snapshot    |
+| OpenSearch cluster corruption | ❌ Can't swap aliases on a broken cluster | ✅ Restore entire cluster   |
+| Mappings migration gone wrong | ✅ If old index still exists              | ✅ If old index was deleted |
 
 **Manual snapshot before risky operations:**
 
@@ -767,15 +768,16 @@ PUT /_snapshot/cs-automated/{product}-pre-migration-{date}
 
 On a t3.small.search with 20GB gp3:
 
-| Product | Est. Records | Est. Index Size | Notes |
-|---|---|---|---|
-| Address (G-NAF) | 15M | 8-12 GB | `search_as_you_type` triples inverted index for `addressLabelSearch` |
-| ABN | 3M | 1-2 GB | Simpler schema, keyword-heavy |
-| LEI | 1.5M | 0.5-1 GB | Small dataset |
+| Product         | Est. Records | Est. Index Size | Notes                                                                |
+| --------------- | ------------ | --------------- | -------------------------------------------------------------------- |
+| Address (G-NAF) | 15M          | 8-12 GB         | `search_as_you_type` triples inverted index for `addressLabelSearch` |
+| ABN             | 3M           | 1-2 GB          | Simpler schema, keyword-heavy                                        |
+| LEI             | 1.5M         | 0.5-1 GB        | Small dataset                                                        |
 
 **With retention (two versions of address + current ABN + LEI):** 12 + 12 + 2 + 1 = ~27GB. **Exceeds 20GB.**
 
 **Action items:**
+
 - After first address ingestion, check `GET /_cat/indices?v` for actual index size
 - If address index > 10GB: increase gp3 to 50GB ($2.50/mo more) BEFORE adding ABN
 - Monitor with CloudWatch `FreeStorageSpace` alarm: alert at 80% utilization
@@ -819,12 +821,16 @@ On a t3.small.search with 20GB gp3:
           "ward": { "properties": { "name": { "type": "keyword" } } },
           "stateElectorate": { "properties": { "name": { "type": "keyword" } } },
           "commonwealthElectorate": { "properties": { "name": { "type": "keyword" } } },
-          "meshBlock": { "properties": { "code": { "type": "keyword" }, "category": { "type": "keyword" } } },
+          "meshBlock": {
+            "properties": { "code": { "type": "keyword" }, "category": { "type": "keyword" } }
+          },
           "sa1": { "type": "keyword" },
           "sa2": { "properties": { "name": { "type": "keyword" }, "code": { "type": "keyword" } } },
           "sa3": { "properties": { "name": { "type": "keyword" }, "code": { "type": "keyword" } } },
           "sa4": { "properties": { "name": { "type": "keyword" }, "code": { "type": "keyword" } } },
-          "gccsa": { "properties": { "name": { "type": "keyword" }, "code": { "type": "keyword" } } }
+          "gccsa": {
+            "properties": { "name": { "type": "keyword" }, "code": { "type": "keyword" } }
+          }
         }
       }
     }
@@ -904,12 +910,12 @@ Address data changes quarterly. ABN/LEI data changes daily. Most queries against
 
 API Gateway caching sits in front of the Lambda — cache hits never invoke the function. Cache key = full query string (already normalized by API Gateway). TTL per product:
 
-| Product | Cache TTL | Invalidation |
-|---|---|---|
-| Address | 1 hour | Invalidate on alias swap (quarterly) |
-| ABN | 15 minutes | Invalidate on alias swap (daily) |
-| LEI | 15 minutes | Invalidate on alias swap (daily) |
-| CVE | 5 minutes | Near-realtime data |
+| Product | Cache TTL  | Invalidation                         |
+| ------- | ---------- | ------------------------------------ |
+| Address | 1 hour     | Invalidate on alias swap (quarterly) |
+| ABN     | 15 minutes | Invalidate on alias swap (daily)     |
+| LEI     | 15 minutes | Invalidate on alias swap (daily)     |
+| CVE     | 5 minutes  | Near-realtime data                   |
 
 API Gateway cache: 0.5GB at $0.02/hr ≈ $15/month. Reduces OpenSearch load by 70-80% for popular queries. Worth it even in Phase 1. Invalidation is triggered by the ingestion Step Function after a successful alias swap.
 
@@ -955,6 +961,7 @@ The `@opensearch-project/opensearch` client is instantiated outside the Lambda h
 **WAF / DDoS protection:**
 
 AWS WAF is attached to the API Gateway stage. Phase 1 rules:
+
 - Rate-based rule: 1000 requests per 5 minutes per IP (blocks automated abuse)
 - Geographic restriction: none (international products like LEI)
 - SQL injection / XSS managed rules: enabled (free with AWS managed rule groups)
@@ -997,6 +1004,7 @@ Two systems, complementary roles:
 Webhooks are the primary sync mechanism, but webhooks can fail (Lambda down, delivery failure, network timeout). A stale DynamoDB record means a deleted key keeps working or a downgraded key keeps old limits.
 
 **Reconciliation:** A scheduled Lambda runs every 15 minutes:
+
 1. Lists all active keys from Unkey API
 2. Scans the DynamoDB table
 3. For keys in DynamoDB but not in Unkey: mark `active: false` (deactivated or deleted upstream)
@@ -1018,12 +1026,12 @@ The `lastSyncedFromUnkey` field tracks when the record was last verified against
 
 Usage is metered per product. Each product has its own included allocation within the plan. Overage is charged per product beyond its allocation — the Twilio model.
 
-| Tier | Base Price | Included per Product | Overage (per 1K) | Access |
-|---|---|---|---|---|
-| Free | $0 | 5,000/month per product | — | Address, ABN |
-| Starter | $29/month | 10,000/month per product | $1.50 | All products |
-| Growth | $99/month | 50,000/month per product | $1.00 | All products + SLA |
-| Enterprise | Custom | Custom | Custom | All + dedicated support |
+| Tier       | Base Price | Included per Product     | Overage (per 1K) | Access                  |
+| ---------- | ---------- | ------------------------ | ---------------- | ----------------------- |
+| Free       | $0         | 5,000/month per product  | —                | Address, ABN            |
+| Starter    | $29/month  | 10,000/month per product | $1.50            | All products            |
+| Growth     | $99/month  | 50,000/month per product | $1.00            | All products + SLA      |
+| Enterprise | Custom     | Custom                   | Custom           | All + dedicated support |
 
 **Example invoice (Growth plan, heavy ABN usage):**
 
@@ -1159,16 +1167,16 @@ Usage counters live in DynamoDB (atomic `ADD` per request, per-key, per-product,
 
 ### 5.9 Developer Dashboard Pages
 
-| Page | What It Shows | Stack |
-|---|---|---|
-| **Overview** | Usage chart (all products), current plan, quick-start snippets with key pre-filled | Recharts, Clerk `<UserButton>` |
-| **API Keys** | List, create, rotate, delete. Per-key product scopes. Sandbox vs live toggle. | Unkey management API |
-| **Usage** | Per-product usage charts. Daily/weekly/monthly. Export CSV. | DynamoDB → Recharts |
-| **Billing** | Plan management, payment method, invoices, receipts | Stripe embedded customer portal |
-| **Integrations** | Shopify OAuth install. WooCommerce setup wizard. Web component embed code. | Custom pages |
-| **Team** | Invite members, assign roles, remove | Clerk `<OrganizationProfile>` |
-| **Playground** | Select endpoint, enter params, see live response JSON | Custom, hits live API |
-| **Settings** | Webhook URLs, notification preferences, account deletion | Custom |
+| Page             | What It Shows                                                                      | Stack                           |
+| ---------------- | ---------------------------------------------------------------------------------- | ------------------------------- |
+| **Overview**     | Usage chart (all products), current plan, quick-start snippets with key pre-filled | Recharts, Clerk `<UserButton>`  |
+| **API Keys**     | List, create, rotate, delete. Per-key product scopes. Sandbox vs live toggle.      | Unkey management API            |
+| **Usage**        | Per-product usage charts. Daily/weekly/monthly. Export CSV.                        | DynamoDB → Recharts             |
+| **Billing**      | Plan management, payment method, invoices, receipts                                | Stripe embedded customer portal |
+| **Integrations** | Shopify OAuth install. WooCommerce setup wizard. Web component embed code.         | Custom pages                    |
+| **Team**         | Invite members, assign roles, remove                                               | Clerk `<OrganizationProfile>`   |
+| **Playground**   | Select endpoint, enter params, see live response JSON                              | Custom, hits live API           |
+| **Settings**     | Webhook URLs, notification preferences, account deletion                           | Custom                          |
 
 ### 5.10 Docs & SDKs
 
@@ -1303,7 +1311,6 @@ prontiq-platform/
 ├── .github/
 │   └── workflows/
 │       ├── ci.yml
-│       ├── deploy-staging.yml
 │       ├── deploy-prod.yml
 │       └── generate-sdks.yml        # Speakeasy on spec change
 ├── package.json                       # Workspace root
@@ -1337,13 +1344,13 @@ steps:
       aws-region: ap-southeast-2
 ```
 
-| Trigger | Action |
-|---|---|
-| Push to `main` | Lint, test, `sst deploy --stage staging` |
-| Manual dispatch | `sst deploy --stage prod` |
+| Trigger             | Action                                            |
+| ------------------- | ------------------------------------------------- |
+| Push to `main`      | Lint, typecheck, build, `sst deploy --stage dev`  |
+| Manual dispatch     | `sst deploy --stage prod`                         |
 | OpenAPI spec change | Speakeasy regenerates SDKs, publishes to npm/PyPI |
-| Docs change | Mintlify rebuilds docs site |
-| S3 manifest lands | EventBridge → Step Functions → index + swap |
+| Docs change         | Mintlify rebuilds docs site                       |
+| S3 manifest lands   | EventBridge → Step Functions → index + swap       |
 
 ---
 
@@ -1352,6 +1359,7 @@ steps:
 ### Phase 1 — Address API + minimal platform (6 weeks)
 
 Build:
+
 - Hono API with address routes (autocomplete, validate, enrich, reverse, lookup)
 - SST v3 deployment (Lambda + API Gateway V2 + DynamoDB)
 - DynamoDB key verification middleware
@@ -1369,8 +1377,9 @@ Cost: ~$35/month (OpenSearch)
 ### Phase 2 — ABN/ASIC verification (4 weeks)
 
 Build:
+
 - ABN data pipeline (ABR bulk extract → NDJSON → S3 → manifest)
-- Hono route group for /v1/abn/*
+- Hono route group for /v1/abn/\*
 - OpenSearch index + mappings for ABN entities
 - EventBridge + Step Functions ingestion (now worth it with two products, different cadences)
 - Dashboard: add ABN usage line
@@ -1383,8 +1392,9 @@ Cost: still ~$35/month
 ### Phase 3 — GLEIF/LEI + full dashboard (3 weeks)
 
 Build:
+
 - LEI pipeline (Golden Copy → NDJSON → S3 → manifest)
-- Hono route group for /v1/lei/*
+- Hono route group for /v1/lei/\*
 - Full dashboard build-out (usage charts, team management, Stripe embedded portal)
 - Unkey integration for key management UI in dashboard
 - First international product
@@ -1394,6 +1404,7 @@ Cost: still ~$35/month
 ### Phase 4 — Shopify + WooCommerce plugins (4 weeks)
 
 Build:
+
 - Shopify Checkout UI Extension (address autocomplete + ABN for B2B)
 - Shopify OAuth install flow in dashboard
 - WooCommerce checkout plugin
@@ -1414,20 +1425,20 @@ Cost: ~$150/month (if scaled)
 
 Three products. One platform. One API key. One SDK. One invoice.
 
-| Capability | Prontiq | CreditorWatch | Loqate | Google Places | Aust Post |
-|---|---|---|---|---|---|
-| Address validation (G-NAF) | ✅ | ❌ | ✅ | ❌ | ✅ |
-| ABS statistical enrichment | ✅ | ❌ | ❌ | ❌ | ❌ |
-| Electorate + hazard zones | ✅ | ❌ | ❌ | ❌ | ❌ |
-| ABN/ASIC verification | ✅ | ✅ | ❌ | ❌ | ❌ |
-| LEI lookup | ✅ | ❌ | ❌ | ❌ | ❌ |
-| Typed SDKs (5 languages) | ✅ | ❌ | ❌ | ✅ | ❌ |
-| Interactive docs + playground | ✅ | ❌ | ❌ | ✅ | ❌ |
-| Free tier (5K req/month) | ✅ | ❌ | ❌ | ❌ | ❌ |
-| Shopify + WooCommerce plugins | ✅ | ❌ | ✅ | ❌ | ❌ |
-| Single API key for everything | ✅ | ❌ | ❌ | ❌ | ❌ |
-| Open-source data pipeline | ✅ | ❌ | ❌ | ❌ | ❌ |
-| Price per 1K at scale | $1.00 | ~$3-5 | ~$3-5 | ~$2-5 | Opaque |
+| Capability                    | Prontiq | CreditorWatch | Loqate | Google Places | Aust Post |
+| ----------------------------- | ------- | ------------- | ------ | ------------- | --------- |
+| Address validation (G-NAF)    | ✅      | ❌            | ✅     | ❌            | ✅        |
+| ABS statistical enrichment    | ✅      | ❌            | ❌     | ❌            | ❌        |
+| Electorate + hazard zones     | ✅      | ❌            | ❌     | ❌            | ❌        |
+| ABN/ASIC verification         | ✅      | ✅            | ❌     | ❌            | ❌        |
+| LEI lookup                    | ✅      | ❌            | ❌     | ❌            | ❌        |
+| Typed SDKs (5 languages)      | ✅      | ❌            | ❌     | ✅            | ❌        |
+| Interactive docs + playground | ✅      | ❌            | ❌     | ✅            | ❌        |
+| Free tier (5K req/month)      | ✅      | ❌            | ❌     | ❌            | ❌        |
+| Shopify + WooCommerce plugins | ✅      | ❌            | ✅     | ❌            | ❌        |
+| Single API key for everything | ✅      | ❌            | ❌     | ❌            | ❌        |
+| Open-source data pipeline     | ✅      | ❌            | ❌     | ❌            | ❌        |
+| Price per 1K at scale         | $1.00   | ~$3-5         | ~$3-5  | ~$2-5         | Opaque    |
 
 ---
 
@@ -1448,4 +1459,3 @@ Three products. One platform. One API key. One SDK. One invoice.
 ## Licence
 
 Proprietary — Prontiq Pty Ltd. All rights reserved.
-

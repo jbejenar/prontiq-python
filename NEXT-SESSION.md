@@ -10,6 +10,7 @@
 **Focus:** P0 execution — shipped infrastructure foundation
 
 **Completed:**
+
 - [x] P0.4 — ESLint 9 flat config + Prettier + lint-staged (zero errors, all packages pass)
 - [x] P0.5 — Dependabot configured (.github/dependabot.yml — npm, weekly, grouped AWS SDK + dev deps)
 - [x] P0.1 — IAM deploy role `prontiq-platform-deploy-role` created
@@ -30,6 +31,7 @@
 **Roadmap progress:** 5/69 tickets (P0.1, P0.2, P0.4, P0.5 done; P0.3 needs CI test, P0.6 needs OpenSearch)
 
 **Next session should start with:**
+
 1. Read NEXT-WORK.md
 2. P0.6 — OpenSearch connectivity (set OPENSEARCH_ENDPOINT env, test SigV4 query)
 3. P0.3 — Push to GitHub, verify CI workflow
@@ -43,6 +45,7 @@
 **Focus:** Repo scaffolding + architecture audit
 
 **Completed:**
+
 - [x] Read ARCHITECTURE.MD (1,148 lines at start)
 - [x] Audited architecture as Google Senior Fellow: found 6 critical + 6 significant issues
   - C1: mappings.json shared across versions → per-version
@@ -75,6 +78,7 @@
 **Roadmap progress:** 0/69 tickets (scaffolding complete, P0 ready to start)
 
 **Next session should start with:**
+
 1. Read NEXT-WORK.md
 2. P0.4 (ESLint + Prettier) — no blockers, can do immediately
 3. P0.5 (Dependabot) — no blockers, quick win

@@ -6,13 +6,13 @@ A unified data API platform for Australian and global open data, commercialised 
 
 ## Products
 
-| Product | Endpoint | Data Source | Status |
-|---|---|---|---|
-| **Address Validation** (G-NAF) | `/v1/address/*` | data.gov.au | Phase 1 |
-| **ABN/ASIC Verification** | `/v1/abn/*` | ABR bulk extract | Phase 2 |
-| **LEI Lookup** | `/v1/lei/*` | GLEIF Golden Copy | Phase 3 |
-| **CVE/NVD Intel** | `/v1/cve/*` | NVD JSON feeds | Phase 5 |
-| **Patent Search** | `/v1/patents/*` | IP Australia + USPTO | Phase 5 |
+| Product                        | Endpoint        | Data Source          | Status  |
+| ------------------------------ | --------------- | -------------------- | ------- |
+| **Address Validation** (G-NAF) | `/v1/address/*` | data.gov.au          | Phase 1 |
+| **ABN/ASIC Verification**      | `/v1/abn/*`     | ABR bulk extract     | Phase 2 |
+| **LEI Lookup**                 | `/v1/lei/*`     | GLEIF Golden Copy    | Phase 3 |
+| **CVE/NVD Intel**              | `/v1/cve/*`     | NVD JSON feeds       | Phase 5 |
+| **Patent Search**              | `/v1/patents/*` | IP Australia + USPTO | Phase 5 |
 
 ## Quick Start
 
@@ -37,8 +37,8 @@ pnpm --filter @prontiq/dashboard dev
 ### Deploy
 
 ```bash
-pnpm deploy:staging    # sst deploy --stage staging
-pnpm deploy:prod       # sst deploy --stage prod (manual dispatch in CI)
+pnpm deploy:dev     # sst deploy --stage dev (automatic from main in CI)
+pnpm deploy:prod    # sst deploy --stage prod (manual dispatch in CI)
 ```
 
 ## Architecture
@@ -69,37 +69,37 @@ packages/
 
 ## Stack
 
-| Layer | Tool |
-|---|---|
-| Infrastructure | SST v3 + Pulumi |
-| API | Hono + @hono/zod-openapi on Lambda (ARM64, Node.js 20) |
-| Search | OpenSearch 2.13 (managed) |
-| Auth (portal) | Clerk |
-| API Keys | Unkey + DynamoDB (hot-path verification) |
-| Billing | Stripe (metered, per-product) |
-| Dashboard | Next.js 15 + Clerk + shadcn/ui |
-| Docs | Mintlify (from OpenAPI spec) |
-| SDKs | Speakeasy (from OpenAPI spec) |
-| CI/CD | GitHub Actions + OIDC (no stored credentials) |
+| Layer          | Tool                                                   |
+| -------------- | ------------------------------------------------------ |
+| Infrastructure | SST v3 + Pulumi                                        |
+| API            | Hono + @hono/zod-openapi on Lambda (ARM64, Node.js 20) |
+| Search         | OpenSearch 2.13 (managed)                              |
+| Auth (portal)  | Clerk                                                  |
+| API Keys       | Unkey + DynamoDB (hot-path verification)               |
+| Billing        | Stripe (metered, per-product)                          |
+| Dashboard      | Next.js 15 + Clerk + shadcn/ui                         |
+| Docs           | Mintlify (from OpenAPI spec)                           |
+| SDKs           | Speakeasy (from OpenAPI spec)                          |
+| CI/CD          | GitHub Actions + OIDC (no stored credentials)          |
 
 ## Roadmap Progress
 
 See [`ROADMAP.md`](ROADMAP.md) for the full 69-ticket plan (3,641 lines).
 
-| Phase | Epic | Tickets | Done |
-|---|---|---|---|
-| **P0** | Infrastructure Foundation | 6 | 5/6 |
-| **P1A** | API Core (Address) | 10 | 0/10 |
-| **P1B** | Auth & Billing | 9 | 0/9 |
-| **P1C** | Dashboard | 7 | 0/7 |
-| **P1D** | Docs & SDK | 5 | 0/5 |
-| **P1E** | Ingestion | 6 | 0/6 |
-| **P1F** | Distribution | 2 | 0/2 |
-| **P2** | ABN/ASIC Verification | 8 | 0/8 |
-| **P3** | LEI + Full Dashboard | 7 | 0/7 |
-| **P4** | Shopify + WooCommerce | 5 | 0/5 |
-| **P5** | CVE/NVD + Patents | 4 | 0/4 |
-| | | **69** | **5/69** |
+| Phase   | Epic                      | Tickets | Done     |
+| ------- | ------------------------- | ------- | -------- |
+| **P0**  | Infrastructure Foundation | 6       | 5/6      |
+| **P1A** | API Core (Address)        | 10      | 0/10     |
+| **P1B** | Auth & Billing            | 9       | 0/9      |
+| **P1C** | Dashboard                 | 7       | 0/7      |
+| **P1D** | Docs & SDK                | 5       | 0/5      |
+| **P1E** | Ingestion                 | 6       | 0/6      |
+| **P1F** | Distribution              | 2       | 0/2      |
+| **P2**  | ABN/ASIC Verification     | 8       | 0/8      |
+| **P3**  | LEI + Full Dashboard      | 7       | 0/7      |
+| **P4**  | Shopify + WooCommerce     | 5       | 0/5      |
+| **P5**  | CVE/NVD + Patents         | 4       | 0/4      |
+|         |                           | **69**  | **5/69** |
 
 ## Commands
 
@@ -114,9 +114,9 @@ pnpm format           # Prettier format all files
 
 ## Related Repos
 
-| Repo | Purpose |
-|---|---|
-| [`flat-white`](https://github.com/jbejenar/flat-white) | G-NAF address pipeline (data source for address product) |
+| Repo                                                             | Purpose                                                     |
+| ---------------------------------------------------------------- | ----------------------------------------------------------- |
+| [`flat-white`](https://github.com/jbejenar/flat-white)           | G-NAF address pipeline (data source for address product)    |
 | [`prontiq-ariscan`](https://github.com/jbejenar/prontiq-ariscan) | AI readiness scanner (open-source, integrates with CVE API) |
 
 ## Licence
