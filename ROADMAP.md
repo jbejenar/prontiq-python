@@ -1,7 +1,7 @@
 # Prontiq Platform — Roadmap
 
 > A unified data API platform for Australian and global open data.
-> Last updated: 2026-04-09 · v1.0
+> Last updated: 2026-04-10 · v1.1
 >
 > **Reference:** `ARCHITECTURE.MD` is the authoritative design doc. This roadmap is the execution plan.
 
@@ -22,7 +22,7 @@
 | Phase     | Epic                       | Tickets | Done     | Target      |
 | --------- | -------------------------- | ------- | -------- | ----------- |
 | **P0**    | Infrastructure Foundation  | 6       | 5/6      | Week 1      |
-| **P1A**   | API Core (Address)         | 10      | 0/10     | Weeks 2-3   |
+| **P1A**   | API Core (Address)         | 10      | 1/10     | Weeks 2-3   |
 | **P1B**   | Auth & Billing             | 9       | 0/9      | Weeks 3-4   |
 | **P1C**   | Dashboard                  | 7       | 0/7      | Weeks 4-5   |
 | **P1D**   | Docs & SDK                 | 5       | 0/5      | Week 5      |
@@ -32,7 +32,7 @@
 | **P3**    | GLEIF/LEI + Full Dashboard | 7       | 0/7      | Weeks 11-13 |
 | **P4**    | Shopify + WooCommerce      | 5       | 0/5      | Weeks 14-17 |
 | **P5**    | CVE/NVD + Patents          | 4       | 0/4      | Weeks 18-21 |
-| **Total** |                            | **69**  | **5/69** |             |
+| **Total** |                            | **69**  | **6/69** |             |
 
 ---
 
@@ -210,6 +210,10 @@ As a builder, pushing to `main` automatically runs lint/typecheck/build and depl
 
 The CI workflow file (`.github/workflows/ci.yml`) exists but has never been tested against the actual GitHub repository. OIDC credential exchange, pnpm caching, and `sst deploy --stage dev` need end-to-end verification. Production remains manual so releases stay deliberate.
 
+#### Current Evidence
+
+Main branch CI has been exercised after staging removal. The `check` job succeeds, but `deploy-dev` is still failing in run `24234119406` during `pnpm deploy:dev`. Two residual blockers remain: SST's Lambda bundle cannot resolve the workspace package `@prontiq/shared`, and the GitHub Actions deploy role is missing `s3:PutObjectTagging` on the SST asset bucket.
+
 #### Definition of Done
 
 ##### Functional
@@ -383,6 +387,10 @@ The OpenSearch domain `flat-white` already exists with ~15M G-NAF addresses inde
 
 > **Pre-requisite (external):** The flat-white pipeline must have already run at least once, publishing G-NAF NDJSON to S3 and creating the `addresses` alias in OpenSearch. If the alias doesn't exist, this ticket cannot complete its final DoD item. Verify with: `curl -s $OPENSEARCH_ENDPOINT/_alias/addresses | python3 -m json.tool`
 
+#### Current Evidence
+
+Platform connectivity is verified: `/v1/health/opensearch` returns 200 with a green cluster from the live dev API. The final `addresses` alias/data check remains blocked by the external flat-white data publish; the live alias list currently contains only system aliases (`.kibana`) and no `addresses` alias.
+
 #### Definition of Done
 
 ##### Functional
@@ -419,7 +427,7 @@ The OpenSearch domain `flat-white` already exists with ~15M G-NAF addresses inde
 
 > **Goal:** All 6 address endpoints live, validated, returning real data from OpenSearch. OpenAPI spec auto-generated.
 >
-> **Dependency:** P0.06 (OpenSearch connectivity) must be done first. P1A.02–P1A.07 are independent of each other and can be worked in parallel.
+> **Dependency:** P1A.01 can proceed after platform OpenSearch connectivity is verified. P1A.02–P1A.07 require the external `addresses` alias/data from P0.06, then are independent of each other and can be worked in parallel.
 
 ---
 
@@ -428,12 +436,12 @@ The OpenSearch domain `flat-white` already exists with ~15M G-NAF addresses inde
 ```yaml
 id: P1A.01
 title: Migrate Routes to @hono/zod-openapi
-status: pending
+status: done
 priority: p0-critical
 epic: P1A
 persona: [builder]
-depends_on: [P0.06]
-completed: null
+depends_on: [P0.02]
+completed: 2026-04-10
 tech_stack:
   api: Hono + @hono/zod-openapi
   spec: OpenAPI 3.1
@@ -452,22 +460,22 @@ The current routes use `addressRoutes.get()` (standard Hono) with manual `safePa
 
 ##### Functional
 
-- [ ] All 6 address routes migrated to `createRoute()` with Zod request/response schemas
+- [x] All 6 address routes migrated to `createRoute()` with Zod request/response schemas
   - `Verify:` `packages/api/src/routes/address.ts` uses `createRoute()` for each endpoint
   - `Evidence:` File diff shows `createRoute()` pattern with `request.query`, `responses.200`, `responses.400`, `responses.401`
-- [ ] `GET /openapi.json` returns valid OpenAPI 3.1 spec
-  - `Verify:` `curl .../openapi.json | python3 -m json.tool | head -20`
-  - `Evidence:` Response contains `openapi: "3.1.0"`, `paths` with all 6 address routes
-- [ ] Spec includes all query parameters with types, constraints, and descriptions
+- [x] `GET /openapi.json` returns valid OpenAPI 3.1 spec
+  - `Verify:` `node --input-type=module -e "import app from './packages/api/dist/index.js'; const res=await app.request('/openapi.json'); ..."`
+  - `Evidence:` Local built app returns status 200, `openapi: "3.1.0"`, and all 6 `/v1/address/*` paths. Live deploy verification remains gated by P0.03.
+- [x] Spec includes all query parameters with types, constraints, and descriptions
   - `Verify:` `jq '.paths["/v1/address/autocomplete"].get.parameters' openapi.json`
-  - `Evidence:` Parameters include `q` (required, string, min 1, max 200), `state` (optional, 2 chars), `limit` (optional, int, 1-20, default 5)
-- [ ] Spec includes response schemas for success and all error codes
+  - `Evidence:` Parameters include `q` (required, string, min 1, max 200), `state` (optional, 2 chars), `limit` (optional, int, 1-20, default 5), and reverse `lat`/`lon` as required numbers
+- [x] Spec includes response schemas for success and all error codes
   - `Verify:` `jq '.paths["/v1/address/autocomplete"].get.responses' openapi.json`
-  - `Evidence:` 200, 400, 401, 403, 429, 500 response schemas defined
-- [ ] Spec accessible without authentication (no X-Api-Key required)
+  - `Evidence:` 200, 400, 401, 403, 429, 500 response schemas defined; authenticated address operations include `ApiKeyAuth`
+- [x] Spec accessible without authentication (no X-Api-Key required)
   - `Verify:` `curl .../openapi.json` without API key returns 200
   - `Evidence:` OpenAPI route defined before auth middleware in `index.ts`
-- [ ] Existing Zod schemas in `@prontiq/shared` reused (not duplicated)
+- [x] Existing Zod schemas in `@prontiq/shared` reused (not duplicated)
   - `Verify:` `grep -r "autocompleteQuerySchema" packages/api/src/`
   - `Evidence:` Imported from `@prontiq/shared`, used in `createRoute()` definition
 

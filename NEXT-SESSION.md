@@ -5,6 +5,41 @@
 
 ---
 
+## Session 3 — 2026-04-10
+
+**Focus:** P1A.01 OpenAPI route migration + roadmap audit
+
+**Completed:**
+
+- [x] Merged staging cleanup through PR #11 and updated `main` locally
+- [x] Started branch `codex/openapi-address-routes`
+- [x] Migrated all 6 address routes from plain Hono handlers to `@hono/zod-openapi` `createRoute()` definitions
+- [x] Registered unauthenticated `GET /openapi.json` before `/v1/*` auth middleware
+- [x] Reused shared Zod query schemas and added OpenAPI descriptions for address query parameters
+- [x] Added response schemas for success and common API errors
+- [x] Added `X-Api-Key` OpenAPI security metadata to authenticated address operations
+- [x] Fixed `/v1/address/reverse` OpenAPI params so `lat` and `lon` are required numeric query params while preserving runtime string coercion
+- [x] Verified the built app returns OpenAPI 3.1 with all 6 `/v1/address/*` paths locally
+- [x] Updated ROADMAP.md, NEXT-WORK.md, README.md, and this session log
+
+**No new infrastructure:** This session changed API code and documentation only. Mintlify setup remains future work and will create docs infrastructure when started.
+
+**Residual blockers found during audit:**
+
+- P0.03 remains pending: main CI run `24234119406` passes `check` but fails `deploy-dev`
+- CI deploy blocker 1: SST Lambda bundling cannot resolve workspace package `@prontiq/shared`
+- CI deploy blocker 2: GitHub Actions deploy role lacks `s3:PutObjectTagging` on the SST asset bucket
+- P0.06 remains partially blocked externally: live `/v1/health/opensearch` returns green cluster, but the `addresses` alias is absent from the live OpenSearch alias list
+
+**Next session should start with:**
+
+1. Read NEXT-WORK.md
+2. Fix P0.03 residuals: SST workspace package bundling and `s3:PutObjectTagging` IAM permission
+3. Re-run main CI and record the passing deploy-dev workflow URL
+4. If Mintlify account is ready, plan P1D.01 explicitly as new docs infrastructure
+
+---
+
 ## Session 1 (continued) — 2026-04-09
 
 **Focus:** P0 execution — shipped infrastructure foundation

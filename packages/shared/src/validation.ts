@@ -44,31 +44,54 @@ export const apiErrorSchema = z.object({
 });
 
 export const autocompleteQuerySchema = z.object({
-  q: z.string().min(1).max(200),
-  state: z.string().length(2).toUpperCase().optional(),
-  limit: z.coerce.number().int().min(1).max(20).default(5),
+  q: z.string().min(1).max(200).describe("Partial address query."),
+  state: z.string().length(2).toUpperCase().optional().describe("Optional Australian state code."),
+  limit: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(20)
+    .default(5)
+    .describe("Maximum number of suggestions to return."),
 });
 
 export const validateQuerySchema = z.object({
-  q: z.string().min(1).max(500),
+  q: z.string().min(1).max(500).describe("Full address string to validate."),
 });
 
 export const enrichQuerySchema = z.object({
-  id: z.string().min(1),
+  id: z.string().min(1).describe("G-NAF address document ID."),
 });
 
+const requiredCoercedNumber = (description: string, min: number, max: number) =>
+  z
+    .preprocess(
+      (value) => (value === "" || value === null ? undefined : value),
+      z.coerce.number().min(min).max(max),
+    )
+    .describe(description);
+
 export const reverseQuerySchema = z.object({
-  lat: z.coerce.number().min(-90).max(90),
-  lon: z.coerce.number().min(-180).max(180),
-  radius: z.coerce.number().min(1).max(50000).default(100),
-  limit: z.coerce.number().int().min(1).max(20).default(5),
+  lat: requiredCoercedNumber("Latitude in decimal degrees.", -90, 90),
+  lon: requiredCoercedNumber("Longitude in decimal degrees.", -180, 180),
+  radius: z.coerce.number().min(1).max(50000).default(100).describe("Search radius in metres."),
+  limit: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(20)
+    .default(5)
+    .describe("Maximum number of nearby addresses to return."),
 });
 
 export const postcodeLookupSchema = z.object({
-  postcode: z.string().regex(/^\d{4}$/),
+  postcode: z
+    .string()
+    .regex(/^\d{4}$/)
+    .describe("Australian 4-digit postcode."),
 });
 
 export const suburbLookupSchema = z.object({
-  suburb: z.string().min(1).max(100),
-  state: z.string().length(2).toUpperCase().optional(),
+  suburb: z.string().min(1).max(100).describe("Suburb/locality name."),
+  state: z.string().length(2).toUpperCase().optional().describe("Optional Australian state code."),
 });

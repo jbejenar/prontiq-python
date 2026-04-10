@@ -89,7 +89,7 @@ See [`ROADMAP.md`](ROADMAP.md) for the full 69-ticket plan (3,641 lines).
 | Phase   | Epic                      | Tickets | Done     |
 | ------- | ------------------------- | ------- | -------- |
 | **P0**  | Infrastructure Foundation | 6       | 5/6      |
-| **P1A** | API Core (Address)        | 10      | 0/10     |
+| **P1A** | API Core (Address)        | 10      | 1/10     |
 | **P1B** | Auth & Billing            | 9       | 0/9      |
 | **P1C** | Dashboard                 | 7       | 0/7      |
 | **P1D** | Docs & SDK                | 5       | 0/5      |
@@ -99,7 +99,7 @@ See [`ROADMAP.md`](ROADMAP.md) for the full 69-ticket plan (3,641 lines).
 | **P3**  | LEI + Full Dashboard      | 7       | 0/7      |
 | **P4**  | Shopify + WooCommerce     | 5       | 0/5      |
 | **P5**  | CVE/NVD + Patents         | 4       | 0/4      |
-|         |                           | **69**  | **5/69** |
+|         |                           | **69**  | **6/69** |
 
 ## Commands
 

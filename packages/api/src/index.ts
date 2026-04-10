@@ -1,4 +1,4 @@
-import { Hono } from "hono";
+import { OpenAPIHono } from "@hono/zod-openapi";
 import { cors } from "hono/cors";
 import { handle } from "hono/aws-lambda";
 import { requestId } from "./middleware/request-id.js";
@@ -7,7 +7,7 @@ import { usage } from "./middleware/usage.js";
 import { addressRoutes } from "./routes/address.js";
 import { getOpenSearchClient } from "./search/client.js";
 
-const app = new Hono();
+const app = new OpenAPIHono();
 
 // Global middleware
 app.use(
@@ -59,6 +59,15 @@ app.get("/v1/health/opensearch", async (c) => {
     aliases: aliases.body,
     indices: indices.body,
   });
+});
+
+app.doc31("/openapi.json", {
+  openapi: "3.1.0",
+  info: {
+    title: "Prontiq API",
+    version: "1.0.0",
+    description: "Unified API for Australian and global open data products.",
+  },
 });
 
 // Authenticated routes
