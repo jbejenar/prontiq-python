@@ -362,9 +362,11 @@ Each pipeline can write data (NDJSON + per-version `mappings.json`) to its own `
 
 That's it. Any `.json` file landing in `manifests/` triggers the Step Function. The Step Function reads the file, validates it, and proceeds. One rule. All products. Forever.
 
-#### 5.1.2 Manifest Contract (v1)
+#### 5.1.2 Manifest Contract
 
-The manifest is the platform's API boundary. Every field has been considered for what could go wrong if it's missing, wrong, or misused.
+The manifest is the platform's API boundary. Every field has been considered for what could go wrong if it's missing, wrong, or misused. The platform supports two manifest versions via a discriminated union on `manifest_version`.
+
+**v1 manifest** (original — all files are ingest sources):
 
 ```json
 {
@@ -372,44 +374,53 @@ The manifest is the platform's API boundary. Every field has been considered for
   "product": "address",
   "version": "2026-02",
   "created_at": "2026-04-09T14:30:00Z",
-
-  "pipeline": {
-    "repo": "jbejenar/flat-white",
-    "commit": "a1b2c3d4e5f6",
-    "run_id": "12345678"
-  },
-
-  "source": {
-    "name": "G-NAF",
-    "release": "February 2026",
-    "url": "https://data.gov.au/dataset/geocoded-national-address-file-g-naf"
-  },
-
+  "pipeline": { "repo": "jbejenar/flat-white", "commit": "a1b2c3d4e5f6", "run_id": "12345678" },
+  "source": { "name": "G-NAF", "release": "February 2026", "url": "https://data.gov.au/dataset/geocoded-national-address-file-g-naf" },
   "files": [
-    {
-      "key": "data/address/2026-02/vic.ndjson",
-      "records": 3245123,
-      "bytes": 524288000,
-      "sha256": "e3b0c44298fc1c149afbf4c8996fb924..."
-    },
-    {
-      "key": "data/address/2026-02/nsw.ndjson",
-      "records": 4521000,
-      "bytes": 734003200,
-      "sha256": "d7a8fbb307d7809469ca9abcb0082e4f..."
-    }
+    { "key": "data/address/2026-02/all.ndjson.gz", "records": 15823417, "bytes": 1702942457, "sha256": "d7a8fbb307d7809469ca9abcb0082e4f..." }
   ],
   "total_records": 15823417,
-
   "index": {
     "mappings_key": "data/address/2026-02/mappings.json",
-    "settings": {
-      "number_of_shards": 3,
-      "number_of_replicas": 0
-    }
+    "settings": { "number_of_shards": 1, "number_of_replicas": 0 }
   }
 }
 ```
+
+**v2 manifest** (current — separates inventory from ingest sources):
+
+```json
+{
+  "manifest_version": 2,
+  "product": "address",
+  "version": "2026-02-7",
+  "created_at": "2026-04-11T10:00:00Z",
+  "pipeline": { "repo": "jbejenar/flat-white", "commit": "abc123def456", "run_id": "99999999" },
+  "source": { "name": "G-NAF", "release": "February 2026", "url": "https://data.gov.au/dataset/geocoded-national-address-file-g-naf" },
+  "files": [
+    { "key": "data/address/2026-02-7/nsw.ndjson.gz", "records": 3000000, "bytes": 500000000, "sha256": "..." },
+    { "key": "data/address/2026-02-7/vic.ndjson.gz", "records": 2500000, "bytes": 400000000, "sha256": "..." },
+    { "key": "data/address/2026-02-7/all.ndjson.gz", "records": 15015573, "bytes": 1702942457, "sha256": "..." }
+  ],
+  "total_records": 15015573,
+  "index": {
+    "mappings_key": "data/address/2026-02-7/mappings.json",
+    "settings": { "number_of_shards": 1, "number_of_replicas": 0 },
+    "source_keys": ["data/address/2026-02-7/all.ndjson.gz"]
+  }
+}
+```
+
+**Key v1/v2 differences:**
+
+| Concern | v1 | v2 |
+|---------|----|----|
+| `files[]` | Ingest sources only | Full data-file inventory (state files + consolidated files) |
+| `index.source_keys` | Not present | Array of S3 keys to ingest (subset of `files[]`) |
+| `total_records` | Sum of all `files[].records` | Sum of `source_keys` files' records only |
+| Ingestion source | All files in `files[]` | Only files referenced by `source_keys` |
+
+The platform verifies ALL `files[]` entries (HEAD for size + checksum) regardless of version. Only `source_keys` files are ingested into OpenSearch. For v1, all files are treated as ingest sources (backward compatible).
 
 **Field-by-field rationale:**
 
@@ -425,13 +436,14 @@ The manifest is the platform's API boundary. Every field has been considered for
 | `source.name`        | `string`   | Human-readable upstream data source name. Documentation, not machine-consumed.                                                                                                                                                                                                                                                                     | Missing → acceptable.                                                                                       |
 | `source.release`     | `string`   | Upstream release identifier. For G-NAF this is "February 2026". For ABR it might be "2026-04-09".                                                                                                                                                                                                                                                  | Missing → acceptable.                                                                                       |
 | `source.url`         | `string`   | Link to the upstream data source. Provenance documentation.                                                                                                                                                                                                                                                                                        | Missing → acceptable.                                                                                       |
-| `files[].key`        | `string`   | S3 key relative to the bucket root (e.g., `data/address/2026-02/vic.ndjson`). The Step Function resolves against the same bucket the manifest was uploaded to. NOT a full `s3://` URI — keeps the manifest portable across environments (dev vs prod buckets).                                                                                     | Step Function verifies each key exists in S3 before proceeding. Missing file → abort.                       |
-| `files[].records`    | `integer`  | Expected record count in this file. Summed across files must equal `total_records`. Used by health check post-ingestion to verify doc count.                                                                                                                                                                                                       | Mismatch → health check fails → alias swap blocked.                                                         |
+| `files[].key`        | `string`   | S3 key relative to the bucket root. The Step Function resolves against the same bucket the manifest was uploaded to. NOT a full `s3://` URI — keeps the manifest portable across environments.                                                                                                                                                     | Step Function verifies each key exists in S3 before proceeding. Missing file → abort.                       |
+| `files[].records`    | `integer`  | Expected record count in this file. v1: summed across all files must equal `total_records`. v2: summed across `source_keys` files must equal `total_records`.                                                                                                                                                                                      | Mismatch → health check fails → alias swap blocked.                                                         |
 | `files[].bytes`      | `integer`  | Expected file size. Step Function verifies against S3 `ContentLength` before ingestion. Catches truncated uploads.                                                                                                                                                                                                                                 | Mismatch → abort before wasting time on bulk indexing.                                                      |
-| `files[].sha256`     | `string`   | Content integrity. Step Function computes SHA-256 of the S3 object and compares. Catches corruption, partial uploads, and man-in-the-middle.                                                                                                                                                                                                       | Mismatch → abort with explicit error identifying the corrupted file.                                        |
-| `total_records`      | `integer`  | Sum of all `files[].records`. Health check queries OpenSearch `_count` after ingestion and compares.                                                                                                                                                                                                                                               | Mismatch → health check fails → alias swap blocked → old index stays live → alert fires.                    |
-| `index.mappings_key` | `string`   | S3 key for the OpenSearch index mappings file (e.g., `data/address/2026-02/mappings.json`). Per-version so that any version can be re-ingested with its original schema — essential for rollback and disaster recovery. Most versions copy the mappings forward unchanged; when a schema change happens, the old version's mappings are preserved. | Step Function reads this file and applies it when creating the versioned index. Missing → abort.            |
-| `index.settings`     | `object`   | Per-product index settings (shards, replicas). Different products have different scale characteristics — address (15M records) needs 3 shards, ABN (3M) might need 1. The pipeline author knows their data.                                                                                                                                        | Missing → Step Function applies sensible defaults (1 shard, 0 replicas).                                    |
+| `files[].sha256`     | `string`   | Content integrity. Stored as lowercase hex SHA-256. Platform compares against S3 native `ChecksumSHA256` metadata after normalizing encodings (manifest hex vs S3 base64). Zero data transfer verification.                                                                                                                                        | Mismatch → abort with explicit error identifying the corrupted file.                                        |
+| `total_records`      | `integer`  | v1: sum of all `files[].records`. v2: sum of `source_keys` files' records. Health check queries OpenSearch `_count` after ingestion and compares.                                                                                                                                                                                                  | Mismatch → health check fails → alias swap blocked → old index stays live → alert fires.                    |
+| `index.mappings_key` | `string`   | S3 key for the OpenSearch index mappings file. Per-version so that any version can be re-ingested with its original schema — essential for rollback and disaster recovery.                                                                                                                                                                         | Step Function reads this file and applies it when creating the versioned index. Missing → abort.            |
+| `index.settings`     | `object`   | Per-product index settings (shards, replicas). Phase 1: 1 shard, 0 replicas on single-node t3.small. Product ingestion policy can override.                                                                                                                                                                                                       | Missing → Step Function applies sensible defaults (1 shard, 0 replicas).                                    |
+| `index.source_keys`  | `string[]` | **v2 only.** Array of S3 keys from `files[]` that should be ingested into OpenSearch. Separates the full data-file inventory from the ingest targets. Must be non-empty; every entry must exist in `files[].key`.                                                                                                                                  | Missing in v2 → schema validation fails. Key not in files[] → abort.                                        |
 
 **What the pipeline does NOT specify:**
 

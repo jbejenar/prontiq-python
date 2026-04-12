@@ -7,6 +7,18 @@ export const PRODUCT_REGISTRY: Record<string, ProductConfig> = {
     retention_hours: 168,
     cache_ttl_seconds: 3600,
     update_cadence: "quarterly",
+    ingestion: {
+      mode: "single_file",
+      required_file_suffix: "/all.ndjson.gz",
+      required_mappings_key_prefix: "data/address/",
+      phase1_shards: 1,
+      phase1_replicas: 0,
+      known_good_query: {
+        kind: "address_contains",
+        query: "16 HEATH CRESCENT HAMPTON EAST VIC 3188",
+        expected_label_fragment: "16 HEATH CRESCENT HAMPTON EAST VIC 3188",
+      },
+    },
   },
   abn: {
     alias: "abn-entities",

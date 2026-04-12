@@ -8,11 +8,13 @@
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
+    "test": "node --test dist/lib.test.js",
     "lint": "eslint src/",
     "clean": "rm -rf dist"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.750.0",
+    "@aws-sdk/client-sfn": "^3.750.0",
     "@opensearch-project/opensearch": "^3.2.0",
     "@prontiq/shared": "workspace:*",
     "zod": "^4.3.6"

@@ -31,7 +31,7 @@ jobs:
 
       - run: pnpm build
 
-      # - run: pnpm test
+      - run: pnpm test
 
   deploy-dev:
     needs: check
@@ -54,4 +54,16 @@ jobs:
           role-to-assume: arn:aws:iam::493712557159:role/prontiq-platform-deploy-role
           aws-region: ap-southeast-2
 
+      # Deploy first — creates ECR repo and all other infrastructure
       - run: pnpm deploy:dev
+
+      # Build and push Fargate image AFTER deploy so ECR repo exists
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push Fargate bulk ingest image
+        run: |
+          ECR_REPO=$(aws ecr describe-repositories --repository-names prontiq-ingest-bulk --query 'repositories[0].repositoryUri' --output text)
+          docker build -t "$ECR_REPO:${{ github.sha }}" -t "$ECR_REPO:latest" -f packages/ingestion/Dockerfile .
+          docker push "$ECR_REPO:${{ github.sha }}"
+          docker push "$ECR_REPO:latest"

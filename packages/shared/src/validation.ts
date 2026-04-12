@@ -33,6 +33,38 @@ export const manifestV1Schema = z.object({
   }),
 });
 
+export const manifestV2Schema = z.object({
+  manifest_version: z.literal(2),
+  product: z.string().min(1),
+  version: z.string().min(1),
+  created_at: z.string().datetime(),
+  pipeline: z.object({
+    repo: z.string(),
+    commit: z.string(),
+    run_id: z.string(),
+  }),
+  source: z.object({
+    name: z.string(),
+    release: z.string(),
+    url: z.string().url(),
+  }),
+  files: z.array(manifestFileSchema).min(1),
+  total_records: z.number().int().positive(),
+  index: z.object({
+    mappings_key: z.string().min(1),
+    settings: z.object({
+      number_of_shards: z.number().int().positive().default(1),
+      number_of_replicas: z.number().int().min(0).default(0),
+    }),
+    source_keys: z.array(z.string().min(1)).min(1),
+  }),
+});
+
+export const manifestSchema = z.discriminatedUnion("manifest_version", [
+  manifestV1Schema,
+  manifestV2Schema,
+]);
+
 export const apiErrorSchema = z.object({
   error: z.object({
     code: z.string(),

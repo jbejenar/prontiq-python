@@ -1,23 +1,43 @@
 import type { Handler } from "aws-lambda";
+import { getSourceFiles, streamBulkIngest } from "./lib.js";
+import type { Manifest } from "@prontiq/shared";
 
 /**
- * Step Function Step 3 (parallel map): Stream one NDJSON file from S3
+ * Step Function Step 3: Stream NDJSON source files from S3
  * into OpenSearch via _bulk API.
- *
- * Configured: 10GB memory, 15 minute timeout.
- * One Lambda instance per NDJSON file, running in parallel.
  */
-export const handler: Handler = async (event) => {
-  const { indexName, bucket, fileKey } = event as {
-    indexName: string;
-    bucket: string;
-    fileKey: string;
-  };
+export async function bulkIngest(event: {
+  manifest: Manifest;
+  indexName: string;
+  bucket: string;
+  fileKey?: string;
+}) {
+  const { manifest, indexName, bucket } = event;
 
-  // TODO: Stream S3 object → parse NDJSON lines → batch _bulk POST to OpenSearch
-  // TODO: Track ingested count, report errors per batch
+  if (event.fileKey) {
+    const result = await streamBulkIngest(bucket, event.fileKey, indexName);
+    return { ...event, ingested: result.ingested, failed: result.failed };
+  }
 
-  console.log(`Would bulk ingest ${fileKey} into ${indexName}`, { bucket });
+  const sourceFiles = getSourceFiles(manifest);
+  let totalIngested = 0;
+  let totalFailed = 0;
 
-  return { indexName, fileKey, ingested: 0 };
-};
+  for (const file of sourceFiles) {
+    const result = await streamBulkIngest(bucket, file.key, indexName);
+    totalIngested += result.ingested;
+    totalFailed += result.failed;
+  }
+
+  return { ...event, ingested: totalIngested, failed: totalFailed };
+}
+
+export const handler: Handler = async (event) =>
+  bulkIngest(
+    event as {
+      manifest: Manifest;
+      indexName: string;
+      bucket: string;
+      fileKey?: string;
+    },
+  );

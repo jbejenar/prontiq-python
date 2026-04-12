@@ -1,25 +1,41 @@
 import type { Handler } from "aws-lambda";
-import type { ManifestV1 } from "@prontiq/shared";
+import type { Manifest } from "@prontiq/shared";
+import { countDocuments, refreshAndForceMerge, runKnownGoodQuery } from "./lib.js";
 
 /**
  * Step Function Step 5: Pre-swap validation against the NEW index.
+ * - Re-enable refresh and force merge (index was built with refresh_interval: -1)
  * - Doc count matches manifest.total_records
- * - Sample queries return expected results
- * - p95 latency under threshold
+ * - Known-good sample query returns expected result
  */
-export const handler: Handler = async (event) => {
-  const { manifest, indexName } = event as {
-    manifest: ManifestV1;
-    indexName: string;
-  };
+export async function healthCheck(event: {
+  manifest: Manifest;
+  indexName: string;
+  skipAliasSwap?: boolean;
+}) {
+  const { manifest, indexName } = event;
 
-  // TODO: GET /{indexName}/_count — compare to manifest.total_records
-  // TODO: Run sample queries directly against the new index (not alias)
-  // TODO: Measure p95 latency of sample queries
+  // Refresh BEFORE counting — bulk ingest runs with refresh disabled,
+  // so documents are not searchable/countable until refresh happens.
+  await refreshAndForceMerge(indexName);
 
-  console.log(`Would health-check index: ${indexName}`, {
-    expected: manifest.total_records,
-  });
+  const count = await countDocuments(indexName);
+  if (count !== manifest.total_records) {
+    throw new Error(
+      `Health check failed for ${indexName}: expected ${manifest.total_records} docs, got ${count}`,
+    );
+  }
+
+  await runKnownGoodQuery(indexName, manifest);
 
   return { ...event, healthy: true };
-};
+}
+
+export const handler: Handler = async (event) =>
+  healthCheck(
+    event as {
+      manifest: Manifest;
+      indexName: string;
+      skipAliasSwap?: boolean;
+    },
+  );

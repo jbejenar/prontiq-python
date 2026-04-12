@@ -1,9 +1,23 @@
+export interface ProductIngestionPolicy {
+  mode: "manifest_files" | "single_file";
+  required_file_suffix?: string;
+  required_mappings_key_prefix?: string;
+  phase1_shards?: number;
+  phase1_replicas?: number;
+  known_good_query?: {
+    kind: "address_contains";
+    query: string;
+    expected_label_fragment: string;
+  };
+}
+
 export interface ProductConfig {
   alias: string;
   description: string;
   retention_hours: number;
   cache_ttl_seconds: number;
   update_cadence: "quarterly" | "daily" | "continuous" | "periodic";
+  ingestion?: ProductIngestionPolicy;
 }
 
 export interface ManifestV1 {
@@ -31,6 +45,35 @@ export interface ManifestV1 {
     };
   };
 }
+
+export interface ManifestV2 {
+  manifest_version: 2;
+  product: string;
+  version: string;
+  created_at: string;
+  pipeline: {
+    repo: string;
+    commit: string;
+    run_id: string;
+  };
+  source: {
+    name: string;
+    release: string;
+    url: string;
+  };
+  files: ManifestFile[];
+  total_records: number;
+  index: {
+    mappings_key: string;
+    settings: {
+      number_of_shards: number;
+      number_of_replicas: number;
+    };
+    source_keys: string[];
+  };
+}
+
+export type Manifest = ManifestV1 | ManifestV2;
 
 export interface ManifestFile {
   key: string;

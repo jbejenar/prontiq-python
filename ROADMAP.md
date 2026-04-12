@@ -2106,7 +2106,7 @@ The web component is three things: (1) the hero demo on the landing page that co
 
 ## Phase 1E — Ingestion (Phase 1)
 
-> **Goal:** G-NAF data flows from flat-white pipeline → S3 → OpenSearch. Phase 1 uses GitHub Actions cron, not Step Functions.
+> **Goal:** G-NAF data flows from flat-white pipeline → S3 → OpenSearch. Automated pipeline: S3 manifest upload → EventBridge → Router Lambda → Step Function (Lambda + Fargate). Manual CLI (`manual-run.ts`) available for operator overrides.
 
 ---
 
@@ -2139,9 +2139,9 @@ The flat-white pipeline currently outputs NDJSON files to S3 but doesn't produce
 - [ ] flat-white pipeline updated to output `manifests/address-{version}.json` to S3
   - `Verify:` `aws s3 ls s3://flat-white-address-493712557159-ap-southeast-2-an/manifests/`
   - `Evidence:` Manifest file exists with correct naming convention
-- [ ] Manifest conforms to `manifestV1Schema` (Zod validation passes)
-  - `Verify:` Download manifest, run `manifestV1Schema.parse()` from @prontiq/shared
-  - `Evidence:` Validation passes without errors
+- [ ] Manifest conforms to `manifestSchema` (Zod validation passes for v1 or v2)
+  - `Verify:` Download manifest, run `manifestSchema.parse()` from @prontiq/shared
+  - `Evidence:` Validation passes without errors. v2 manifests include `index.source_keys`.
 - [ ] Per-version `mappings.json` at `data/address/{version}/mappings.json`
   - `Verify:` `aws s3 ls s3://.../data/address/{version}/mappings.json`
   - `Evidence:` File exists
@@ -2254,8 +2254,8 @@ Blue-green deployment for OpenSearch: create `address-{version}` with mappings, 
 - [ ] Refresh disabled during bulk load (`refresh_interval: -1`)
   - `Verify:` Index settings show `-1` during load
   - `Evidence:` Re-enabled to `1s` after load completes
-- [ ] Streams each NDJSON file from S3 → `_bulk` API (batch size 5000 docs)
-  - `Verify:` All NDJSON files ingested; `_count` matches expected total
+- [ ] Streams source-key NDJSON files from S3 → `_bulk` API (batch size 10,000 docs)
+  - `Verify:` Source-key files ingested; `_count` matches `manifest.total_records`
   - `Evidence:` Bulk response shows 0 errors per batch
 - [ ] Error handling: abort on bulk errors exceeding 0.1% failure rate
   - `Verify:` Inject a malformed doc → bulk aborts → new index deleted
