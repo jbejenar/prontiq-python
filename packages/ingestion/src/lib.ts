@@ -93,7 +93,7 @@ export function getOpenSearchClient(): Client {
       }),
       node: endpoint,
       maxRetries: 2,
-      requestTimeout: 30_000,
+      requestTimeout: 120_000,
     });
   }
 
@@ -475,16 +475,19 @@ async function flushBulkBatchWithRetry(
       });
       body = response.body as BulkResponseBody;
     } catch (error) {
-      // Transport-level 429 — retry the entire batch
-      const is429 =
-        error instanceof Error &&
-        "meta" in error &&
-        (error as { meta?: { statusCode?: number } }).meta?.statusCode === 429;
-      if (!is429 || attempt === maxRetries) {
+      // Retry on transport-level 429 or request timeout (transient errors)
+      const statusCode =
+        error instanceof Error && "meta" in error
+          ? (error as { meta?: { statusCode?: number } }).meta?.statusCode
+          : undefined;
+      const isTimeout = error instanceof Error && error.message.includes("timed out");
+      const isRetryable = statusCode === 429 || statusCode === 503 || isTimeout;
+      if (!isRetryable || attempt === maxRetries) {
         throw error;
       }
       const backoffMs = Math.min(1000 * 2 ** attempt, 30_000);
-      console.log(`Bulk transport 429 — retrying ${currentBatch.length / 2} docs in ${backoffMs}ms (attempt ${attempt + 1}/${maxRetries})`);
+      const reason = isTimeout ? "timeout" : `HTTP ${statusCode}`;
+      console.log(`Bulk ${reason} — retrying ${currentBatch.length / 2} docs in ${backoffMs}ms (attempt ${attempt + 1}/${maxRetries})`);
       await new Promise((resolve) => setTimeout(resolve, backoffMs));
       continue;
     }
@@ -505,8 +508,8 @@ async function flushBulkBatchWithRetry(
       const [result] = Object.values(item);
       if (result?.status && result.status >= 200 && result.status < 300) {
         batchIngested += 1;
-      } else if (result?.status === 429) {
-        // Item-level 429 — collect for retry
+      } else if (result?.status === 429 || result?.status === 503) {
+        // Item-level 429/503 — collect for retry (transient overload)
         retryBatch.push(currentBatch[i * 2]!);
         retryBatch.push(currentBatch[i * 2 + 1]!);
       } else {
