@@ -422,8 +422,8 @@ export async function streamBulkIngest(
     batch.push({ index: { _index: indexName, _id: id } });
     batch.push(source);
 
-    if (batch.length >= 10_000) {
-      const result = await flushBulkBatch(batch);
+    if (batch.length >= 2_000) {
+      const result = await flushBulkBatchWithRetry(batch);
       ingested += result.ingested;
       failed += result.failed;
       batch = [];
@@ -431,7 +431,7 @@ export async function streamBulkIngest(
   }
 
   if (batch.length > 0) {
-    const result = await flushBulkBatch(batch);
+    const result = await flushBulkBatchWithRetry(batch);
     ingested += result.ingested;
     failed += result.failed;
   }
@@ -439,15 +439,102 @@ export async function streamBulkIngest(
   return { ingested, failed };
 }
 
-async function flushBulkBatch(
+async function flushBulkBatchWithRetry(
   batch: Array<Record<string, unknown>>,
+  maxRetries = 5,
 ): Promise<{ ingested: number; failed: number }> {
-  const response = await getOpenSearchClient().bulk({
-    body: batch,
-    refresh: false,
-  });
+  let currentBatch = batch;
+  let totalIngested = 0;
+  let totalFailed = 0;
 
-  return evaluateBulkResponse(batch.length / 2, response.body as BulkResponseBody);
+  for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
+    let body: BulkResponseBody;
+    try {
+      const response = await getOpenSearchClient().bulk({
+        body: currentBatch,
+        refresh: false,
+      });
+      body = response.body as BulkResponseBody;
+    } catch (error) {
+      // Transport-level 429 — retry the entire batch
+      const is429 =
+        error instanceof Error &&
+        "meta" in error &&
+        (error as { meta?: { statusCode?: number } }).meta?.statusCode === 429;
+      if (!is429 || attempt === maxRetries) {
+        throw error;
+      }
+      const backoffMs = Math.min(1000 * 2 ** attempt, 30_000);
+      console.log(`Bulk transport 429 — retrying ${currentBatch.length / 2} docs in ${backoffMs}ms (attempt ${attempt + 1}/${maxRetries})`);
+      await new Promise((resolve) => setTimeout(resolve, backoffMs));
+      continue;
+    }
+
+    if (!body.errors) {
+      totalIngested += currentBatch.length / 2;
+      return evaluateFailureThreshold(totalIngested, totalFailed, []);
+    }
+
+    // Separate successful, retryable (429), and permanent failures
+    const retryBatch: Array<Record<string, unknown>> = [];
+    const errorSamples: string[] = [];
+    let batchIngested = 0;
+    let permanentFailed = 0;
+
+    for (let i = 0; i < (body.items ?? []).length; i += 1) {
+      const item = body.items![i]!;
+      const [result] = Object.values(item);
+      if (result?.status && result.status >= 200 && result.status < 300) {
+        batchIngested += 1;
+      } else if (result?.status === 429) {
+        // Item-level 429 — collect for retry
+        retryBatch.push(currentBatch[i * 2]!);
+        retryBatch.push(currentBatch[i * 2 + 1]!);
+      } else {
+        permanentFailed += 1;
+        if (errorSamples.length < 3 && result?.error) {
+          errorSamples.push(JSON.stringify(result.error).slice(0, 500));
+        }
+      }
+    }
+
+    totalIngested += batchIngested;
+    totalFailed += permanentFailed;
+
+    if (retryBatch.length === 0) {
+      // No retryable failures — evaluate permanent failures against threshold
+      return evaluateFailureThreshold(totalIngested, totalFailed, errorSamples);
+    }
+
+    if (attempt === maxRetries) {
+      totalFailed += retryBatch.length / 2;
+      return evaluateFailureThreshold(totalIngested, totalFailed, errorSamples);
+    }
+
+    const backoffMs = Math.min(1000 * 2 ** attempt, 30_000);
+    console.log(`Bulk item-level 429 — retrying ${retryBatch.length / 2} docs in ${backoffMs}ms (attempt ${attempt + 1}/${maxRetries})`);
+    await new Promise((resolve) => setTimeout(resolve, backoffMs));
+    currentBatch = retryBatch;
+  }
+
+  return evaluateFailureThreshold(totalIngested, totalFailed, []);
+}
+
+function evaluateFailureThreshold(
+  ingested: number,
+  failed: number,
+  errorSamples: string[],
+): { ingested: number; failed: number } {
+  const failureRate = failed / Math.max(ingested + failed, 1);
+  if (failureRate > 0.001) {
+    const sampleInfo = errorSamples.length > 0
+      ? ` Sample errors: ${errorSamples.join(" | ")}`
+      : "";
+    throw new Error(
+      `Bulk ingest failure rate ${failureRate.toFixed(4)} exceeded threshold with ${failed} failed documents.${sampleInfo}`,
+    );
+  }
+  return { ingested, failed };
 }
 
 export function evaluateBulkResponse(
@@ -461,19 +548,27 @@ export function evaluateBulkResponse(
   let ingested = 0;
   let failed = 0;
 
+  const errorSamples: string[] = [];
+
   for (const item of body.items ?? []) {
     const [result] = Object.values(item);
     if (result?.status && result.status >= 200 && result.status < 300) {
       ingested += 1;
     } else {
       failed += 1;
+      if (errorSamples.length < 3 && result?.error) {
+        errorSamples.push(JSON.stringify(result.error).slice(0, 500));
+      }
     }
   }
 
   const failureRate = failed / Math.max(ingested + failed, 1);
   if (failureRate > 0.001) {
+    const sampleInfo = errorSamples.length > 0
+      ? ` Sample errors: ${errorSamples.join(" | ")}`
+      : "";
     throw new Error(
-      `Bulk ingest failure rate ${failureRate.toFixed(4)} exceeded threshold with ${failed} failed documents`,
+      `Bulk ingest failure rate ${failureRate.toFixed(4)} exceeded threshold with ${failed} failed documents.${sampleInfo}`,
     );
   }
 

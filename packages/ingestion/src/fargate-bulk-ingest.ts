@@ -54,7 +54,16 @@ async function main() {
     console.log(`Bulk ingest complete: ingested=${totalIngested} failed=${totalFailed}`);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    const stack = error instanceof Error ? error.stack : undefined;
     console.error(`Bulk ingest failed: ${message}`);
+    if (stack) console.error(`Stack: ${stack}`);
+    // Log safe metadata only — never dump raw request bodies or credentials
+    if (error instanceof Error && "meta" in error) {
+      const meta = (error as { meta?: { statusCode?: number; headers?: unknown } }).meta;
+      if (meta?.statusCode) {
+        console.error(`OpenSearch status: ${meta.statusCode}`);
+      }
+    }
 
     await sfn.send(
       new SendTaskFailureCommand({
