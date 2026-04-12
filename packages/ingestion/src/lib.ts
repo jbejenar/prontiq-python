@@ -422,7 +422,11 @@ export async function streamBulkIngest(
   let batch: Array<Record<string, unknown>> = [];
   let ingested = 0;
   let failed = 0;
-  let firstBatch = true;
+
+  // Adaptive batch sizing — like TCP slow start.
+  // Start small, double on success, halve on throttle. Self-tunes to any instance.
+  let batchDocs = ADAPTIVE_MIN_DOCS;
+  let batchCount = 0;
 
   for await (const line of lineReader) {
     const trimmed = line.trim();
@@ -442,27 +446,87 @@ export async function streamBulkIngest(
     batch.push({ index: { _index: indexName, _id: id } });
     batch.push(source);
 
-    // First batch uses smaller size to let OpenSearch warm up after index creation
-    const batchLimit = firstBatch ? 200 : 4_000;
-    if (batch.length >= batchLimit) {
-      if (firstBatch) {
-        console.log("Sending small warmup batch (100 docs)...");
-        firstBatch = false;
-      }
-      const result = await flushBulkBatchWithRetry(batch);
+    if (batch.length >= batchDocs * 2) {
+      const result = await flushWithAdaptiveRetry(batch, batchDocs);
       ingested += result.ingested;
       failed += result.failed;
+      batchDocs = result.nextBatchDocs;
       batch = [];
+      batchCount += 1;
+      if (batchCount % 500 === 0) {
+        console.log(`Progress: ${ingested.toLocaleString()} ingested, batch size: ${batchDocs} docs`);
+      }
     }
   }
 
   if (batch.length > 0) {
-    const result = await flushBulkBatchWithRetry(batch);
+    const result = await flushWithAdaptiveRetry(batch, batchDocs);
     ingested += result.ingested;
     failed += result.failed;
   }
 
   return { ingested, failed };
+}
+
+const ADAPTIVE_MIN_DOCS = 50;
+const ADAPTIVE_MAX_DOCS = 2_000;
+
+/** Thrown when all retries for a retryable (429/503/timeout) error are exhausted. */
+class ThrottleExhaustedError extends Error {
+  /** Remaining retryable docs (action+source pairs) that were still throttled. */
+  readonly retryBatch: Array<Record<string, unknown>>;
+  /** Docs successfully ingested before exhaustion. */
+  readonly ingested: number;
+  /** Docs permanently failed before exhaustion. */
+  readonly failed: number;
+
+  constructor(
+    message: string,
+    retryBatch: Array<Record<string, unknown>> = [],
+    ingested = 0,
+    failed = 0,
+  ) {
+    super(message);
+    this.name = "ThrottleExhaustedError";
+    this.retryBatch = retryBatch;
+    this.ingested = ingested;
+    this.failed = failed;
+  }
+}
+
+async function flushWithAdaptiveRetry(
+  batch: Array<Record<string, unknown>>,
+  currentBatchDocs: number,
+): Promise<{ ingested: number; failed: number; nextBatchDocs: number }> {
+  try {
+    const result = await flushBulkBatchWithRetry(batch);
+    // Success: ramp up (double, capped at max)
+    const nextBatchDocs = Math.min(currentBatchDocs * 2, ADAPTIVE_MAX_DOCS);
+    return { ...result, nextBatchDocs };
+  } catch (error) {
+    // Only split on throttle exhaustion — not permanent failures or bad data
+    if (error instanceof ThrottleExhaustedError) {
+      const remaining = error.retryBatch;
+      const priorIngested = error.ingested;
+      const priorFailed = error.failed;
+
+      if (remaining.length >= ADAPTIVE_MIN_DOCS * 2 * 2) {
+        const mid = Math.floor(remaining.length / 4) * 2;
+        console.log(`Splitting throttled subset: ${remaining.length / 2} docs → ${mid / 2} + ${(remaining.length - mid) / 2}`);
+        const halfDocs = Math.max(Math.floor(currentBatchDocs / 2), ADAPTIVE_MIN_DOCS);
+        const r1 = await flushWithAdaptiveRetry(remaining.slice(0, mid), halfDocs);
+        const r2 = await flushWithAdaptiveRetry(remaining.slice(mid), halfDocs);
+        return {
+          ingested: priorIngested + r1.ingested + r2.ingested,
+          failed: priorFailed + r1.failed + r2.failed,
+          nextBatchDocs: Math.max(Math.floor(currentBatchDocs / 2), ADAPTIVE_MIN_DOCS),
+        };
+      }
+      // Can't split further — report what we have
+      throw error;
+    }
+    throw error;
+  }
 }
 
 async function flushBulkBatchWithRetry(
@@ -489,8 +553,16 @@ async function flushBulkBatchWithRetry(
           : undefined;
       const isTimeout = error instanceof Error && error.message.includes("timed out");
       const isRetryable = statusCode === 429 || statusCode === 503 || isTimeout;
-      if (!isRetryable || attempt === maxRetries) {
+      if (!isRetryable) {
         throw error;
+      }
+      if (attempt === maxRetries) {
+        throw new ThrottleExhaustedError(
+          `Retryable ${isTimeout ? "timeout" : `HTTP ${statusCode}`} exhausted after ${maxRetries} retries`,
+          currentBatch,
+          totalIngested,
+          totalFailed,
+        );
       }
       const backoffMs = Math.min(1000 * 2 ** attempt, 30_000);
       const reason = isTimeout ? "timeout" : `HTTP ${statusCode}`;
@@ -536,8 +608,12 @@ async function flushBulkBatchWithRetry(
     }
 
     if (attempt === maxRetries) {
-      totalFailed += retryBatch.length / 2;
-      return evaluateFailureThreshold(totalIngested, totalFailed, errorSamples);
+      throw new ThrottleExhaustedError(
+        `Item-level 429/503 exhausted after ${maxRetries} retries with ${retryBatch.length / 2} docs still throttled`,
+        retryBatch,
+        totalIngested,
+        totalFailed,
+      );
     }
 
     const backoffMs = Math.min(1000 * 2 ** attempt, 30_000);
