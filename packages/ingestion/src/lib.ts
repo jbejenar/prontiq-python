@@ -441,7 +441,7 @@ export async function streamBulkIngest(
     batch.push({ index: { _index: indexName, _id: id } });
     batch.push(source);
 
-    if (batch.length >= 6_000) {
+    if (batch.length >= 4_000) {
       const result = await flushBulkBatchWithRetry(batch);
       ingested += result.ingested;
       failed += result.failed;
@@ -460,7 +460,7 @@ export async function streamBulkIngest(
 
 async function flushBulkBatchWithRetry(
   batch: Array<Record<string, unknown>>,
-  maxRetries = 5,
+  maxRetries = 8,
 ): Promise<{ ingested: number; failed: number }> {
   let currentBatch = batch;
   let totalIngested = 0;
