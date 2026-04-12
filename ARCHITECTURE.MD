@@ -782,7 +782,7 @@ On a t3.small.search with 20GB gp3:
 
 | Product         | Est. Records | Est. Index Size | Notes                                                                |
 | --------------- | ------------ | --------------- | -------------------------------------------------------------------- |
-| Address (G-NAF) | 15M          | 8-12 GB         | `search_as_you_type` triples inverted index for `addressLabelSearch` |
+| Address (G-NAF) | 15M          | ~10 GB          | `search_as_you_type` + enrichment fields (verified Apr 2026)         |
 | ABN             | 3M           | 1-2 GB          | Simpler schema, keyword-heavy                                        |
 | LEI             | 1.5M         | 0.5-1 GB        | Small dataset                                                        |
 

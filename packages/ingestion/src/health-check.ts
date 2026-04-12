@@ -1,12 +1,18 @@
 import type { Handler } from "aws-lambda";
 import type { Manifest } from "@prontiq/shared";
-import { countDocuments, refreshAndForceMerge, runKnownGoodQuery } from "./lib.js";
+import { countDocuments, forceMergeIndex, refreshIndex, runKnownGoodQuery } from "./lib.js";
 
 /**
  * Step Function Step 5: Pre-swap validation against the NEW index.
- * - Re-enable refresh and force merge (index was built with refresh_interval: -1)
- * - Doc count matches manifest.total_records
- * - Known-good sample query returns expected result
+ *
+ * Order matters:
+ * 1. refreshIndex — fast (~seconds), makes bulk-ingested docs searchable
+ * 2. countDocuments — verify doc count matches manifest
+ * 3. runKnownGoodQuery — verify data quality
+ * 4. forceMergeIndex — slow (~5-15 min on 10GB), merge segments for read perf
+ *
+ * Validation runs before the expensive merge so a timeout during merge
+ * doesn't kill a healthy ingest.
  */
 export async function healthCheck(event: {
   manifest: Manifest;
@@ -15,9 +21,7 @@ export async function healthCheck(event: {
 }) {
   const { manifest, indexName } = event;
 
-  // Refresh BEFORE counting — bulk ingest runs with refresh disabled,
-  // so documents are not searchable/countable until refresh happens.
-  await refreshAndForceMerge(indexName);
+  await refreshIndex(indexName);
 
   const count = await countDocuments(indexName);
   if (count !== manifest.total_records) {
@@ -27,6 +31,15 @@ export async function healthCheck(event: {
   }
 
   await runKnownGoodQuery(indexName, manifest);
+
+  // Force merge is a best-effort optimization, not a correctness requirement.
+  // If it fails or times out, the index is still valid and ready for alias swap.
+  try {
+    await forceMergeIndex(indexName);
+  } catch (mergeError) {
+    const msg = mergeError instanceof Error ? mergeError.message : String(mergeError);
+    console.warn(`Force merge failed (non-fatal): ${msg}`);
+  }
 
   return { ...event, healthy: true };
 }

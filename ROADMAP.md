@@ -2254,7 +2254,7 @@ Blue-green deployment for OpenSearch: create `address-{version}` with mappings, 
 - [ ] Refresh disabled during bulk load (`refresh_interval: -1`)
   - `Verify:` Index settings show `-1` during load
   - `Evidence:` Re-enabled to `1s` after load completes
-- [ ] Streams source-key NDJSON files from S3 → `_bulk` API (batch size 10,000 docs)
+- [ ] Streams source-key NDJSON files from S3 → `_bulk` API (batch size 3,000 docs)
   - `Verify:` Source-key files ingested; `_count` matches `manifest.total_records`
   - `Evidence:` Bulk response shows 0 errors per batch
 - [ ] Error handling: abort on bulk errors exceeding 0.1% failure rate

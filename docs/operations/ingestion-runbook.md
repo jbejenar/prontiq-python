@@ -107,3 +107,13 @@ Rollback is alias reassignment.
 - Delete failed rehearsal or failed candidate indices once inspection is complete
 - Keep the prior live index according to retention policy
 - Do not delete the only index backing a live alias
+
+## Measured Performance (t3.small, Apr 2026)
+
+- Throughput: ~2,500 docs/sec
+- 15M docs ingest time: ~100 minutes
+- Index size: ~10 GB
+- Batch size: 3,000 docs
+- Step Function BulkIngest timeout: 4 hours
+- Health check refresh: ~seconds; force merge (5 segments): 5-15 minutes on 10GB
+- Disk: 20GB gp3 fits one Address index (~10GB). Increase to 50GB before second quarterly ingest (retention = 2 indices).

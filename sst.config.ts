@@ -135,7 +135,7 @@ export default $config({
       architecture: "arm64",
       runtime: "nodejs20.x",
       memory: "512 MB",
-      timeout: "5 minutes",
+      timeout: "15 minutes",
       permissions: [
         {
           actions: ["es:ESHttpGet", "es:ESHttpPost", "es:ESHttpPut"],
@@ -431,7 +431,7 @@ export default $config({
                     Next: "OnFailure",
                   },
                 ],
-                TimeoutSeconds: 7200,
+                TimeoutSeconds: 14400,
               },
               HealthCheck: {
                 Type: "Task",

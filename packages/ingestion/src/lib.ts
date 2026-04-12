@@ -441,7 +441,7 @@ export async function streamBulkIngest(
     batch.push({ index: { _index: indexName, _id: id } });
     batch.push(source);
 
-    if (batch.length >= 2_000) {
+    if (batch.length >= 6_000) {
       const result = await flushBulkBatchWithRetry(batch);
       ingested += result.ingested;
       failed += result.failed;
@@ -594,17 +594,19 @@ export function evaluateBulkResponse(
   return { ingested, failed };
 }
 
-export async function refreshAndForceMerge(indexName: string): Promise<void> {
+/** Re-enable refresh and make all bulk-ingested documents searchable. Fast (~seconds). */
+export async function refreshIndex(indexName: string): Promise<void> {
   const client = getOpenSearchClient();
   await client.indices.putSettings({
     index: indexName,
     body: { index: { refresh_interval: "1s" } },
   });
-  // Explicit refresh to make all bulk-ingested documents visible immediately.
-  // Setting refresh_interval only affects future automatic refreshes — it does
-  // not flush already-written documents to searchable segments.
   await client.indices.refresh({ index: indexName });
-  await client.indices.forcemerge({
+}
+
+/** Merge index segments for read performance. Slow (~5-15 min on 10GB). */
+export async function forceMergeIndex(indexName: string): Promise<void> {
+  await getOpenSearchClient().indices.forcemerge({
     index: indexName,
     max_num_segments: 5,
   });
