@@ -12,6 +12,10 @@
  * App name: "prontiq" (short, clean AWS console names)
  */
 
+// External OpenSearch domain (not managed by SST).
+// Domain access policy must allow account-wide access:
+//   Principal: {"AWS": "arn:aws:iam::493712557159:root"}
+// Identity-based policies on each Lambda/Fargate role scope the actual es:ESHttp* actions.
 const OPENSEARCH_DOMAIN_ARN = "arn:aws:es:ap-southeast-2:493712557159:domain/flat-white";
 const OPENSEARCH_ENDPOINT_DEFAULT =
   "https://search-flat-white-lrsdymw7a4u56cu2lrvxa3ggve.ap-southeast-2.es.amazonaws.com";
@@ -201,6 +205,23 @@ export default $config({
       managedPolicyArns: [
         "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy",
       ],
+    });
+
+    // The managed ECS execution policy has CreateLogStream + PutLogEvents
+    // but NOT CreateLogGroup. The task definition uses awslogs-create-group=true,
+    // so the execution role needs this additional permission.
+    new aws.iam.RolePolicy("PqIngestBulkExecLogPolicy", {
+      role: bulkTaskExecutionRole.name,
+      policy: JSON.stringify({
+        Version: "2012-10-17",
+        Statement: [
+          {
+            Effect: "Allow",
+            Action: "logs:CreateLogGroup",
+            Resource: "*",
+          },
+        ],
+      }),
     });
 
     const bulkTaskRole = new aws.iam.Role("PqIngestBulkTaskRole", {
