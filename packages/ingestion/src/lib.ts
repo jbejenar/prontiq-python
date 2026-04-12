@@ -382,6 +382,26 @@ export async function countDocuments(indexName: string): Promise<number> {
   return response.body.count;
 }
 
+/**
+ * Strip OpenSearch reserved metadata fields from a source document.
+ * These fields cannot appear inside _source — they are document/bulk metadata only.
+ * Legitimate application fields (even underscore-prefixed) are preserved.
+ */
+const RESERVED_METADATA_FIELDS = new Set([
+  "_id", "_index", "_version", "_version_type", "_routing",
+  "_seq_no", "_primary_term", "_source", "_ignored", "_field_names",
+]);
+
+export function sanitizeSourceDocument(doc: JsonRecord): JsonRecord {
+  const source: JsonRecord = {};
+  for (const [key, value] of Object.entries(doc)) {
+    if (!RESERVED_METADATA_FIELDS.has(key)) {
+      source[key] = value;
+    }
+  }
+  return source;
+}
+
 export async function streamBulkIngest(
   bucket: string,
   fileKey: string,
@@ -417,8 +437,7 @@ export async function streamBulkIngest(
       throw new Error(`Invalid NDJSON line in ${fileKey}: missing _id`);
     }
 
-    const source = { ...parsed };
-    delete source._id;
+    const source = sanitizeSourceDocument(parsed);
     batch.push({ index: { _index: indexName, _id: id } });
     batch.push(source);
 

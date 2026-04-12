@@ -9,6 +9,7 @@ import {
   getSourceKeys,
   hexSha256ToBase64,
   resolveIndexSettings,
+  sanitizeSourceDocument,
   versionFromIndexName,
 } from "./lib.js";
 import { manifestSchema } from "@prontiq/shared";
@@ -291,4 +292,46 @@ test("buildAliasSwapActions keeps dry-run safe and constructs atomic swap action
       { add: { index: "address-2026-02-7", alias: "addresses" } },
     ],
   );
+});
+
+// --- Source document sanitization ---
+
+test("sanitizeSourceDocument strips all reserved metadata fields", () => {
+  const doc = {
+    _id: "GAACT714845933",
+    _index: "address-2026-02-7",
+    _version: "2026.02",
+    _version_type: "external",
+    _routing: "shard-1",
+    _seq_no: 42,
+    _primary_term: 1,
+    _source: "should-not-appear",
+    _ignored: ["field"],
+    _field_names: ["addressLabel"],
+    addressLabel: "1 TEST STREET",
+    state: "NSW",
+  };
+  const result = sanitizeSourceDocument(doc);
+  assert.equal(result.addressLabel, "1 TEST STREET");
+  assert.equal(result.state, "NSW");
+  assert.equal(Object.keys(result).length, 2);
+  assert.equal("_id" in result, false);
+  assert.equal("_version" in result, false);
+  assert.equal("_source" in result, false);
+});
+
+test("sanitizeSourceDocument preserves non-reserved underscore-prefixed fields", () => {
+  const doc = {
+    _id: "GAACT714845933",
+    _version: "2026.02",
+    _custom_flag: true,
+    _internal_score: 0.95,
+    addressLabel: "1 TEST STREET",
+  };
+  const result = sanitizeSourceDocument(doc);
+  assert.equal(result._custom_flag, true);
+  assert.equal(result._internal_score, 0.95);
+  assert.equal(result.addressLabel, "1 TEST STREET");
+  assert.equal("_id" in result, false);
+  assert.equal("_version" in result, false);
 });
