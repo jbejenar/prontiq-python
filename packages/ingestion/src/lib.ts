@@ -422,6 +422,7 @@ export async function streamBulkIngest(
   let batch: Array<Record<string, unknown>> = [];
   let ingested = 0;
   let failed = 0;
+  let firstBatch = true;
 
   for await (const line of lineReader) {
     const trimmed = line.trim();
@@ -441,7 +442,13 @@ export async function streamBulkIngest(
     batch.push({ index: { _index: indexName, _id: id } });
     batch.push(source);
 
-    if (batch.length >= 4_000) {
+    // First batch uses smaller size to let OpenSearch warm up after index creation
+    const batchLimit = firstBatch ? 200 : 4_000;
+    if (batch.length >= batchLimit) {
+      if (firstBatch) {
+        console.log("Sending small warmup batch (100 docs)...");
+        firstBatch = false;
+      }
       const result = await flushBulkBatchWithRetry(batch);
       ingested += result.ingested;
       failed += result.failed;
