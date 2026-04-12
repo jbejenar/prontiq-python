@@ -16,7 +16,7 @@ COPY tsconfig.json ./
 RUN pnpm --filter @prontiq/shared build && pnpm --filter @prontiq/ingestion build
 
 # pnpm deploy creates a flat node_modules without workspace symlinks
-RUN pnpm --filter @prontiq/ingestion deploy --prod /deploy
+RUN pnpm --filter @prontiq/ingestion deploy --prod --legacy /deploy
 
 FROM node:20-slim
 
