@@ -26,6 +26,7 @@ jobs:
       speakeasy_version: "1.761.3"
       force: ${{ github.event.inputs.force || false }}
       mode: pr
+      skip_compile: true
     secrets:
       github_access_token: ${{ secrets.GITHUB_TOKEN }}
       speakeasy_api_key: ${{ secrets.SPEAKEASY_API_KEY }}
