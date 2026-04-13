@@ -75,9 +75,15 @@ export const apiErrorSchema = z.object({
   }),
 });
 
+const australianStateSchema = z
+  .string()
+  .toUpperCase()
+  .pipe(z.enum(["NSW", "VIC", "QLD", "SA", "WA", "TAS", "NT", "ACT"]))
+  .describe("Australian state code.");
+
 export const autocompleteQuerySchema = z.object({
   q: z.string().min(1).max(200).describe("Partial address query."),
-  state: z.string().length(2).toUpperCase().optional().describe("Optional Australian state code."),
+  state: australianStateSchema.optional(),
   limit: z.coerce
     .number()
     .int()
@@ -125,5 +131,5 @@ export const postcodeLookupSchema = z.object({
 
 export const suburbLookupSchema = z.object({
   suburb: z.string().min(1).max(100).describe("Suburb/locality name."),
-  state: z.string().length(2).toUpperCase().optional().describe("Optional Australian state code."),
+  state: australianStateSchema.optional(),
 });
