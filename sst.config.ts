@@ -52,11 +52,16 @@ export default $config({
     });
 
     // -- API: Hono on Lambda (single handler for all routes) --
+    const isProd = $app.stage === "prod";
+
     const api = new sst.aws.ApiGatewayV2("PqApi", {
-      domain: {
-        name: "api.prontiq.dev",
-        dns: false,
-      },
+      domain: isProd
+        ? {
+            name: "api.prontiq.dev",
+            dns: false,
+            cert: "arn:aws:acm:ap-southeast-2:493712557159:certificate/bcf32366-bb2c-42d8-a690-ada84e048700",
+          }
+        : undefined,
       cors: {
         allowOrigins: ["*"],
         allowMethods: ["GET", "OPTIONS"],
@@ -182,10 +187,11 @@ export default $config({
     // -- ECS: Fargate bulk ingest --
     const ingestCluster = new aws.ecs.Cluster("PqIngestCluster");
 
+    const ecrRepoName = isProd ? "prontiq-ingest-bulk" : `prontiq-ingest-bulk-${$app.stage}`;
     const ingestRepo = new aws.ecr.Repository("PqIngestBulkRepo", {
-      name: "prontiq-ingest-bulk",
+      name: ecrRepoName,
       forceDelete: true,
-    });
+    }, isProd ? { import: "prontiq-ingest-bulk" } : undefined);
 
     const defaultVpc = aws.ec2.getVpcOutput({ default: true });
     const publicSubnets = aws.ec2.getSubnetsOutput({
@@ -266,7 +272,7 @@ export default $config({
     });
 
     const bulkTaskDefinition = new aws.ecs.TaskDefinition("PqIngestBulk", {
-      family: "prontiq-ingest-bulk",
+      family: `prontiq-ingest-bulk-${$app.stage}`,
       requiresCompatibilities: ["FARGATE"],
       networkMode: "awsvpc",
       cpu: "1024",
@@ -281,7 +287,7 @@ export default $config({
           logConfiguration: {
             logDriver: "awslogs",
             options: {
-              "awslogs-group": "/ecs/prontiq-ingest-bulk",
+              "awslogs-group": `/ecs/prontiq-ingest-bulk-${$app.stage}`,
               "awslogs-region": AWS_REGION,
               "awslogs-stream-prefix": "bulk",
               "awslogs-create-group": "true",
