@@ -1,0 +1,16 @@
+workflowVersion: 1.0.0
+speakeasyVersion: "1.530.2"
+
+sources:
+  prontiq-api:
+    inputs:
+      - location: ./packages/docs/openapi.json
+
+targets:
+  typescript:
+    target: typescript
+    source: prontiq-api
+    output: ./sdks/typescript
+    publish:
+      npm:
+        token: $npm_token

@@ -14,6 +14,7 @@
     "test": "turbo test",
     "deploy:dev": "sst deploy --stage dev",
     "deploy:prod": "sst deploy --stage prod",
+    "generate:openapi": "pnpm build && node -e \"import app from './packages/api/dist/index.js'; const r = await app.fetch(new Request('http://localhost/openapi.json')); const fs = await import('fs'); fs.writeFileSync('packages/docs/openapi.json', JSON.stringify(await r.json(), null, 4) + '\\n');\"",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },
