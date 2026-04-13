@@ -1,6 +1,6 @@
 import type { Handler } from "aws-lambda";
 import type { Manifest } from "@prontiq/shared";
-import { countDocuments, forceMergeIndex, refreshIndex, runKnownGoodQuery } from "./lib.js";
+import { KnownGoodQueryNoHitsError, countDocuments, forceMergeIndex, refreshIndex, runKnownGoodQuery } from "./lib.js";
 
 /**
  * Step Function Step 5: Pre-swap validation against the NEW index.
@@ -8,11 +8,8 @@ import { countDocuments, forceMergeIndex, refreshIndex, runKnownGoodQuery } from
  * Order matters:
  * 1. refreshIndex — fast (~seconds), makes bulk-ingested docs searchable
  * 2. countDocuments — verify doc count matches manifest
- * 3. runKnownGoodQuery — verify data quality
- * 4. forceMergeIndex — slow (~5-15 min on 10GB), merge segments for read perf
- *
- * Validation runs before the expensive merge so a timeout during merge
- * doesn't kill a healthy ingest.
+ * 3. runKnownGoodQuery — with retry + delay (search_as_you_type needs a moment after refresh on large indices)
+ * 4. forceMergeIndex — slow, best-effort
  */
 export async function healthCheck(event: {
   manifest: Manifest;
@@ -30,10 +27,37 @@ export async function healthCheck(event: {
     );
   }
 
-  await runKnownGoodQuery(indexName, manifest);
+  // Known-good query with retry for transient post-refresh lag only.
+  // search_as_you_type sub-fields (2gram, 3gram) may not be queryable
+  // immediately after refresh on large indices.
+  const queryRetryDelays = [5_000, 10_000, 15_000, 20_000, 25_000];
+  let queryPassed = false;
+  let lastQueryError: Error | undefined;
 
-  // Force merge is a best-effort optimization, not a correctness requirement.
-  // If it fails or times out, the index is still valid and ready for alias swap.
+  for (let attempt = 0; attempt <= queryRetryDelays.length; attempt += 1) {
+    try {
+      await runKnownGoodQuery(indexName, manifest);
+      queryPassed = true;
+      break;
+    } catch (error) {
+      lastQueryError = error instanceof Error ? error : new Error(String(error));
+      // Only retry transient no-hits — any other error (auth, mapping, transport, geo) fails immediately
+      if (!(lastQueryError instanceof KnownGoodQueryNoHitsError)) {
+        throw lastQueryError;
+      }
+      if (attempt < queryRetryDelays.length) {
+        const delayMs = queryRetryDelays[attempt]!;
+        console.log(`Known-good query returned no hits (attempt ${attempt + 1}/${queryRetryDelays.length + 1}), retrying in ${delayMs / 1000}s...`);
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      }
+    }
+  }
+
+  if (!queryPassed) {
+    throw lastQueryError!;
+  }
+
+  // Force merge is best-effort — index is already validated
   try {
     await forceMergeIndex(indexName);
   } catch (mergeError) {

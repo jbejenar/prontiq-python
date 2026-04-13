@@ -471,6 +471,14 @@ export async function streamBulkIngest(
 const ADAPTIVE_MIN_DOCS = 50;
 const ADAPTIVE_MAX_DOCS = 2_000;
 
+/** Thrown when the known-good query returns no matching hits (transient after refresh). */
+export class KnownGoodQueryNoHitsError extends Error {
+  constructor(indexName: string) {
+    super(`Known-good query did not return expected Address hit for ${indexName}`);
+    this.name = "KnownGoodQueryNoHitsError";
+  }
+}
+
 /** Thrown when all retries for a retryable (429/503/timeout) error are exhausted. */
 class ThrottleExhaustedError extends Error {
   /** Remaining retryable docs (action+source pairs) that were still throttled. */
@@ -736,7 +744,7 @@ export async function runKnownGoodQuery(indexName: string, manifest: Manifest): 
     });
 
     if (!match) {
-      throw new Error(`Known-good query did not return expected Address hit for ${indexName}`);
+      throw new KnownGoodQueryNoHitsError(indexName);
     }
 
     const location = match.location;
