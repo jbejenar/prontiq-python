@@ -64,6 +64,12 @@
       "name": "X-Api-Key"
     }
   },
+  "redirects": [
+    {
+      "source": "/",
+      "destination": "/guides/introduction"
+    }
+  ],
   "feedback": {
     "thumbsRating": true
   }
