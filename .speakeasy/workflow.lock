@@ -1,0 +1,32 @@
+speakeasyVersion: 1.761.3
+sources:
+    prontiq-api:
+        sourceNamespace: prontiq-api
+        sourceRevisionDigest: sha256:f9c4ea4d8cd22518fc6b196d4a81d24a3b2b66d7aa4dcadb17c1e8c5908b342b
+        sourceBlobDigest: sha256:ba9fd5a7a1fdc16cb7179ad5956c1058da520b94af066f4f35483a5359ed7da5
+        tags:
+            - latest
+            - 1.0.0
+targets:
+    typescript:
+        source: prontiq-api
+        sourceNamespace: prontiq-api
+        sourceRevisionDigest: sha256:f9c4ea4d8cd22518fc6b196d4a81d24a3b2b66d7aa4dcadb17c1e8c5908b342b
+        sourceBlobDigest: sha256:ba9fd5a7a1fdc16cb7179ad5956c1058da520b94af066f4f35483a5359ed7da5
+workflow:
+    workflowVersion: 1.0.0
+    speakeasyVersion: 1.761.3
+    sources:
+        prontiq-api:
+            inputs:
+                - location: ./packages/docs/openapi.json
+            registry:
+                location: registry.speakeasyapi.dev/prontiq/prontiq-workspace/prontiq-api
+    targets:
+        typescript:
+            target: typescript
+            source: prontiq-api
+            output: ./sdks/typescript
+            publish:
+                npm:
+                    token: $npm_token
