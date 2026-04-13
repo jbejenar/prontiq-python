@@ -1,0 +1,36 @@
+---
+title: "Python SDK"
+description: "Python client for the Prontiq API — coming soon."
+---
+
+<Warning>
+  The Python SDK is **not yet published**. The code below is a preview of the planned API. Use the [REST API](/guides/quickstart) directly until the SDK is released.
+</Warning>
+
+## Planned usage
+
+```python
+# This is a preview — the package is not yet available
+from prontiq import Prontiq
+
+client = Prontiq(api_key="pq_live_...")
+suggestions = client.address.autocomplete(q="16 heath cres")
+result = client.address.validate(q="16 heath crescent hampton east vic 3188")
+```
+
+## Using the REST API now
+
+```python
+import requests
+
+response = requests.get(
+    "https://59jym47ia1.execute-api.ap-southeast-2.amazonaws.com/v1/address/autocomplete",
+    params={"q": "16 heath cres"},
+    headers={"X-Api-Key": "YOUR_API_KEY"}
+)
+data = response.json()
+for suggestion in data["suggestions"]:
+    print(f"{suggestion['addressLabel']} {suggestion['localityName']} {suggestion['state']}")
+```
+
+See the [Quickstart](/guides/quickstart) for more examples.

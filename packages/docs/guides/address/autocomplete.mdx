@@ -1,0 +1,86 @@
+---
+title: "Autocomplete"
+description: "Build real-time address typeahead in 5 minutes."
+---
+
+The autocomplete endpoint returns address suggestions as the user types. It uses OpenSearch's `search_as_you_type` field for instant prefix matching across 15 million addresses.
+
+## Basic usage
+
+<CodeGroup>
+
+```bash curl
+curl "https://59jym47ia1.execute-api.ap-southeast-2.amazonaws.com/v1/address/autocomplete?q=16+heath+cres" \
+  -H "X-Api-Key: YOUR_API_KEY"
+```
+
+```typescript Node.js (server-side)
+const res = await fetch(
+  "https://59jym47ia1.execute-api.ap-southeast-2.amazonaws.com/v1/address/autocomplete?q=16+heath+cres",
+  { headers: { "X-Api-Key": "YOUR_API_KEY" } }
+);
+const { suggestions } = await res.json();
+```
+
+</CodeGroup>
+
+## Parameters
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `q` | string | Yes | — | Partial address query (1-200 chars) |
+| `state` | string | No | — | Filter by state: `NSW`, `VIC`, `QLD`, `SA`, `WA`, `TAS`, `NT`, `ACT` |
+| `limit` | integer | No | 5 | Max results (1-20) |
+
+## State filtering
+
+Narrow results to a single state:
+
+```bash
+curl ".../v1/address/autocomplete?q=16+heath+cres&state=VIC&limit=3" \
+  -H "X-Api-Key: YOUR_API_KEY"
+```
+
+Returns only VIC addresses — useful for state-specific forms.
+
+## Response
+
+```json
+{
+  "suggestions": [
+    {
+      "id": "GAVIC420559144",
+      "addressLabel": "16 HEATH CRESCENT",
+      "localityName": "HAMPTON EAST",
+      "state": "VIC",
+      "postcode": "3188",
+      "confidence": 2,
+      "score": 27.72
+    }
+  ],
+  "total": 10000
+}
+```
+
+### Fields
+
+| Field | Description |
+|-------|-------------|
+| `id` | G-NAF persistent identifier. Use with [Enrich](/guides/address/enrich) to get the full record. |
+| `addressLabel` | Street address (number + street name) |
+| `localityName` | Suburb/locality |
+| `state` | Australian state code |
+| `postcode` | 4-digit postcode |
+| `confidence` | G-NAF confidence level (0-2) |
+| `score` | Search relevance score |
+| `total` | Total matching addresses (may exceed `limit`) |
+
+## Tips
+
+<Tip>
+  Use the `id` from autocomplete to call [Enrich](/guides/address/enrich) and get the full address record with boundaries, electorates, and geocodes.
+</Tip>
+
+- Start querying after 3 characters for best results
+- Debounce requests by 150-300ms for smooth typeahead
+- Use `state` filter when you know the user's state

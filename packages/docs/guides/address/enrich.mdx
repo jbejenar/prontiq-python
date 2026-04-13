@@ -1,0 +1,82 @@
+---
+title: "Enrich"
+description: "Get boundaries, electorates, geocodes, and mesh blocks for any address."
+---
+
+The enrich endpoint returns the complete G-NAF record for an address by its ID. Use the `id` from [Autocomplete](/guides/address/autocomplete) or [Validate](/guides/address/validate) to get the full enrichment data.
+
+## Basic usage
+
+<CodeGroup>
+
+```bash curl
+curl "https://59jym47ia1.execute-api.ap-southeast-2.amazonaws.com/v1/address/enrich?id=GAVIC420559144" \
+  -H "X-Api-Key: YOUR_API_KEY"
+```
+
+```typescript Node.js (server-side)
+const res = await fetch(
+  "https://59jym47ia1.execute-api.ap-southeast-2.amazonaws.com/v1/address/enrich?id=GAVIC420559144",
+  { headers: { "X-Api-Key": "YOUR_API_KEY" } }
+);
+const address = await res.json();
+```
+
+</CodeGroup>
+
+## Response
+
+The full record includes the address, geocode, and all boundary/electoral data:
+
+```json
+{
+  "id": "GAVIC420559144",
+  "addressLabel": "16 HEATH CRESCENT",
+  "localityName": "HAMPTON EAST",
+  "state": "VIC",
+  "postcode": "3188",
+  "confidence": 2,
+  "geocode": {
+    "latitude": -37.93762284,
+    "longitude": 145.02948591,
+    "type": "PROPERTY CENTROID",
+    "reliability": 2
+  },
+  "location": {
+    "lat": -37.93762284,
+    "lon": 145.02948591
+  },
+  "boundaries": {
+    "lga": { "name": "Bayside City" },
+    "stateElectorate": { "name": "BRIGHTON" },
+    "commonwealthElectorate": { "name": "GOLDSTEIN" },
+    "meshBlock": { "code": "20051660000", "category": "Residential" },
+    "sa2": { "name": "Hampton", "code": "208011172" },
+    "sa3": { "name": "Bayside", "code": "20801" },
+    "sa4": { "name": "Melbourne - Inner South", "code": "208" }
+  }
+}
+```
+
+## Enrichment fields
+
+| Category | Fields | Description |
+|----------|--------|-------------|
+| **Geocode** | `latitude`, `longitude`, `type`, `reliability` | Physical location and geocoding method |
+| **Location** | `lat`, `lon` | OpenSearch `geo_point` format |
+| **LGA** | `name`, `code` | Local Government Area |
+| **Electorates** | `stateElectorate`, `commonwealthElectorate` | State and federal electoral districts |
+| **Mesh Block** | `code`, `category` | ABS smallest geographic unit (Residential, Commercial, etc.) |
+| **ABS Geography** | `sa2`, `sa3`, `sa4`, `gccsa` | Statistical Areas (name + code) |
+
+## Use case: form enrichment
+
+After the user selects an address from autocomplete:
+
+1. Call **Autocomplete** → user picks a suggestion
+2. Call **Enrich** with the `id` → get full record
+3. Auto-fill form fields: suburb, state, postcode, coordinates, LGA
+
+<Info>
+  The Enrich endpoint is available on all tiers including Free.
+</Info>

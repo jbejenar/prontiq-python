@@ -1,0 +1,80 @@
+---
+title: "Prontiq"
+sidebarTitle: "Introduction"
+description: "15 million Australian addresses. One API call."
+---
+
+<Note>
+  Prontiq is in **early access**. The Address API is live with full G-NAF coverage. [Get your API key](https://d38dvktb4dyib0.cloudfront.net) to start building.
+</Note>
+
+## What is Prontiq?
+
+Prontiq is a unified data API for Australian open datasets. One subscription, one API key, one SDK — every product under one roof.
+
+We're starting with **address validation** powered by the G-NAF (Geocoded National Address File) — the authoritative database of every physical address in Australia.
+
+```bash
+curl "https://59jym47ia1.execute-api.ap-southeast-2.amazonaws.com/v1/address/autocomplete?q=16+heath+cres" \
+  -H "X-Api-Key: your_api_key"
+```
+
+```json
+{
+  "suggestions": [
+    {
+      "id": "GAVIC420559144",
+      "addressLabel": "16 HEATH CRESCENT",
+      "localityName": "HAMPTON EAST",
+      "state": "VIC",
+      "postcode": "3188",
+      "confidence": 2,
+      "score": 27.72
+    }
+  ],
+  "total": 10000
+}
+```
+
+## What you get
+
+<CardGroup cols={2}>
+  <Card title="Autocomplete" icon="magnifying-glass" href="/guides/address/autocomplete">
+    Real-time typeahead across 15M addresses. Sub-250ms.
+  </Card>
+  <Card title="Validate" icon="circle-check" href="/guides/address/validate">
+    Verify any Australian address with confidence scoring.
+  </Card>
+  <Card title="Enrich" icon="layer-group" href="/guides/address/enrich">
+    Get boundaries, electorates, geocodes, and mesh blocks.
+  </Card>
+  <Card title="Reverse Geocode" icon="location-dot" href="/guides/address/reverse">
+    Coordinates → nearest addresses with distance.
+  </Card>
+  <Card title="Postcode Lookup" icon="hashtag" href="/guides/address/lookups">
+    Postcode → localities with address counts.
+  </Card>
+  <Card title="Suburb Lookup" icon="map" href="/guides/address/lookups">
+    Suburb → postcodes, bounds, and counts.
+  </Card>
+</CardGroup>
+
+## Pricing
+
+| Tier | Price | Included | Access |
+|------|-------|----------|--------|
+| **Free** | $0 | 5,000/month per product | Address |
+| **Starter** | $29/month | 10,000/month per product | All products |
+| **Growth** | $99/month | 50,000/month per product | All + SLA |
+| **Enterprise** | Custom | Custom | Dedicated support |
+
+## Coming soon
+
+- **ABN/ASIC Verification** — Australian business entity lookup
+- **GLEIF/LEI** — Legal Entity Identifier resolution
+- **CVE/NVD** — Vulnerability intelligence
+- **Patent Search** — IP Australia + USPTO
+
+<Card title="Get started in 30 seconds" icon="rocket" href="/guides/quickstart">
+  Follow the quickstart guide to make your first API call.
+</Card>

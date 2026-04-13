@@ -1,0 +1,39 @@
+---
+title: "TypeScript SDK"
+description: "Typed client for the Prontiq API — coming soon."
+---
+
+<Warning>
+  The TypeScript SDK is **not yet published**. The code below is a preview of the planned API. Use the [REST API](/guides/quickstart) directly until the SDK is released.
+</Warning>
+
+## Planned usage
+
+The SDK will be auto-generated from the OpenAPI spec by [Speakeasy](https://www.speakeasy.com). When released, it will be available as `@prontiq/sdk` on npm.
+
+```typescript
+// This is a preview — the package is not yet available
+import { Prontiq } from "@prontiq/sdk";
+
+const prontiq = new Prontiq({ apiKey: "pq_live_..." });
+
+const { suggestions } = await prontiq.address.autocomplete({ q: "16 heath cres" });
+const { match, confidence } = await prontiq.address.validate({
+  q: "16 heath crescent hampton east vic 3188"
+});
+const address = await prontiq.address.enrich({ id: "GAVIC420559144" });
+```
+
+## Using the REST API now
+
+In the meantime, use `fetch` from a server-side context:
+
+```typescript Node.js (server-side)
+const res = await fetch(
+  "https://59jym47ia1.execute-api.ap-southeast-2.amazonaws.com/v1/address/autocomplete?q=16+heath+cres",
+  { headers: { "X-Api-Key": process.env.PRONTIQ_API_KEY! } }
+);
+const { suggestions } = await res.json();
+```
+
+See the [Quickstart](/guides/quickstart) for more examples.

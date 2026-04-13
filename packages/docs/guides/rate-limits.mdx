@@ -1,0 +1,37 @@
+---
+title: "Rate Limits & Quotas"
+description: "Monthly quotas per product, per tier."
+---
+
+## Monthly quotas
+
+Each tier includes a per-product monthly allocation. Usage is tracked per API key, per product.
+
+| Tier | Per Product/Month | Overage | Products |
+|------|-------------------|---------|----------|
+| **Free** | 5,000 | — | Address |
+| **Starter** | 10,000 | $1.50/1K | All |
+| **Growth** | 50,000 | $1.00/1K | All + SLA |
+| **Enterprise** | Custom | Custom | All + support |
+
+## How it works
+
+- Usage is counted per API key, per product, per calendar month
+- When your quota is exceeded, requests return `429 QUOTA_EXCEEDED`
+- The response includes `resets_at` with the next month's start date
+- Quotas reset at midnight UTC on the 1st of each month
+
+## API Gateway throttling
+
+In addition to monthly quotas, API Gateway enforces per-route rate limits to protect the infrastructure:
+
+| Limit | Value |
+|-------|-------|
+| Burst | 100 requests/second |
+| Sustained | 50 requests/second |
+
+These limits apply across all API keys. If you need higher throughput, contact us for Enterprise.
+
+<Info>
+  Per-request rate limit headers (`X-RateLimit-Remaining`, `X-RateLimit-Reset`) are coming soon. For now, track your usage in the dashboard.
+</Info>

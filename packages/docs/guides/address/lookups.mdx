@@ -1,0 +1,89 @@
+---
+title: "Lookups"
+description: "Postcode → localities and suburb → postcodes."
+---
+
+The lookup endpoints provide aggregate data for postcodes and suburbs. Useful for dropdowns, location pickers, and data validation.
+
+## Postcode lookup
+
+Returns all localities within a postcode with address counts.
+
+<CodeGroup>
+
+```bash curl
+curl "https://59jym47ia1.execute-api.ap-southeast-2.amazonaws.com/v1/address/lookup/postcode?postcode=2000" \
+  -H "X-Api-Key: YOUR_API_KEY"
+```
+
+```typescript Node.js (server-side)
+const res = await fetch(
+  "https://59jym47ia1.execute-api.ap-southeast-2.amazonaws.com/v1/address/lookup/postcode?postcode=2000",
+  { headers: { "X-Api-Key": "YOUR_API_KEY" } }
+);
+const { postcode, localities } = await res.json();
+```
+
+</CodeGroup>
+
+### Response
+
+```json
+{
+  "postcode": "2000",
+  "localities": [
+    { "name": "SYDNEY", "state": "NSW", "address_count": 41157 },
+    { "name": "HAYMARKET", "state": "NSW", "address_count": 8650 },
+    { "name": "MILLERS POINT", "state": "NSW", "address_count": 2261 },
+    { "name": "THE ROCKS", "state": "NSW", "address_count": 2003 },
+    { "name": "BARANGAROO", "state": "NSW", "address_count": 1319 }
+  ]
+}
+```
+
+---
+
+## Suburb lookup
+
+Returns postcodes and address count for a suburb. Optionally filter by state.
+
+<CodeGroup>
+
+```bash curl
+curl "https://59jym47ia1.execute-api.ap-southeast-2.amazonaws.com/v1/address/lookup/suburb?suburb=bondi+beach&state=NSW" \
+  -H "X-Api-Key: YOUR_API_KEY"
+```
+
+```typescript Node.js (server-side)
+const res = await fetch(
+  "https://59jym47ia1.execute-api.ap-southeast-2.amazonaws.com/v1/address/lookup/suburb?suburb=bondi+beach&state=NSW",
+  { headers: { "X-Api-Key": "YOUR_API_KEY" } }
+);
+const { postcodes, address_count } = await res.json();
+```
+
+</CodeGroup>
+
+### Response
+
+```json
+{
+  "suburb": "BONDI BEACH",
+  "state": "NSW",
+  "postcodes": ["2026"],
+  "address_count": 9477
+}
+```
+
+### Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `suburb` | string | Yes | Suburb/locality name (1-100 chars) |
+| `state` | string | No | Filter: `NSW`, `VIC`, `QLD`, `SA`, `WA`, `TAS`, `NT`, `ACT` |
+
+## Use cases
+
+- **Postcode dropdowns**: User enters postcode → show locality options
+- **Suburb validation**: Verify a suburb exists and get its postcodes
+- **Coverage checks**: How many addresses are in a given area?

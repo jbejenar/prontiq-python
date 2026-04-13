@@ -1,0 +1,59 @@
+---
+title: "Validate"
+description: "Verify any Australian address with confidence scoring."
+---
+
+The validate endpoint takes a full address string and returns the best matching G-NAF address with a confidence level.
+
+## Basic usage
+
+<CodeGroup>
+
+```bash curl
+curl "https://59jym47ia1.execute-api.ap-southeast-2.amazonaws.com/v1/address/validate?q=16+heath+crescent+hampton+east+vic+3188" \
+  -H "X-Api-Key: YOUR_API_KEY"
+```
+
+```typescript Node.js (server-side)
+const res = await fetch(
+  "https://59jym47ia1.execute-api.ap-southeast-2.amazonaws.com/v1/address/validate?q=16+heath+crescent+hampton+east+vic+3188",
+  { headers: { "X-Api-Key": "YOUR_API_KEY" } }
+);
+const { match, confidence } = await res.json();
+```
+
+</CodeGroup>
+
+## Response
+
+```json
+{
+  "match": {
+    "id": "GAVIC420559144",
+    "addressLabel": "16 HEATH CRESCENT",
+    "localityName": "HAMPTON EAST",
+    "state": "VIC",
+    "postcode": "3188",
+    "confidence": 2
+  },
+  "confidence": "high"
+}
+```
+
+## Confidence levels
+
+| Level | Score | Meaning |
+|-------|-------|---------|
+| `high` | > 20 | Strong match — address verified |
+| `medium` | 10-20 | Partial match — review recommended |
+| `low` | < 10 | Weak match — likely incorrect |
+| `0` | — | No match found (`match` is `null`) |
+
+## When to use validate vs autocomplete
+
+| Scenario | Use |
+|----------|-----|
+| User is typing in real-time | **Autocomplete** — prefix matching, multiple suggestions |
+| User submitted a complete address | **Validate** — full-text matching, single best match |
+| Data cleaning / batch verification | **Validate** — one call per address |
+| Building a search/typeahead UI | **Autocomplete** |

@@ -19,56 +19,104 @@ const apiErrorResponseSchema = z.object({
   }),
 });
 
-const addressDocumentSchema = z
-  .object({
-    id: z.string(),
-    addressLabel: z.string().optional(),
-    localityName: z.string().optional(),
-    state: z.string().optional(),
-    postcode: z.string().optional(),
-  })
-  .catchall(z.unknown());
+const geocodeSchema = z.object({
+  latitude: z.number().openapi({ description: "Latitude in decimal degrees." }),
+  longitude: z.number().openapi({ description: "Longitude in decimal degrees." }),
+  type: z.string().optional().openapi({ description: "Geocoding method, e.g. PROPERTY CENTROID." }),
+  reliability: z.number().int().optional().openapi({ description: "G-NAF geocode reliability (0-6, lower is better)." }),
+});
 
-const addressSuggestionSchema = addressDocumentSchema.extend({
-  score: z.number().optional(),
+const locationSchema = z.object({
+  lat: z.number().openapi({ description: "Latitude." }),
+  lon: z.number().openapi({ description: "Longitude." }),
+}).openapi({ description: "OpenSearch geo_point format." });
+
+const namedCodeSchema = z.object({
+  name: z.string().openapi({ description: "Area name." }),
+  code: z.string().optional().openapi({ description: "ABS area code." }),
+});
+
+const meshBlockSchema = z.object({
+  code: z.string().openapi({ description: "ABS mesh block code." }),
+  category: z.string().optional().openapi({ description: "Land use category, e.g. Residential, Commercial." }),
+});
+
+const boundariesSchema = z.object({
+  lga: namedCodeSchema.optional().openapi({ description: "Local Government Area." }),
+  stateElectorate: namedCodeSchema.optional().openapi({ description: "State electoral district." }),
+  commonwealthElectorate: namedCodeSchema.optional().openapi({ description: "Federal electoral district." }),
+  meshBlock: meshBlockSchema.optional().openapi({ description: "ABS smallest geographic unit." }),
+  sa2: namedCodeSchema.optional().openapi({ description: "Statistical Area Level 2." }),
+  sa3: namedCodeSchema.optional().openapi({ description: "Statistical Area Level 3." }),
+  sa4: namedCodeSchema.optional().openapi({ description: "Statistical Area Level 4." }),
+  gccsa: namedCodeSchema.optional().openapi({ description: "Greater Capital City Statistical Area." }),
+}).openapi({ description: "Electoral, administrative, and statistical boundaries." });
+
+const addressDocumentSchema = z.object({
+  id: z.string().openapi({ description: "G-NAF persistent identifier." }),
+  addressLabel: z.string().optional().openapi({ description: "Street address (number + street name)." }),
+  localityName: z.string().optional().openapi({ description: "Suburb or locality name." }),
+  state: z.string().optional().openapi({ description: "Australian state code (NSW, VIC, QLD, SA, WA, TAS, NT, ACT)." }),
+  postcode: z.string().optional().openapi({ description: "4-digit Australian postcode." }),
+  confidence: z.number().int().optional().openapi({ description: "G-NAF confidence level (0-2)." }),
+  geocode: geocodeSchema.optional().openapi({ description: "Physical location and geocoding metadata." }),
+  location: locationSchema.optional(),
+  boundaries: boundariesSchema.optional(),
+});
+
+const addressSuggestionSchema = z.object({
+  id: z.string().openapi({ description: "G-NAF persistent identifier." }),
+  addressLabel: z.string().optional().openapi({ description: "Street address (number + street name)." }),
+  localityName: z.string().optional().openapi({ description: "Suburb or locality name." }),
+  state: z.string().optional().openapi({ description: "Australian state code." }),
+  postcode: z.string().optional().openapi({ description: "4-digit Australian postcode." }),
+  confidence: z.number().int().optional().openapi({ description: "G-NAF confidence level (0-2)." }),
+  score: z.number().optional().openapi({ description: "Search relevance score." }),
 });
 
 const autocompleteResponseSchema = z.object({
   suggestions: z.array(addressSuggestionSchema),
-  total: z.number().int().nonnegative(),
+  total: z.number().int().nonnegative().openapi({ description: "Total matching addresses." }),
 });
 
 const validateResponseSchema = z.object({
-  match: addressDocumentSchema.nullable(),
-  confidence: z.union([z.literal("high"), z.literal("medium"), z.literal("low"), z.literal(0)]),
+  match: addressDocumentSchema.nullable().openapi({ description: "Best matching address, or null if no match." }),
+  confidence: z.union([z.literal("high"), z.literal("medium"), z.literal("low"), z.literal(0)]).openapi({
+    description: "Match confidence: high (score > 20), medium (10-20), low (< 10), or 0 (no match).",
+  }),
 });
 
 const reverseResultSchema = addressDocumentSchema.extend({
-  distance_m: z.number().optional(),
+  distance_m: z.number().optional().openapi({ description: "Distance from query point in meters." }),
 });
 
 const reverseResponseSchema = z.object({
   results: z.array(reverseResultSchema),
-  total: z.number().int().nonnegative(),
+  total: z.number().int().nonnegative().openapi({ description: "Total addresses within radius." }),
 });
 
 const postcodeLookupResponseSchema = z.object({
-  postcode: z.string(),
+  postcode: z.string().openapi({ description: "The queried postcode." }),
   localities: z.array(
     z.object({
-      name: z.string(),
-      state: z.string().optional(),
-      address_count: z.number().int().nonnegative(),
+      name: z.string().openapi({ description: "Locality/suburb name." }),
+      state: z.string().optional().openapi({ description: "State code." }),
+      address_count: z.number().int().nonnegative().openapi({ description: "Number of addresses in this locality." }),
     }),
   ),
 });
 
+const geoBoundsSchema = z.object({
+  top_left: locationSchema.openapi({ description: "North-west corner of bounding box." }),
+  bottom_right: locationSchema.openapi({ description: "South-east corner of bounding box." }),
+}).openapi({ description: "Geographic bounding box of the suburb." });
+
 const suburbLookupResponseSchema = z.object({
-  suburb: z.string(),
-  state: z.string().optional(),
-  postcodes: z.array(z.string()),
-  bounds: z.record(z.string(), z.unknown()).optional(),
-  address_count: z.number().int().nonnegative(),
+  suburb: z.string().openapi({ description: "Normalised suburb name (uppercase)." }),
+  state: z.string().optional().openapi({ description: "State filter applied, if any." }),
+  postcodes: z.array(z.string()).openapi({ description: "Postcodes covering this suburb." }),
+  bounds: geoBoundsSchema.optional(),
+  address_count: z.number().int().nonnegative().openapi({ description: "Total addresses in this suburb." }),
 });
 
 const jsonResponse = (schema: z.ZodType, description: string) => ({
