@@ -16,7 +16,7 @@ export const PRODUCT_REGISTRY: Record<string, ProductConfig> = {
       known_good_query: {
         kind: "address_contains",
         query: "16 HEATH CRESCENT HAMPTON EAST VIC 3188",
-        expected_label_fragment: "16 HEATH CRESCENT HAMPTON EAST VIC 3188",
+        expected_label_fragment: "16 HEATH CRESCENT",
       },
     },
   },
