@@ -69,7 +69,7 @@ export async function validate(q: string) {
   const hit = hits[0];
 
   if (!hit) {
-    return { match: null, confidence: 0 };
+    return { match: null, confidence: "none" as const };
   }
 
   const score = hit._score as number;

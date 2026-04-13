@@ -81,8 +81,8 @@ const autocompleteResponseSchema = z.object({
 
 const validateResponseSchema = z.object({
   match: addressDocumentSchema.nullable().openapi({ description: "Best matching address, or null if no match." }),
-  confidence: z.union([z.literal("high"), z.literal("medium"), z.literal("low"), z.literal(0)]).openapi({
-    description: "Match confidence: high (score > 20), medium (10-20), low (< 10), or 0 (no match).",
+  confidence: z.enum(["high", "medium", "low", "none"]).openapi({
+    description: "Match confidence: high (score > 20), medium (10-20), low (< 10), or none (no match).",
   }),
 });
 

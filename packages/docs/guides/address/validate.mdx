@@ -47,7 +47,7 @@ const { match, confidence } = await res.json();
 | `high` | > 20 | Strong match — address verified |
 | `medium` | 10-20 | Partial match — review recommended |
 | `low` | < 10 | Weak match — likely incorrect |
-| `0` | — | No match found (`match` is `null`) |
+| `none` | — | No match found (`match` is `null`) |
 
 ## When to use validate vs autocomplete
 
