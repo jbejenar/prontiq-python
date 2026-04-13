@@ -10,13 +10,13 @@ The reverse endpoint finds addresses near a geographic coordinate. Returns resul
 <CodeGroup>
 
 ```bash curl
-curl "https://59jym47ia1.execute-api.ap-southeast-2.amazonaws.com/v1/address/reverse?lat=-33.8568&lon=151.2153&radius=200&limit=3" \
+curl "https://api.prontiq.dev/v1/address/reverse?lat=-33.8568&lon=151.2153&radius=200&limit=3" \
   -H "X-Api-Key: YOUR_API_KEY"
 ```
 
 ```typescript Node.js (server-side)
 const res = await fetch(
-  "https://59jym47ia1.execute-api.ap-southeast-2.amazonaws.com/v1/address/reverse?lat=-33.8568&lon=151.2153&radius=200&limit=3",
+  "https://api.prontiq.dev/v1/address/reverse?lat=-33.8568&lon=151.2153&radius=200&limit=3",
   { headers: { "X-Api-Key": "YOUR_API_KEY" } }
 );
 const { results } = await res.json();

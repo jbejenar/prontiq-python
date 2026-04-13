@@ -12,13 +12,13 @@ description: "Make your first API call in 30 seconds."
 <CodeGroup>
 
 ```bash curl
-curl "https://59jym47ia1.execute-api.ap-southeast-2.amazonaws.com/v1/address/autocomplete?q=16+heath+cres" \
+curl "https://api.prontiq.dev/v1/address/autocomplete?q=16+heath+cres" \
   -H "X-Api-Key: YOUR_API_KEY"
 ```
 
 ```typescript Node.js (server-side)
 const response = await fetch(
-  "https://59jym47ia1.execute-api.ap-southeast-2.amazonaws.com/v1/address/autocomplete?q=16+heath+cres",
+  "https://api.prontiq.dev/v1/address/autocomplete?q=16+heath+cres",
   { headers: { "X-Api-Key": "YOUR_API_KEY" } }
 );
 const data = await response.json();
@@ -30,7 +30,7 @@ console.log(data.suggestions[0].addressLabel);
 import requests
 
 response = requests.get(
-    "https://59jym47ia1.execute-api.ap-southeast-2.amazonaws.com/v1/address/autocomplete",
+    "https://api.prontiq.dev/v1/address/autocomplete",
     params={"q": "16 heath cres"},
     headers={"X-Api-Key": "YOUR_API_KEY"}
 )

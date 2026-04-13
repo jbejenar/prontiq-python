@@ -12,13 +12,13 @@ Returns all localities within a postcode with address counts.
 <CodeGroup>
 
 ```bash curl
-curl "https://59jym47ia1.execute-api.ap-southeast-2.amazonaws.com/v1/address/lookup/postcode?postcode=2000" \
+curl "https://api.prontiq.dev/v1/address/lookup/postcode?postcode=2000" \
   -H "X-Api-Key: YOUR_API_KEY"
 ```
 
 ```typescript Node.js (server-side)
 const res = await fetch(
-  "https://59jym47ia1.execute-api.ap-southeast-2.amazonaws.com/v1/address/lookup/postcode?postcode=2000",
+  "https://api.prontiq.dev/v1/address/lookup/postcode?postcode=2000",
   { headers: { "X-Api-Key": "YOUR_API_KEY" } }
 );
 const { postcode, localities } = await res.json();
@@ -50,13 +50,13 @@ Returns postcodes and address count for a suburb. Optionally filter by state.
 <CodeGroup>
 
 ```bash curl
-curl "https://59jym47ia1.execute-api.ap-southeast-2.amazonaws.com/v1/address/lookup/suburb?suburb=bondi+beach&state=NSW" \
+curl "https://api.prontiq.dev/v1/address/lookup/suburb?suburb=bondi+beach&state=NSW" \
   -H "X-Api-Key: YOUR_API_KEY"
 ```
 
 ```typescript Node.js (server-side)
 const res = await fetch(
-  "https://59jym47ia1.execute-api.ap-southeast-2.amazonaws.com/v1/address/lookup/suburb?suburb=bondi+beach&state=NSW",
+  "https://api.prontiq.dev/v1/address/lookup/suburb?suburb=bondi+beach&state=NSW",
   { headers: { "X-Api-Key": "YOUR_API_KEY" } }
 );
 const { postcodes, address_count } = await res.json();

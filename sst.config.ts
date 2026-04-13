@@ -53,6 +53,10 @@ export default $config({
 
     // -- API: Hono on Lambda (single handler for all routes) --
     const api = new sst.aws.ApiGatewayV2("PqApi", {
+      domain: {
+        name: "api.prontiq.dev",
+        dns: false,
+      },
       cors: {
         allowOrigins: ["*"],
         allowMethods: ["GET", "OPTIONS"],

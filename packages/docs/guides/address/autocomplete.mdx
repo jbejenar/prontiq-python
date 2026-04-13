@@ -10,13 +10,13 @@ The autocomplete endpoint returns address suggestions as the user types. It uses
 <CodeGroup>
 
 ```bash curl
-curl "https://59jym47ia1.execute-api.ap-southeast-2.amazonaws.com/v1/address/autocomplete?q=16+heath+cres" \
+curl "https://api.prontiq.dev/v1/address/autocomplete?q=16+heath+cres" \
   -H "X-Api-Key: YOUR_API_KEY"
 ```
 
 ```typescript Node.js (server-side)
 const res = await fetch(
-  "https://59jym47ia1.execute-api.ap-southeast-2.amazonaws.com/v1/address/autocomplete?q=16+heath+cres",
+  "https://api.prontiq.dev/v1/address/autocomplete?q=16+heath+cres",
   { headers: { "X-Api-Key": "YOUR_API_KEY" } }
 );
 const { suggestions } = await res.json();

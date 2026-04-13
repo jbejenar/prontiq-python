@@ -10,13 +10,13 @@ The validate endpoint takes a full address string and returns the best matching 
 <CodeGroup>
 
 ```bash curl
-curl "https://59jym47ia1.execute-api.ap-southeast-2.amazonaws.com/v1/address/validate?q=16+heath+crescent+hampton+east+vic+3188" \
+curl "https://api.prontiq.dev/v1/address/validate?q=16+heath+crescent+hampton+east+vic+3188" \
   -H "X-Api-Key: YOUR_API_KEY"
 ```
 
 ```typescript Node.js (server-side)
 const res = await fetch(
-  "https://59jym47ia1.execute-api.ap-southeast-2.amazonaws.com/v1/address/validate?q=16+heath+crescent+hampton+east+vic+3188",
+  "https://api.prontiq.dev/v1/address/validate?q=16+heath+crescent+hampton+east+vic+3188",
   { headers: { "X-Api-Key": "YOUR_API_KEY" } }
 );
 const { match, confidence } = await res.json();
