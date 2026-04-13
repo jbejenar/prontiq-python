@@ -1,83 +1,75 @@
 # NEXT-WORK.md — Active Sprint
 
 > Extracted from ROADMAP.md. This is what agents should work on NOW.
-> Last updated: 2026-04-10
+> Last updated: 2026-04-13
 
-## Current Phase: P0 → P1A transition
+## Current Phase: P1D / P1B / P1C — Docs & Monetization
 
-### P0 Remaining (2 tickets)
+### What's Live
 
-**P0.3 — CI/CD Pipeline End-to-End**
+| Surface | URL | Status |
+|---------|-----|--------|
+| API | `https://59jym47ia1.execute-api.ap-southeast-2.amazonaws.com` | ✅ 6 endpoints, 15M docs |
+| Dashboard | `https://d38dvktb4dyib0.cloudfront.net` | ✅ Deployed |
+| OpenAPI spec | `/openapi.json` | ✅ Auto-generated |
+| Ingestion | EventBridge → Step Function → Fargate → OpenSearch | ✅ Automated |
 
-- [x] GitHub Actions `check` job has been exercised on `main`
-- [ ] `deploy-dev` succeeds from GitHub Actions
-- [ ] SST Lambda bundle resolves workspace package `@prontiq/shared`
-- [ ] GitHub Actions deploy role can write SST asset object tags (`s3:PutObjectTagging`)
+### Live Endpoints (all require `X-Api-Key` header)
 
-**Evidence:** Main CI run `24234119406` fails in `deploy-dev` during `pnpm deploy:dev` after the `check` job succeeds.
+```
+GET /v1/address/autocomplete?q=16+heath+cres&state=VIC&limit=5
+GET /v1/address/validate?q=16+heath+crescent+hampton+east+vic+3188
+GET /v1/address/enrich?id=GAVIC420559144
+GET /v1/address/reverse?lat=-33.8568&lon=151.2153&radius=200&limit=5
+GET /v1/address/lookup/postcode?postcode=2000
+GET /v1/address/lookup/suburb?suburb=bondi+beach&state=NSW
+```
 
-**P0.6 — OpenSearch connectivity verification**
+### Next: Developer Experience + Monetization
 
-- [x] Lambda can reach `flat-white` OpenSearch domain via SigV4
-- [ ] IAM role has `es:ESHttp*` permissions on the domain
-- [x] Health check endpoint returns OpenSearch cluster status
-- [ ] Connection pooling configured (maxSockets: 10, keepAlive: true)
-- [ ] Verified: query against existing `addresses` alias returns results
+**P1D.01 — Mintlify Docs**
+- Point at `/openapi.json`, auto-generate interactive docs
+- Free tier (1 editor, custom domain, playground)
+- Live at `docs.prontiq.dev`
 
-**Evidence:** Live `/v1/health/opensearch` returns 200 and cluster green. The external flat-white `addresses` alias/data publish is still missing from the live alias list.
+**P1B — Auth & Billing (Clerk + Unkey + Stripe)**
+- Clerk: sign-up/login for dashboard
+- Unkey: API key issuance + webhook sync to DynamoDB
+- Stripe: metered per-product billing
+- Replace manual test key with real provisioning chain
 
-### Ready to Start: P1A — API Core
+### Backlog
 
-**P1A.1 — Migrate routes to @hono/zod-openapi** (implemented in current branch)
-
-- [x] All 6 address routes use `createRoute()` with request/response schemas
-- [x] `app.doc31("/openapi.json")` returns valid OpenAPI 3.1 spec
-- [x] Spec includes all query parameters, response shapes, error codes
-- [x] Spec is accessible at `/openapi.json` (no auth required)
-
-**Verification:** Local built app returns status 200 for `/openapi.json`, `openapi: "3.1.0"`, and all 6 `/v1/address/*` paths. Live verification is gated by P0.3.
-
-**P1A.2 — Address autocomplete endpoint** (verify against real data)
-
-- [ ] Returns suggestions with correct fields
-- [ ] `search_as_you_type` query works against OpenSearch `addresses` alias
-- [ ] Response time < 50ms (warm)
-
-**Blocked:** Requires the external `addresses` alias/data publish from P0.6.
-
-### Next Achievable Item
-
-**P0.3 residual fix — CI deploy-dev**
-
-- [ ] Fix Lambda bundling so SST resolves workspace package `@prontiq/shared`
-- [ ] Add the missing `s3:PutObjectTagging` permission to the GitHub Actions deploy role policy
-- [ ] Re-run main CI and capture the passing `deploy-dev` run URL
-
-**Alternative once Mintlify account is ready:** P1D.01 can start from the generated OpenAPI spec, but it creates new docs infrastructure and should explicitly call that out before implementation.
+- P1A.09: API Gateway caching ($15/month, sub-5ms repeat queries)
+- P1A.10: WAF + API Gateway throttling
+- Increase gp3 to 50GB (before next quarterly ingest)
+- ABN pipeline (second product)
 
 ## Completed
 
-- [x] P0.1 — IAM deploy role created (OIDC, Pulumi state, full resource perms)
-- [x] P0.2 — SST bootstrap + first deploy (API: `59jym47ia1.execute-api.ap-southeast-2.amazonaws.com`, Dashboard: `d2ttwndpb06ei3.cloudfront.net`)
-- [x] P0.4 — ESLint 9 flat config + Prettier + lint-staged
-- [x] P0.5 — Dependabot configured (npm, weekly, grouped AWS SDK)
-- [x] P1A.1 — Address routes migrated to @hono/zod-openapi and `/openapi.json` registered
-- [x] Health check live: `/v1/health` returns `{"status":"ok"}`
-- [x] Auth working: `/v1/address/autocomplete` without key returns `401 MISSING_API_KEY` with request_id
-
-## Live Endpoints
-
-| Endpoint  | URL                                                           |
-| --------- | ------------------------------------------------------------- |
-| API       | `https://59jym47ia1.execute-api.ap-southeast-2.amazonaws.com` |
-| Dashboard | `https://d2ttwndpb06ei3.cloudfront.net`                       |
+- [x] P0.1 — IAM deploy role (OIDC)
+- [x] P0.2 — SST bootstrap + first deploy
+- [x] P0.3 — CI/CD pipeline (lint → typecheck → build → test → deploy)
+- [x] P0.4 — ESLint 9 + Prettier + lint-staged
+- [x] P0.5 — Dependabot
+- [x] P0.6 — OpenSearch connectivity (SigV4, 15M docs live)
+- [x] P1E.01-05 — Ingestion pipeline (EventBridge → Router → Step Function → Fargate → alias swap)
+- [x] P1A.01 — Routes migrated to @hono/zod-openapi
+- [x] P1A.02 — Address autocomplete (150-250ms warm)
+- [x] P1A.03 — Address validate (high/medium/low confidence)
+- [x] P1A.04 — Address enrich (boundaries, electorates, geocodes)
+- [x] P1A.05 — Address reverse geocode (geo_distance with meters)
+- [x] P1A.06 — Postcode lookup (aggregation with localities)
+- [x] P1A.07 — Suburb lookup (postcodes + address count)
 
 ## Reference Files
 
-| File                               | Purpose                            | When to Read                 |
-| ---------------------------------- | ---------------------------------- | ---------------------------- |
-| `ARCHITECTURE.MD`                  | Full platform design (1,451 lines) | When you need design context |
-| `ROADMAP.md`                       | Master plan (69 tickets)           | When you need the full scope |
-| `sst.config.ts`                    | Infrastructure definition          | When working on infra        |
-| `packages/shared/src/constants.ts` | Product registry, tier limits      | When working on auth/billing |
-| `packages/api/src/index.ts`        | API entry point                    | When working on P1A routes   |
+| File | Purpose | When to Read |
+|------|---------|--------------|
+| `ARCHITECTURE.MD` | Full platform design | When you need design context |
+| `ROADMAP.md` | Master plan (69 tickets) | When you need the full scope |
+| `sst.config.ts` | Infrastructure definition | When working on infra |
+| `packages/shared/src/constants.ts` | Product registry, tier limits | When working on auth/billing |
+| `packages/api/src/index.ts` | API entry point | When working on routes |
+| `packages/api/src/search/queries.ts` | OpenSearch queries | When tuning search |
+| `docs/operations/ingestion-runbook.md` | Ingestion operator guide | When running ingestion |
