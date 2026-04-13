@@ -896,6 +896,57 @@ A t3.small OpenSearch node with ~128 max connections can be overwhelmed by a sin
 
 ---
 
+### Ticket P1A.11 — Autocomplete Relevance Tuning
+
+```yaml
+id: P1A.11
+title: Autocomplete Relevance Tuning
+status: pending
+priority: p1-high
+epic: P1A
+persona: [api-consumer]
+depends_on: [P1A.02]
+completed: null
+tech_stack:
+  search: OpenSearch search_as_you_type + bool_prefix
+```
+
+#### User Story
+
+As a developer, when I type `16 heath crese` the autocomplete should rank `16 HEATH CRESCENT` above `16 HEATH ROAD` so that the prefix I'm actively typing is weighted heavily in relevance scoring.
+
+#### Problem Statement
+
+The `bool_prefix` query matches all full terms (`16`, `heath`) with equal weight and only applies prefix matching on the last token. Documents matching on `16` + `heath` score the same regardless of whether their street type matches the prefix `crese`. This means `HEATH ROAD`, `HEATH STREET`, `HEATH AVENUE` rank equally with `HEATH CRESCENT` even though the user is clearly typing "crescent."
+
+Observed: searching `16 heath crese` returns `HEATH ROAD` (Leppington) ranked above `HEATH CRESCENT` (Griffith) — both score 26.37.
+
+#### Definition of Done
+
+##### Functional
+
+- [ ] `q=16 heath crese` returns `CRESCENT` results ranked above `ROAD`/`STREET`/`AVENUE`
+  - `Verify:` `curl .../autocomplete?q=16+heath+crese` — first results are all `CRESCENT`
+  - `Evidence:` Prefix-matching street type gets a meaningful score boost
+- [ ] Existing autocomplete quality maintained for short queries (`q=16 he`)
+  - `Verify:` Regression test against current result set
+  - `Evidence:` No degradation in top-5 relevance for common queries
+- [ ] Response time stays within 150-250ms
+  - `Verify:` Benchmark before/after
+  - `Evidence:` No significant latency increase from query changes
+
+#### Scope
+
+**In:** OpenSearch query tuning (boost weights, query structure, phrase_prefix)
+
+**Out — Do Not Implement:**
+
+- Mapping changes (avoid full reindex) → only if query-side fixes are insufficient
+- Typo tolerance / fuzzy matching → separate ticket
+- Popularity/frequency boosting → separate ticket
+
+---
+
 ## Phase 1B — Auth & Billing
 
 > **Goal:** Sign-up → API key → rate-limited requests → usage tracking → billing.
