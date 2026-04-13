@@ -1,39 +1,130 @@
 ---
 title: "TypeScript SDK"
-description: "Typed client for the Prontiq API — coming soon."
+description: "Type-safe client for the Prontiq API, auto-generated from the OpenAPI spec."
 ---
 
-<Warning>
-  The TypeScript SDK is **not yet published**. The code below is a preview of the planned API. Use the [REST API](/guides/quickstart) directly until the SDK is released.
-</Warning>
+## Installation
 
-## Planned usage
+<CodeGroup>
 
-The SDK will be auto-generated from the OpenAPI spec by [Speakeasy](https://www.speakeasy.com). When released, it will be available as `@prontiq/sdk` on npm.
+```bash npm
+npm add @prontiq/sdk
+```
+
+```bash pnpm
+pnpm add @prontiq/sdk
+```
+
+```bash bun
+bun add @prontiq/sdk
+```
+
+</CodeGroup>
+
+<Note>
+  The SDK is ESM-only. For CommonJS, use `await import("@prontiq/sdk")`.
+</Note>
+
+## Setup
 
 ```typescript
-// This is a preview — the package is not yet available
 import { Prontiq } from "@prontiq/sdk";
 
-const prontiq = new Prontiq({ apiKey: "pq_live_..." });
-
-const { suggestions } = await prontiq.address.autocomplete({ q: "16 heath cres" });
-const { match, confidence } = await prontiq.address.validate({
-  q: "16 heath crescent hampton east vic 3188"
+const prontiq = new Prontiq({
+  serverURL: "https://59jym47ia1.execute-api.ap-southeast-2.amazonaws.com",
+  apiKeyAuth: process.env.PRONTIQ_API_KEY!,
 });
-const address = await prontiq.address.enrich({ id: "GAVIC420559144" });
 ```
 
-## Using the REST API now
+## Autocomplete
 
-In the meantime, use `fetch` from a server-side context:
-
-```typescript Node.js (server-side)
-const res = await fetch(
-  "https://59jym47ia1.execute-api.ap-southeast-2.amazonaws.com/v1/address/autocomplete?q=16+heath+cres",
-  { headers: { "X-Api-Key": process.env.PRONTIQ_API_KEY! } }
+```typescript
+const { suggestions, total } = await prontiq.getV1AddressAutocomplete(
+  "16 heath cres",  // q
+  "VIC",            // state (optional)
+  5,                // limit (optional)
 );
-const { suggestions } = await res.json();
+
+for (const s of suggestions) {
+  console.log(`${s.addressLabel} ${s.localityName} ${s.state} ${s.postcode}`);
+}
 ```
 
-See the [Quickstart](/guides/quickstart) for more examples.
+## Validate
+
+```typescript
+const { match, confidence } = await prontiq.getV1AddressValidate(
+  "16 heath crescent hampton east vic 3188"
+);
+
+if (confidence === "high") {
+  console.log(`Verified: ${match?.addressLabel}`);
+}
+```
+
+## Enrich
+
+```typescript
+const address = await prontiq.getV1AddressEnrich("GAVIC420559144");
+
+console.log(address.geocode);    // { latitude, longitude, type, reliability }
+console.log(address.boundaries); // { lga, stateElectorate, meshBlock, sa2, ... }
+```
+
+## Reverse geocode
+
+```typescript
+const { results } = await prontiq.getV1AddressReverse(
+  -33.8568,  // lat
+  151.2153,  // lon
+  200,       // radius in meters (optional)
+  3,         // limit (optional)
+);
+
+for (const r of results) {
+  console.log(`${r.addressLabel} — ${r.distanceM}m away`);
+}
+```
+
+## Lookups
+
+```typescript
+// Postcode → localities
+const { localities } = await prontiq.getV1AddressLookupPostcode("2000");
+
+// Suburb → postcodes
+const { postcodes, addressCount } = await prontiq.getV1AddressLookupSuburb(
+  "bondi beach",
+  "NSW",
+);
+```
+
+## All methods
+
+| Method | Description |
+|--------|-------------|
+| `getV1AddressAutocomplete(q, state?, limit?)` | Real-time typeahead suggestions |
+| `getV1AddressValidate(q)` | Verify a full address string |
+| `getV1AddressEnrich(id)` | Full record by G-NAF ID |
+| `getV1AddressReverse(lat, lon, radius?, limit?)` | Coordinates to nearest addresses |
+| `getV1AddressLookupPostcode(postcode)` | Postcode to localities |
+| `getV1AddressLookupSuburb(suburb, state?)` | Suburb to postcodes |
+
+## Error handling
+
+```typescript
+import { SDKValidationError } from "@prontiq/sdk/models/errors";
+
+try {
+  const result = await prontiq.getV1AddressAutocomplete("test");
+} catch (err) {
+  if (err instanceof SDKValidationError) {
+    console.error("Validation:", err.message);
+  }
+  throw err;
+}
+```
+
+<Info>
+  The SDK is auto-generated from the [OpenAPI spec](/api-reference/autocomplete) by [Speakeasy](https://www.speakeasy.com). It stays in sync with every API change automatically.
+</Info>
