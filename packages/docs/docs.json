@@ -10,46 +10,52 @@
   },
   "navigation": {
     "tabs": [
-      { "tab": "Guides", "href": "/guides" },
-      { "tab": "API Reference", "href": "/api-reference" }
-    ],
-    "groups": [
       {
-        "group": "Getting Started",
-        "pages": [
-          "guides/introduction",
-          "guides/quickstart",
-          "guides/authentication",
-          "guides/rate-limits"
+        "tab": "Guides",
+        "groups": [
+          {
+            "group": "Getting Started",
+            "pages": [
+              "guides/introduction",
+              "guides/quickstart",
+              "guides/authentication",
+              "guides/rate-limits"
+            ]
+          },
+          {
+            "group": "Address API",
+            "pages": [
+              "guides/address/overview",
+              "guides/address/autocomplete",
+              "guides/address/validate",
+              "guides/address/enrich",
+              "guides/address/reverse",
+              "guides/address/lookups"
+            ]
+          },
+          {
+            "group": "SDKs",
+            "pages": [
+              "guides/sdks/typescript",
+              "guides/sdks/python"
+            ]
+          }
         ]
       },
       {
-        "group": "Address API",
-        "pages": [
-          "guides/address/overview",
-          "guides/address/autocomplete",
-          "guides/address/validate",
-          "guides/address/enrich",
-          "guides/address/reverse",
-          "guides/address/lookups"
-        ]
-      },
-      {
-        "group": "SDKs",
-        "pages": [
-          "guides/sdks/typescript",
-          "guides/sdks/python"
-        ]
-      },
-      {
-        "group": "Endpoints",
-        "pages": [
-          "api-reference/autocomplete",
-          "api-reference/validate",
-          "api-reference/enrich",
-          "api-reference/reverse",
-          "api-reference/postcode-lookup",
-          "api-reference/suburb-lookup"
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Endpoints",
+            "pages": [
+              "api-reference/autocomplete",
+              "api-reference/validate",
+              "api-reference/enrich",
+              "api-reference/reverse",
+              "api-reference/postcode-lookup",
+              "api-reference/suburb-lookup"
+            ]
+          }
         ]
       }
     ]
