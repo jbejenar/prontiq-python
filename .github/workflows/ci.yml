@@ -41,8 +41,51 @@ jobs:
 
       - run: pnpm test
 
-  deploy-dev:
+  integration-test:
     needs: check
+    runs-on: ubuntu-latest
+    services:
+      opensearch:
+        image: opensearchproject/opensearch:2.19.0
+        env:
+          discovery.type: single-node
+          DISABLE_SECURITY_PLUGIN: true
+          OPENSEARCH_INITIAL_ADMIN_PASSWORD: "NotSecure_Integration_Test_Password_123!"
+        ports:
+          - 9200:9200
+        options: >-
+          --health-cmd "curl -f http://localhost:9200/_cluster/health || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: "pnpm"
+      - run: pnpm install --frozen-lockfile
+      - name: Wait for OpenSearch
+        run: |
+          for i in {1..30}; do
+            if curl -sf http://localhost:9200/_cluster/health; then
+              echo "OpenSearch ready"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "OpenSearch never became ready"
+          exit 1
+      - name: Run integration tests
+        env:
+          OPENSEARCH_TEST_URL: http://localhost:9200
+        # The script builds workspace dependencies via `pnpm -w build --filter`
+        # (Turbo handles topological ordering for project references).
+        run: pnpm --filter @prontiq/api test:integration
+
+  deploy-dev:
+    needs: [check, integration-test]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:

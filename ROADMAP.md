@@ -22,7 +22,7 @@
 | Phase     | Epic                       | Tickets | Done       | Target      |
 | --------- | -------------------------- | ------- | ---------- | ----------- |
 | **P0**    | Infrastructure Foundation  | 6       | 6/6 ✅     | Week 1      |
-| **P1A**   | API Core (Address)         | 12      | 7/12       | Weeks 2-3   |
+| **P1A**   | API Core (Address)         | 13      | 9/13       | Weeks 2-3   |
 | **P1B**   | Auth & Billing             | 9       | 0/9        | Weeks 3-4   |
 | **P1C**   | Dashboard                  | 7       | 0/7        | Weeks 4-5   |
 | **P1D**   | Docs & SDK                 | 5       | 2/5        | Week 5      |
@@ -32,7 +32,7 @@
 | **P3**    | GLEIF/LEI + Full Dashboard | 7       | 0/7        | Weeks 11-13 |
 | **P4**    | Shopify + WooCommerce      | 5       | 0/5        | Weeks 14-17 |
 | **P5**    | CVE/NVD + Patents          | 4       | 0/4        | Weeks 18-21 |
-| **Total** |                            | **71**  | **20/71**  |             |
+| **Total** |                            | **72**  | **22/72**  |             |
 
 ---
 
@@ -962,11 +962,12 @@ As a developer, autocomplete and validate should rank the address I'm typing acc
 ```yaml
 id: P1A.12
 title: API Test Suite
-status: in-progress
+status: complete
 priority: p1-high
 epic: P1A
 persona: [builder]
 depends_on: [P1A.02, P1A.03, P1A.06, P1A.07]
+completed: 2026-04-14
 completed: null
 tech_stack:
   test_runner: node:test (built-in)
@@ -989,8 +990,13 @@ The API package had zero automated tests. Search semantics across `autocomplete`
 - [x] node:test set up for `@prontiq/api` package (matches ingestion package pattern)
 - [x] DSL assertion tests verify generated OpenSearch query shape for each endpoint
   - `Verify:` `pnpm --filter @prontiq/api test` runs in CI via Turbo
-  - `Evidence:` `packages/api/src/search/queries.test.ts` (9 tests covering autocomplete operator+fuzziness, validate fuzziness+none confidence, lookupPostcode limit, lookupSuburb two-phase + state behavior + Bug 4 regression)
-- [ ] Integration tests against a small fixture OpenSearch index (Docker Compose or Testcontainers)
+  - `Evidence:` `packages/api/src/search/queries.test.ts` (10 tests covering autocomplete phase-1/phase-2 fallback + fuzziness, validate fuzziness+none confidence, lookupPostcode limit, lookupSuburb two-phase + state behavior + Bug 4 regression)
+- [x] Integration tests against a real OpenSearch instance seeded with fixture data
+  - `Verify:` `pnpm --filter @prontiq/api test:integration` against local Docker or CI service container
+  - `Evidence:` `packages/api/src/search/queries.integration.test.ts` (13 tests including `16 heath crese` fallback, typo'd-word fuzzy, multi-state RICHMOND aggregation) + fixture dataset in `__fixtures__/addresses.ts`
+- [x] Integration tests run in CI before merge
+  - `Verify:` `.github/workflows/ci.yml` includes `integration-test` job with OpenSearch 2.19 service container, gating `deploy-dev`
+  - `Evidence:` CI job spins up OpenSearch, waits for health, runs test suite
   - `Verify:` `q=16+heath+crese` ranks CRESCENT first
   - `Verify:` `q=16+haeth+crescent` (typo) finds HEATH CRESCENT via fuzzy
   - `Verify:` `?suburb=bondi+beech` returns matched as BONDI BEACH with consistent postcodes
@@ -1006,6 +1012,59 @@ The API package had zero automated tests. Search semantics across `autocomplete`
 - Load testing → separate (P1F.02 monitoring)
 - E2E browser testing → not applicable
 - Coverage gate → opinionated; maintainers may add later
+
+---
+
+### Ticket P1A.13 — Tighten Validate Confidence Thresholds
+
+```yaml
+id: P1A.13
+title: Tighten Validate Confidence Thresholds
+status: complete
+priority: p2-value
+epic: P1A
+persona: [api-consumer]
+depends_on: [P1A.03, P1A.11]
+completed: 2026-04-14
+```
+
+#### User Story
+
+As an API consumer, I rely on validate's confidence to gate my form-submission flow. Nonsense input should return `none` or `low`, not `medium`.
+
+#### Problem Statement
+
+Discovered via post-deploy smoke test: `?q=zzz1234+nonexistent+nowhere` returns `confidence: "medium"`. This happens because fuzzy matching produces a moderate BM25 score against any partial token match (e.g. a single matching character class). Current thresholds:
+
+- `> 20` → high
+- `10-20` → medium
+- `< 10` → low
+- (only no-hits) → none
+
+With `fuzziness: AUTO`, almost any input scores ≥ 10 against the 15M-doc index. Need to tighten or add a minimum-meaningful-match threshold.
+
+#### Definition of Done
+
+- [x] `?q=zzz1234+nonexistent+nowhere` returns `confidence: "none"` (verified by integration test against fixture index)
+- [x] `?q=16+heath+crescent+hampton+east+vic+3188` still returns a valid match (confidence threshold calibrated for 15M-doc prod; fixture index uses different score range)
+- [x] Smoke test assertion tightened back to `expect none/low`
+- [x] Implementation: `scoreToConfidence(score, query, matchedLabel)` combines BM25 with token-coverage gate (require ≥40% exact token overlap before any non-"none" confidence)
+
+#### Approach
+
+Options:
+- Raise medium threshold (e.g. score > 15)
+- Add minimum match-token-coverage requirement (e.g. ≥ 50% of input tokens must match exactly)
+- Combine both
+
+#### Scope
+
+**In:** Tuning `validate()` confidence thresholds in `queries.ts`
+
+**Out — Do Not Implement:**
+
+- Confidence on autocomplete (different semantic — autocomplete is suggestion, not validation)
+- Configurable thresholds via API param → over-engineering
 
 ---
 

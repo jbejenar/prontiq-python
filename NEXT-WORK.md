@@ -59,7 +59,7 @@ The platform serves real traffic from `api.prontiq.dev`. The prod DynamoDB keys 
 | File | Purpose | When to Read |
 |------|---------|--------------|
 | `ARCHITECTURE.MD` | Full platform design | When you need design context |
-| `ROADMAP.md` | Master plan (71 tickets) | When you need the full scope |
+| `ROADMAP.md` | Master plan (72 tickets) | When you need the full scope |
 | `sst.config.ts` | Infrastructure definition | When working on infra |
 | `packages/shared/src/constants.ts` | Product registry, tier limits | When working on auth/billing |
 | `packages/api/src/index.ts` | API entry point | When working on routes |

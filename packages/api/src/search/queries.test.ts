@@ -1,3 +1,28 @@
+/**
+ * DSL unit tests for OpenSearch queries.
+ *
+ * SCOPE: These tests verify query CONSTRUCTION — that the code emits the
+ * expected request body shape (operator, fuzziness, fields, limits, etc.)
+ * They use a mock OpenSearch client and DO NOT execute against real
+ * OpenSearch.
+ *
+ * WHAT THESE TESTS CATCH:
+ * - Accidental regressions in query DSL (e.g. removing `operator: "and"`)
+ * - Phase-2 fallback chains and their conditions
+ * - Default values (limits, source filters)
+ * - Parameter wiring from route → query function
+ *
+ * WHAT THESE TESTS DO NOT CATCH:
+ * - Real OpenSearch ranking behavior (e.g. whether `crese` actually
+ *   returns 0 with operator AND — discovered post-deploy in PR #38)
+ * - Fuzziness behavior on `search_as_you_type` n-gram subfields
+ * - Aggregation accuracy against real data
+ * - Latency / timeouts
+ *
+ * Integration tests against a fixture OpenSearch index are tracked in P1A.12.
+ * Until those exist, post-deploy manual verification on dev is required for
+ * search behavior changes.
+ */
 import test from "node:test";
 import assert from "node:assert/strict";
 import { __setClientForTesting } from "./client.js";
@@ -42,19 +67,40 @@ function emptyHits(): AnyRecord {
   return { body: { hits: { hits: [], total: { value: 0 } } } };
 }
 
-test("autocomplete: uses bool_prefix with operator AND and fuzziness AUTO", async () => {
-  const { client, calls } = makeMockClient([emptyHits()]);
+function hits(addresses: { id: string; addressLabel: string; localityName: string; state: string; postcode: string }[]): AnyRecord {
+  return {
+    body: {
+      hits: {
+        hits: addresses.map((a) => ({
+          _id: a.id,
+          _score: 10,
+          _source: {
+            addressLabel: a.addressLabel,
+            localityName: a.localityName,
+            state: a.state,
+            postcode: a.postcode,
+          },
+        })),
+        total: { value: addresses.length },
+      },
+    },
+  };
+}
+
+test("autocomplete: phase 1 uses bool_prefix with operator AND and fuzziness AUTO", async () => {
+  const phase1Result = hits([{ id: "GA1", addressLabel: "16 HEATH CRESCENT", localityName: "GRIFFITH", state: "NSW", postcode: "2680" }]);
+  const { client, calls } = makeMockClient([phase1Result]);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   __setClientForTesting(client as any);
 
   await queries.autocomplete("16 heath cres");
 
-  assert.equal(calls.length, 1);
+  assert.equal(calls.length, 1, "only phase 1 needed when results found");
   const body = calls[0]!.body;
   assert.equal(body.size, 5, "default limit is 5");
   const mm = body.query.bool.must[0].multi_match;
   assert.equal(mm.type, "bool_prefix");
-  assert.equal(mm.operator, "and", "operator must be AND so all tokens required");
+  assert.equal(mm.operator, "and", "phase 1 must use AND for best ranking");
   assert.equal(mm.fuzziness, "AUTO", "fuzziness must be AUTO for typo tolerance");
   assert.deepEqual(mm.fields, [
     "addressLabelSearch",
@@ -66,16 +112,42 @@ test("autocomplete: uses bool_prefix with operator AND and fuzziness AUTO", asyn
   __setClientForTesting(undefined);
 });
 
-test("autocomplete: state filter adds term filter", async () => {
-  const { client, calls } = makeMockClient([emptyHits()]);
+test("autocomplete: phase 2 fallback to OR when phase 1 returns 0 (typo'd prefix like 'crese')", async () => {
+  const phase2Result = hits([
+    { id: "GA1", addressLabel: "16 HEATH ROAD", localityName: "LEPPINGTON", state: "NSW", postcode: "2179" },
+    { id: "GA2", addressLabel: "16 HEATH CRESCENT", localityName: "GRIFFITH", state: "NSW", postcode: "2680" },
+  ]);
+  const { client, calls } = makeMockClient([emptyHits(), phase2Result]);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  __setClientForTesting(client as any);
+
+  const result = await queries.autocomplete("16 heath crese");
+
+  assert.equal(calls.length, 2, "phase 2 must run when phase 1 is empty");
+  // Phase 1: AND
+  assert.equal(calls[0]!.body.query.bool.must[0].multi_match.operator, "and");
+  // Phase 2: OR
+  assert.equal(calls[1]!.body.query.bool.must[0].multi_match.operator, "or");
+  // Phase 2 still has fuzziness
+  assert.equal(calls[1]!.body.query.bool.must[0].multi_match.fuzziness, "AUTO");
+  // Returns the lenient results, not empty
+  assert.equal(result.suggestions.length, 2);
+
+  __setClientForTesting(undefined);
+});
+
+test("autocomplete: state filter adds term filter to BOTH phases", async () => {
+  const { client, calls } = makeMockClient([emptyHits(), emptyHits()]);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   __setClientForTesting(client as any);
 
   await queries.autocomplete("16 heath", "vic", 10);
 
-  const body = calls[0]!.body;
-  assert.equal(body.size, 10);
-  assert.deepEqual(body.query.bool.must[1], { term: { state: "VIC" } });
+  // Phase 1
+  assert.equal(calls[0]!.body.size, 10);
+  assert.deepEqual(calls[0]!.body.query.bool.must[1], { term: { state: "VIC" } });
+  // Phase 2 fallback also has state
+  assert.deepEqual(calls[1]!.body.query.bool.must[1], { term: { state: "VIC" } });
 
   __setClientForTesting(undefined);
 });

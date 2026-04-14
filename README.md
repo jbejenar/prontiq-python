@@ -84,12 +84,12 @@ packages/
 
 ## Roadmap Progress
 
-See [`ROADMAP.md`](ROADMAP.md) for the full 71-ticket plan.
+See [`ROADMAP.md`](ROADMAP.md) for the full 72-ticket plan.
 
 | Phase   | Epic                      | Tickets | Done      |
 | ------- | ------------------------- | ------- | --------- |
 | **P0**  | Infrastructure Foundation | 6       | 6/6       |
-| **P1A** | API Core (Address)        | 12      | 7/12      |
+| **P1A** | API Core (Address)        | 13      | 9/13      |
 | **P1B** | Auth & Billing            | 9       | 0/9       |
 | **P1C** | Dashboard                 | 7       | 0/7       |
 | **P1D** | Docs & SDK                | 5       | 2/5       |
@@ -99,7 +99,7 @@ See [`ROADMAP.md`](ROADMAP.md) for the full 71-ticket plan.
 | **P3**  | LEI + Full Dashboard      | 7       | 0/7       |
 | **P4**  | Shopify + WooCommerce     | 5       | 0/5       |
 | **P5**  | CVE/NVD + Patents         | 4       | 0/4       |
-|         |                           | **71**  | **20/71** |
+|         |                           | **72**  | **22/72** |
 
 ## Commands
 

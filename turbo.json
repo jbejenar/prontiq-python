@@ -16,6 +16,11 @@
     "test": {
       "dependsOn": ["build"]
     },
+    "test:integration": {
+      "dependsOn": ["build"],
+      "env": ["OPENSEARCH_TEST_URL"],
+      "cache": false
+    },
     "clean": {
       "cache": false
     }
