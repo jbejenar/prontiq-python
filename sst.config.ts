@@ -89,15 +89,29 @@ export default $config({
     });
 
     // -- Dashboard: Next.js developer portal --
-    const portal = new sst.aws.Nextjs("PqPortal", {
-      path: "packages/dashboard",
-      environment: {
-        NEXT_PUBLIC_API_URL: api.url,
-        NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY ?? "",
-        CLERK_SECRET_KEY: process.env.CLERK_SECRET_KEY ?? "",
-        CLERK_WEBHOOK_SECRET: process.env.CLERK_WEBHOOK_SECRET ?? "",
-      },
-    });
+    //
+    // Deployed in prod only. The dashboard is a skeleton (8 placeholder
+    // routes) pending the P1B provisioning chain (Clerk → Unkey → Stripe)
+    // and the Architecture v2.1 §7 account page redesign.
+    //
+    // Skipping it in non-prod stages (dev, staging, PR previews) saves
+    // ~10-15 minutes per CI run (Next.js compile + OpenNext bundling +
+    // CloudFront distribution). The prod portal keeps serving at
+    // d3fv3o064cbsg8.cloudfront.net so this change has zero prod impact.
+    //
+    // To tear down the prod portal entirely (intentional, separate change),
+    // set portal to undefined unconditionally and plan the resource removal.
+    const portal = isProd
+      ? new sst.aws.Nextjs("PqPortal", {
+          path: "packages/dashboard",
+          environment: {
+            NEXT_PUBLIC_API_URL: api.url,
+            NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY ?? "",
+            CLERK_SECRET_KEY: process.env.CLERK_SECRET_KEY ?? "",
+            CLERK_WEBHOOK_SECRET: process.env.CLERK_WEBHOOK_SECRET ?? "",
+          },
+        })
+      : undefined;
 
     // ═══════════════════════════════════════════════════════════════════════
     // INGESTION PIPELINE
@@ -556,7 +570,7 @@ export default $config({
 
     return {
       api: api.url,
-      portal: portal.url,
+      ...(portal ? { portal: portal.url } : {}),
       stateMachine: stateMachine.arn,
       ingestAlerts: ingestAlerts.arn,
     };
