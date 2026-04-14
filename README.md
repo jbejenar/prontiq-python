@@ -26,12 +26,11 @@ pnpm build
 ### Local Development
 
 ```bash
-# Start SST dev mode (live Lambda + Next.js)
+# Start SST dev mode (live Lambda)
 pnpm dev
 
 # Or work on individual packages
 pnpm --filter @prontiq/api typecheck
-pnpm --filter @prontiq/dashboard dev
 ```
 
 ### Deploy
@@ -57,9 +56,8 @@ See [`ARCHITECTURE.MD`](ARCHITECTURE.MD) for the full design (1,451 lines).
 packages/
   shared/          @prontiq/shared      Types, constants, Zod schemas
   api/             @prontiq/api         Hono API on Lambda (ARM64)
-  dashboard/       @prontiq/dashboard   Next.js 15 developer portal
   ingestion/       @prontiq/ingestion   Step Functions + Lambda indexing
-  webhooks/        @prontiq/webhooks    Clerk, Stripe, Unkey handlers
+  webhooks/        @prontiq/webhooks    Clerk, Stripe, Unkey handlers (future — P1B)
   docs/            @prontiq/docs        Mintlify documentation
   plugins/
     shopify/                            Checkout UI Extension
@@ -74,10 +72,10 @@ packages/
 | Infrastructure | SST v4 + Pulumi                                        |
 | API            | Hono + @hono/zod-openapi on Lambda (ARM64, Node.js 20) |
 | Search         | OpenSearch 2.19 (managed)                              |
-| Auth (portal)  | Clerk                                                  |
-| API Keys       | Unkey + DynamoDB (hot-path verification)               |
-| Billing        | Stripe (metered, per-product)                          |
-| Dashboard      | Next.js 15 + Clerk + shadcn/ui                         |
+| API Keys       | DynamoDB (hot-path verification; Unkey webhook sync planned — P1B) |
+| Auth (portal)  | Clerk (planned — P1B)                                  |
+| Billing        | Stripe (planned — P1B)                                 |
+| Dashboard      | Removed — to be rebuilt per Architecture v2.1 §7 (P1C) |
 | Docs           | Mintlify at `docs.prontiq.dev` (live)                  |
 | SDKs           | Speakeasy generates `@prontiq/sdk` (TypeScript) — npm publish pending NPM_TOKEN |
 | CI/CD          | GitHub Actions + OIDC (no stored credentials)          |

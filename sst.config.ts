@@ -7,7 +7,6 @@
  * Component names are chosen so generated AWS names read naturally:
  *   "PqKeys"     → prontiq-dev-PqKeysTable-xxx           (DynamoDB)
  *   "PqApi"      → prontiq-dev-PqApiApi-xxx               (API Gateway)
- *   "PqPortal"   → prontiq-dev-PqPortalAssetsBucket-xxx   (Dashboard S3/CloudFront)
  *
  * App name: "prontiq" (short, clean AWS console names)
  */
@@ -88,30 +87,9 @@ export default $config({
       },
     });
 
-    // -- Dashboard: Next.js developer portal --
-    //
-    // Deployed in prod only. The dashboard is a skeleton (8 placeholder
-    // routes) pending the P1B provisioning chain (Clerk → Unkey → Stripe)
-    // and the Architecture v2.1 §7 account page redesign.
-    //
-    // Skipping it in non-prod stages (dev, staging, PR previews) saves
-    // ~10-15 minutes per CI run (Next.js compile + OpenNext bundling +
-    // CloudFront distribution). The prod portal keeps serving at
-    // d3fv3o064cbsg8.cloudfront.net so this change has zero prod impact.
-    //
-    // To tear down the prod portal entirely (intentional, separate change),
-    // set portal to undefined unconditionally and plan the resource removal.
-    const portal = isProd
-      ? new sst.aws.Nextjs("PqPortal", {
-          path: "packages/dashboard",
-          environment: {
-            NEXT_PUBLIC_API_URL: api.url,
-            NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY ?? "",
-            CLERK_SECRET_KEY: process.env.CLERK_SECRET_KEY ?? "",
-            CLERK_WEBHOOK_SECRET: process.env.CLERK_WEBHOOK_SECRET ?? "",
-          },
-        })
-      : undefined;
+    // Customer dashboard removed. The next account surface will be built
+    // fresh per the Architecture v2.1 §7 design when P1B ships (Clerk +
+    // billing provisioning chain). See packages/web/ when that work begins.
 
     // ═══════════════════════════════════════════════════════════════════════
     // INGESTION PIPELINE
@@ -570,7 +548,6 @@ export default $config({
 
     return {
       api: api.url,
-      ...(portal ? { portal: portal.url } : {}),
       stateMachine: stateMachine.arn,
       ingestAlerts: ingestAlerts.arn,
     };
