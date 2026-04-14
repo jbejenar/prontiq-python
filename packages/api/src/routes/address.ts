@@ -274,8 +274,8 @@ const postcodeLookupRoute = createRoute({
 });
 
 addressRoutes.openapi(postcodeLookupRoute, async (c) => {
-  const { postcode } = c.req.valid("query");
-  const result = await queries.lookupPostcode(postcode);
+  const { postcode, limit } = c.req.valid("query");
+  const result = await queries.lookupPostcode(postcode, limit);
   return c.json(result, 200);
 });
 
@@ -294,7 +294,7 @@ const suburbLookupRoute = createRoute({
 });
 
 addressRoutes.openapi(suburbLookupRoute, async (c) => {
-  const { suburb, state } = c.req.valid("query");
-  const result = await queries.lookupSuburb(suburb, state);
+  const { suburb, state, limit } = c.req.valid("query");
+  const result = await queries.lookupSuburb(suburb, state, limit);
   return c.json(result, 200);
 });

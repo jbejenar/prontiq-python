@@ -1861,6 +1861,19 @@
                         "description": "Australian 4-digit postcode.",
                         "name": "postcode",
                         "in": "query"
+                    },
+                    {
+                        "schema": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 50,
+                            "default": 10,
+                            "description": "Maximum number of localities to return."
+                        },
+                        "required": false,
+                        "description": "Maximum number of localities to return.",
+                        "name": "limit",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -2151,6 +2164,19 @@
                         "required": false,
                         "description": "Australian state code.",
                         "name": "state",
+                        "in": "query"
+                    },
+                    {
+                        "schema": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 20,
+                            "default": 10,
+                            "description": "Maximum number of postcodes to return."
+                        },
+                        "required": false,
+                        "description": "Maximum number of postcodes to return.",
+                        "name": "limit",
                         "in": "query"
                     }
                 ],

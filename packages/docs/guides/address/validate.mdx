@@ -40,6 +40,18 @@ const { match, confidence } = await res.json();
 }
 ```
 
+## Typo tolerance
+
+Validate is fuzzy-matched — minor typos still resolve to the correct address with appropriate confidence:
+
+```bash
+# Both queries return the same match
+curl ".../v1/address/validate?q=16+heath+crescent+hampton+east+vic+3188"
+curl ".../v1/address/validate?q=16+haeth+crescent+hampton+east+vic+3188"  # typo
+```
+
+A clean match returns `confidence: "high"`. A fuzzy match typically returns `medium` or `low` — use that signal to flag uncertain matches for review.
+
 ## Confidence levels
 
 | Level | Score | Meaning |

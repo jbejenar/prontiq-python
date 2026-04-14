@@ -5,6 +5,92 @@
 
 ---
 
+## Session 7 — 2026-04-14
+
+**Focus:** Search relevance + comprehensive doc audit
+
+**Completed:**
+
+- [x] PR #38 — autocomplete `operator: "and"` + `fuzziness: "AUTO"` (fixes `16 heath crese` ranking CRESCENT correctly)
+- [x] Validate fuzzy matching for typo'd full addresses
+- [x] Suburb lookup: fuzzy keyword match with `prefix_length: 1`, returns matched suburb name (not input echo)
+- [x] Postcode + suburb lookups: `limit` query param (default 10)
+- [x] Roadmap: P1A.11 ticket added, P1D.01/P1D.04/P1F.01 marked complete, P1A.03 confidence value fixed (0 → "none")
+- [x] README: stack updated (SST v3→v4, SDKs live), progress table refreshed (20/70 done)
+- [x] NEXT-WORK.md: full refresh — current URLs, recent ships, P1B as next sprint
+- [x] AGENTS.md: stack note updated
+- [x] CHANGELOG.md: populated with Unreleased + 2026-04-13 entries
+
+**Honest caveats:**
+
+- Fuzzy behavior on `search_as_you_type` n-gram subfields is undocumented in OpenSearch — needs dev verification once PR #38 deploys
+- Latency impact of fuzzy + prefix_length untested (expected sub-30ms)
+
+**Next session should start with:**
+
+1. Read NEXT-WORK.md
+2. Verify PR #38 on dev API after CI deploy: `q=16+heath+crese` returns CRESCENT first; `q=16+haeth+crescent` finds via fuzzy
+3. If verified, deploy PR #38 to prod
+4. Begin P1B (auth & billing): Clerk → Unkey → DynamoDB → Stripe provisioning chain
+
+---
+
+## Session 6 — 2026-04-13 (evening)
+
+**Focus:** `api.prontiq.dev` custom domain + ECR state issue
+
+**Completed:**
+
+- [x] PR #36 merged — added domain config to ApiGatewayV2
+- [x] PR #37 merged — fixed ECR state drift via Pulumi `import`, holistic stage-qualification (ECR repo, task family, log group, custom domain all gated to prod)
+- [x] ACM cert validated (after CAA record fight — Vercel needed `0 issue "amazon.com"` at root)
+- [x] Vercel CNAME: `api.prontiq.dev` → API Gateway domain
+- [x] Prod deploy successful, all 6 endpoints verified on `api.prontiq.dev`
+- [x] Seeded prod API key in DynamoDB (`pq_live_prod_000000000000000000000000`)
+
+**Issues encountered:**
+
+- ACM kept failing with CAA_ERROR until root-level `amazon.com` CAA record was added
+- ECR repo existed in AWS but not in SST state (from interrupted earlier deploy) — required `import` directive
+
+---
+
+## Session 5 — 2026-04-13 (afternoon)
+
+**Focus:** Speakeasy TypeScript SDK pipeline
+
+**Completed:**
+
+- [x] PR #33 merged — Speakeasy config (`.speakeasy/workflow.yaml`, `.speakeasy/gen.yaml`)
+- [x] PR #37 (above) merged related ECR/domain fixes
+- [x] CI spec-drift gate added (regenerates `openapi.json` from Zod, fails if stale)
+- [x] Pinned Speakeasy version (v1.761.3)
+- [x] `validate.confidence: 0` → `"none"` for clean string enum (Speakeasy can't handle mixed string/int union)
+- [x] Speakeasy generated `@prontiq/sdk` v0.1.0 (PR #35 merged) — published structure ready for npm
+
+**Manual steps required:**
+
+- `SPEAKEASY_API_KEY` GitHub secret (added)
+- `NPM_TOKEN` GitHub secret (still pending)
+- Workflow permissions: "Allow GitHub Actions to create and approve pull requests" (enabled)
+
+---
+
+## Session 4 — 2026-04-13 (morning)
+
+**Focus:** Mintlify docs
+
+**Completed:**
+
+- [x] PR #32 merged — full Mintlify rewrite, Luma theme, 18 MDX pages
+- [x] OpenAPI playground integrated, all 6 endpoints
+- [x] `docs.prontiq.dev` live
+- [x] PR #34 merged — removed "early access" framing, fixed broken dashboard links
+- [x] Sidebar navigation fix (groups nested in tabs)
+- [x] Root URL redirect to `/guides/introduction`
+
+---
+
 ## Session 3 — 2026-04-10
 
 **Focus:** P1A.01 OpenAPI route migration + roadmap audit

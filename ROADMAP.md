@@ -1,7 +1,7 @@
 # Prontiq Platform — Roadmap
 
 > A unified data API platform for Australian and global open data.
-> Last updated: 2026-04-10 · v1.1
+> Last updated: 2026-04-14 · v1.2
 >
 > **Reference:** `ARCHITECTURE.MD` is the authoritative design doc. This roadmap is the execution plan.
 
@@ -11,7 +11,7 @@
 
 **Pattern:** Free open dataset → independent pipeline → S3 (NDJSON + manifest.json) → event-driven indexing → OpenSearch → commercial API → auth / billing / docs / SDKs.
 
-**Stack:** SST v3 + Pulumi · Hono + @hono/zod-openapi · OpenSearch 2.13 · DynamoDB · Clerk · Unkey · Stripe · Next.js 15 · Mintlify · Speakeasy
+**Stack:** SST v4 + Pulumi · Hono + @hono/zod-openapi · OpenSearch 2.19 · DynamoDB · Clerk · Unkey · Stripe · Next.js 15 · Mintlify · Speakeasy
 
 **Repo:** pnpm monorepo with Turborepo. 10 workspace packages. TypeScript strict. ESM only.
 
@@ -19,20 +19,20 @@
 
 ## Summary
 
-| Phase     | Epic                       | Tickets | Done      | Target      |
-| --------- | -------------------------- | ------- | --------- | ----------- |
-| **P0**    | Infrastructure Foundation  | 6       | 6/6 ✅    | Week 1      |
-| **P1A**   | API Core (Address)         | 10      | 7/10      | Weeks 2-3   |
-| **P1B**   | Auth & Billing             | 9       | 0/9       | Weeks 3-4   |
-| **P1C**   | Dashboard                  | 7       | 0/7       | Weeks 4-5   |
-| **P1D**   | Docs & SDK                 | 5       | 0/5       | Week 5      |
-| **P1E**   | Ingestion (Phase 1)        | 6       | 4/6       | Week 6      |
-| **P1F**   | Distribution               | 2       | 0/2       | Week 6      |
-| **P2**    | ABN/ASIC Verification      | 8       | 0/8       | Weeks 7-10  |
-| **P3**    | GLEIF/LEI + Full Dashboard | 7       | 0/7       | Weeks 11-13 |
-| **P4**    | Shopify + WooCommerce      | 5       | 0/5       | Weeks 14-17 |
-| **P5**    | CVE/NVD + Patents          | 4       | 0/4       | Weeks 18-21 |
-| **Total** |                            | **69**  | **17/69** |             |
+| Phase     | Epic                       | Tickets | Done       | Target      |
+| --------- | -------------------------- | ------- | ---------- | ----------- |
+| **P0**    | Infrastructure Foundation  | 6       | 6/6 ✅     | Week 1      |
+| **P1A**   | API Core (Address)         | 12      | 7/12       | Weeks 2-3   |
+| **P1B**   | Auth & Billing             | 9       | 0/9        | Weeks 3-4   |
+| **P1C**   | Dashboard                  | 7       | 0/7        | Weeks 4-5   |
+| **P1D**   | Docs & SDK                 | 5       | 2/5        | Week 5      |
+| **P1E**   | Ingestion (Phase 1)        | 6       | 4/6        | Week 6      |
+| **P1F**   | Distribution               | 2       | 1/2        | Week 6      |
+| **P2**    | ABN/ASIC Verification      | 8       | 0/8        | Weeks 7-10  |
+| **P3**    | GLEIF/LEI + Full Dashboard | 7       | 0/7        | Weeks 11-13 |
+| **P4**    | Shopify + WooCommerce      | 5       | 0/5        | Weeks 14-17 |
+| **P5**    | CVE/NVD + Patents          | 4       | 0/4        | Weeks 18-21 |
+| **Total** |                            | **71**  | **20/71**  |             |
 
 ---
 
@@ -510,7 +510,7 @@ Address autocomplete is the flagship endpoint — the first thing developers try
 **Out — Do Not Implement:**
 
 - Proximity biasing (lat/lon boost) → future enhancement
-- Fuzzy matching for typos → future enhancement
+- Fuzzy matching for typos → P1A.11 (shipped after launch)
 - Address component parsing → P1A.03 (validate handles this)
 
 ---
@@ -545,9 +545,9 @@ Address validation is the core business use case. Users paste a full address str
 - [ ] Returns best match with `id`, full address fields, and confidence (`high`/`medium`/`low`)
   - `Verify:` Query with known address returns `confidence: "high"`
   - `Evidence:` "16 heath crescent hampton east vic 3188" → match with high confidence
-- [ ] Returns `null` match and `confidence: 0` when no confident result found
+- [ ] Returns `null` match and `confidence: "none"` when no confident result found
   - `Verify:` Query with garbage string "zzz123 nonexistent" returns null match
-  - `Evidence:` `{ "match": null, "confidence": 0 }`
+  - `Evidence:` `{ "match": null, "confidence": "none" }`
 - [ ] Confidence thresholds tuned against known-good test queries
   - `Verify:` Test suite with 20+ known addresses and expected confidence levels
   - `Evidence:` Threshold values documented in code comments
@@ -893,6 +893,119 @@ A t3.small OpenSearch node with ~128 max connections can be overwhelmed by a sin
 - Geographic restrictions → not needed (LEI is international)
 - Custom WAF rules per customer → future
 - Bot detection → future
+
+---
+
+### Ticket P1A.11 — Search Relevance + Fuzzy Matching
+
+```yaml
+id: P1A.11
+title: Search Relevance + Fuzzy Matching
+status: in-progress
+priority: p1-high
+epic: P1A
+persona: [api-consumer]
+depends_on: [P1A.02, P1A.03, P1A.06, P1A.07]
+completed: null
+tech_stack:
+  search: OpenSearch bool_prefix + best_fields + fuzzy
+```
+
+#### User Story
+
+As a developer, autocomplete and validate should rank the address I'm typing accurately and tolerate small typos so that my users get the right result with the first call.
+
+#### Problem Statement
+
+`multi_match` with `bool_prefix` defaulted to OR operator, so `16 heath crese` returned `HEATH ROAD`/`HEATH STREET` ranked equally with `HEATH CRESCENT` (all scored 26.37 — the prefix `crese` was unused). Validate had no typo tolerance — `16 haeth crescent` would mismatch. Suburb lookup required exact spelling. Postcode/suburb lookups had no `limit` param.
+
+#### Definition of Done
+
+##### Functional
+
+- [x] Autocomplete: `operator: "and"` so all tokens must match (last as prefix)
+  - `Verify:` `q=16+heath+crese` returns CRESCENT first
+- [x] Autocomplete: `fuzziness: "AUTO"` for typos in completed words
+  - `Verify:` `q=16+haeth+crescent` finds 16 HEATH CRESCENT
+  - `Note:` Per ES semantics, fuzziness doesn't apply to the prefix (last) token
+- [x] Validate: `fuzziness: "AUTO"` so typo'd full addresses still validate
+  - `Verify:` Validate still matches with appropriate confidence on typos
+- [x] Suburb lookup: fuzzy match with `prefix_length: 1` (first char must match)
+  - `Verify:` `?suburb=bondi+beech` returns matched as BONDI BEACH
+- [x] Suburb lookup: response `suburb` field returns matched name (not input echo)
+- [x] Postcode lookup: new `limit` param (default 10, max 50)
+- [x] Suburb lookup: new `limit` param (default 10, max 20)
+- [x] Docs and OpenAPI spec regenerated and committed
+
+#### Scope
+
+**In:** Query-side relevance + fuzziness, limit params on lookups
+
+**Out — Do Not Implement:**
+
+- Mapping changes (no reindex required) → only if query-side proves insufficient
+- Last-token fuzzy on autocomplete → not supported by ES bool_prefix; would need custom workaround
+- Synonyms / phonetic matching → future
+- Popularity / frequency boosting → future
+- Per-product search tuning beyond address → handled per-product when needed
+
+#### Tradeoffs
+
+- Default `limit` for both lookups changed from 50/20 → 10. Callers can opt back in via explicit `limit`.
+- Suburb fuzzy may match other suburbs within 2 edits of the input (rare in practice — keyword fuzzy is bounded by full-string edit distance, not tokenized).
+- Latency impact untested (expected sub-30ms increase).
+
+---
+
+### Ticket P1A.12 — API Test Suite
+
+```yaml
+id: P1A.12
+title: API Test Suite
+status: in-progress
+priority: p1-high
+epic: P1A
+persona: [builder]
+depends_on: [P1A.02, P1A.03, P1A.06, P1A.07]
+completed: null
+tech_stack:
+  test_runner: node:test (built-in)
+  mocking: __setClientForTesting injection point
+  future: fixture OpenSearch index for end-to-end integration tests
+```
+
+#### User Story
+
+As a builder, search behavior changes (relevance, fuzziness, ranking, defaults) should fail CI when a refactor breaks them — not be discovered after deploy.
+
+#### Problem Statement
+
+The API package had zero automated tests. Search semantics across `autocomplete`, `validate`, `lookupPostcode`, and `lookupSuburb` are tuned via OpenSearch DSL — a single typo in `operator`, `fuzziness`, or `prefix_length` silently changes ranking. P1A.11 originally shipped with manual verification only; the bug-4 regression (state collapsing in `lookupSuburb` two-phase fix) demonstrated why DSL tests are needed.
+
+#### Definition of Done
+
+##### Functional
+
+- [x] node:test set up for `@prontiq/api` package (matches ingestion package pattern)
+- [x] DSL assertion tests verify generated OpenSearch query shape for each endpoint
+  - `Verify:` `pnpm --filter @prontiq/api test` runs in CI via Turbo
+  - `Evidence:` `packages/api/src/search/queries.test.ts` (9 tests covering autocomplete operator+fuzziness, validate fuzziness+none confidence, lookupPostcode limit, lookupSuburb two-phase + state behavior + Bug 4 regression)
+- [ ] Integration tests against a small fixture OpenSearch index (Docker Compose or Testcontainers)
+  - `Verify:` `q=16+heath+crese` ranks CRESCENT first
+  - `Verify:` `q=16+haeth+crescent` (typo) finds HEATH CRESCENT via fuzzy
+  - `Verify:` `?suburb=bondi+beech` returns matched as BONDI BEACH with consistent postcodes
+  - `Verify:` `?postcode=2000&limit=3` returns exactly 3 localities
+- [ ] Tests run in CI (GitHub Actions)
+
+#### Scope
+
+**In:** API search behavior — query construction, ranking, fuzzy, defaults, response shape
+
+**Out — Do Not Implement:**
+
+- Load testing → separate (P1F.02 monitoring)
+- E2E browser testing → not applicable
+- Coverage gate → opinionated; maintainers may add later
 
 ---
 
@@ -1795,12 +1908,12 @@ Without a design system, each dashboard page will look different — inconsisten
 ```yaml
 id: P1D.01
 title: Mintlify Docs Site
-status: pending
+status: complete
 priority: p0-critical
 epic: P1D
 persona: [api-consumer]
 depends_on: [P1A.01]
-completed: null
+completed: 2026-04-13
 ```
 
 #### Problem Statement
@@ -1948,12 +2061,12 @@ Mintlify auto-generates API reference from the OpenAPI spec (P1D.01), but the au
 ```yaml
 id: P1D.04
 title: Speakeasy TypeScript SDK
-status: pending
+status: complete
 priority: p1-high
 epic: P1D
 persona: [api-consumer]
 depends_on: [P1A.01]
-completed: null
+completed: 2026-04-13
 tech_stack:
   sdk: Speakeasy (free tier: 1 SDK, 50 methods)
   publish: npm
@@ -2401,12 +2514,12 @@ After each alias swap, the old index stays around for rollback (7 days for addre
 ```yaml
 id: P1F.01
 title: Custom Domain Setup
-status: pending
+status: complete
 priority: p1-high
 epic: P1F
 persona: [builder]
 depends_on: [P0.02]
-completed: null
+completed: 2026-04-13
 tech_stack:
   dns: Route 53 or external registrar
   ssl: ACM (AWS Certificate Manager)

@@ -127,9 +127,23 @@ export const postcodeLookupSchema = z.object({
     .string()
     .regex(/^\d{4}$/)
     .describe("Australian 4-digit postcode."),
+  limit: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(50)
+    .default(10)
+    .describe("Maximum number of localities to return."),
 });
 
 export const suburbLookupSchema = z.object({
   suburb: z.string().min(1).max(100).describe("Suburb/locality name."),
   state: australianStateSchema.optional(),
+  limit: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(20)
+    .default(10)
+    .describe("Maximum number of postcodes to return."),
 });

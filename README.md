@@ -6,9 +6,11 @@ Prontiq is starting with developer-friendly Australian address validation. The b
 
 ## Current Product
 
-| Product                        | Endpoint        | Data Source | Status      |
-| ------------------------------ | --------------- | ----------- | ----------- |
-| **Address Validation** (G-NAF) | `/v1/address/*` | data.gov.au | In progress |
+| Product                        | Endpoint        | Data Source | Status                     |
+| ------------------------------ | --------------- | ----------- | -------------------------- |
+| **Address Validation** (G-NAF) | `/v1/address/*` | data.gov.au | Live — 15M docs, 6 endpoints |
+
+Live at `https://api.prontiq.dev`. Docs at `https://docs.prontiq.dev`. TypeScript SDK auto-generated to `sdks/typescript/` (npm publish pending).
 
 Future products are roadmap items, not active docs/API surfaces yet.
 
@@ -69,35 +71,35 @@ packages/
 
 | Layer          | Tool                                                   |
 | -------------- | ------------------------------------------------------ |
-| Infrastructure | SST v3 + Pulumi                                        |
+| Infrastructure | SST v4 + Pulumi                                        |
 | API            | Hono + @hono/zod-openapi on Lambda (ARM64, Node.js 20) |
-| Search         | OpenSearch 2.13 (managed)                              |
+| Search         | OpenSearch 2.19 (managed)                              |
 | Auth (portal)  | Clerk                                                  |
 | API Keys       | Unkey + DynamoDB (hot-path verification)               |
 | Billing        | Stripe (metered, per-product)                          |
 | Dashboard      | Next.js 15 + Clerk + shadcn/ui                         |
-| Docs           | Mintlify (from OpenAPI spec)                           |
-| SDKs           | Planned: Speakeasy (from OpenAPI spec)                 |
+| Docs           | Mintlify at `docs.prontiq.dev` (live)                  |
+| SDKs           | Speakeasy generates `@prontiq/sdk` (TypeScript) — npm publish pending NPM_TOKEN |
 | CI/CD          | GitHub Actions + OIDC (no stored credentials)          |
 
 ## Roadmap Progress
 
-See [`ROADMAP.md`](ROADMAP.md) for the full 69-ticket plan (3,641 lines).
+See [`ROADMAP.md`](ROADMAP.md) for the full 71-ticket plan.
 
-| Phase   | Epic                      | Tickets | Done     |
-| ------- | ------------------------- | ------- | -------- |
-| **P0**  | Infrastructure Foundation | 6       | 5/6      |
-| **P1A** | API Core (Address)        | 10      | 1/10     |
-| **P1B** | Auth & Billing            | 9       | 0/9      |
-| **P1C** | Dashboard                 | 7       | 0/7      |
-| **P1D** | Docs & SDK                | 5       | 0/5      |
-| **P1E** | Ingestion                 | 6       | 0/6      |
-| **P1F** | Distribution              | 2       | 0/2      |
-| **P2**  | ABN/ASIC Verification     | 8       | 0/8      |
-| **P3**  | LEI + Full Dashboard      | 7       | 0/7      |
-| **P4**  | Shopify + WooCommerce     | 5       | 0/5      |
-| **P5**  | CVE/NVD + Patents         | 4       | 0/4      |
-|         |                           | **69**  | **6/69** |
+| Phase   | Epic                      | Tickets | Done      |
+| ------- | ------------------------- | ------- | --------- |
+| **P0**  | Infrastructure Foundation | 6       | 6/6       |
+| **P1A** | API Core (Address)        | 12      | 7/12      |
+| **P1B** | Auth & Billing            | 9       | 0/9       |
+| **P1C** | Dashboard                 | 7       | 0/7       |
+| **P1D** | Docs & SDK                | 5       | 2/5       |
+| **P1E** | Ingestion                 | 6       | 4/6       |
+| **P1F** | Distribution              | 2       | 1/2       |
+| **P2**  | ABN/ASIC Verification     | 8       | 0/8       |
+| **P3**  | LEI + Full Dashboard      | 7       | 0/7       |
+| **P4**  | Shopify + WooCommerce     | 5       | 0/5       |
+| **P5**  | CVE/NVD + Patents         | 4       | 0/4       |
+|         |                           | **71**  | **20/71** |
 
 ## Commands
 

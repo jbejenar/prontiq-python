@@ -84,3 +84,4 @@ Returns only VIC addresses — useful for state-specific forms.
 - Start querying after 3 characters for best results
 - Debounce requests by 150-300ms for smooth typeahead
 - Use `state` filter when you know the user's state
+- **Typo-tolerant**: typos in completed words are corrected (`16 haeth crescent` finds `16 HEATH CRESCENT`). Exact matches always rank above fuzzy matches. The word currently being typed is matched as a prefix only — typos in the last token won't be corrected.

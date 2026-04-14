@@ -26,6 +26,13 @@ const { postcode, localities } = await res.json();
 
 </CodeGroup>
 
+### Parameters
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `postcode` | string | Yes | — | 4-digit Australian postcode |
+| `limit` | integer | No | 10 | Max localities (1-50) |
+
 ### Response
 
 ```json
@@ -77,10 +84,11 @@ const { postcodes, address_count } = await res.json();
 
 ### Parameters
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `suburb` | string | Yes | Suburb/locality name (1-100 chars) |
-| `state` | string | No | Filter: `NSW`, `VIC`, `QLD`, `SA`, `WA`, `TAS`, `NT`, `ACT` |
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `suburb` | string | Yes | — | Suburb/locality name (1-100 chars). Fuzzy matched. |
+| `state` | string | No | — | Filter: `NSW`, `VIC`, `QLD`, `SA`, `WA`, `TAS`, `NT`, `ACT` |
+| `limit` | integer | No | 10 | Max postcodes (1-20) |
 
 ## Use cases
 

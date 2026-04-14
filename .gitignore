@@ -1,4 +1,5 @@
 node_modules/
+dependabot_all.json
 dist/
 .next/
 .open-next/

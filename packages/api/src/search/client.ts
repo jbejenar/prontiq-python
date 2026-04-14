@@ -25,3 +25,11 @@ export function getOpenSearchClient(): Client {
   }
   return _client;
 }
+
+/**
+ * Test-only: inject a mock client. Pass `undefined` to reset.
+ * Do not call from production code.
+ */
+export function __setClientForTesting(client: Client | undefined): void {
+  _client = client;
+}

@@ -93,7 +93,7 @@ Nobody else bundles Australian address validation with ABN verification with LEI
                                ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                      OPENSEARCH CLUSTER                                      │
-│   Domain: flat-white  ·  Engine: OpenSearch 2.13                            │
+│   Domain: flat-white  ·  Engine: OpenSearch 2.19                            │
 │   Dev: t3.small.search × 1  ·  Prod: t3.medium.search × 2                 │
 │                                                                              │
 │   Indices:                        Aliases:                                   │
@@ -200,7 +200,7 @@ You reach $420/month only when you have 10,000+ developers generating significan
 | IAM role (pipelines) | `arn:aws:iam::493712557159:role/flat-white-role`                                                                                                               |
 | IAM role (platform)  | `prontiq-platform-deploy-role` (to be created — needs CF, Lambda, APIGW, DynamoDB, IAM, CW, OpenSearch)                                                        |
 | IAM policy           | `arn:aws:iam::493712557159:policy/flat-white-s3-access`                                                                                                        |
-| OpenSearch domain    | `flat-white` — t3.small.search × 1, 20GB gp3, OpenSearch 2.13. Name is historical; OpenSearch doesn't support domain renaming. All products share this domain. |
+| OpenSearch domain    | `flat-white` — t3.small.search × 1, 50GB gp3, OpenSearch 2.19. Name is historical; OpenSearch doesn't support domain renaming. All products share this domain. |
 | GitHub OIDC          | Provider configured for `token.actions.githubusercontent.com`                                                                                                  |
 | Encryption           | HTTPS enforced, encryption at rest disabled (open data)                                                                                                        |
 
@@ -778,7 +778,7 @@ PUT /_snapshot/cs-automated/{product}-pre-migration-{date}
 
 #### 5.2.6 Storage Capacity Planning
 
-On a t3.small.search with 20GB gp3:
+On a t3.small.search with 50GB gp3:
 
 | Product         | Est. Records | Est. Index Size | Notes                                                                |
 | --------------- | ------------ | --------------- | -------------------------------------------------------------------- |
@@ -786,7 +786,7 @@ On a t3.small.search with 20GB gp3:
 | ABN             | 3M           | 1-2 GB          | Simpler schema, keyword-heavy                                        |
 | LEI             | 1.5M         | 0.5-1 GB        | Small dataset                                                        |
 
-**With retention (two versions of address + current ABN + LEI):** 12 + 12 + 2 + 1 = ~27GB. **Exceeds 20GB.**
+**With retention (two versions of address + current ABN + LEI):** 12 + 12 + 2 + 1 = ~27GB. Comfortably within 50GB.
 
 **Action items:**
 
