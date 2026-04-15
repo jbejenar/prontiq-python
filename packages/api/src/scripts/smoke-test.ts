@@ -39,35 +39,35 @@ interface SmokeCase {
 
 const cases: SmokeCase[] = [
   {
-    name: "autocomplete: valid prefix ranks CRESCENT first",
-    path: "/v1/address/autocomplete?q=16+heath+cres&limit=5",
+    name: "autocomplete: valid prefix ranks COURT first",
+    path: "/v1/address/autocomplete?q=9+endeavour+cou&limit=5",
     check: (r) => {
       const labels = r.suggestions?.map((s: { addressLabel: string }) => s.addressLabel) ?? [];
       if (labels.length === 0) return "0 results";
-      const allCrescent = labels.every((l: string) => l.includes("CRESCENT"));
-      return allCrescent ? null : `expected all CRESCENT, got ${JSON.stringify(labels)}`;
+      const allCourt = labels.every((l: string) => l.includes("COURT"));
+      return allCourt ? null : `expected all COURT, got ${JSON.stringify(labels)}`;
     },
   },
   {
     name: "autocomplete: typo'd prefix falls back (returns SOMETHING)",
-    path: "/v1/address/autocomplete?q=16+heath+crese&limit=5",
+    path: "/v1/address/autocomplete?q=9+endeavour+cuo&limit=5",
     check: (r) => {
       const count = r.suggestions?.length ?? 0;
       return count > 0 ? null : "0 results — phase-2 fallback didn't trigger";
     },
   },
   {
-    name: "autocomplete: typo in completed word still finds CRESCENT (fuzzy)",
-    path: "/v1/address/autocomplete?q=16+haeth+crescent&limit=3",
+    name: "autocomplete: typo in completed word still finds ENDEAVOUR (fuzzy)",
+    path: "/v1/address/autocomplete?q=9+endevour+court&limit=3",
     check: (r) => {
       const labels = r.suggestions?.map((s: { addressLabel: string }) => s.addressLabel) ?? [];
-      const hasCrescent = labels.some((l: string) => l.includes("HEATH CRESCENT"));
-      return hasCrescent ? null : `expected HEATH CRESCENT in results, got ${JSON.stringify(labels)}`;
+      const hasEndeavour = labels.some((l: string) => l.includes("ENDEAVOUR COURT"));
+      return hasEndeavour ? null : `expected ENDEAVOUR COURT in results, got ${JSON.stringify(labels)}`;
     },
   },
   {
     name: "validate: known address returns high confidence",
-    path: "/v1/address/validate?q=16+heath+crescent+hampton+east+vic+3188",
+    path: "/v1/address/validate?q=9+endeavour+court+coffin+bay+sa+5607",
     check: (r) => (r.confidence === "high" ? null : `expected confidence "high", got "${r.confidence}"`),
   },
   {
@@ -80,7 +80,7 @@ const cases: SmokeCase[] = [
   },
   {
     name: "validate: wrong postcode caps at low (critical-component gate)",
-    path: "/v1/address/validate?q=16+heath+crescent+hampton+east+vic+9999",
+    path: "/v1/address/validate?q=9+endeavour+court+coffin+bay+sa+9999",
     check: (r) =>
       r.confidence !== "high" && r.confidence !== "medium"
         ? null
@@ -88,9 +88,9 @@ const cases: SmokeCase[] = [
   },
   {
     name: "validate: wrong locality caps at low (alien-token gate)",
-    // RICHMOND with VIC 3188 — matched doc will be HAMPTON EAST VIC 3188.
+    // RICHMOND with SA 5607 — matched doc will be COFFIN BAY SA 5607.
     // Alien-token detection should catch RICHMOND as a wrong component.
-    path: "/v1/address/validate?q=16+heath+crescent+richmond+vic+3188",
+    path: "/v1/address/validate?q=9+endeavour+court+richmond+sa+5607",
     check: (r) =>
       r.confidence !== "high" && r.confidence !== "medium"
         ? null

@@ -10,13 +10,13 @@ The enrich endpoint returns the complete G-NAF record for an address by its ID. 
 <CodeGroup>
 
 ```bash curl
-curl "https://api.prontiq.dev/v1/address/enrich?id=GAVIC420559144" \
+curl "https://api.prontiq.dev/v1/address/enrich?id=GANSW717922337" \
   -H "X-Api-Key: YOUR_API_KEY"
 ```
 
 ```typescript Node.js (server-side)
 const res = await fetch(
-  "https://api.prontiq.dev/v1/address/enrich?id=GAVIC420559144",
+  "https://api.prontiq.dev/v1/address/enrich?id=GANSW717922337",
   { headers: { "X-Api-Key": "YOUR_API_KEY" } }
 );
 const address = await res.json();
@@ -30,30 +30,30 @@ The full record includes the address, geocode, and all boundary/electoral data:
 
 ```json
 {
-  "id": "GAVIC420559144",
-  "addressLabel": "16 HEATH CRESCENT",
-  "localityName": "HAMPTON EAST",
-  "state": "VIC",
-  "postcode": "3188",
+  "id": "GANSW717922337",
+  "addressLabel": "1490 HOLLYWOOD LANE",
+  "localityName": "COME BY CHANCE",
+  "state": "NSW",
+  "postcode": "2832",
   "confidence": 2,
   "geocode": {
-    "latitude": -37.93762284,
-    "longitude": 145.02948591,
-    "type": "PROPERTY CENTROID",
+    "latitude": -30.53764558,
+    "longitude": 148.53718309,
+    "type": "BUILDING CENTROID",
     "reliability": 2
   },
   "location": {
-    "lat": -37.93762284,
-    "lon": 145.02948591
+    "lat": -30.53764558,
+    "lon": 148.53718309
   },
   "boundaries": {
-    "lga": { "name": "Bayside City" },
-    "stateElectorate": { "name": "BRIGHTON" },
-    "commonwealthElectorate": { "name": "GOLDSTEIN" },
-    "meshBlock": { "code": "20051660000", "category": "Residential" },
-    "sa2": { "name": "Hampton", "code": "208011172" },
-    "sa3": { "name": "Bayside", "code": "20801" },
-    "sa4": { "name": "Melbourne - Inner South", "code": "208" }
+    "lga": { "name": "Walgett Shire Council" },
+    "stateElectorate": { "name": "BARWON" },
+    "commonwealthElectorate": { "name": "PARKES" },
+    "meshBlock": { "code": "10804930000", "category": "Primary Production" },
+    "sa2": { "name": "Walgett - Lightning Ridge", "code": "105011096" },
+    "sa3": { "name": "Bourke - Cobar - Coonamble", "code": "10501" },
+    "sa4": { "name": "Far West and Orana", "code": "105" }
   }
 }
 ```

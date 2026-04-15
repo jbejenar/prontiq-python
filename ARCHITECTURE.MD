@@ -633,7 +633,7 @@ S3 manifest lands in manifests/
 │  b. Sample queries: run 5-10 known-good queries against  │
 │     the NEW index directly (not via alias)               │
 │     Verify expected results appear in top-N              │
-│     e.g., "16 heath crescent hampton" → GAVIC420559144   │
+│     e.g., "9 endeavour court coffin bay" → GASA_422206807│
 │                                                          │
 │  c. Latency: p95 of sample queries < 100ms              │
 │                                                          │
@@ -858,25 +858,25 @@ On a t3.small.search with 50GB gp3:
 
 ```json
 {
-  "_id": "GAVIC420559144",
-  "addressLabelSearch": "16 HEATH CRESCENT HAMPTON EAST VIC 3188",
-  "confidence": 2,
+  "_id": "GASA_422206807",
+  "addressLabelSearch": "9 ENDEAVOUR COURT COFFIN BAY SA 5607",
+  "confidence": 1,
   "geocode": {
-    "latitude": -37.93762284,
-    "longitude": 145.02948591,
-    "type": "FRONTAGE CENTRE SETBACK",
+    "latitude": -34.61887626,
+    "longitude": 135.46174196,
+    "type": "PROPERTY CENTROID",
     "reliability": 2
   },
   "boundaries": {
-    "lga": { "name": "Bayside" },
-    "ward": { "name": "Ivison Ward" },
-    "stateElectorate": { "name": "BRIGHTON" },
-    "commonwealthElectorate": { "name": "GOLDSTEIN" },
-    "meshBlock": { "code": "20051660000", "category": "Residential" },
-    "sa2": { "name": "Hampton", "code": "208011172" },
-    "sa3": { "name": "Bayside", "code": "20801" },
-    "sa4": { "name": "Melbourne - Inner South", "code": "208" },
-    "gccsa": { "name": "Greater Melbourne", "code": "2GMEL" }
+    "lga": { "name": "Lower Eyre Council" },
+    "ward": null,
+    "stateElectorate": { "name": "FLINDERS" },
+    "commonwealthElectorate": { "name": "GREY" },
+    "meshBlock": { "code": "40066660000", "category": "Residential" },
+    "sa2": { "name": "Eyre Peninsula", "code": "406011130" },
+    "sa3": { "name": "Eyre Peninsula and South West", "code": "40601" },
+    "sa4": { "name": "South Australia - Outback", "code": "406" },
+    "gccsa": { "name": "Rest of SA", "code": "4RSAU" }
   }
 }
 ```
@@ -1725,7 +1725,7 @@ Stripe is configured with `cancel_at_period_end: true` on user-initiated cancell
 5. FIRST CALL
    Curl command + SDK snippet on /account are pre-filled with the
    key from step 4 (still in browser memory until refresh).
-   → prontiq.address.autocomplete({ q: "16 heath cres" })
+   → prontiq.address.autocomplete({ q: "9 endeavour cou" })
    Fully typed. Works immediately.
 
 6. USAGE
@@ -1895,7 +1895,7 @@ import { Prontiq } from "@prontiq/sdk";
 const prontiq = new Prontiq({ apiKey: "pq_live_..." });
 
 // Address autocomplete
-const { suggestions } = await prontiq.address.autocomplete({ q: "16 heath cres" });
+const { suggestions } = await prontiq.address.autocomplete({ q: "9 endeavour cou" });
 
 // ABN verification
 const { entity } = await prontiq.abn.verify({ abn: "51824753556" });
@@ -2156,22 +2156,22 @@ Speakeasy generates SDK types from these shapes. Every success response includes
 ```json
 {
   "product": "address",
-  "query": "16 heath cres",
+  "query": "9 endeavour cou",
   "count": 5,
   "results": [
     {
-      "id": "GAVIC420559144",
-      "address": "16 HEATH CRESCENT HAMPTON EAST VIC 3188",
+      "id": "GASA_422206807",
+      "address": "9 ENDEAVOUR COURT COFFIN BAY SA 5607",
       "components": {
-        "number": "16",
-        "street": "HEATH",
-        "street_type": "CRESCENT",
-        "locality": "HAMPTON EAST",
-        "state": "VIC",
-        "postcode": "3188"
+        "number": "9",
+        "street": "ENDEAVOUR",
+        "street_type": "COURT",
+        "locality": "COFFIN BAY",
+        "state": "SA",
+        "postcode": "5607"
       },
-      "location": { "lat": -37.93762284, "lon": 145.02948591 },
-      "confidence": 2,
+      "location": { "lat": -34.61887626, "lon": 135.46174196 },
+      "confidence": 1,
       "score": 0.97
     }
   ]
@@ -2185,12 +2185,12 @@ Speakeasy generates SDK types from these shapes. Every success response includes
   "product": "address",
   "valid": true,
   "match_score": 0.97,
-  "input": "16 heath crescent hampton east",
+  "input": "9 endeavour court coffin bay",
   "canonical": {
-    "id": "GAVIC420559144",
-    "address": "16 HEATH CRESCENT HAMPTON EAST VIC 3188",
+    "id": "GASA_422206807",
+    "address": "9 ENDEAVOUR COURT COFFIN BAY SA 5607",
     "components": { "...": "..." },
-    "location": { "lat": -37.93762284, "lon": 145.02948591 }
+    "location": { "lat": -34.61887626, "lon": 135.46174196 }
   }
 }
 ```
@@ -2202,20 +2202,20 @@ Speakeasy generates SDK types from these shapes. Every success response includes
 ```json
 {
   "product": "address",
-  "id": "GAVIC420559144",
-  "address": "16 HEATH CRESCENT HAMPTON EAST VIC 3188",
-  "location": { "lat": -37.93762284, "lon": 145.02948591 },
+  "id": "GASA_422206807",
+  "address": "9 ENDEAVOUR COURT COFFIN BAY SA 5607",
+  "location": { "lat": -34.61887626, "lon": 135.46174196 },
   "boundaries": {
-    "lga": { "name": "Bayside", "code": "lga53f7b61b0ed6" },
-    "ward": { "name": "Ivison Ward" },
-    "stateElectorate": { "name": "BRIGHTON" },
-    "commonwealthElectorate": { "name": "GOLDSTEIN" },
-    "meshBlock": { "code": "20051660000", "category": "Residential" },
-    "sa1": "20801117224",
-    "sa2": { "name": "Hampton", "code": "208011172" },
-    "sa3": { "name": "Bayside", "code": "20801" },
-    "sa4": { "name": "Melbourne - Inner South", "code": "208" },
-    "gccsa": { "name": "Greater Melbourne", "code": "2GMEL" }
+    "lga": { "name": "Lower Eyre Council", "code": "lgaGyBYDi99uya6" },
+    "ward": null,
+    "stateElectorate": { "name": "FLINDERS" },
+    "commonwealthElectorate": { "name": "GREY" },
+    "meshBlock": { "code": "40066660000", "category": "Residential" },
+    "sa1": "40601113001",
+    "sa2": { "name": "Eyre Peninsula", "code": "406011130" },
+    "sa3": { "name": "Eyre Peninsula and South West", "code": "40601" },
+    "sa4": { "name": "South Australia - Outback", "code": "406" },
+    "gccsa": { "name": "Rest of SA", "code": "4RSAU" }
   }
 }
 ```

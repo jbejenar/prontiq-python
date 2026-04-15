@@ -88,12 +88,12 @@ function hits(addresses: { id: string; addressLabel: string; localityName: strin
 }
 
 test("autocomplete: phase 1 uses bool_prefix with operator AND and fuzziness AUTO", async () => {
-  const phase1Result = hits([{ id: "GA1", addressLabel: "16 HEATH CRESCENT", localityName: "GRIFFITH", state: "NSW", postcode: "2680" }]);
+  const phase1Result = hits([{ id: "GA1", addressLabel: "16 ENDEAVOUR CRESCENT", localityName: "GRIFFITH", state: "NSW", postcode: "2680" }]);
   const { client, calls } = makeMockClient([phase1Result]);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   __setClientForTesting(client as any);
 
-  await queries.autocomplete("16 heath cres");
+  await queries.autocomplete("16 endeavour cres");
 
   assert.equal(calls.length, 1, "only phase 1 needed when results found");
   const body = calls[0]!.body;
@@ -114,14 +114,14 @@ test("autocomplete: phase 1 uses bool_prefix with operator AND and fuzziness AUT
 
 test("autocomplete: phase 2 fallback to OR when phase 1 returns 0 (typo'd prefix like 'crese')", async () => {
   const phase2Result = hits([
-    { id: "GA1", addressLabel: "16 HEATH ROAD", localityName: "LEPPINGTON", state: "NSW", postcode: "2179" },
-    { id: "GA2", addressLabel: "16 HEATH CRESCENT", localityName: "GRIFFITH", state: "NSW", postcode: "2680" },
+    { id: "GA1", addressLabel: "16 ENDEAVOUR ROAD", localityName: "LEPPINGTON", state: "NSW", postcode: "2179" },
+    { id: "GA2", addressLabel: "16 ENDEAVOUR CRESCENT", localityName: "GRIFFITH", state: "NSW", postcode: "2680" },
   ]);
   const { client, calls } = makeMockClient([emptyHits(), phase2Result]);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   __setClientForTesting(client as any);
 
-  const result = await queries.autocomplete("16 heath crese");
+  const result = await queries.autocomplete("16 endeavour crese");
 
   assert.equal(calls.length, 2, "phase 2 must run when phase 1 is empty");
   // Phase 1: AND
@@ -141,7 +141,7 @@ test("autocomplete: state filter adds term filter to BOTH phases", async () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   __setClientForTesting(client as any);
 
-  await queries.autocomplete("16 heath", "vic", 10);
+  await queries.autocomplete("16 endeavour", "vic", 10);
 
   // Phase 1
   assert.equal(calls[0]!.body.size, 10);
@@ -157,7 +157,7 @@ test("validate: uses best_fields with fuzziness AUTO", async () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   __setClientForTesting(client as any);
 
-  await queries.validate("16 heath crescent hampton east vic 3188");
+  await queries.validate("16 endeavour crescent shepparton vic 3630");
 
   const body = calls[0]!.body;
   assert.equal(body.size, 1);

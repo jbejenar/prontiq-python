@@ -10,13 +10,13 @@ The validate endpoint takes a full address string and returns the best matching 
 <CodeGroup>
 
 ```bash curl
-curl "https://api.prontiq.dev/v1/address/validate?q=16+heath+crescent+hampton+east+vic+3188" \
+curl "https://api.prontiq.dev/v1/address/validate?q=88+hill+street+broke+nsw+2330" \
   -H "X-Api-Key: YOUR_API_KEY"
 ```
 
 ```typescript Node.js (server-side)
 const res = await fetch(
-  "https://api.prontiq.dev/v1/address/validate?q=16+heath+crescent+hampton+east+vic+3188",
+  "https://api.prontiq.dev/v1/address/validate?q=88+hill+street+broke+nsw+2330",
   { headers: { "X-Api-Key": "YOUR_API_KEY" } }
 );
 const { match, confidence } = await res.json();
@@ -29,12 +29,12 @@ const { match, confidence } = await res.json();
 ```json
 {
   "match": {
-    "id": "GAVIC420559144",
-    "addressLabel": "16 HEATH CRESCENT",
-    "localityName": "HAMPTON EAST",
-    "state": "VIC",
-    "postcode": "3188",
-    "confidence": 2
+    "id": "GANSW704227698",
+    "addressLabel": "88 HILL STREET",
+    "localityName": "BROKE",
+    "state": "NSW",
+    "postcode": "2330",
+    "confidence": 1
   },
   "confidence": "high"
 }
@@ -46,8 +46,8 @@ Validate is fuzzy-matched — minor typos still resolve to the correct address w
 
 ```bash
 # Both queries return the same match
-curl ".../v1/address/validate?q=16+heath+crescent+hampton+east+vic+3188"
-curl ".../v1/address/validate?q=16+haeth+crescent+hampton+east+vic+3188"  # typo
+curl ".../v1/address/validate?q=88+hill+street+broke+nsw+2330"
+curl ".../v1/address/validate?q=88+hil+street+broke+nsw+2330"  # typo
 ```
 
 A clean match returns `confidence: "high"`. A fuzzy match typically returns `medium` or `low` — use that signal to flag uncertain matches for review.

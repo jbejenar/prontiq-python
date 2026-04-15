@@ -15,7 +15,7 @@ Prontiq is a unified data API for Australian open datasets. One subscription, on
 We're starting with **address validation** powered by the G-NAF (Geocoded National Address File) — the authoritative database of every physical address in Australia.
 
 ```bash
-curl "https://api.prontiq.dev/v1/address/autocomplete?q=16+heath+cres" \
+curl "https://api.prontiq.dev/v1/address/autocomplete?q=9+endeavour+cou" \
   -H "X-Api-Key: your_api_key"
 ```
 
@@ -23,16 +23,16 @@ curl "https://api.prontiq.dev/v1/address/autocomplete?q=16+heath+cres" \
 {
   "suggestions": [
     {
-      "id": "GAVIC420559144",
-      "addressLabel": "16 HEATH CRESCENT",
-      "localityName": "HAMPTON EAST",
-      "state": "VIC",
-      "postcode": "3188",
+      "id": "GAQLD156786950",
+      "addressLabel": "9 ENDEAVOUR COURT",
+      "localityName": "LAMMERMOOR",
+      "state": "QLD",
+      "postcode": "4703",
       "confidence": 2,
-      "score": 27.72
+      "score": 25.95
     }
   ],
-  "total": 10000
+  "total": 329
 }
 ```
 

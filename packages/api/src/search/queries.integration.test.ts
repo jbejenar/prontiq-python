@@ -66,8 +66,8 @@ const label = (s: any): string => s.addressLabel as string;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const stateOf = (s: any): string => s.state as string;
 
-test("autocomplete: '16 heath cres' ranks CRESCENT above ROAD/STREET/AVENUE", async () => {
-  const result = await queries.autocomplete("16 heath cres", undefined, 5);
+test("autocomplete: '16 endeavour cres' ranks CRESCENT above ROAD/STREET/AVENUE", async () => {
+  const result = await queries.autocomplete("16 endeavour cres", undefined, 5);
   assert.ok(result.suggestions.length > 0, "must return results");
   const topAddress = label(result.suggestions[0]);
   assert.ok(
@@ -76,25 +76,25 @@ test("autocomplete: '16 heath cres' ranks CRESCENT above ROAD/STREET/AVENUE", as
   );
 });
 
-test("autocomplete: typo'd prefix '16 heath crese' triggers phase-2 fallback (non-empty)", async () => {
-  const result = await queries.autocomplete("16 heath crese", undefined, 5);
+test("autocomplete: typo'd prefix '16 endeavour crese' triggers phase-2 fallback (non-empty)", async () => {
+  const result = await queries.autocomplete("16 endeavour crese", undefined, 5);
   assert.ok(
     result.suggestions.length > 0,
     "phase-2 fallback must return results for typo'd prefix",
   );
 });
 
-test("autocomplete: fuzzy tolerates typo in completed word ('16 haeth crescent')", async () => {
-  const result = await queries.autocomplete("16 haeth crescent", undefined, 5);
+test("autocomplete: fuzzy tolerates typo in completed word ('16 endevour crescent')", async () => {
+  const result = await queries.autocomplete("16 endevour crescent", undefined, 5);
   const labels = result.suggestions.map(label);
   assert.ok(
-    labels.some((l) => l.includes("HEATH CRESCENT")),
-    `expected HEATH CRESCENT in fuzzy results, got ${JSON.stringify(labels)}`,
+    labels.some((l) => l.includes("ENDEAVOUR CRESCENT")),
+    `expected ENDEAVOUR CRESCENT in fuzzy results, got ${JSON.stringify(labels)}`,
   );
 });
 
 test("autocomplete: state filter restricts to that state", async () => {
-  const result = await queries.autocomplete("16 heath", "VIC", 5);
+  const result = await queries.autocomplete("16 endeavour", "VIC", 5);
   const states = result.suggestions.map(stateOf);
   assert.ok(states.length > 0, "must return results");
   assert.ok(
@@ -104,20 +104,20 @@ test("autocomplete: state filter restricts to that state", async () => {
 });
 
 test("validate: known full address matches correct doc", async () => {
-  const result = await queries.validate("16 heath crescent hampton east vic 3188");
+  const result = await queries.validate("16 endeavour crescent shepparton vic 3630");
   // Note: BM25 scoring is IDF-sensitive, so confidence tiers ("high"/"medium"/
   // "low") are tuned against the 15M-doc prod index and differ on small
   // fixtures. Here we assert the MATCH is correct, not the threshold bucket.
   assert.ok(result.match, "must have a match");
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const match = result.match as any;
-  assert.equal(match.addressLabel, "16 HEATH CRESCENT");
-  assert.equal(match.localityName, "HAMPTON EAST");
+  assert.equal(match.addressLabel, "16 ENDEAVOUR CRESCENT");
+  assert.equal(match.localityName, "SHEPPARTON");
   assert.notEqual(result.confidence, "none");
 });
 
 test("validate: typo'd full address still matches via fuzzy", async () => {
-  const result = await queries.validate("16 haeth crescent hampton east vic 3188");
+  const result = await queries.validate("16 endevour crescent shepparton vic 3630");
   assert.ok(result.match, "fuzzy should still find a match");
   assert.notEqual(result.confidence, "none");
 });
@@ -133,45 +133,45 @@ test('validate: nonsense input returns confidence "none" (token coverage gate)',
 
 test('validate: wrong postcode caps confidence at "low" (critical-component gate)', async () => {
   // Query postcode 9999 doesn't match any fixture doc. Even though 6/7 other
-  // tokens match "16 HEATH CRESCENT HAMPTON EAST VIC 3188", the explicit
+  // tokens match "16 ENDEAVOUR CRESCENT SHEPPARTON VIC 3630", the explicit
   // postcode conflict must prevent "medium" or "high" — a caller gating form
   // submission on confidence would be misled if we said "high" for a
   // semantically wrong address.
-  const result = await queries.validate("16 heath crescent hampton east vic 9999");
+  const result = await queries.validate("16 endeavour crescent shepparton vic 9999");
   assert.equal(result.confidence, "low");
 });
 
 test('validate: wrong state caps confidence at "low"', async () => {
-  // State QLD conflicts with matched doc's state (VIC or NSW for HEATH CRESCENT).
-  const result = await queries.validate("16 heath crescent hampton east qld 3188");
+  // State QLD conflicts with matched doc's state (VIC or NSW for ENDEAVOUR CRESCENT).
+  const result = await queries.validate("16 endeavour crescent shepparton qld 3630");
   assert.equal(result.confidence, "low");
 });
 
 test("validate: postcode/state mismatch stays low even with high BM25 score", async () => {
   // Strong textual match in every other token, but postcode is explicitly wrong.
-  const result = await queries.validate("16 heath crescent griffith nsw 0000");
+  const result = await queries.validate("16 endeavour crescent griffith nsw 0000");
   assert.notEqual(result.confidence, "high");
   assert.notEqual(result.confidence, "medium");
 });
 
 test('validate: wrong locality caps confidence at "low" even when postcode+state match', async () => {
-  // Caller asks for RICHMOND but the best match is HAMPTON EAST (same state,
+  // Caller asks for RICHMOND but the best match is SHEPPARTON (same state,
   // different postcode). This tests the alien-token gate: RICHMOND isn't in
   // the matched doc's label and isn't a fuzzy-near any label token →
   // demoted regardless of postcode/state alignment.
   //
-  // The match here will be HAMPTON EAST because RICHMOND VIC (3121) and
-  // HAMPTON EAST (3188) are separate fixture docs; the validate query's
-  // postcode 3188 steers the match to HAMPTON EAST even though the query
+  // The match here will be SHEPPARTON because RICHMOND VIC (3121) and
+  // SHEPPARTON (3630) are separate fixture docs; the validate query's
+  // postcode 3630 steers the match to SHEPPARTON even though the query
   // text says RICHMOND.
-  const result = await queries.validate("16 heath crescent richmond vic 3188");
+  const result = await queries.validate("16 endeavour crescent richmond vic 3630");
   assert.equal(result.confidence, "low");
 });
 
 test("validate: alien-token detection doesn't penalize real typos", async () => {
-  // "HAETH" isn't an exact label token, but it's within fuzzy edit distance
-  // of HEATH (1 edit). Must NOT be flagged as alien.
-  const result = await queries.validate("16 haeth crescent hampton east vic 3188");
+  // "ENDEVOUR" isn't an exact label token, but it's within fuzzy edit distance
+  // of ENDEAVOUR (1 edit). Must NOT be flagged as alien.
+  const result = await queries.validate("16 endevour crescent shepparton vic 3630");
   assert.ok(result.match, "fuzzy typo should still match");
   assert.notEqual(result.confidence, "none");
 });
@@ -185,10 +185,10 @@ test("enrich: non-existent ID returns null (no throw)", async () => {
 });
 
 test("enrich: valid ID returns full record (happy path unchanged)", async () => {
-  const result = await queries.enrich("F_GAVIC420559144");
+  const result = await queries.enrich("F_GAVIC999000002");
   assert.ok(result, "valid ID should return a record");
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  assert.equal((result as any).addressLabel, "16 HEATH CRESCENT");
+  assert.equal((result as any).addressLabel, "16 ENDEAVOUR CRESCENT");
 });
 
 test('validate: wrong street number caps confidence at "low"', async () => {
@@ -203,7 +203,7 @@ test('validate: prefix-unit form "unit 5 16 ..." extracts street number from aft
   // Leading "UNIT" + unit number "5" → street number is the NEXT numeric
   // token (16). Must match matched doc's numberFirst=16 → not "low".
   const result = await queries.validate(
-    "unit 5 16 heath crescent hampton east vic 3188",
+    "unit 5 16 endeavour crescent shepparton vic 3630",
   );
   assert.ok(result.match, "unit address should still match");
   assert.notEqual(result.confidence, "low");
@@ -213,7 +213,7 @@ test('validate: slash-unit form "5/16 ..." extracts street number from after the
   // "5/16" = unit 5, street 16. Extractor must return 16 (not 5) so the
   // gate passes against matched numberFirst=16.
   const result = await queries.validate(
-    "5/16 heath crescent hampton east vic 3188",
+    "5/16 endeavour crescent shepparton vic 3630",
   );
   assert.ok(result.match, "slash form should still match");
   assert.notEqual(result.confidence, "low");
@@ -225,7 +225,7 @@ test('validate: prefix + slash "unit 5/16 ..." extracts street number from the s
   // because the loop was only looking for pure-numeric tokens after the
   // keyword, missing the slash token.
   const result = await queries.validate(
-    "unit 5/16 heath crescent hampton east vic 3188",
+    "unit 5/16 endeavour crescent shepparton vic 3630",
   );
   assert.ok(result.match, "combined prefix+slash form should still match");
   assert.notEqual(result.confidence, "low");
@@ -236,7 +236,7 @@ test('validate: prefix + slash with WRONG street "unit 5/99 ..." still caps at l
   // correctly (99), and matched numberFirst is 16, the gate must fire.
   // Proves the parser doesn't silently skip the gate for this form.
   const result = await queries.validate(
-    "unit 5/99 heath crescent hampton east vic 3188",
+    "unit 5/99 endeavour crescent shepparton vic 3630",
   );
   assert.equal(
     result.confidence,
@@ -251,7 +251,7 @@ test("validate: suffix-unit form still compares leading street number (regressio
   // street number; the trailing "UNIT 5" must NOT disable extraction.
   // Matched doc has numberFirst=16; query says 99 → must cap at "low".
   const result = await queries.validate(
-    "99 heath crescent hampton east vic 3188 unit 5",
+    "99 endeavour crescent shepparton vic 3630 unit 5",
   );
   assert.equal(
     result.confidence,
@@ -266,7 +266,7 @@ test('validate: "CRES" abbreviation does not trigger alien-token gate', async ()
   // to CRESCENT is 4, limit for 4-char token is 1). Without the whitelist,
   // this would demote to "low".
   const result = await queries.validate(
-    "16 heath cres hampton east vic 3188",
+    "16 endeavour cres shepparton vic 3630",
   );
   assert.ok(result.match, "abbreviated street type should still match");
   assert.notEqual(result.confidence, "low");

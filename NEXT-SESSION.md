@@ -11,7 +11,7 @@
 
 **Completed:**
 
-- [x] PR #38 — autocomplete `operator: "and"` + `fuzziness: "AUTO"` (fixes `16 heath crese` ranking CRESCENT correctly)
+- [x] PR #38 — autocomplete `operator: "and"` + `fuzziness: "AUTO"` (fixes typo'd-prefix queries so the right street type ranks first)
 - [x] Validate fuzzy matching for typo'd full addresses
 - [x] Suburb lookup: fuzzy keyword match with `prefix_length: 1`, returns matched suburb name (not input echo)
 - [x] Postcode + suburb lookups: `limit` query param (default 10)
@@ -29,7 +29,7 @@
 **Next session should start with:**
 
 1. Read NEXT-WORK.md
-2. Verify PR #38 on dev API after CI deploy: `q=16+heath+crese` returns CRESCENT first; `q=16+haeth+crescent` finds via fuzzy
+2. Verify PR #38 on dev API after CI deploy: `q=9+endeavour+cuo` returns COURT first; `q=9+endevour+court` finds via fuzzy
 3. If verified, deploy PR #38 to prod
 4. Begin P1B (auth & billing): Clerk → Stripe → DynamoDB provisioning chain (DDB-native keys — Unkey removed; see ADR-001)
 

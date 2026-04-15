@@ -483,7 +483,7 @@ tech_stack:
 
 #### User Story
 
-As an API consumer, `GET /v1/address/autocomplete?q=16+heath+cres` returns matching addresses in < 50ms (warm) so that I can build real-time typeahead UIs.
+As an API consumer, `GET /v1/address/autocomplete?q=9+endeavour+cou` returns matching addresses in < 50ms (warm) so that I can build real-time typeahead UIs.
 
 #### Problem Statement
 
@@ -532,7 +532,7 @@ tech_stack:
 
 #### User Story
 
-As an API consumer, `GET /v1/address/validate?q=16 heath crescent hampton east vic 3188` returns the best matching address with a confidence level so that I can verify user-entered addresses against the G-NAF database.
+As an API consumer, `GET /v1/address/validate?q=9 endeavour court coffin bay sa 5607` returns the best matching address with a confidence level so that I can verify user-entered addresses against the G-NAF database.
 
 #### Problem Statement
 
@@ -544,7 +544,7 @@ Address validation is the core business use case. Users paste a full address str
 
 - [ ] Returns best match with `id`, full address fields, and confidence (`high`/`medium`/`low`)
   - `Verify:` Query with known address returns `confidence: "high"`
-  - `Evidence:` "16 heath crescent hampton east vic 3188" → match with high confidence
+  - `Evidence:` "9 endeavour court coffin bay sa 5607" → match with high confidence
 - [ ] Returns `null` match and `confidence: "none"` when no confident result found
   - `Verify:` Query with garbage string "zzz123 nonexistent" returns null match
   - `Evidence:` `{ "match": null, "confidence": "none" }`
@@ -578,7 +578,7 @@ completed: 2026-04-13
 
 #### User Story
 
-As an API consumer, `GET /v1/address/enrich?id=GAVIC420559144` returns the full enriched address record including boundaries, electorates, and statistical geography so that I can enrich my data with government boundaries.
+As an API consumer, `GET /v1/address/enrich?id=GASA_422206807` returns the full enriched address record including boundaries, electorates, and statistical geography so that I can enrich my data with government boundaries.
 
 #### Problem Statement
 
@@ -589,8 +589,8 @@ Enrichment is the premium feature — boundaries (LGA, electorates, mesh blocks,
 ##### Functional
 
 - [ ] Returns all fields: address, geocode, boundaries (LGA, ward, electorate, meshblock, SA2-SA4, GCCSA)
-  - `Verify:` `curl .../v1/address/enrich?id=GAVIC420559144`
-  - `Evidence:` Response includes `boundaries.lga.name: "Bayside"`, `boundaries.commonwealthElectorate.name: "GOLDSTEIN"`, etc.
+  - `Verify:` `curl .../v1/address/enrich?id=GASA_422206807`
+  - `Evidence:` Response includes `boundaries.lga.name: "Lower Eyre Council"`, `boundaries.stateElectorate.name: "FLINDERS"`, `boundaries.commonwealthElectorate.name: "GREY"`, `boundaries.gccsa.code: "4RSAU"`, etc.
 - [ ] Returns 404 for unknown ID with proper error format
   - `Verify:` `curl .../v1/address/enrich?id=NONEXISTENT`
   - `Evidence:` `{"error":{"code":"NOT_FOUND","status":404,...}}`
@@ -669,20 +669,20 @@ completed: 2026-04-13
 
 #### User Story
 
-As an API consumer, `GET /v1/address/lookup/postcode?postcode=3188` returns all localities in that postcode so that I can populate location dropdowns.
+As an API consumer, `GET /v1/address/lookup/postcode?postcode=5607` returns all localities in that postcode so that I can populate location dropdowns.
 
 #### Definition of Done
 
 ##### Functional
 
 - [ ] Returns list of localities with name, state, address count
-  - `Verify:` `curl .../v1/address/lookup/postcode?postcode=3188`
-  - `Evidence:` Response includes `{"postcode":"3188","localities":[{"name":"HAMPTON EAST","state":"VIC","address_count":...}]}`
+  - `Verify:` `curl .../v1/address/lookup/postcode?postcode=5607`
+  - `Evidence:` Response includes `{"postcode":"5607","localities":[{"name":"COFFIN BAY","state":"SA","address_count":...}]}`
 - [ ] Uses `terms` aggregation on `localityName` field
   - `Verify:` OpenSearch query uses aggregation, not document scan
   - `Evidence:` `size: 0` in query body (aggregation only)
 - [ ] Validates 4-digit Australian postcode format
-  - `Verify:` `?postcode=999` returns 400; `?postcode=3188` returns 200
+  - `Verify:` `?postcode=999` returns 400; `?postcode=5607` returns 200
   - `Evidence:` Zod schema `z.string().regex(/^\d{4}$/)`
 
 #### Scope
@@ -711,14 +711,14 @@ completed: 2026-04-13
 
 #### User Story
 
-As an API consumer, `GET /v1/address/lookup/suburb?suburb=hampton+east` returns postcodes, geographic bounds, and address count for a suburb.
+As an API consumer, `GET /v1/address/lookup/suburb?suburb=coffin+bay` returns postcodes, geographic bounds, and address count for a suburb.
 
 #### Definition of Done
 
 ##### Functional
 
 - [ ] Returns postcodes, geographic bounds (bounding box), address count
-  - `Verify:` `curl .../v1/address/lookup/suburb?suburb=hampton+east`
+  - `Verify:` `curl .../v1/address/lookup/suburb?suburb=coffin+bay`
   - `Evidence:` Response includes postcodes array, bounds object, address_count
 - [ ] Optional `state` filter narrows results
   - `Verify:` `?suburb=richmond&state=VIC` vs `?suburb=richmond` (no state)
@@ -809,7 +809,7 @@ As a platform operator, repeated queries are served from API Gateway cache so th
 
 #### Problem Statement
 
-Address data changes quarterly. The same "16 heath cres" query from 1000 different users hits OpenSearch 1000 times with identical results. API Gateway caching sits in front of the Lambda — cache hits never invoke the function. At $0.02/hr for 0.5GB (~$15/month), this is the cheapest performance optimization possible. Cache invalidation is triggered by the ingestion Step Function after alias swap.
+Address data changes quarterly. The same "9 endeavour cou" query from 1000 different users hits OpenSearch 1000 times with identical results. API Gateway caching sits in front of the Lambda — cache hits never invoke the function. At $0.02/hr for 0.5GB (~$15/month), this is the cheapest performance optimization possible. Cache invalidation is triggered by the ingestion Step Function after alias swap.
 
 #### Definition of Done
 
@@ -917,16 +917,16 @@ As a developer, autocomplete and validate should rank the address I'm typing acc
 
 #### Problem Statement
 
-`multi_match` with `bool_prefix` defaulted to OR operator, so `16 heath crese` returned `HEATH ROAD`/`HEATH STREET` ranked equally with `HEATH CRESCENT` (all scored 26.37 — the prefix `crese` was unused). Validate had no typo tolerance — `16 haeth crescent` would mismatch. Suburb lookup required exact spelling. Postcode/suburb lookups had no `limit` param.
+`multi_match` with `bool_prefix` defaulted to OR operator, so `9 endeavour cuo` returned `ENDEAVOUR STREET`/`ENDEAVOUR CLOSE` ranked equally with `ENDEAVOUR COURT` (all scored ~26 — the prefix `cuo` was unused). Validate had no typo tolerance — `9 endevour court` would mismatch. Suburb lookup required exact spelling. Postcode/suburb lookups had no `limit` param.
 
 #### Definition of Done
 
 ##### Functional
 
 - [x] Autocomplete: `operator: "and"` so all tokens must match (last as prefix)
-  - `Verify:` `q=16+heath+crese` returns CRESCENT first
+  - `Verify:` `q=9+endeavour+cuo` returns COURT first
 - [x] Autocomplete: `fuzziness: "AUTO"` for typos in completed words
-  - `Verify:` `q=16+haeth+crescent` finds 16 HEATH CRESCENT
+  - `Verify:` `q=9+endevour+court` finds 9 ENDEAVOUR COURT
   - `Note:` Per ES semantics, fuzziness doesn't apply to the prefix (last) token
 - [x] Validate: `fuzziness: "AUTO"` so typo'd full addresses still validate
   - `Verify:` Validate still matches with appropriate confidence on typos
@@ -993,12 +993,12 @@ The API package had zero automated tests. Search semantics across `autocomplete`
   - `Evidence:` `packages/api/src/search/queries.test.ts` (10 tests covering autocomplete phase-1/phase-2 fallback + fuzziness, validate fuzziness+none confidence, lookupPostcode limit, lookupSuburb two-phase + state behavior + Bug 4 regression)
 - [x] Integration tests against a real OpenSearch instance seeded with fixture data
   - `Verify:` `pnpm --filter @prontiq/api test:integration` against local Docker or CI service container
-  - `Evidence:` `packages/api/src/search/queries.integration.test.ts` (13 tests including `16 heath crese` fallback, typo'd-word fuzzy, multi-state RICHMOND aggregation) + fixture dataset in `__fixtures__/addresses.ts`
+  - `Evidence:` `packages/api/src/search/queries.integration.test.ts` (13 tests including typo'd-prefix phase-2 fallback, typo'd-word fuzzy, multi-state RICHMOND aggregation) + fixture dataset in `__fixtures__/addresses.ts`
 - [x] Integration tests run in CI before merge
   - `Verify:` `.github/workflows/ci.yml` includes `integration-test` job with OpenSearch 2.19 service container, gating `deploy-dev`
   - `Evidence:` CI job spins up OpenSearch, waits for health, runs test suite
-  - `Verify:` `q=16+heath+crese` ranks CRESCENT first
-  - `Verify:` `q=16+haeth+crescent` (typo) finds HEATH CRESCENT via fuzzy
+  - `Verify:` `q=9+endeavour+cuo` ranks COURT first
+  - `Verify:` `q=9+endevour+court` (typo) finds ENDEAVOUR COURT via fuzzy
   - `Verify:` `?suburb=bondi+beech` returns matched as BONDI BEACH with consistent postcodes
   - `Verify:` `?postcode=2000&limit=3` returns exactly 3 localities
 - [ ] Tests run in CI (GitHub Actions)
@@ -1046,7 +1046,7 @@ With `fuzziness: AUTO`, almost any input scores ≥ 10 against the 15M-doc index
 #### Definition of Done
 
 - [x] `?q=zzz1234+nonexistent+nowhere` returns `confidence: "none"` (verified by integration test against fixture index)
-- [x] `?q=16+heath+crescent+hampton+east+vic+3188` still returns a valid match (confidence threshold calibrated for 15M-doc prod; fixture index uses different score range)
+- [x] `?q=9+endeavour+court+coffin+bay+sa+5607` still returns a valid match (confidence threshold calibrated for 15M-doc prod; fixture index uses different score range)
 - [x] Smoke test assertion tightened back to `expect none/low`
 - [x] Implementation: `scoreToConfidence(score, query, matchedLabel)` combines BM25 with token-coverage gate (require ≥40% exact token overlap before any non-"none" confidence)
 
@@ -2018,7 +2018,7 @@ The landing page IS the product pitch. A live autocomplete demo (type an address
   - `Verify:` Landing page renders autocomplete input
   - `Evidence:` Component visible, functional
 - [ ] Live autocomplete against real API (uses demo key)
-  - `Verify:` Type "16 heath" → suggestions appear from G-NAF data
+  - `Verify:` Type "9 endeavour" → suggestions appear from G-NAF data
   - `Evidence:` Real address data, not mocked
 - [ ] Pricing table below hero (Stripe embedded pricing table)
   - `Verify:` Free / Starter / Growth plans visible with prices
@@ -2600,7 +2600,7 @@ Hand-written SDK clients drift from the API. Speakeasy auto-generates from the O
   - `Verify:` Import SDK, check `prontiq.address` namespace has all 6 methods
   - `Evidence:` TypeScript IntelliSense shows methods with typed params
 - [ ] TypeScript types for all request params and response shapes
-  - `Verify:` `const result = await prontiq.address.autocomplete({ q: "16 heath" })` — `result.suggestions` is typed
+  - `Verify:` `const result = await prontiq.address.autocomplete({ q: "9 endeavour" })` — `result.suggestions` is typed
   - `Evidence:` Type errors on wrong param names; autocompletion on response fields
 - [ ] GitHub Action regenerates on OpenAPI spec change (`.github/workflows/generate-sdks.yml`)
   - `Verify:` Change a route schema → push → SDK regenerated and published
@@ -2654,7 +2654,7 @@ The web component is three things: (1) the hero demo on the landing page that co
   - `Verify:` Add to an HTML page → renders input field with autocomplete dropdown
   - `Evidence:` Component visible and functional
 - [ ] Renders autocomplete input with dropdown suggestions
-  - `Verify:` Type "16 heath" → dropdown shows matching addresses
+  - `Verify:` Type "9 endeavour" → dropdown shows matching addresses
   - `Evidence:` Suggestions from real API data
 - [ ] Calls `/v1/address/autocomplete` on input (debounced 200ms)
   - `Verify:` Network tab shows requests only after 200ms pause
@@ -2886,7 +2886,7 @@ The health check is the gate between "data is indexed" and "data is live." It ve
   - `Verify:` `GET /address-{version}/_count` matches manifest
   - `Evidence:` Exact or near-exact match logged
 - [x] Sample queries return expected results (5-10 known-good queries against NEW index)
-  - `Verify:` Known address "16 HEATH CRESCENT HAMPTON EAST VIC 3188" appears in results
+  - `Verify:` Known address "9 ENDEAVOUR COURT COFFIN BAY SA 5607" appears in results
   - `Evidence:` Query hits the new index directly (not via alias)
 - [x] Force merge to 5 segments
   - `Verify:` `POST /address-{version}/_forcemerge?max_num_segments=5` returns 200

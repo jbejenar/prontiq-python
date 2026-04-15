@@ -2,12 +2,16 @@
  * Fixture addresses for integration tests. Minimal set chosen to exercise
  * all the search semantics edge cases we care about:
  *
- * - Multiple HEATH ___ variants (ROAD, STREET, CRESCENT) for ranking tests
- * - HEATH CRESCENT in two states (NSW, VIC) for multi-state suburb tests
+ * - Multiple ENDEAVOUR ___ variants (ROAD, STREET, CRESCENT) for ranking tests
+ * - ENDEAVOUR CRESCENT in two states (NSW, VIC) for multi-state suburb tests
  * - BONDI BEACH for suburb fuzzy match tests
  * - RICHMOND in three states for multi-state aggregation tests
  * - SYDNEY / HAYMARKET for postcode-lookup tests
  * - BIGTOWN × 4 vs BIGTOWM × 1 for fuzzy-tiebreak-by-count tests
+ *
+ * Fixture IDs use an `F_` prefix to mark them as synthetic — they don't
+ * correspond to real G-NAF persistent IDs. The test logic depends on
+ * labels/positions, not on these IDs being looked-up-able.
  *
  * `numberFirst` is populated on every doc so the street-number gate in
  * scoreToConfidence() fires in tests. In real G-NAF data it's extracted
@@ -15,9 +19,9 @@
  */
 export const fixtureAddresses = [
   {
-    id: "F_GANSW704893526",
-    addressLabel: "16 HEATH CRESCENT",
-    addressLabelSearch: "16 HEATH CRESCENT GRIFFITH NSW 2680",
+    id: "F_GANSW999000001",
+    addressLabel: "16 ENDEAVOUR CRESCENT",
+    addressLabelSearch: "16 ENDEAVOUR CRESCENT GRIFFITH NSW 2680",
     localityName: "GRIFFITH",
     state: "NSW",
     postcode: "2680",
@@ -26,20 +30,20 @@ export const fixtureAddresses = [
     numberFirst: "16",
   },
   {
-    id: "F_GAVIC420559144",
-    addressLabel: "16 HEATH CRESCENT",
-    addressLabelSearch: "16 HEATH CRESCENT HAMPTON EAST VIC 3188",
-    localityName: "HAMPTON EAST",
+    id: "F_GAVIC999000002",
+    addressLabel: "16 ENDEAVOUR CRESCENT",
+    addressLabelSearch: "16 ENDEAVOUR CRESCENT SHEPPARTON VIC 3630",
+    localityName: "SHEPPARTON",
     state: "VIC",
-    postcode: "3188",
+    postcode: "3630",
     confidence: 2,
-    location: { lat: -37.9376, lon: 145.0295 },
+    location: { lat: -36.383, lon: 145.401 },
     numberFirst: "16",
   },
   {
-    id: "F_GANSW720158070",
-    addressLabel: "16 HEATH ROAD",
-    addressLabelSearch: "16 HEATH ROAD LEPPINGTON NSW 2179",
+    id: "F_GANSW999000003",
+    addressLabel: "16 ENDEAVOUR ROAD",
+    addressLabelSearch: "16 ENDEAVOUR ROAD LEPPINGTON NSW 2179",
     localityName: "LEPPINGTON",
     state: "NSW",
     postcode: "2179",
@@ -48,9 +52,9 @@ export const fixtureAddresses = [
     numberFirst: "16",
   },
   {
-    id: "F_GASA_415543154",
-    addressLabel: "16 HEATH STREET",
-    addressLabelSearch: "16 HEATH STREET BIRKENHEAD SA 5015",
+    id: "F_GASA_999000004",
+    addressLabel: "16 ENDEAVOUR STREET",
+    addressLabelSearch: "16 ENDEAVOUR STREET BIRKENHEAD SA 5015",
     localityName: "BIRKENHEAD",
     state: "SA",
     postcode: "5015",
@@ -59,9 +63,9 @@ export const fixtureAddresses = [
     numberFirst: "16",
   },
   {
-    id: "F_GANSW706085480",
-    addressLabel: "16 HEATH AVENUE",
-    addressLabelSearch: "16 HEATH AVENUE TUNCURRY NSW 2428",
+    id: "F_GANSW999000005",
+    addressLabel: "16 ENDEAVOUR AVENUE",
+    addressLabelSearch: "16 ENDEAVOUR AVENUE TUNCURRY NSW 2428",
     localityName: "TUNCURRY",
     state: "NSW",
     postcode: "2428",

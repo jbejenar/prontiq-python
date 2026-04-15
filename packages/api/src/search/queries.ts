@@ -40,7 +40,7 @@ export async function autocomplete(q: string, state?: string, limit = 5) {
 
   // Phase 1: strict — operator AND requires every token (including the last as
   // prefix) to match. Gives the best ranking when the user is typing a valid
-  // prefix (e.g. "16 heath cres" → CRESCENT ranks first).
+  // prefix (e.g. "9 endeavour cou" → COURT ranks first).
   const strict = await client.search({
     index: ADDRESS_ALIAS,
     body: {
@@ -151,8 +151,9 @@ const UNIT_PREFIX = /^(UNIT|LEVEL|LOT|FLAT|SHOP|SUITE|APT|APARTMENT)$/;
 
 /**
  * AU Post 4+ char street-type abbreviations. Exempted from the alien-token
- * gate so queries like "16 heath cres ..." aren't demoted to low confidence
- * just because "CRES" isn't in the matched doc's label tokens.
+ * gate so queries containing tokens like "CRES" or "BLVD" aren't demoted to
+ * low confidence just because the abbreviation isn't in the matched doc's
+ * label tokens (which carry the expanded form, e.g. "CRESCENT").
  *
  * Sourced from Australia Post Address Service Manual. Shorter abbreviations
  * (2-3 chars like ST, RD, AVE, TCE, CCT) already pass the `length >= 4` gate
@@ -282,8 +283,8 @@ function hasFuzzyMatchIn(token: string, candidates: Set<string>): boolean {
  *
  * Pure BM25 overstates confidence on nonsense input. Pure token coverage
  * overstates confidence when critical components (postcode, state, or
- * locality) disagree — e.g. a query `... RICHMOND VIC 3188` can still
- * share 5/6 tokens with a doc for `... HAMPTON EAST VIC 3188` even though
+ * locality) disagree — e.g. a query `... RICHMOND VIC 3630` can still
+ * share 5/6 tokens with a doc for `... SHEPPARTON VIC 3630` even though
  * the user explicitly asked for a DIFFERENT locality.
  *
  * Layered gates (most selective first):
@@ -346,12 +347,12 @@ function scoreToConfidence(
   // street name the user typed. Demote to "low" regardless of other
   // component matches.
   //
-  // Example: query "16 heath crescent richmond vic 3188" against
-  // matched "16 HEATH CRESCENT HAMPTON EAST VIC 3188":
+  // Example: query "9 endeavour court richmond sa 5607" against
+  // matched "9 ENDEAVOUR COURT COFFIN BAY SA 5607":
   //   → RICHMOND is 4+ alpha, not a state, not in label, not fuzzy-near
   //     any label token → alien → "low"
-  // Contrast: query "16 haeth crescent" against same matched doc:
-  //   → HAETH is 5 chars, fuzzy-matches HEATH (edit distance 1) → NOT alien
+  // Contrast: query "9 endevour court" against same matched doc:
+  //   → ENDEVOUR is 8 chars, fuzzy-matches ENDEAVOUR (edit distance 1) → NOT alien
   const aliens = queryTokens.filter(
     (t) =>
       /^[A-Z]+$/.test(t) &&

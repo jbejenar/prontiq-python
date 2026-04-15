@@ -90,7 +90,7 @@ Run these in order before the first live Address cutover:
 - `GET /_alias/addresses` points at the new index
 - `GET /address-{version}/_count` matches `manifest.total_records`
 - Known-good query returns expected results:
-  - `16 HEATH CRESCENT HAMPTON EAST VIC 3188`
+  - `9 ENDEAVOUR COURT COFFIN BAY SA 5607`
 - Reverse-style geo query works against `location`
 
 ## Rollback

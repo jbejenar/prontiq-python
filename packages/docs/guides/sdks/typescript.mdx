@@ -40,8 +40,8 @@ const prontiq = new Prontiq({
 
 ```typescript
 const { suggestions, total } = await prontiq.getV1AddressAutocomplete(
-  "16 heath cres",  // q
-  "VIC",            // state (optional)
+  "8 noble way",    // q
+  "WA",             // state (optional)
   5,                // limit (optional)
 );
 
@@ -54,7 +54,7 @@ for (const s of suggestions) {
 
 ```typescript
 const { match, confidence } = await prontiq.getV1AddressValidate(
-  "16 heath crescent hampton east vic 3188"
+  "8 noble way success wa 6164"
 );
 
 if (confidence === "high") {
@@ -65,7 +65,7 @@ if (confidence === "high") {
 ## Enrich
 
 ```typescript
-const address = await prontiq.getV1AddressEnrich("GAVIC420559144");
+const address = await prontiq.getV1AddressEnrich("GAWA_147231326");
 
 console.log(address.geocode);    // { latitude, longitude, type, reliability }
 console.log(address.boundaries); // { lga, stateElectorate, meshBlock, sa2, ... }

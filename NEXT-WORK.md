@@ -18,9 +18,9 @@
 ### Live Endpoints (all require `X-Api-Key` header)
 
 ```
-GET /v1/address/autocomplete?q=16+heath+cres&state=VIC&limit=5
-GET /v1/address/validate?q=16+heath+crescent+hampton+east+vic+3188
-GET /v1/address/enrich?id=GAVIC420559144
+GET /v1/address/autocomplete?q=9+endeavour+cou&state=QLD&limit=5
+GET /v1/address/validate?q=9+endeavour+court+coffin+bay+sa+5607
+GET /v1/address/enrich?id=GASA_422206807
 GET /v1/address/reverse?lat=-33.8568&lon=151.2153&radius=200&limit=5
 GET /v1/address/lookup/postcode?postcode=2000&limit=10
 GET /v1/address/lookup/suburb?suburb=bondi+beach&state=NSW&limit=10

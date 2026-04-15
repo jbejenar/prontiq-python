@@ -15,8 +15,8 @@ export const PRODUCT_REGISTRY: Record<string, ProductConfig> = {
       phase1_replicas: 0,
       known_good_query: {
         kind: "address_contains",
-        query: "16 HEATH CRESCENT HAMPTON EAST VIC 3188",
-        expected_label_fragment: "16 HEATH CRESCENT",
+        query: "9 ENDEAVOUR COURT COFFIN BAY SA 5607",
+        expected_label_fragment: "9 ENDEAVOUR COURT",
       },
     },
   },

@@ -10,13 +10,13 @@ The autocomplete endpoint returns address suggestions as the user types. It uses
 <CodeGroup>
 
 ```bash curl
-curl "https://api.prontiq.dev/v1/address/autocomplete?q=16+heath+cres" \
+curl "https://api.prontiq.dev/v1/address/autocomplete?q=9+endeavour+cou" \
   -H "X-Api-Key: YOUR_API_KEY"
 ```
 
 ```typescript Node.js (server-side)
 const res = await fetch(
-  "https://api.prontiq.dev/v1/address/autocomplete?q=16+heath+cres",
+  "https://api.prontiq.dev/v1/address/autocomplete?q=9+endeavour+cou",
   { headers: { "X-Api-Key": "YOUR_API_KEY" } }
 );
 const { suggestions } = await res.json();
@@ -37,11 +37,11 @@ const { suggestions } = await res.json();
 Narrow results to a single state:
 
 ```bash
-curl ".../v1/address/autocomplete?q=16+heath+cres&state=VIC&limit=3" \
+curl ".../v1/address/autocomplete?q=17+endeavour+str&state=QLD&limit=3" \
   -H "X-Api-Key: YOUR_API_KEY"
 ```
 
-Returns only VIC addresses — useful for state-specific forms.
+Returns only QLD addresses — useful for state-specific forms.
 
 ## Response
 
@@ -49,16 +49,16 @@ Returns only VIC addresses — useful for state-specific forms.
 {
   "suggestions": [
     {
-      "id": "GAVIC420559144",
-      "addressLabel": "16 HEATH CRESCENT",
-      "localityName": "HAMPTON EAST",
-      "state": "VIC",
-      "postcode": "3188",
+      "id": "GAQLD156786950",
+      "addressLabel": "9 ENDEAVOUR COURT",
+      "localityName": "LAMMERMOOR",
+      "state": "QLD",
+      "postcode": "4703",
       "confidence": 2,
-      "score": 27.72
+      "score": 25.95
     }
   ],
-  "total": 10000
+  "total": 329
 }
 ```
 
@@ -84,4 +84,4 @@ Returns only VIC addresses — useful for state-specific forms.
 - Start querying after 3 characters for best results
 - Debounce requests by 150-300ms for smooth typeahead
 - Use `state` filter when you know the user's state
-- **Typo-tolerant**: typos in completed words are corrected (`16 haeth crescent` finds `16 HEATH CRESCENT`). Exact matches always rank above fuzzy matches. The word currently being typed is matched as a prefix only — typos in the last token won't be corrected.
+- **Typo-tolerant**: typos in completed words are corrected (`17 endevour street` finds `17 ENDEAVOUR STREET`). Exact matches always rank above fuzzy matches. The word currently being typed is matched as a prefix only — typos in the last token won't be corrected.
