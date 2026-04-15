@@ -2,19 +2,21 @@ import type { Handler } from "aws-lambda";
 
 /**
  * Clerk webhook handler: user.created
- * Provisioning chain:
- * 1. Create Stripe customer (free tier)
- * 2. Create Unkey API key (free tier limits)
- * 3. Sync key metadata to DynamoDB
- * 4. Send welcome email with API key + docs link
+ * Provisioning chain (per ARCHITECTURE.MD §5.7.1, ADR-001):
+ * 1. Verify Svix signature
+ * 2. GetItem ORG#{orgId} — return 200 if already provisioned
+ * 3. Create Stripe customer with Idempotency-Key
+ * 4. TransactWriteItems: ORG envelope + audit entry
+ * 5. Send welcome email (no API key — minted via /v1/account/keys/create)
+ *
+ * Implementation tracked by ROADMAP P1B.05.
  */
 export const handler: Handler = async (event) => {
-  // TODO: Verify webhook signature via Svix
-  // TODO: Parse Clerk user.created payload
-  // TODO: Create Stripe customer
-  // TODO: Create Unkey key with free tier limits
-  // TODO: Write key record to DynamoDB
-  // TODO: Trigger welcome email
+  // TODO(P1B.05): Verify webhook signature via Svix
+  // TODO(P1B.05): GetItem ORG#{orgId} idempotency check
+  // TODO(P1B.05): Stripe customer create with Idempotency-Key
+  // TODO(P1B.05): TransactWriteItems for ORG envelope + audit
+  // TODO(P1B.05): Welcome email via SES (no key in body)
 
   console.log("Clerk webhook received", { body: event.body });
 

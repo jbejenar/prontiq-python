@@ -91,7 +91,6 @@ export interface ApiKeyRecord {
   monthlyQuotaPerProduct: number;
   usage: Record<string, Record<string, number>>;
   active: boolean;
-  lastSyncedFromUnkey: string;
 }
 
 export type Tier = "free" | "starter" | "growth" | "enterprise";
