@@ -107,50 +107,40 @@ jobs:
 
       # Deploy first — creates ECR repo and all other infrastructure.
       #
-      # TEMPORARY DEBUG MODE v3. v2 (PR #56) showed Pulumi gets as far as
-      # "pulumi-aws: credentials are valid" + "Retrieved caller identity
-      # from STS" and then goes silent. `PULUMI_LOG_VERBOSE=9` that I set
-      # was not a real Pulumi env var — typo'd for `PULUMI_DEBUG_GRPC`.
-      # Also AWS credential validation might be the hang (the log even
-      # hints at AWS_SKIP_CREDENTIALS_VALIDATION as a bypass).
+      # CI hang diagnosis working hypothesis (after 3 rounds of debug
+      # env iteration — PRs #55/56/58):
       #
-      # v3 changes vs v2:
-      #   AWS_SKIP_CREDENTIALS_VALIDATION=true
-      #     Explicitly skips the AWS provider's STS validation call at
-      #     startup. If the hang happens elsewhere, this still deploys;
-      #     if it happens during validation, we get past it and see the
-      #     next phase in logs. Safe because the actual role auth is
-      #     already verified by configure-aws-credentials@v4 higher up.
+      #   GitHub Actions runners are NOT EC2 instances, but AWS SDKs
+      #   (Go, JS, Python) all have IMDS — the EC2 Instance Metadata
+      #   Service at 169.254.169.254 — in their default credential
+      #   resolver chain. Even with env-var creds populated by
+      #   configure-aws-credentials@v4, some providers still probe IMDS
+      #   at startup. The connection attempt to 169.254.169.254 has a
+      #   default timeout of several minutes (varies by SDK version),
+      #   and the probe is silent in non-TTY mode, explaining our
+      #   invisible stall right after "Retrieved caller identity from
+      #   STS".
       #
-      #   PULUMI_DEBUG_GRPC=true
-      #     THIS is the real env var (v2 had PULUMI_LOG_VERBOSE=9 which
-      #     doesn't exist). Dumps gRPC traffic between the Pulumi engine
-      #     and the provider subprocesses. We need this to see what's
-      #     happening after "Retrieved caller identity from STS" —
-      #     specifically which gRPC request/response pair is pending.
+      #   `AWS_EC2_METADATA_DISABLED=true` is the standard env var that
+      #   all AWS SDKs honor to bypass IMDS entirely. Safe because we
+      #   already have env-var creds from OIDC, so IMDS fallback isn't
+      #   needed.
       #
-      #   timeout 600 wrapper
-      #     Force-kill the deploy after 10 min instead of waiting for us
-      #     to manually cancel. Node may dump a final state on SIGTERM
-      #     that we haven't seen yet. Exit code 124 = timeout fired.
+      # Kept: AWS_SKIP_CREDENTIALS_VALIDATION (no cost, closes a
+      # separate potential hang source). `timeout 10m` wrapper (belt
+      # and braces — if IMDS isn't the cause, we still exit cleanly
+      # instead of running the runner for hours).
       #
-      # Kept from v2: TF_LOG=DEBUG, SST_VERBOSE, PULUMI_DEBUG_COMMANDS.
-      # Removed: PULUMI_LOG_VERBOSE (not a real env var).
-      #
-      # Still diagnostic-only.
-      - name: Deploy to dev (DEBUG MODE v3 — GRPC + skip-AWS-validation + timeout)
+      # Dropped: all the *_DEBUG / *_VERBOSE env vars from v3. Debug
+      # output was useful for diagnosis but noisy in normal operation.
+      # Add back selectively if this fix turns out to be wrong.
+      - name: Deploy to dev
         shell: bash
         env:
-          TF_LOG: "DEBUG"
-          PULUMI_DEBUG_GRPC: "true"
+          AWS_EC2_METADATA_DISABLED: "true"
           AWS_SKIP_CREDENTIALS_VALIDATION: "true"
-          SST_VERBOSE: "1"
-          PULUMI_DEBUG_COMMANDS: "true"
         run: |
           set -x
-          # 10-min cap — beyond the 3-15 min "normal silent-refresh" band.
-          # If the hang persists, SIGTERM triggers Node's default exit path
-          # which may print state we haven't seen. Exit 124 = timeout fired.
           timeout --signal=SIGTERM --kill-after=30s 10m pnpm deploy:dev || EXIT=$?
           echo "deploy exited with code: ${EXIT:-0}"
           exit "${EXIT:-0}"
