@@ -107,6 +107,19 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      # Build workspace packages BEFORE deploy. SST's esbuild bundler
+      # resolves workspace deps via each package's `main` entry, which
+      # for our shared packages (@prontiq/shared, etc.) points at
+      # `./dist/index.js`. Without `pnpm build`, those `dist/` outputs
+      # don't exist on a fresh runner and esbuild fails with:
+      #   Could not resolve "@prontiq/shared" packages/ingestion/...
+      # That error happens deep inside Pulumi's program runner, gets
+      # surfaced only via .sst/log/pulumi.log, and looks identical to
+      # a generic "deploy hung" from the CI step's perspective.
+      # deploy-prod.yml has had this step from the start; deploy-dev
+      # was missing it.
+      - run: pnpm build
+
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: arn:aws:iam::493712557159:role/prontiq-platform-deploy-role
