@@ -1,0 +1,179 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "SSTBootstrapAndPulumiState",
+      "Effect": "Allow",
+      "Action": [
+        "s3:CreateBucket",
+        "s3:PutObject",
+        "s3:GetObject",
+        "s3:DeleteObject",
+        "s3:ListBucket",
+        "s3:GetBucketLocation",
+        "s3:PutBucketPolicy",
+        "s3:GetBucketPolicy",
+        "s3:PutBucketVersioning",
+        "s3:PutEncryptionConfiguration",
+        "s3:GetEncryptionConfiguration",
+        "s3:PutBucketPublicAccessBlock",
+        "s3:PutLifecycleConfiguration",
+        "dynamodb:CreateTable",
+        "dynamodb:DescribeTable",
+        "dynamodb:PutItem",
+        "dynamodb:GetItem",
+        "dynamodb:DeleteItem",
+        "dynamodb:UpdateItem",
+        "dynamodb:DeleteTable",
+        "dynamodb:TagResource",
+        "dynamodb:UpdateTimeToLive",
+        "dynamodb:DescribeTimeToLive"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "LambdaManagement",
+      "Effect": "Allow",
+      "Action": [
+        "lambda:*"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "APIGateway",
+      "Effect": "Allow",
+      "Action": [
+        "apigateway:*"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "IAMPassRole",
+      "Effect": "Allow",
+      "Action": [
+        "iam:CreateRole",
+        "iam:DeleteRole",
+        "iam:GetRole",
+        "iam:PassRole",
+        "iam:AttachRolePolicy",
+        "iam:DetachRolePolicy",
+        "iam:PutRolePolicy",
+        "iam:DeleteRolePolicy",
+        "iam:GetRolePolicy",
+        "iam:TagRole",
+        "iam:CreateServiceLinkedRole"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "CloudWatch",
+      "Effect": "Allow",
+      "Action": [
+        "logs:*",
+        "cloudwatch:*",
+        "xray:*"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "OpenSearch",
+      "Effect": "Allow",
+      "Action": [
+        "es:ESHttp*",
+        "es:DescribeElasticsearchDomain",
+        "es:DescribeDomain"
+      ],
+      "Resource": "arn:aws:es:ap-southeast-2:493712557159:domain/flat-white/*"
+    },
+    {
+      "Sid": "DataBucketAccess",
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject",
+        "s3:ListBucket"
+      ],
+      "Resource": [
+        "arn:aws:s3:::flat-white-address-493712557159-ap-southeast-2-an",
+        "arn:aws:s3:::flat-white-address-493712557159-ap-southeast-2-an/*"
+      ]
+    },
+    {
+      "Sid": "WAF",
+      "Effect": "Allow",
+      "Action": [
+        "wafv2:*"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "EventBridgeAndStepFunctions",
+      "Effect": "Allow",
+      "Action": [
+        "events:*",
+        "states:*",
+        "sns:*",
+        "sqs:*"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "SSM",
+      "Effect": "Allow",
+      "Action": [
+        "ssm:GetParameter",
+        "ssm:PutParameter",
+        "ssm:DeleteParameter",
+        "ssm:GetParametersByPath"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "CloudFrontForNextjs",
+      "Effect": "Allow",
+      "Action": [
+        "cloudfront:*"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "ECRForDockerImages",
+      "Effect": "Allow",
+      "Action": [
+        "ecr:*"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "STSForPulumi",
+      "Effect": "Allow",
+      "Action": [
+        "sts:GetCallerIdentity",
+        "sts:AssumeRole"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "ECSForFargate",
+      "Effect": "Allow",
+      "Action": [
+        "ecs:*"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "EC2DescribeForVPC",
+      "Effect": "Allow",
+      "Action": [
+        "ec2:DescribeVpcs",
+        "ec2:DescribeVpcAttribute",
+        "ec2:DescribeSubnets",
+        "ec2:DescribeSecurityGroups",
+        "ec2:DescribeNetworkInterfaces",
+        "ec2:CreateNetworkInterface",
+        "ec2:DeleteNetworkInterface",
+        "ec2:DescribeRouteTables"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
