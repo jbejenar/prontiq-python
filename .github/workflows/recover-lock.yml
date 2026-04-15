@@ -35,6 +35,8 @@ permissions:
 jobs:
   recover:
     runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
     # Lock recovery for prod requires the production environment so
     # protected-environment reviewers (if configured) gate the action.
     environment: ${{ inputs.stage == 'prod' && 'production' || 'dev' }}

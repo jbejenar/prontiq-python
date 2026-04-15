@@ -1,4 +1,4 @@
-FROM node:20-slim AS builder
+FROM node:24-slim AS builder
 
 RUN corepack enable && corepack prepare pnpm@latest --activate
 
@@ -18,7 +18,7 @@ RUN pnpm --filter @prontiq/shared build && pnpm --filter @prontiq/ingestion buil
 # pnpm deploy creates a flat node_modules without workspace symlinks
 RUN pnpm --filter @prontiq/ingestion deploy --prod --legacy /deploy
 
-FROM node:20-slim
+FROM node:24-slim
 
 WORKDIR /app
 COPY --from=builder /deploy/dist ./dist

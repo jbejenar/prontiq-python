@@ -13,6 +13,13 @@ permissions:
 jobs:
   check:
     runs-on: ubuntu-latest
+    # Opt JavaScript actions (actions/checkout, setup-node, etc.) into their
+    # Node 24 runtime immediately. Without this, they run on Node 20 which
+    # emits a deprecation warning on every run. June 2026 will force this
+    # anyway; flipping it now catches any incompatibility ahead of the
+    # mandatory cutover.
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
     steps:
       - uses: actions/checkout@v4
 
@@ -44,6 +51,8 @@ jobs:
   integration-test:
     needs: check
     runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
     services:
       opensearch:
         image: opensearchproject/opensearch:2.19.0
@@ -88,6 +97,8 @@ jobs:
     needs: [check, integration-test]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
     # Serialize deploy-dev runs at the GHA layer so two concurrent
     # pushes can't race the unlock-then-deploy sequence below.
     # cancel-in-progress: false → second push QUEUES, never cancels
