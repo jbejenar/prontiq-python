@@ -11,7 +11,7 @@
 
 **Pattern:** Free open dataset → independent pipeline → S3 (NDJSON + manifest.json) → event-driven indexing → OpenSearch → commercial API → auth / billing / docs / SDKs.
 
-**Stack:** SST v4 + Pulumi · Hono + @hono/zod-openapi · OpenSearch 2.19 · DynamoDB · Clerk · Unkey · Stripe · Next.js 15 · Mintlify · Speakeasy
+**Stack:** SST v4 + Pulumi · Hono + @hono/zod-openapi · OpenSearch 2.19 · DynamoDB (DDB-native keys, hash-based) · Clerk · Stripe · Next.js 15 · Mintlify · Speakeasy
 
 **Repo:** pnpm monorepo with Turborepo. 10 workspace packages. TypeScript strict. ESM only.
 
@@ -23,7 +23,7 @@
 | --------- | -------------------------- | ------- | ---------- | ----------- |
 | **P0**    | Infrastructure Foundation  | 6       | 6/6 ✅     | Week 1      |
 | **P1A**   | API Core (Address)         | 13      | 9/13       | Weeks 2-3   |
-| **P1B**   | Auth & Billing             | 9       | 0/9        | Weeks 3-4   |
+| **P1B**   | Auth & Billing             | 13      | 0/13       | Weeks 3-4   |
 | **P1C**   | Dashboard                  | 7       | 0/7        | Weeks 4-5   |
 | **P1D**   | Docs & SDK                 | 5       | 2/5        | Week 5      |
 | **P1E**   | Ingestion (Phase 1)        | 6       | 4/6        | Week 6      |
@@ -32,7 +32,7 @@
 | **P3**    | GLEIF/LEI + Full Dashboard | 7       | 0/7        | Weeks 11-13 |
 | **P4**    | Shopify + WooCommerce      | 5       | 0/5        | Weeks 14-17 |
 | **P5**    | CVE/NVD + Patents          | 4       | 0/4        | Weeks 18-21 |
-| **Total** |                            | **72**  | **22/72**  |             |
+| **Total** |                            | **76**  | **22/76**  |             |
 
 ---
 
@@ -233,7 +233,7 @@ CI pipeline fully operational. `check` job runs lint → typecheck → build →
 
 **Out — Do Not Implement:**
 
-- Test execution (no tests yet) → P1B.09
+- Test execution (no tests yet) → P1B.12
 - Preview deployments per PR → future
 - SDK generation workflow → P1D.04
 
@@ -291,7 +291,7 @@ Without a linter and formatter, AI agents and human contributors produce inconsi
 **Out — Do Not Implement:**
 
 - Next.js ESLint plugin (dashboard handles separately) → P1C.07
-- Test-specific lint rules → P1B.09
+- Test-specific lint rules → P1B.12
 - Commit message linting (conventional commits) → future
 
 ---
@@ -889,7 +889,7 @@ A t3.small OpenSearch node with ~128 max connections can be overwhelmed by a sin
 
 **Out — Do Not Implement:**
 
-- Per-key per-second rate limiting (token bucket / sliding window) → P2 (per ARCHITECTURE.MD: "deferred to Phase 2+")
+- Per-key per-second rate limiting (token bucket) is brought into P1 as **P1B.09** per ARCHITECTURE.MD §5.4.1 / architecture v2.2 §4.3
 - Geographic restrictions → not needed (LEI is international)
 - Custom WAF rules per customer → future
 - Bot detection → future
@@ -1070,9 +1070,15 @@ Options:
 
 ## Phase 1B — Auth & Billing
 
-> **Goal:** Sign-up → API key → rate-limited requests → usage tracking → billing.
+> **Goal:** Sign-up → DDB-native API key → hash-verified requests → rate-limited with burst limiter → usage tracked per-month → billed hourly via Stripe, with 14-day payment grace period.
 >
-> **Dependency:** P1B.01-03 (vendor setup) can run in parallel. P1B.04-06 (webhook handlers) depend on vendor setup. P1B.07-08 (reconciliation, billing) depend on webhook handlers.
+> **Scope boundary.** The hot-path middleware rewrite (hash-based lookup, REDIRECT fallback, new usage-table writes) ships in **P1B.04b** (cutover), NOT in P1B.02. P1B.02 is pure crypto primitives only — no DDB dependency — which is why it remains parallel-safe. P1B.04b flips schema + code atomically once P1B.02 and P1B.04 are both done.
+>
+> **Dependency graph:** P1B.01/.02/.03/.04 can run in parallel. P1B.04b depends on .02 + .04 (needs the crypto module + the tables to write the code cutover). P1B.05 depends on .01/.02/.03/.04. P1B.06 depends on .03/.04. P1B.07/.08 depend on .04. **P1B.09 depends on .02 + .04b** (the burst limiter middleware reads `record.rateLimit` from context — that context is established by the post-cutover auth middleware in .04b, not by the pure crypto module). P1B.10 depends on .03/.04/.06. P1B.11 depends on .10. P1B.12 depends on .05/.09/.04b (tests the cutover end-to-end).
+>
+> **Repo-wide Unkey removal** (legacy `packages/webhooks/src/unkey.ts`, `UNKEY_*` env vars in `.env.example` / `sst.config.ts` / GitHub Actions) is a separate follow-up PR — `chore(webhooks): remove Unkey code` — tracked in NEXT-WORK.md Backlog. **It is not owned by any P1B ticket.** P1B tickets only guarantee no NEW Unkey usage is introduced in the files they touch.
+>
+> **Architecture reference:** ARCHITECTURE.MD §5.5 (schema), §5.6 (billing), §5.7 (webhooks), §7 (endpoints), §9 (error taxonomy). Decision rationale: ADR-001.
 
 ---
 
@@ -1094,11 +1100,11 @@ tech_stack:
 
 #### User Story
 
-As a builder, I need a Clerk application configured with OAuth providers and webhook so that users can sign up and the provisioning chain is triggered automatically.
+As a builder, I need a Clerk application configured with OAuth providers and a webhook so that users can sign up and the provisioning chain (Clerk → Stripe → DynamoDB) is triggered automatically.
 
 #### Problem Statement
 
-Clerk handles human identity: sign-up, login, OAuth (Google/GitHub), organisations, team management. The dashboard authenticates through Clerk. A webhook on `user.created` triggers the provisioning chain (Stripe customer → Unkey key → DynamoDB record). Without Clerk, there's no sign-up flow and no user identity for the dashboard.
+Clerk handles human identity: sign-up, login, OAuth (Google/GitHub), organisations, team management. The `/account` page authenticates through Clerk. A webhook on `user.created` triggers the provisioning chain (Stripe customer → DynamoDB key record). Without Clerk, there's no sign-up flow and no user identity for the dashboard.
 
 #### Definition of Done
 
@@ -1114,7 +1120,7 @@ Clerk handles human identity: sign-up, login, OAuth (Google/GitHub), organisatio
   - `Verify:` Clerk dashboard webhooks section shows endpoint URL
   - `Evidence:` URL points to `{api-url}/webhooks/clerk`
 - [ ] `CLERK_SECRET_KEY` and `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` in SST secrets/env
-  - `Verify:` `sst deploy` passes keys to Dashboard and webhook Lambda
+  - `Verify:` `sst deploy` passes keys to `/account` and webhook Lambda
   - `Evidence:` Lambda env vars include Clerk keys
 - [ ] Clerk webhook secret stored and used for signature verification
   - `Verify:` `CLERK_WEBHOOK_SECRET` available in webhook handler env
@@ -1126,17 +1132,17 @@ Clerk handles human identity: sign-up, login, OAuth (Google/GitHub), organisatio
 
 **Out — Do Not Implement:**
 
-- Webhook handler implementation → P1B.04
-- Dashboard Clerk components → P1C.02
+- Webhook handler implementation → P1B.05
+- `/account` Clerk components → P1C.02
 - Team/org management → P3.03
 
 ---
 
-### Ticket P1B.02 — Unkey Setup
+### Ticket P1B.02 — Key Module (crypto primitives)
 
 ```yaml
 id: P1B.02
-title: Unkey Setup
+title: Key Module (crypto primitives)
 status: pending
 priority: p0-critical
 epic: P1B
@@ -1144,365 +1150,450 @@ persona: [builder]
 depends_on: []
 completed: null
 tech_stack:
-  keys: Unkey
+  keys: custom (node:crypto only — no DDB dependency)
 ```
 
 #### User Story
 
-As a builder, I need Unkey configured for API key issuance with the `pq_live_` prefix so that the platform can issue, scope, and manage API keys.
-
-#### Definition of Done
-
-##### Functional
-
-- [ ] Unkey API created in Unkey dashboard
-  - `Verify:` Unkey dashboard shows API with key prefix configured
-  - `Evidence:` API ID available
-- [ ] Root key stored in SST secrets
-  - `Verify:` `UNKEY_ROOT_KEY` available in webhook handler env
-  - `Evidence:` SST config passes it through
-- [ ] Key prefix: `pq_live_` (production), `pq_test_` (sandbox)
-  - `Verify:` Create a test key; prefix matches
-  - `Evidence:` Key starts with `pq_live_` or `pq_test_`
-- [ ] Webhook URL configured for `key.created`, `key.updated`, `key.deleted`
-  - `Verify:` Unkey dashboard webhooks section
-  - `Evidence:` URL points to `{api-url}/webhooks/unkey`
-
-#### Scope
-
-**In:** Unkey API creation, root key, prefix config, webhook config
-
-**Out — Do Not Implement:**
-
-- Webhook handler → P1B.06
-- Reconciliation Lambda → P1B.07
-- Management UI in dashboard → P1C.03
-
----
-
-### Ticket P1B.03 — Stripe Setup
-
-```yaml
-id: P1B.03
-title: Stripe Setup
-status: pending
-priority: p0-critical
-epic: P1B
-persona: [builder]
-depends_on: []
-completed: null
-tech_stack:
-  billing: Stripe (metered)
-```
-
-#### User Story
-
-As a builder, I need Stripe configured with subscription plans and per-product usage meters so that the platform can bill developers based on their actual API usage.
+As a builder, I need pure crypto primitives in `packages/shared/src/keys.ts` (`generateKey`, `hashKey`) so that every downstream ticket (Clerk webhook provisioning P1B.05, burst limiter P1B.09, migration/middleware cutover P1B.04b) has a consistent way to mint and hash `pq_live_` keys.
 
 #### Problem Statement
 
-Stripe metered billing uses one subscription per organisation with per-product usage line items. The pricing model (Free/Starter $29/Growth $99) is defined in ARCHITECTURE.MD section 5.6. Usage meters track per-product API calls and report to Stripe hourly. The embedded pricing table handles plan selection and card collection without custom UI.
+v2.2 removes Unkey (ADR-001). Key generation and hashing are the foundational primitives — they need no DynamoDB access, no table schema, no auth middleware context. Keeping this ticket pure (no infra dependency) lets it run in parallel with P1B.01/.03/.04 and keeps the crypto contract isolated from the schema-migration work (where middleware changes actually land — see P1B.04b).
+
+**Boundary:** this ticket ships the module only. Wiring it into `middleware/auth.ts` to do hash-based lookup + REDIRECT fallback against `prontiq-keys` / `prontiq-usage` happens in **P1B.04b** (the cutover ticket) because it requires the tables from P1B.04 and the migration script to flip both schema and code atomically.
 
 #### Definition of Done
 
 ##### Functional
 
-- [ ] Stripe products created: Free, Starter ($29/mo), Growth ($99/mo)
+- [ ] `packages/shared/src/keys.ts` exports `generateKey()` and `hashKey(raw: string)`
+  - `Verify:` Module loads via `import { generateKey, hashKey } from "@prontiq/shared/keys"` (or equivalent export path in `index.ts`)
+  - `Evidence:` File exists with both exports; `pnpm typecheck` passes
+- [ ] `generateKey()` returns `{ raw: string; hash: string; prefix: string }`
+  - `Verify:` Unit test asserts shape
+  - `Evidence:` `raw = "pq_live_" + randomBytes(24).toString("hex")` (56 chars total: 8-char prefix + 48 hex); `hash = SHA-256(raw)` in lowercase hex (64 chars); `prefix = raw.slice(0, 12)`
+- [ ] `hashKey(raw)` returns the same SHA-256 hex for the same input
+  - `Verify:` Unit test: `hashKey(key.raw) === key.hash` for any `key = generateKey()`
+  - `Evidence:` Vitest run
+- [ ] Module has **zero imports** from `@aws-sdk/*`, `@prontiq/api`, or Unkey SDKs — only `node:crypto`
+  - `Verify:` `grep -E "^import" packages/shared/src/keys.ts` shows only `node:crypto`
+  - `Evidence:` Module stays pure so it can be used both in the API Lambda (hot path) and in scripts (migration, seeding) without pulling AWS SDK
+
+##### Testing
+
+- [ ] Unit tests cover: prefix is `pq_live_`, length is 56, hex suffix has 48 chars `[a-f0-9]{48}`, 1000 successive `generateKey()` calls produce no duplicates, `hashKey` is deterministic + matches `generateKey().hash`
+  - `Verify:` `pnpm --filter @prontiq/shared test`
+  - `Evidence:` All assertions pass
+
+#### Scope
+
+**In:** `packages/shared/src/keys.ts` with `generateKey` + `hashKey`; unit tests; export from shared package index.
+
+**Out — Do Not Implement:**
+
+- Auth middleware refactor (hash-based lookup, REDIRECT fallback) → **P1B.04b** (cutover)
+- DynamoDB reads/writes → P1B.05 (Clerk webhook) for CREATE, P1B.04b for VERIFY path rewrite
+- Repo-wide Unkey code/env removal → **PR 4** (`chore(webhooks): remove Unkey code`)
+- Rotation / revoke / list endpoints → P1C.03 (`/v1/account/keys/*`)
+- Table creation → P1B.04
+- Data migration from legacy `ApiKeyTable` → P1B.04b
+
+---
+
+### Ticket P1B.03 — Stripe Setup (Products + PLANS + Pricing Table)
+
+```yaml
+id: P1B.03
+title: Stripe Setup (Products + PLANS + Pricing Table)
+status: pending
+priority: p0-critical
+epic: P1B
+persona: [builder]
+depends_on: []
+completed: null
+tech_stack:
+  billing: Stripe (metered, tiered Prices)
+```
+
+#### User Story
+
+As a builder, I need Stripe configured with subscription plans, per-product metered Prices with tiered allocations, an embedded Pricing Table, and matching `PLANS` constants so that the platform can bill developers with zero cron-side pricing logic.
+
+#### Problem Statement
+
+Stripe metered billing needs one subscription per organisation with per-product usage line items. Each metered Price is configured with `tiers` — first N thousand requests at $0, the rest at the overage rate (ARCHITECTURE.MD §5.6.1, "Stripe-side" option). The `PLANS` constants in `packages/shared/src/constants.ts` mirror this for the middleware — same quotas, same product scopes, same rate limits. The embedded `<stripe-pricing-table>` is configured in the Stripe Dashboard and referenced by ID in the Billing tab.
+
+#### Definition of Done
+
+##### Functional
+
+- [ ] Stripe products created: Starter ($29/mo recurring), Growth ($99/mo recurring)
   - `Verify:` Stripe dashboard Products section
-  - `Evidence:` Product IDs and price IDs documented
-- [ ] Per-product usage meters created (address, abn, lei, cve, patents)
-  - `Verify:` Stripe Billing → Meters section
-  - `Evidence:` Meter IDs for each product
-- [ ] Embedded pricing table configured
-  - `Verify:` Stripe pricing table embed code available
-  - `Evidence:` Pricing table ID for embedding in dashboard
-- [ ] Webhook URL configured for `subscription.created`, `subscription.updated`
+  - `Evidence:` Product IDs and Price IDs documented
+- [ ] Per-product metered Prices created with tiers (address, abn, lei, cve, patents) — first N thousand at $0, overage at $1.50 (Starter) / $1.00 (Growth) per 1K
+  - `Verify:` Stripe Billing → Prices section, inspect tiers on each
+  - `Evidence:` Price IDs and tier config per product
+- [ ] `<stripe-pricing-table>` created in Dashboard showing Free / Starter / Growth
+  - `Verify:` Stripe dashboard → Pricing tables shows the table
+  - `Evidence:` Pricing table ID captured for P1C.05 embed
+- [ ] `PLANS` constants block added to `packages/shared/src/constants.ts` per ARCHITECTURE.MD §5.6.1 (free/starter/growth/enterprise shapes with `stripePriceId`, `quotaPerProduct`, `rateLimit`, `products`, `maxKeys`, `overagePerThousand`)
+  - `Verify:` `pnpm typecheck` passes; PLANS[tier].stripePriceId matches Stripe Dashboard Price IDs
+  - `Evidence:` `packages/shared/src/constants.ts` diff
+- [ ] Webhook URL configured for `checkout.session.completed`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.payment_failed`
   - `Verify:` Stripe dashboard Webhooks section
   - `Evidence:` URL points to `{api-url}/webhooks/stripe`
+- [ ] Smart Retries configured so all retry attempts complete within 7 days of first failure, AND subscription cancel policy set to "Cancel subscription when all retries exhausted" (required for 14-day grace per §5.6.3)
+  - `Verify:` Stripe dashboard → Settings → Billing → Subscriptions and emails
+  - `Evidence:` Retry schedule screenshot + cancel policy setting
 - [ ] `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` in SST secrets
-  - `Verify:` Webhook handler Lambda has access to Stripe keys
+  - `Verify:` Webhook handler Lambda has access
   - `Evidence:` SST config passes them through
 
 #### Scope
 
-**In:** Stripe products, prices, meters, pricing table, webhook config, secrets
+**In:** Stripe products, tiered metered Prices, Pricing Table, Smart Retries + cancel policy, webhook endpoints, PLANS constants, secrets
 
 **Out — Do Not Implement:**
 
-- Webhook handler → P1B.05
-- Usage reporting Lambda → P1B.08
-- Dashboard billing page → P1C.05
+- Webhook handler → P1B.06
+- Billing cron → P1B.10
+- `/account` Billing tab → P1C.05
 - Enterprise custom pricing → future
 
 ---
 
-### Ticket P1B.04 — Clerk Webhook Handler (Provisioning)
+### Ticket P1B.04 — DynamoDB Tables (4 tables + schema)
 
 ```yaml
 id: P1B.04
+title: DynamoDB Tables (4 tables + schema)
+status: pending
+priority: p0-critical
+epic: P1B
+persona: [builder]
+depends_on: [P0.02]
+completed: null
+tech_stack:
+  infra: SST v4 + Pulumi
+  data: DynamoDB
+```
+
+#### User Story
+
+As a builder, I need four DynamoDB tables (`prontiq-keys`, `prontiq-usage`, `prontiq-audit`, `prontiq-ses-suppressions`) with the exact schema defined in ARCHITECTURE.MD §5.5.1 so that subsequent tickets (webhook handlers, cron, middleware) have the infra to write to.
+
+#### Problem Statement
+
+v2.2 splits the single legacy `ApiKeyTable` into four purpose-specific tables: hot-path isolation (keys + usage separated), append-only logging (audit), TTL-driven cleanup, hash-only storage. Registry and provisioning-lock are sentinel items in `prontiq-keys` with reserved PKs.
+
+#### Definition of Done
+
+##### Functional
+
+- [ ] `prontiq-keys` table with PK `apiKeyHash` (string), GSI `orgId-index` on `orgId` (sparse — sentinel rows like `ORG#{orgId}` and `REGISTRY#active-keys` deliberately do NOT set an `orgId` attribute, so they are excluded from the index per ARCHITECTURE.MD §5.5.1 "Sentinel record discriminator")
+  - `Verify:` `aws dynamodb describe-table --table-name prontiq-keys` shows `orgId-index` GSI
+  - `Evidence:` SST config + describe-table JSON
+- [ ] `prontiq-usage` table with PK `apiKeyHash` (string) + SK `scope` (string); TTL enabled on `ttl` attribute; **GSI `newHash-redirect-index`** on `newHash` (sparse — only REDIRECT items have a `newHash` attribute) with `KEYS_ONLY` projection. Required by P1B.10 billing cron for rotation-chain attribution per ARCHITECTURE.MD §5.5.1 REDIRECT schema + §5.6.2 cron flow.
+  - `Verify:` `aws dynamodb describe-table --table-name prontiq-usage` shows both TTL on `ttl` AND `newHash-redirect-index` GSI with `KEYS_ONLY` projection
+  - `Evidence:` SST config exposes the GSI; describe-table JSON confirms attribute definitions, key schema, projection type
+- [ ] **REDIRECT GSI smoke test** — seed a REDIRECT item `{apiKeyHash: oldHash, scope: "REDIRECT", newHash: newHash, authValidUntil, ttl}`; query `newHash-redirect-index` where `newHash = newHash`; assert exactly 1 result (the seeded oldHash). Required because P1B.10 will fail without this index.
+  - `Verify:` Integration test against DynamoDB Local
+  - `Evidence:` Test passes
+- [ ] `prontiq-audit` table with PK `orgId` + SK `timestamp#eventId`; TTL enabled on `ttl` (365 days)
+  - `Verify:` `aws dynamodb describe-table --table-name prontiq-audit`
+  - `Evidence:` TTL specification
+- [ ] `prontiq-ses-suppressions` table with PK `email`; TTL enabled on `ttl` (90 days for bounces)
+  - `Verify:` `aws dynamodb describe-table --table-name prontiq-ses-suppressions`
+  - `Evidence:` TTL specification
+- [ ] All tables on-demand (PAY_PER_REQUEST) billing
+  - `Verify:` describe-table shows `BillingModeSummary: PAY_PER_REQUEST`
+  - `Evidence:` SST config
+- [ ] `sst diff --stage prod` reviewed before prod deploy (per CLAUDE.md infra rules)
+  - `Verify:` Captured in PR description
+  - `Evidence:` Diff output
+
+#### Scope
+
+**In:** 4 tables via SST, TTL config, GSI on keys table
+
+**Out — Do Not Implement:**
+
+- Data migration from legacy table → P1B.04b
+- Any writes to these tables → later tickets
+- Registry sharding (only needed post-6,250 billable keys, Phase 5)
+
+---
+
+### Ticket P1B.04b — Data Migration + Middleware Cutover (Legacy Schema → v2.2)
+
+```yaml
+id: P1B.04b
+title: Data Migration + Middleware Cutover (Legacy Schema → v2.2)
+status: pending
+priority: p0-critical
+epic: P1B
+persona: [ops]
+depends_on: [P1B.02, P1B.04]
+completed: null
+tech_stack:
+  scripts: tsx, @aws-sdk/lib-dynamodb
+  code: packages/api/src/middleware, packages/shared/src/types.ts
+```
+
+#### User Story
+
+As a platform operator, I need a coordinated cutover that flips both the schema (legacy `ApiKeyTable` → `prontiq-keys` + `prontiq-usage`) and the code (auth + usage middleware rewritten for hash-based lookup with REDIRECT fallback) atomically, so that there is no window where the middleware is reading a shape the table no longer provides (or vice versa).
+
+#### Problem Statement
+
+Live today is a single `ApiKeyTable` with raw-key PK and nested `usage: {product: {month: count}}` on each record. The middleware (`packages/api/src/middleware/auth.ts`, `packages/api/src/middleware/usage.ts`) reads/writes that shape directly. v2.2 splits the table into `prontiq-keys` (hash PK) + `prontiq-usage` (composite PK `apiKeyHash` + SK `{product}#{yearMonth}`), and introduces REDIRECT records for rotation safety.
+
+**Schema migration and middleware refactor are inseparable**: you can't flip one without the other. This ticket owns both. P1B.02 provides the crypto primitives (`generateKey` / `hashKey`); P1B.04 creates the target tables; this ticket does the hot-path rewrite + data copy + cutover. The legacy seed key `pq_live_prod_000000000000000000000000` doesn't match the `pq_live_` + 48 hex format and is rotated as part of the cutover.
+
+#### Definition of Done
+
+##### Functional — Middleware Refactor (matches ARCHITECTURE.MD §5.5.3 hot-path flow)
+
+- [ ] `packages/api/src/middleware/auth.ts` rewritten: hash incoming `X-Api-Key` via `hashKey` (from P1B.02), `GetItem` from `prontiq-keys` by hash
+  - `Verify:` Unit + integration test — valid key returns 200; invalid returns 401 `INVALID_API_KEY`
+  - `Evidence:` `grep -n "GetCommand" packages/api/src/middleware/auth.ts` shows `Key: { apiKeyHash }` (not `apiKey`)
+- [ ] REDIRECT fallback with `authValidUntil` grace check (per ARCHITECTURE.MD §5.5.1 + §12.3): on `prontiq-keys` miss, `GetItem` from `prontiq-usage` with `{apiKeyHash: oldHash, scope: "REDIRECT"}`; if present AND `authValidUntil > now()` → re-resolve via `record.newHash` and GetItem the new key (one retry, no loop). If `authValidUntil <= now()` → 401 `INVALID_API_KEY` regardless of `ttl`. The redirected-to record is then subject to the standard `active` check (so REVOKE-after-ROTATE naturally rejects).
+  - `Verify:` Three integration tests — (a) seed REDIRECT with `authValidUntil` in future + valid newHash → 200; (b) same but with `authValidUntil` in past → 401; (c) seed REDIRECT pointing at a revoked (`active: false`) newHash → 401 via active check
+  - `Evidence:` All three pass in P1B.12
+- [ ] **Atomic quota enforcement** (per ARCHITECTURE.MD §5.5.3 step 4): replace the read-then-async-write pattern in `usage.ts` with a single conditional `UpdateItem` on `prontiq-usage`:
+  ```
+  UpdateExpression: "SET lastUsedAt = :now ADD requestCount :one"
+  ConditionExpression: "attribute_not_exists(requestCount)
+                        OR requestCount < :quota
+                        OR :tierAllowsOverage = :true"
+  ExpressionAttributeValues: {
+    ":now":               { S: <ISO timestamp> },
+    ":one":               { N: "1" },
+    ":quota":             { N: <PLANS[tier].quotaPerProduct> },
+    ":tierAllowsOverage": { BOOL: <tier !== "free"> },
+    ":true":              { BOOL: true }
+  }
+  ReturnValues: "UPDATED_NEW"
+  ```
+  Note `SET` and `ADD` must be **separate clauses** in DynamoDB UpdateExpression — assignment is not allowed inside an `ADD` clause. Free-tier breach → `ConditionalCheckFailedException` → middleware returns 429 `QUOTA_EXCEEDED` with `resets_at`. Paid-tier overage → success with `X-RateLimit-Over: true` header set when `newRequestCount > quotaPerProduct`. Eliminates the race window where two concurrent requests both pass the quota check before either writes.
+  - `Verify:` Race test — fire 100 concurrent requests at a free-tier key with quota=50; exactly 50 return 200, exactly 50 return 429
+  - `Evidence:` Integration test result + DDB count = 50 (not 100)
+- [ ] **Expression syntax test** (catches the SET/ADD mistake before deploy):
+  - `Verify:` Unit test invokes the auth middleware against DynamoDB Local with a seeded `prontiq-keys` row and an absent `prontiq-usage` row. First request creates the usage item with `requestCount=1` and `lastUsedAt` set. Second request increments. Test deliberately constructs the UpdateExpression as a string and fails-fast if any `ADD ... = ...` substring is present anywhere in the codebase (regex: `ADD\s+\w+\s+\S+\s*,\s*\w+\s*=`).
+  - `Evidence:` Vitest run + grep guard
+- [ ] `packages/api/src/middleware/usage.ts` deleted or reduced to a thin wrapper — the atomic UpdateItem now lives inside `auth.ts` (combined check + increment) since they share the DDB call
+  - `Verify:` `grep -n "UpdateCommand" packages/api/src/middleware/auth.ts` shows the conditional update
+  - `Evidence:` Single hot-path DDB write per request (vs current two: read + async write)
+- [ ] `ApiKeyRecord` type in `packages/shared/src/types.ts` updated to v2.2 shape: `apiKeyHash`, `keyPrefix`, `ownerEmail`, `orgId`, `tier`, `products`, `quotaPerProduct`, `rateLimit`, `active`, `paymentOverdue`, `stripeCustomerId`, `stripeSubscriptionId`, `subscriptionItems`, `createdAt`, `lastUsedAt` — **no `usage` nested map**, **no `monthlyQuotaPerProduct`**
+  - `Verify:` `pnpm typecheck` passes
+  - `Evidence:` Type diff shows removed legacy fields
+- [ ] `TABLE_NAME` env var updated from `ApiKeyTable` to `KEYS_TABLE_NAME=prontiq-keys` + new `USAGE_TABLE_NAME=prontiq-usage` (wired via SST)
+  - `Verify:` Lambda env vars inspected via `aws lambda get-function-configuration`
+  - `Evidence:` SST config diff
+
+##### Functional — Data Migration
+
+- [ ] `scripts/migrate-api-keys.ts` reads every item in legacy `ApiKeyTable`
+  - `Verify:` Scan count logged
+  - `Evidence:` Script log
+- [ ] For each legacy item: compute `hashKey(rawKey)`, `PutItem` to `prontiq-keys` with v2.2 shape (`subscriptionItems` may be empty until P1B.06 populates them on next Stripe event)
+  - `Verify:` `aws dynamodb get-item` on new table returns expected record
+  - `Evidence:` Sample record diff
+- [ ] For each `usage.{product}.{month}` entry, `PutItem` to `prontiq-usage` with PK=apiKeyHash, SK=`{product}#{month}`, `requestCount`, `lastPushedCumulativeCount: requestCount` (set to the live count so the next cron sees a delta of 0 — legacy usage was never pushed via this cron, but the rename happens in v2.2 and we're not retroactively pushing existing usage), `ttl` 90 days out
+  - `Verify:` Row count in `prontiq-usage` matches sum of nested entries
+  - `Evidence:` Migration report
+- [ ] Legacy seed key `pq_live_prod_000...` rotated: new key in new format issued to the owner (manual step — document who owns the seed and notify before running)
+  - `Verify:` Old seed returns 401 after cutover; new key works
+  - `Evidence:` Rotation plan captured in PR description
+- [ ] Migration script is idempotent: re-running on an already-migrated table is a no-op
+  - `Verify:` Run twice on dev; second run reports zero writes
+  - `Evidence:` Script uses conditional `PutItem` or reads before write
+
+##### Functional — Cutover & Rollback
+
+- [ ] Dev cutover rehearsed before prod: migration + middleware deploy run successfully in `--stage dev`, integration tests pass against migrated data
+  - `Verify:` CI run log
+  - `Evidence:` Green CI
+- [ ] Rollback plan documented: keep legacy `ApiKeyTable` intact (do not delete) for at least 14 days post-cutover; revert plan ships the previous `auth.ts`/`usage.ts` + re-point SST env to `ApiKeyTable`
+  - `Verify:` SST config does not delete `ApiKeyTable`; rollback instructions in PR description
+  - `Evidence:` PR description rollback section
+- [ ] `sst diff --stage prod` reviewed before prod deploy (per CLAUDE.md)
+  - `Verify:` Captured in PR description
+  - `Evidence:` Diff output
+
+#### Scope
+
+**In:** Middleware rewrite (auth + usage), `ApiKeyRecord` type update, migration script, seed-key rotation plan, dev rehearsal, rollback strategy, SST env var changes.
+
+**Out — Do Not Implement:**
+
+- Deleting legacy `ApiKeyTable` → separate follow-up after 14-day soak
+- Auto-creating subscription items for legacy upgraded keys → P1B.06 webhook handles this on next Stripe event
+- Repo-wide Unkey code removal → PR 4 (`chore(webhooks): remove Unkey code`)
+
+---
+
+### Ticket P1B.05 — Clerk Webhook Handler (Provisioning)
+
+```yaml
+id: P1B.05
 title: Clerk Webhook Handler (Provisioning)
 status: pending
 priority: p0-critical
 epic: P1B
 persona: [api-consumer]
-depends_on: [P1B.01, P1B.02, P1B.03]
+depends_on: [P1B.01, P1B.02, P1B.03, P1B.04]
 completed: null
 ```
 
 #### User Story
 
-As a new user signing up, I automatically receive a Stripe customer account, an API key, and a DynamoDB record within seconds of creating my account — zero manual steps.
+As a new user signing up, my org is auto-provisioned (Stripe customer + DynamoDB org envelope) within seconds. I sign in to `/account` and create my first API key from there — the raw key is shown to me once in the response.
 
 #### Problem Statement
 
-The provisioning chain is the most critical webhook handler. It connects three vendors (Clerk → Stripe → Unkey → DynamoDB) in sequence. Each step must succeed or roll back. The handler must be idempotent (Clerk retries failed webhooks) and must verify the webhook signature (Svix) to prevent forged provisioning requests. A bug here = users can't get API keys = zero revenue.
+Per ARCHITECTURE.MD §5.7.1 (rewritten in PR #57 review #3 to address Bug 5), **the webhook does NOT mint API keys**. Hash-only storage means a key generated server-side without an in-flight HTTP response to the user is unrecoverable — an SES failure would leave the org with a `prontiq-keys` row whose raw value can never be revealed.
+
+Instead, the webhook provisions the **org envelope** (`ORG#{orgId}` record + Stripe customer). The first API key is minted by the user-driven `POST /v1/account/keys/create` (P1C.03) where the raw value is returned in the HTTP response and shown once.
+
+This ticket covers only the webhook side. P1C.03 covers the user-driven key creation.
 
 #### Definition of Done
 
 ##### Functional
 
 - [ ] Webhook signature verified via Svix
-  - `Verify:` Send unsigned request → 401; send signed request → 200
-  - `Evidence:` `svix.webhooks.verify()` call in handler
-- [ ] Stripe customer created with free tier subscription
-  - `Verify:` After sign-up, Stripe dashboard shows new customer with Free subscription
-  - `Evidence:` `stripe.customers.create()` + `stripe.subscriptions.create()` in handler
-- [ ] Unkey key created with free tier limits (`pq_live_` prefix)
-  - `Verify:` After sign-up, Unkey dashboard shows new key
-  - `Evidence:` Unkey API `keys.createKey()` with metadata from TIER_LIMITS
-- [ ] DynamoDB record created with key metadata + usage counters
-  - `Verify:` `aws dynamodb get-item` with the new API key
-  - `Evidence:` Record includes `apiKey`, `ownerEmail`, `tier: "free"`, `products`, `monthlyQuotaPerProduct`, `usage: {}`
-- [ ] Idempotent: re-processing same `user.created` event doesn't create duplicates
-  - `Verify:` Send same webhook payload twice; only one Stripe customer, one Unkey key, one DynamoDB record
-  - `Evidence:` Handler checks if customer already exists before creating
+  - `Verify:` Unsigned request → 401; signed request → 200
+  - `Evidence:` `svix.webhooks.verify()` in handler
+- [ ] **Read-first idempotency check** — `GetItem ORG#{orgId}`. If found → return 200 (no side effects).
+  - `Verify:` Webhook payload sent twice; second returns 200; second invocation makes ZERO Stripe API calls and ZERO DDB writes
+  - `Evidence:` CloudWatch log "ORG envelope exists for orgId={…}, returning 200"; Stripe API call count = 1 (from first invocation only)
+- [ ] **Stripe customer create with idempotency key** — `Idempotency-Key: clerk-provision-{orgId}`. Repeated calls return the same `cus_...`.
+  - `Verify:` Force a step-4 transaction failure; retry the webhook; `customers.list({email: …})` shows exactly one customer
+  - `Evidence:` Stripe Dashboard customer list + idempotency log line
+- [ ] **No raw API key generated in this handler.** `grep -n "generateKey\|hashKey" packages/webhooks/src/clerk.ts` returns zero. The handler creates only the Stripe customer + ORG envelope + audit entry.
+  - `Verify:` Code review
+  - `Evidence:` grep result
+- [ ] **Atomic commit via `TransactWriteItems`** — single transaction writes:
+  1. `prontiq-keys/ORG#{orgId}` with `{stripeCustomerId, ownerEmail, tier="free", hasFirstKey: false, completedAt}` and `attribute_not_exists(apiKeyHash)`
+  2. `prontiq-audit/{orgId}/{ts#ulid}` with `action="ORG_PROVISIONED"` and `attribute_not_exists(orgId) AND attribute_not_exists(SK)`
+  Either both commit or neither does.
+  - `Verify:` Happy path: send webhook → verify both items exist
+  - `Evidence:` Integration test
+- [ ] **TransactionCanceledException handling per ARCHITECTURE.MD §5.7.1** — distinguish cancellation reasons before deciding the response code. The handler MUST inspect `error.CancellationReasons[]` (AWS SDK populates this) and:
+  - For each reason, branch on `Code`:
+    - `ConditionalCheckFailed` on item (a) ORG envelope: GetItem `ORG#{orgId}` to confirm. **Only return 200 if the envelope is present and complete.** If absent/partial → fall through to the retry path.
+    - `ConditionalCheckFailed` on item (b) audit row: extreme race (same ulid). GetItem ORG → confirm presence → return 200 if complete.
+    - `TransactionConflict` / `ProvisionedThroughputExceeded` / `ThrottlingException`: throughput pressure. Retry the entire `TransactWriteItems` with exponential backoff (max 3 attempts; total ~1s).
+    - Any other reason (`ValidationError`, `ResourceNotFound`, etc.): treat as fatal, return 5xx so Clerk redelivers (3-day window).
+  - **Invariant: never return 200 unless ORG envelope is confirmed present.** Returning 200 prevents Clerk from retrying. A silent failure here would leave the user without an org.
+  - `Verify:` Three integration tests:
+    - (a) Replay duplicate webhook → ConditionalCheckFailed on ORG → GetItem confirms presence → 200
+    - (b) Force a transient ThrottlingException (e.g., stub the DDB client to throw on first call) → handler retries → second attempt succeeds → 200
+    - (c) Force a ValidationError (e.g., malformed item) → handler returns 5xx → Clerk redelivery scheduled
+  - `Evidence:` All three pass; CloudWatch log differentiates "duplicate replay" vs "transient retry" vs "fatal"
+- [ ] **No partial state possible** — kill the Lambda after Stripe customer creation but before TransactWrite; retry the webhook; verify the same Stripe customer is reused (Idempotency-Key) and exactly one ORG envelope row results
+  - `Verify:` Manual chaos test in dev
+  - `Evidence:` Test log + Stripe Dashboard customer count
+- [ ] Welcome email sent via SES (subject "Welcome to Prontiq.", body includes a sign-in link to `/account` + docs link). **Does NOT contain an API key** — the user creates one from `/account` after sign-in. SES failure does not block provisioning durability.
+  - `Verify:` SES send confirmation; email body contains "Sign in to create your first API key" and links to `https://prontiq.dev/account`
+  - `Evidence:` SES sendRaw response + email screenshot
+
+##### Recovery Endpoint
+
+- [ ] Implement `POST /v1/account/setup` (Clerk-authenticated). Idempotent. If `ORG#{orgId}` exists → 200 (no side effects). If missing → run the same Stripe-customer-create + ORG-envelope-PutItem flow as the webhook handler (factored into a shared service).
+  - `Verify:` **Route-level integration tests** (no UI dependency — UI is owned by P1C.03):
+    - (a) Call `POST /v1/account/setup` with a Clerk-authenticated test principal whose ORG envelope does not exist → 201 + envelope created + audit row
+    - (b) Call same endpoint twice in a row → second returns 200 with no DDB writes (idempotent)
+    - (c) Inject Stripe-create success then DDB failure on first attempt → retry succeeds; verify exactly 1 Stripe customer (Idempotency-Key reuse) and 1 ORG envelope
+    - (d) Verify both the webhook handler AND `/setup` endpoint import from the same shared service
+  - `Evidence:` All four assertions pass; `grep -rn "provisionOrg\|provisionEnvelope" packages/` shows webhook + setup route + nothing else
+  - `Note:` UI-level verification (the `/account` page detecting missing envelope and rendering the "Set up your account" CTA that calls this endpoint) lives in **P1C.03 DoD** — not here, because P1B.05 ships before any UI work and shouldn't depend on dashboard rendering.
 
 #### Scope
 
-**In:** Webhook verification, Stripe customer + subscription, Unkey key, DynamoDB record, idempotency
+**In:** Svix verification, ORG envelope creation, Stripe customer create with idempotency, audit entry, welcome email (no key in body), `/v1/account/setup` recovery endpoint, shared `provisioning.ts` service.
 
 **Out — Do Not Implement:**
 
-- Welcome email → deferred (can add later)
-- Team/org provisioning → P3.03
-- Sandbox key creation → future
+- Key minting → P1C.03 (`/v1/account/keys/create`)
+- Org / team provisioning → P3.03
+- Sandbox (`pq_test_`) keys → future
 
 ---
 
-### Ticket P1B.05 — Stripe Webhook Handler (Tier Changes)
+### Ticket P1B.06 — Stripe Webhook Handler (4 events + grace)
 
 ```yaml
-id: P1B.05
-title: Stripe Webhook Handler (Tier Changes)
+id: P1B.06
+title: Stripe Webhook Handler (4 events + grace)
 status: pending
 priority: p0-critical
 epic: P1B
 persona: [api-consumer]
-depends_on: [P1B.03]
+depends_on: [P1B.03, P1B.04]
 completed: null
 ```
 
 #### User Story
 
-As a developer upgrading from Free to Starter, my API key limits update automatically within seconds so that I can immediately use the higher quota and additional products.
+As a developer changing plans, my API keys reflect the new tier/quota on the next request. As a developer whose card fails, I get a 14-day grace period before losing service. As a platform operator, Stripe subscription state drives DynamoDB state deterministically.
+
+#### Problem Statement
+
+Four event types: `checkout.session.completed` (initial upgrade), `customer.subscription.updated` (plan change + past_due + recovered), `customer.subscription.deleted` (cancel / end of grace), `invoice.payment_failed` (log only). All require signature verification, `stripe.customers.retrieve(customerId)` to read `metadata.orgId`, and batched updates across all keys for the org. See ARCHITECTURE.MD §5.7.2–§5.7.5.
 
 #### Definition of Done
 
 ##### Functional
 
-- [ ] Webhook signature verified via Stripe SDK (`stripe.webhooks.constructEvent()`)
-  - `Verify:` Unsigned request → 400; signed request → 200
-  - `Evidence:` Stripe SDK verification in handler
-- [ ] Subscription tier mapped to `TIER_LIMITS` constants from `@prontiq/shared`
-  - `Verify:` Upgrade to Starter → `monthlyQuotaPerProduct: 10000`, `products: ["address","abn","lei","cve","patents"]`
-  - `Evidence:` Handler imports and uses `TIER_LIMITS`
-- [ ] Unkey key updated with new tier limits + product scopes
-  - `Verify:` After upgrade, Unkey key metadata reflects new tier
-  - `Evidence:` Unkey API `keys.updateKey()` call
-- [ ] DynamoDB record updated with new tier + quota
-  - `Verify:` `aws dynamodb get-item` shows updated tier and quota
-  - `Evidence:` DynamoDB `UpdateItem` in handler
-- [ ] Downgrade: existing usage preserved, new lower limit enforced on next request
-  - `Verify:` Downgrade from Growth (50K) to Starter (10K) with 12K usage → next request returns 429
-  - `Evidence:` Auth middleware checks `currentUsage >= monthlyQuotaPerProduct`
+- [ ] Signature verified via `stripe.webhooks.constructEvent()` — unsigned → 400
+  - `Verify:` Unsigned POST returns 400
+  - `Evidence:` Handler log
+- [ ] `checkout.session.completed` (per ARCHITECTURE.MD §5.7.2 — two-step Stripe read required):
+  1. Retrieve customer → read orgId from metadata
+  2. Get `subscription` ID from event → `stripe.subscriptions.retrieve(subId, {expand: ['items.data.price']})` to get the per-product subscription items (Checkout Session events do NOT include `items` inline)
+  3. Build subscriptionItems map: for each item.data, map `item.price.product` (Stripe product) → Prontiq product slug (via `STRIPE_PRODUCT_TO_PRONTIQ` constant); skip the recurring plan price; record `item.id` (the `si_...`) per Prontiq product
+  4. **Validate**: every `PLANS[tier].products` entry must have a subscription item. Missing → return 500 with SNS alert (Stripe will retry; persistent failure pages oncall — better than silent under-billing)
+  5. Query `prontiq-keys` by orgId via GSI `orgId-index` with **`FilterExpression: "attribute_exists(keyPrefix) AND attribute_exists(active)"`** (sentinel guard per ARCHITECTURE.MD §5.5.1 — excludes ORG envelope and any future singleton rows). Returns ALL real API-key items for this org.
+  6. TransactWriteItems: update each key (tier/products/quota/rateLimit/stripeSubscriptionId/subscriptionItems) + ADD each hash to REGISTRY#active-keys
+  7. Reset warning/limit email flags on usage items; audit UPGRADE
+  - `Verify:` Test card upgrade Free→Growth; (a) `subscriptionItems` map populated for every Growth product (`address`, `abn`, `lei`, `cve`, `patents`); (b) deliberately delete the ABN metered Price in Stripe Dashboard before the test → webhook returns 500, SNS alert fires; (c) `/v1/address/enrich` works (Starter-only product) on next request
+  - `Evidence:` Integration test covering happy path + missing-product validation failure
+- [ ] `customer.subscription.updated` (plan change, paid→paid): update each key (tier, products, quota, rateLimit, subscriptionItems), reset email flags; **keep hash in REGISTRY#active-keys** (still billable — §5.5.1 event table); audit UPGRADE or DOWNGRADE per tier delta
+  - `Verify:` Starter→Growth via Stripe customer portal; keys reflect change; `aws dynamodb get-item --table prontiq-keys --key '{"apiKeyHash":{"S":"REGISTRY#active-keys"}}'` shows hash still in activeHashes set
+  - `Evidence:` Integration test covering both Starter→Growth and Growth→Starter
+- [ ] `customer.subscription.updated` (past_due): set `paymentOverdue: true` on all org keys + send SES payment failure email
+  - `Verify:` Simulate past_due via Stripe CLI; X-Payment-Overdue: true header appears on next request; email sent (check SES logs)
+  - `Evidence:` Integration test + CloudWatch log
+- [ ] `customer.subscription.updated` (active after past_due): clear `paymentOverdue: false` on all org keys
+  - `Verify:` Resolve past_due with new card; subsequent requests no longer have X-Payment-Overdue header
+  - `Evidence:` Integration test
+- [ ] `customer.subscription.deleted`: downgrade all keys to free (tier="free", products=["address"], quotaPerProduct=5000, rateLimit=10), clear stripeSubscriptionId/subscriptionItems/paymentOverdue, DELETE each hash from REGISTRY#active-keys, audit DOWNGRADE
+  - `Verify:` Cancel subscription; at period end all org keys return to free tier limits
+  - `Evidence:` Integration test
+- [ ] `invoice.payment_failed`: log event, no DDB writes
+  - `Verify:` Simulate payment failure; log entry present; no DDB change
+  - `Evidence:` CloudWatch log
+- [ ] Idempotent across events: replaying the same event ID is a no-op
 
 #### Scope
 
-**In:** Stripe webhook verification, tier mapping, Unkey key update, DynamoDB update, downgrade handling
+**In:** 4 Stripe event handlers, orgId resolution, batched org-key updates, registry mutations, email on past_due, audit writes
 
 **Out — Do Not Implement:**
 
-- Prorated billing → Stripe handles this automatically
-- Cancellation flow → P1C.05
+- Prorated billing → Stripe handles automatically
+- Initial subscription creation from scratch without checkout → not supported; user must go through Checkout
 
 ---
 
-### Ticket P1B.06 — Unkey Webhook Handler (Key Sync)
-
-```yaml
-id: P1B.06
-title: Unkey Webhook Handler (Key Sync)
-status: pending
-priority: p1-high
-epic: P1B
-persona: [ops]
-depends_on: [P1B.02]
-completed: null
-```
-
-#### User Story
-
-As a platform operator, when a key is created/updated/deleted in Unkey (via dashboard or API), DynamoDB stays in sync so that the hot-path verification always has current key state.
-
-#### Definition of Done
-
-##### Functional
-
-- [ ] Webhook signature verified
-  - `Verify:` Unsigned request → 401
-  - `Evidence:` Verification code in handler
-- [ ] `key.created` → DynamoDB PutItem
-  - `Verify:` Create key in Unkey; DynamoDB record appears
-  - `Evidence:` PutItem with full metadata
-- [ ] `key.updated` → DynamoDB UpdateItem (tier, products, quota)
-  - `Verify:` Update key in Unkey; DynamoDB record reflects change
-  - `Evidence:` UpdateItem with changed fields
-- [ ] `key.deleted` → DynamoDB UpdateItem (active: false)
-  - `Verify:` Delete key in Unkey; DynamoDB record shows `active: false`
-  - `Evidence:` Soft delete, not hard delete (audit trail)
-- [ ] Idempotent: re-processing same event is safe
-  - `Verify:` Send same webhook twice; DynamoDB state is correct
-  - `Evidence:` Conditional writes or idempotency checks
-
-#### Scope
-
-**In:** Key lifecycle sync to DynamoDB (create, update, delete)
-
-**Out — Do Not Implement:**
-
-- Reconciliation (catch missed webhooks) → P1B.07
-- Key rotation flow → P1C.03
-
----
-
-### Ticket P1B.07 — Unkey Reconciliation Lambda
+### Ticket P1B.07 — `prontiq-audit` Writer Helper
 
 ```yaml
 id: P1B.07
-title: Unkey Reconciliation Lambda
-status: pending
-priority: p1-high
-epic: P1B
-persona: [ops]
-depends_on: [P1B.06]
-completed: null
-```
-
-#### User Story
-
-As a platform operator, DynamoDB stays consistent with Unkey even if webhooks fail so that a deleted key never continues working and a downgraded key never keeps old limits.
-
-#### Problem Statement
-
-Webhooks can fail: Lambda cold start timeout, network issues, Unkey webhook delivery failure. Without reconciliation, a deleted key in Unkey continues working via DynamoDB (security hole). A 15-minute scheduled Lambda diffs Unkey against DynamoDB and fixes discrepancies. Cost: negligible (one Unkey API call + one DynamoDB scan per run).
-
-#### Definition of Done
-
-##### Functional
-
-- [ ] Scheduled Lambda runs every 15 minutes (EventBridge rule)
-  - `Verify:` EventBridge rule exists with 15-min cron
-  - `Evidence:` SST config defines the schedule
-- [ ] Lists all Unkey keys, diffs against DynamoDB
-  - `Verify:` Lambda execution logs show diff results
-  - `Evidence:` CloudWatch logs
-- [ ] Deactivates orphaned keys (in DynamoDB but not in Unkey)
-  - `Verify:` Delete key in Unkey, wait 15 min; DynamoDB record shows `active: false`
-  - `Evidence:` Reconciliation log shows "deactivated 1 orphaned key"
-- [ ] Creates missing records (in Unkey but not in DynamoDB)
-  - `Verify:` Create key directly in Unkey (bypassing webhook); record appears in DynamoDB within 15 min
-  - `Evidence:` Reconciliation log shows "created 1 missing record"
-- [ ] Updates stale metadata (tier, quota mismatch)
-  - `Verify:` Update key in Unkey (bypassing webhook); DynamoDB updates within 15 min
-  - `Evidence:` Reconciliation log shows "updated 1 stale record"
-- [ ] Logs all discrepancies as CloudWatch warnings
-  - `Verify:` CloudWatch Insights query for reconciliation warnings
-  - `Evidence:` Structured log entries with discrepancy details
-
-#### Scope
-
-**In:** Scheduled reconciliation, diff logic, fix orphaned/missing/stale keys, logging
-
-**Out — Do Not Implement:**
-
-- Real-time consistency (webhooks handle the common case) → P1B.06
-- Alerting on high discrepancy count → P1F.02
-
----
-
-### Ticket P1B.08 — Usage → Stripe Batch Lambda
-
-```yaml
-id: P1B.08
-title: Usage → Stripe Batch Lambda
-status: pending
-priority: p0-critical
-epic: P1B
-persona: [ops]
-depends_on: [P1B.03]
-completed: null
-```
-
-#### User Story
-
-As a platform operator, usage data flows from DynamoDB to Stripe hourly so that metered billing is accurate and no usage is lost.
-
-#### Problem Statement
-
-Usage counters accumulate in DynamoDB (atomic `ADD` per request). Stripe needs these reported as usage records for metered billing. The pipeline must be idempotent (re-processing doesn't double-count), durable (failures don't lose data), and timely (end-of-month sweep ensures all usage is billed). See ARCHITECTURE.MD section 5.6 for the full durability guarantee.
-
-#### Definition of Done
-
-##### Functional
-
-- [ ] Scheduled Lambda runs hourly (EventBridge rule)
-  - `Verify:` EventBridge rule with hourly cron
-  - `Evidence:` SST config
-- [ ] Scans DynamoDB for keys with usage > `lastReportedCount`
-  - `Verify:` Lambda execution log shows scan results
-  - `Evidence:` CloudWatch logs
-- [ ] Reports delta to Stripe via `subscriptionItems.createUsageRecord()`
-  - `Verify:` Stripe dashboard shows usage records
-  - `Evidence:` Usage records appear with correct quantities
-- [ ] Updates `lastReportedCount` in DynamoDB after successful Stripe write
-  - `Verify:` DynamoDB record shows updated `lastReportedCount`
-  - `Evidence:` Re-running Lambda reports zero (no new usage)
-- [ ] DLQ (SQS) for failures, SNS alert after 3 consecutive failures
-  - `Verify:` Break Stripe connection; DLQ receives messages; SNS alert fires
-  - `Evidence:` SQS messages and email alert
-- [ ] End-of-month sweep at 23:55 UTC
-  - `Verify:` EventBridge rule for monthly sweep
-  - `Evidence:` SST config
-- [ ] Idempotent: re-processing doesn't double-count
-  - `Verify:` Run Lambda twice with same data; Stripe shows correct total (not doubled)
-  - `Evidence:` `lastReportedCount` prevents double-reporting
-
-#### Scope
-
-**In:** Hourly batch, delta reporting, idempotency, DLQ, end-of-month sweep
-
-**Out — Do Not Implement:**
-
-- Real-time usage reporting → overkill for Phase 1 volumes
-- Usage analytics dashboard → P1C.04
-
----
-
-### Ticket P1B.09 — Auth Middleware Integration Test
-
-```yaml
-id: P1B.09
-title: Auth Middleware Integration Test
+title: prontiq-audit Writer Helper
 status: pending
 priority: p1-high
 epic: P1B
@@ -1513,54 +1604,380 @@ completed: null
 
 #### User Story
 
-As a builder, I need an integration test that verifies the full auth chain end-to-end with a real API key so that auth regressions are caught before deploy.
+As a builder of lifecycle-event code (webhook handlers, rotation, revoke), I need a single `writeAudit()` helper in `packages/shared/src/audit.ts` so that every lifecycle event writes a consistent shape to `prontiq-audit` without copy-pasted boilerplate.
+
+#### Problem Statement
+
+CREATE/ROTATE/REVOKE/UPGRADE/DOWNGRADE events need identical row shapes for later query ("who rotated the key?"). Centralise so every caller passes `{orgId, action, apiKeyHash, actorId, metadata}` and the helper handles ULID generation, ISO timestamp, TTL math.
 
 #### Definition of Done
 
-##### Seed Script (prerequisite — `scripts/seed-test-data.ts`)
-
-- [ ] Seed script implemented: creates test API keys in DynamoDB with known values
-  - `Verify:` `npx tsx scripts/seed-test-data.ts` exits 0; DynamoDB has test records
-  - `Evidence:` Script creates: `pq_test_valid` (free tier, address+abn), `pq_test_premium` (growth tier, all products), `pq_test_exhausted` (quota 0)
-- [ ] Seed script is idempotent (safe to re-run)
-  - `Verify:` Run twice; no errors, same DynamoDB state
-  - `Evidence:` Uses PutItem (overwrites)
-
 ##### Functional
 
-- [ ] Request with valid key returns 200
-  - `Verify:` `curl -H "X-Api-Key: pq_test_..." .../v1/health`
-  - `Evidence:` 200 OK
-- [ ] Request with missing key returns 401 `MISSING_API_KEY`
-  - `Verify:` `curl .../v1/address/autocomplete?q=test` (no key)
-  - `Evidence:` `{"error":{"code":"MISSING_API_KEY",...}}`
-- [ ] Request with invalid key returns 401 `INVALID_API_KEY`
-  - `Verify:` `curl -H "X-Api-Key: pq_test_invalid" .../v1/address/autocomplete?q=test`
-  - `Evidence:` `{"error":{"code":"INVALID_API_KEY",...}}`
-- [ ] Request exceeding quota returns 429 `QUOTA_EXCEEDED`
-  - `Verify:` Seed key with quota 1, make 2 requests
-  - `Evidence:` Second request returns 429
-- [ ] Request for disallowed product returns 403 `PRODUCT_NOT_ALLOWED`
-  - `Verify:` Seed free-tier key, request `/v1/lei/lookup`
-  - `Evidence:` `{"error":{"code":"PRODUCT_NOT_ALLOWED",...}}`
-- [ ] Usage counter increments after successful request
-  - `Verify:` Check DynamoDB before and after request; counter increased
-  - `Evidence:` `usage.address.2026-04` incremented by 1
-
-##### Testing
-
-- [ ] Tests runnable via `pnpm test` (Vitest)
-  - `Verify:` `pnpm --filter @prontiq/api test`
-  - `Evidence:` All auth integration tests pass
+- [ ] `writeAudit({orgId, action, apiKeyHash, actorId, metadata})` in `packages/shared/src/audit.ts`
+  - `Verify:` Called from P1B.05 (CREATE), P1B.06 (UPGRADE / DOWNGRADE), P1C.03 (ROTATE / REVOKE)
+  - `Evidence:` Import in each caller
+- [ ] ULID generated per call; timestamp is ISO 8601; SK = `{timestamp}#{ulid}`
+  - `Verify:` Query audit table; rows sort chronologically
+  - `Evidence:` Sample rows
+- [ ] TTL set to `now + 365 days` (unix seconds)
+  - `Verify:` Sample item's `ttl` matches expected value
+  - `Evidence:` `describe` output
+- [ ] Unit test covers all 5 action values
 
 #### Scope
 
-**In:** Auth chain integration tests, seed script, all error code verification
+**In:** `audit.ts` helper, unit tests
+
+**Out — Do Not Implement:**
+
+- Reading / querying audit (that's `/v1/account/keys` → P1C.03)
+- Audit UI → P1C.03
+
+---
+
+### Ticket P1B.08 — `prontiq-ses-suppressions` + Bounce Handler
+
+```yaml
+id: P1B.08
+title: prontiq-ses-suppressions + Bounce Handler
+status: pending
+priority: p1-high
+epic: P1B
+persona: [ops]
+depends_on: [P1B.04]
+completed: null
+```
+
+#### User Story
+
+As a platform operator, I need SES bounce and complaint events to populate `prontiq-ses-suppressions` so that repeated sends to bad addresses don't wreck our SES reputation.
+
+#### Problem Statement
+
+AWS suspends SES accounts at >5% bounce rate or >0.1% complaint rate. We need a feedback loop: SES publishes bounce/complaint events to SNS → Lambda subscriber writes to `prontiq-ses-suppressions` → every SES send checks the suppression list first. See ARCHITECTURE.MD §12.5.
+
+#### Definition of Done
+
+##### Pre-requisite
+
+- [ ] SES production-access request submitted and approved (typically 24-48h AWS review)
+  - `Verify:` AWS SES console shows account out of sandbox
+  - `Evidence:` AWS approval email
+- [ ] Sending domain verified with DKIM + SPF + DMARC configured
+  - `Verify:` SES domain identity shows all three green
+  - `Evidence:` DNS records + SES status
+
+##### Functional
+
+- [ ] SES configured to publish bounces and complaints to SNS topic
+  - `Verify:` SNS topic receives test-bounce message
+  - `Evidence:` SST config + SES configuration set
+- [ ] Lambda subscriber writes to `prontiq-ses-suppressions`
+  - `Verify:` Trigger bounce with simulator address; row appears in DDB within 30s
+  - `Evidence:` DDB scan
+- [ ] Hard bounce: `reason="hard_bounce"`, no TTL variance (90d default)
+- [ ] Soft bounce: increment `bounceCount`; suppress only after 3 within 30 days
+  - `Verify:` Simulate 3 soft bounces; 3rd creates suppression entry
+  - `Evidence:` DDB scan showing `bounceCount: 3`
+- [ ] Complaint: `reason="complaint"`, `ttl` unset (permanent)
+- [ ] All SES send paths (welcome email, threshold email, payment-failure email) check `prontiq-ses-suppressions` before sending
+  - `Verify:` Suppressed address does NOT receive send; log shows "suppressed, skipping"
+  - `Evidence:` Integration test
+
+#### Scope
+
+**In:** SES prod-access exit, SNS topic, subscriber Lambda, suppression-check middleware
+
+**Out — Do Not Implement:**
+
+- Un-suppression UI → manual DDB edit for now
+- Email template system → per-call HTML string for Phase 1
+
+---
+
+### Ticket P1B.09 — Burst Rate Limiter Middleware
+
+```yaml
+id: P1B.09
+title: Burst Rate Limiter Middleware
+status: pending
+priority: p1-high
+epic: P1B
+persona: [builder]
+depends_on: [P1B.02, P1B.04b]
+completed: null
+```
+
+#### User Story
+
+As a platform operator, a single abusive key cannot overwhelm OpenSearch in one second — each key has a per-Lambda-instance token bucket sized from `record.rateLimit` on the loaded `prontiq-keys` record.
+
+#### Problem Statement
+
+Monthly quotas (§5.4 middleware) prevent 30-day overruns but not one-second floods. In-memory token bucket per `apiKeyHash` prevents the latter. See ARCHITECTURE.MD §5.4.1.
+
+**Why this depends on P1B.04b** (not just P1B.02): the burst limiter needs both `apiKeyHash` (the bucket key) AND `record.rateLimit` (the bucket capacity), which are both produced by the post-cutover auth middleware that loads the v2.2 `ApiKeyRecord` shape. Wiring the limiter against the legacy `ApiKeyTable` shape (`record.apiKey` raw + nested usage map) would require a temporary translation layer that gets thrown away at cutover. Cleaner to wait for P1B.04b.
+
+Known caveat: per-Lambda-instance, not global — documented and accepted for Phase 1.
+
+#### Definition of Done
+
+##### Functional
+
+- [ ] Middleware `packages/api/src/middleware/rate-limit.ts` instantiates a module-scoped `Map<apiKeyHash, TokenBucket>`
+  - `Verify:` Code review
+  - `Evidence:` File exists with implementation
+- [ ] Reads `apiKeyHash` and `record.rateLimit` from request context (set by the post-P1B.04b auth middleware)
+  - `Verify:` Unit test wires a fake context with `c.set("apiKey", { rateLimit: 100, apiKeyHash: "abc..." })` and confirms the limiter reads both
+  - `Evidence:` Test passes
+- [ ] On each request: consume 1 token from the bucket for this key (create bucket with capacity = `record.rateLimit` on first encounter)
+  - `Verify:` Unit test
+  - `Evidence:` Vitest output
+- [ ] Empty bucket → return 429 with `code: "RATE_LIMITED"` body and `Retry-After` header
+  - `Verify:` Integration test: 200 requests at rate > limit; receive 429 with Retry-After
+  - `Evidence:` Response
+- [ ] Buckets refill at `rateLimit` tokens/second (continuous refill, floor at capacity)
+  - `Verify:` Sleep `1/rateLimit` after burst; next request succeeds
+  - `Evidence:` Integration test
+- [ ] Notes section in ticket + README call out the per-instance caveat — global burst control is deferred (Redis / API Gateway usage plans, post-Phase-1)
+
+##### Testing
+
+- [ ] Integration test covers burst + refill + multiple keys isolated
+
+#### Scope
+
+**In:** Middleware, unit + integration tests, documented Lambda-concurrency caveat
+
+**Out — Do Not Implement:**
+
+- Global (cross-Lambda) rate limiter → post-Phase-1
+- Per-product burst — single bucket per key today
+
+---
+
+### Ticket P1B.10 — Billing Cron (hourly → Stripe)
+
+```yaml
+id: P1B.10
+title: Billing Cron (hourly → Stripe)
+status: pending
+priority: p0-critical
+epic: P1B
+persona: [ops]
+depends_on: [P1B.03, P1B.04, P1B.06]
+completed: null
+```
+
+#### User Story
+
+As a platform operator, usage data flows from `prontiq-usage` to Stripe every hour via `subscriptionItems[product]` so that metered billing is accurate, idempotent, and no usage is lost across month boundaries.
+
+#### Problem Statement
+
+Hourly EventBridge-triggered Lambda. Per ARCHITECTURE.MD §5.6.2 (rewritten to fix the rotation double-count bug from PR #57 review #5):
+
+- Reads `REGISTRY#active-keys` (one item)
+- For each billable hash, recursively walks REDIRECT GSI to build the full attribution chain ([currentHash, ...predecessorHashes])
+- Sums `requestCount` across the chain per product/month
+- Compares to `currentHash.lastPushedCumulativeCount` ONLY (old hashes' pushed state is dead — including it would double-count)
+- Pushes the cumulative count to Stripe via `createUsageRecord(itemId, { quantity: sumRequestCount, action: "set" })`
+- After success, conditionally updates `currentHash.lastPushedCumulativeCount = sumRequestCount`
+
+#### Definition of Done
+
+##### Functional
+
+- [ ] Scheduled Lambda runs hourly (EventBridge cron)
+  - `Verify:` EventBridge rule exists
+  - `Evidence:` SST config
+- [ ] Reads `REGISTRY#active-keys` — targeted reads, not a scan
+  - `Verify:` Lambda log shows single GetItem + BatchGet
+  - `Evidence:` CloudWatch log
+- [ ] For each billable key: BatchGet `prontiq-keys` for `subscriptionItems`; recursively walk `newHash-redirect-index` GSI to build the rotation chain (depth bounded by `MAX_CHAIN_DEPTH=10`); BatchGet `prontiq-usage` for `chain × {currentMonth, previousMonth}`
+  - `Verify:` Integration test: rotate a key (A→B), make 50 requests against B, run cron; verify chain=[B,A] and Stripe usage record reflects 50 + A's previous-pushed cumulative
+  - `Evidence:` Stripe usage record + Lambda log showing chain expansion
+- [ ] **Cumulative push state is single-rooted on the current hash.** Field is `lastPushedCumulativeCount` (renamed from `lastPushedCount` for explicit semantics). Only `currentHash.lastPushedCumulativeCount` participates in the delta gate; old-hash counters are NOT summed.
+  - `Verify:` Code review of the cron — the `currentLastPushed` variable reads from `chain[0]` only, never `chain[i] for i > 0`
+  - `Evidence:` Unit test for the delta calculator
+- [ ] Calculates `delta = sumRequestCount - currentLastPushed`; skips if `delta <= 0`. Negative delta → log WARN with chain dump; alarm after 3 consecutive negatives.
+  - `Verify:` Unit test feeds chain with old-hash leftover state; assert delta is non-negative
+- [ ] Calls `stripe.subscriptionItems.createUsageRecord(subscriptionItems[product], { quantity: sumRequestCount, action: "set" })` — pushes the **cumulative** count, not the delta
+  - `Verify:` Inspect Stripe usage record after a cron run; quantity equals `sumRequestCount`
+  - `Evidence:` Stripe → Billing → Meter usage
+- [ ] **Conditional UpdateItem** on `prontiq-usage` SET `lastPushedCumulativeCount = sumRequestCount` ONLY IF `attribute_not_exists(lastPushedCumulativeCount) OR lastPushedCumulativeCount < :sumRequestCount`. Prevents clock-skew regression.
+  - `Verify:` Re-running cron pushes equal cumulative (idempotent on Stripe due to `action: "set"`); no DDB write if value unchanged
+  - `Evidence:` Lambda log shows "no-op" path for unchanged scopes
+- [ ] **Rotation correctness test** (the case that broke the previous design):
+  - T0: seed `pq_test_a` with requestCount=100, lastPushedCumulativeCount=100
+  - T1: rotate A→B, REDIRECT(A→B), B with requestCount=0, lastPushedCumulativeCount=0
+  - T2: 50 reqs against B → B.requestCount=50
+  - T3: run cron. Assert: Stripe meter set to 150, B.lastPushedCumulativeCount=150
+  - T4: 25 more reqs against B → B.requestCount=75
+  - T5: run cron. Assert: Stripe meter set to 175 (NOT a negative delta), B.lastPushedCumulativeCount=175
+  - `Evidence:` Integration test passes; demonstrates the §5.6.2 worked-example table
+- [ ] **Multi-rotation test**: A→B→C, 10 reqs against C, verify cron walks chain=[C,B,A] and pushes correct cumulative
+- [ ] DLQ (SQS) on failure; SNS alert after 3 consecutive failures OR any negative-delta observation
+  - `Verify:` Disable Stripe connection; failures land in DLQ; SNS fires after 3rd. Manually corrupt a `lastPushedCumulativeCount` to be > requestCount; observe negative-delta alarm.
+  - `Evidence:` SQS messages + SNS email
+- [ ] Month boundary: first 6 hours of each month, process both current + previous month scopes
+
+#### Scope
+
+**In:** Hourly cron, targeted reads via registry, REDIRECT handling, idempotent writes, DLQ, SNS alerting
+
+**Out — Do Not Implement:**
+
+- Real-time billing → overkill
+- Month-close finalisation → P1B.11
+
+---
+
+### Ticket P1B.11 — Month-close Lambda
+
+```yaml
+id: P1B.11
+title: Month-close Lambda
+status: pending
+priority: p1-high
+epic: P1B
+persona: [ops]
+depends_on: [P1B.10]
+completed: null
+```
+
+#### User Story
+
+As a platform operator, a dedicated Lambda finalises the previous month's usage at 00:30 UTC on day 1 so that Stripe invoices close cleanly and the hourly cron stops revisiting closed scopes.
+
+#### Problem Statement
+
+Stripe invoices finalise on the month boundary. Usage writes can arrive late (clock skew, retries). At 00:30 UTC on day 1, a dedicated Lambda sweeps previous-month scopes, pushes remaining deltas, sets `closed: true`. The hourly cron skips any scope with `closed: true`. See ARCHITECTURE.MD §5.6.2.
+
+#### Definition of Done
+
+##### Functional
+
+- [ ] Scheduled Lambda runs monthly via EventBridge cron `30 0 1 * ? *` (UTC)
+  - `Verify:` EventBridge rule exists
+  - `Evidence:` SST config
+- [ ] For each billable key, fetch previous-month `prontiq-usage` scope
+- [ ] Push any remaining delta to Stripe
+- [ ] UpdateItem SET `closed: true` on the scope
+- [ ] Hourly cron (P1B.10) skips scopes with `closed: true`
+  - `Verify:` Integration test: seed a closed scope with nonzero delta; hourly cron does not re-push
+  - `Evidence:` Test assertion
+
+#### Scope
+
+**In:** Monthly finalisation Lambda, `closed` flag semantics
+
+**Out — Do Not Implement:**
+
+- Refund / correction flow → manual Stripe dashboard
+
+---
+
+### Ticket P1B.12 — Auth Middleware Integration Test
+
+```yaml
+id: P1B.12
+title: Auth Middleware Integration Test
+status: pending
+priority: p1-high
+epic: P1B
+persona: [builder]
+depends_on: [P1B.05, P1B.09, P1B.04b]
+completed: null
+```
+
+#### User Story
+
+As a builder, I need an integration test that verifies the full auth chain end-to-end against a real API key, the hash-based schema, and the burst limiter so that auth regressions are caught before deploy.
+
+#### Problem Statement
+
+Post-migration, auth middleware hashes the incoming key, looks up in `prontiq-keys`, falls back to REDIRECT, checks tier/product/quota/burst/paymentOverdue. The test must cover every error code in `packages/shared/src/constants.ts` ERROR_CODES (MISSING/INVALID/PRODUCT_NOT_ALLOWED/QUOTA_EXCEEDED/RATE_LIMITED) and the REDIRECT fallback. Error codes match live constants (`PRODUCT_NOT_ALLOWED`, not `PRODUCT_NOT_ENABLED`).
+
+#### Definition of Done
+
+##### Seed Script
+
+- [ ] `scripts/seed-test-data.ts` creates test records in `prontiq-keys` + `prontiq-usage` with known hashes
+  - `Verify:` `npx tsx scripts/seed-test-data.ts` exits 0
+  - `Evidence:` Scan returns seeded records
+- [ ] Seeds: `pq_test_valid` (free, address only), `pq_test_premium` (growth, all products), `pq_test_exhausted` (quota 0), `pq_test_overdue` (paymentOverdue=true)
+- [ ] Idempotent: re-run is a no-op
+
+##### Functional
+
+- [ ] Valid key → 200 + rate-limit headers
+  - `Verify:` `curl -H "X-Api-Key: pq_test_valid" .../v1/address/autocomplete?q=test`
+  - `Evidence:` 200 with X-RateLimit-Remaining
+- [ ] Missing key → 401 `MISSING_API_KEY`
+- [ ] Unknown key → 401 `INVALID_API_KEY`
+- [ ] Revoked key (active=false) → 401 `INVALID_API_KEY`
+- [ ] Disallowed product → 403 `PRODUCT_NOT_ALLOWED`
+- [ ] Quota exceeded (free) → 429 `QUOTA_EXCEEDED`
+- [ ] Quota exceeded (paid) → 200 with `X-RateLimit-Over: true` header
+- [ ] Burst exceeded → 429 `RATE_LIMITED` with `Retry-After` header (from P1B.09)
+- [ ] paymentOverdue=true → 200 with `X-Payment-Overdue: true` header
+- [ ] Rotated key (REDIRECT record, `authValidUntil` in future) → 200 (served via fallback lookup; quota counts against `newHash`)
+  - `Verify:` Seed REDIRECT `{oldHash, "REDIRECT", newHash, authValidUntil = now + 5 min}`; hit API with old raw key
+  - `Evidence:` Response 200; `prontiq-usage[newHash][product#month].requestCount` incremented (not on oldHash)
+- [ ] **Rotated key, grace expired** (`authValidUntil` in past) → 401 `INVALID_API_KEY`
+  - `Verify:` Seed REDIRECT with `authValidUntil = now - 1`; hit API with old raw key
+  - `Evidence:` 401 even though `ttl` is still 90 days out
+- [ ] **Rotated key, newHash revoked** → 401 `INVALID_API_KEY` (active check on redirected hash)
+  - `Verify:` Seed REDIRECT pointing at a `pq_test_premium`-style record but flip `active: false`
+  - `Evidence:` 401 — proves REVOKE-after-ROTATE closes the back-door without explicit REDIRECT cleanup
+- [ ] **Atomic quota race** — fire 100 concurrent requests at a free-tier key with `quotaPerProduct = 50`; exactly 50 return 200, exactly 50 return 429 `QUOTA_EXCEEDED`
+  - `Verify:` `Promise.all` of 100 concurrent fetches; count status codes
+  - `Evidence:` `prontiq-usage[hash][product#month].requestCount === 50`. Proves the v2.2 §5.5.3 atomic conditional UpdateItem closes the race window vs the previous read-then-async-write design.
+- [ ] **Webhook provisioning idempotency** (per new contract — webhook does NOT create keys; see P1B.05): replay the same Clerk `user.created` payload twice. Verify exactly:
+  - 1 Stripe customer (Idempotency-Key dedup)
+  - 1 `ORG#{orgId}` envelope row with `hasFirstKey: false`
+  - 1 `ORG_PROVISIONED` audit row
+  - **0 API-key rows** (no records that match the API-key shape for this org)
+  - **0 calls to `generateKey` / `hashKey`** from the webhook code path (Vitest spy)
+  - `Verify:` POST `/webhooks/clerk` with same Svix-signed body twice; assert all six conditions
+  - `Evidence (schema-correct query — does NOT scan by hash prefix because `apiKeyHash` is a 64-char SHA-256 hex digest, not the raw key):`
+    ```
+    aws dynamodb query \
+      --table prontiq-keys \
+      --index-name orgId-index \
+      --key-condition-expression "orgId = :org" \
+      --filter-expression "NOT begins_with(apiKeyHash, :org_pfx) \
+                           AND NOT begins_with(apiKeyHash, :reg_pfx) \
+                           AND NOT begins_with(apiKeyHash, :prov_pfx) \
+                           AND attribute_exists(keyPrefix) \
+                           AND attribute_exists(active)" \
+      --expression-attribute-values '{
+        ":org":      {"S": "<test-org-id>"},
+        ":org_pfx":  {"S": "ORG#"},
+        ":reg_pfx":  {"S": "REGISTRY#"},
+        ":prov_pfx": {"S": "PROVISION#"}
+      }'
+    ```
+    Items in the result set MUST be 0. The filter excludes sentinel rows (ORG envelope, REGISTRY, legacy PROVISION lock if any) and requires the v2.2 API-key shape (`keyPrefix` + `active` attributes both present), so a malformed or partial key write is also caught. Plus: Stripe Dashboard customer count = 1; jest spy on `generateKey` records 0 calls.
+
+> The first-key creation idempotency assertions live in **P1C.03** (the ticket that owns `POST /v1/account/keys/create`). Originally drafted here with a fallback "use a temporary endpoint stub" — but that would push the integration test to either (a) build throwaway API surface, or (b) test against a different code path than production. Cleaner: P1C.03 is the natural home, P1B.12 stays focused on auth middleware behavior using seeded post-cutover key records.
+- [ ] Usage counter increments only on successful quota check (no orphan increments on 4xx responses)
+- [ ] `prontiq-audit` unchanged by read-only paths (no writes from VERIFY)
+
+##### Testing
+
+- [ ] `pnpm --filter @prontiq/api test:integration` runs against real DynamoDB and OpenSearch
+
+#### Scope
+
+**In:** Full integration test covering every error code + REDIRECT + quota overage + burst limiter + paymentOverdue
 
 **Out — Do Not Implement:**
 
 - Load testing → future
-- Rate limiting tests (per-second) → future (only monthly quota tested)
+- Key rotation flow test → P1C.03 ticket
 
 ---
 
@@ -1634,7 +2051,7 @@ status: pending
 priority: p0-critical
 epic: P1C
 persona: [api-consumer]
-depends_on: [P1B.04, P1C.07]
+depends_on: [P1B.04, P1B.05, P1C.07]
 completed: null
 ```
 
@@ -1678,52 +2095,81 @@ As a logged-in developer, I see my API key, usage summary, and quick-start code 
 
 ```yaml
 id: P1C.03
-title: API Key Management Page
+title: API Key Management Page (incl. first-key flow)
 status: pending
 priority: p1-high
 epic: P1C
 persona: [api-consumer]
-depends_on: [P1B.02, P1C.07]
+depends_on: [P1B.02, P1B.04b, P1B.05, P1C.07]
 completed: null
 tech_stack:
   ui: Next.js 15 + shadcn/ui
-  keys: Unkey management API
+  keys: @prontiq/api account endpoints (DDB-backed, see ARCHITECTURE.MD §7.3)
 ```
 
 #### User Story
 
-As a developer, I can view, create, rotate, and delete API keys so that I can manage access for different environments and team members.
+As a new developer, my **first** API key is created from `/account` (not via webhook email). The raw key shows once in the response. As a returning developer, I can view, create, rotate, and revoke keys for different environments / team members.
 
 #### Problem Statement
 
-Developers need multiple keys: one for production, one for staging, one for each team member. Key rotation (create new, deactivate old) must be atomic — there should never be a moment where the old key is dead and the new key isn't active. Sandbox keys (`pq_test_`) allow testing against the API without consuming production quota.
+Per ARCHITECTURE.MD §5.7.1 + §10 Developer Journey (rewritten in PR #57 review #3 to address Bug 5), the **first** API key is minted by the user-driven `/v1/account/keys/create` call — not by the Clerk webhook. The webhook only provisions the org envelope (Stripe customer + `ORG#{orgId}` record). This is because hash-only key storage means a server-minted key with no in-flight HTTP response to the user is unrecoverable on SES failure.
+
+The "first" and "Nth" key creation use the **same code path** — there is no special first-time logic. The `hasFirstKey` flag on the org envelope flips to `true` on the first successful create.
+
+Key rotation must be atomic (TransactWrite swap) with a REDIRECT record per §5.5.1 (split auth grace `authValidUntil = 5 min` and billing attribution `ttl = 90d`). REVOKE-after-ROTATE is naturally handled by the active-flag check on the redirected hash — no explicit REDIRECT cleanup needed (§5.5.2). Sensitive actions (rotate, revoke) require Clerk step-up re-authentication per §5.9.2.
 
 #### Definition of Done
 
-##### Functional
+##### Functional — First-Key Flow
 
-- [ ] List all keys with creation date, last used timestamp, product scopes
-  - `Verify:` Dashboard keys page loads with table of keys
-  - `Evidence:` Table renders with real data from Unkey API
-- [ ] Create new key (calls Unkey API, syncs to DynamoDB via webhook)
-  - `Verify:` Click "Create Key" → new key appears in list within 5 seconds
-  - `Evidence:` Key visible in Unkey dashboard and DynamoDB
-- [ ] Rotate key (create new, deactivate old — single click, atomic)
-  - `Verify:` Click "Rotate" → old key shows "Deactivated", new key active
-  - `Evidence:` Old key returns 401 on API call; new key returns 200
-- [ ] Delete key (calls Unkey API, cascades to DynamoDB soft-delete)
-  - `Verify:` Click "Delete" → confirmation dialog → key removed from list
-  - `Evidence:` DynamoDB record shows `active: false`
-- [ ] Sandbox vs live toggle (key prefix `pq_test_` vs `pq_live_`)
-  - `Verify:` Toggle shows sandbox keys separately, prefix clearly visible
-  - `Evidence:` Sandbox keys don't count against production quota
+- [ ] On first visit to `/account`: detect `ORG#{orgId}.hasFirstKey === false` → render "Create your first API key" CTA (instead of empty key list). If `ORG#{orgId}` does not exist (Clerk webhook missed): render "Set up your account" CTA which calls `POST /v1/account/setup` (P1B.05 recovery endpoint).
+  - `Verify:` Sign up a new test user; observe `/account` shows "Create your first API key" button; click it; raw key appears in modal; refresh page; key list now shows masked prefix
+  - `Evidence:` UI screenshot + DDB record diff
+- [ ] **Missing-ORG recovery UI** (per PR #59 review #6 Bug 12 — moved here from P1B.05 because UI verification belongs to the ticket that owns the dashboard): if `/account` detects no `ORG#{orgId}` envelope (Clerk webhook missed entirely), render "Set up your account" CTA that calls `POST /v1/account/setup` (P1B.05 endpoint). After the call returns, transition to "Create your first API key" CTA.
+  - `Verify:` Manually delete `ORG#{orgId}` for a test user; sign in to `/account`; assert "Set up your account" button is visible. Click it. Assert the page transitions to the first-key CTA after `POST /v1/account/setup` returns.
+  - `Evidence:` E2E UI test (Playwright or similar)
+- [ ] **First-key creation idempotency** (covers what used to be in P1B.12; moved here per PR #59 review #5 Bug 8 — assertions belong in the ticket that owns the endpoint). Call `POST /v1/account/keys/create` against a freshly-provisioned test user. Verify exactly:
+  - 1 `prontiq-keys/{apiKeyHash}` row created
+  - `ORG#{orgId}.hasFirstKey` flips `false → true` atomically (in the same `TransactWriteItems` as the key insert)
+  - 1 `CREATE` audit row
+  - Raw key returned ONLY in the response body — never persisted, never logged
+  - On simulated `TransactWriteItems` failure on first attempt then retry: still exactly 1 key row, 1 audit row, no leaked or duplicated raw keys
+  - Concurrent `POST /v1/account/keys/create` calls from the same org race-test: both succeed (each gets a different raw key); `ORG#{orgId}.hasFirstKey` ends as `true`; key count = 2
+  - `Verify:` Three integration tests against the real `/v1/account/keys/create` route (no stubs):
+    - (a) Single create → assert all five conditions
+    - (b) Inject DDB throttle → retry succeeds → assert same five conditions, no orphan rows
+    - (c) Two concurrent calls → both 201, two distinct raw keys, two distinct hash rows, hasFirstKey=true
+  - `Evidence:` Vitest output + DDB scan results in test log
+
+##### Functional — Key Management
+
+- [ ] List all org keys via `GET /v1/account/keys` (DDB GSI on `orgId-index` with **`FilterExpression: "attribute_exists(keyPrefix) AND attribute_exists(active)"`** — sentinel guard per ARCHITECTURE.MD §5.5.1, prevents the ORG envelope from leaking into the response) with masked prefix, creation date, last-used timestamp, product scopes
+  - `Verify:` `/account` keys tab loads with table of keys
+  - `Evidence:` Table renders with real DDB data; raw key and hash never returned
+- [ ] Create new key via `POST /v1/account/keys/create` (generates via `generateKey()` from P1B.02, hashes, TransactWriteItems: PutItem to `prontiq-keys` + UpdateItem `ORG#{orgId}` SET `hasFirstKey: true` + audit CREATE, returns raw key once in response body)
+  - `Verify:` Click "Create Key" → new key shown once in modal; reload page hides raw key; only masked prefix in list. `ORG#{orgId}.hasFirstKey === true` after first call.
+  - `Evidence:` DDB record created; response body has `{keyId, raw, createdAt}`
+- [ ] Rotate key via `POST /v1/account/keys/rotate` (requires Clerk step-up; TransactWriteItems: delete old + put new + write REDIRECT with `authValidUntil = now + 5 min` and `ttl = now + 90d` + audit ROTATE; returns new raw key once)
+  - `Verify:` Click "Rotate" → step-up modal → new key shown once; (a) within 5 min, request with old raw key succeeds via REDIRECT path; (b) after 5 min, request with old raw key returns 401 even though `ttl` is still 90d out (auth grace expired)
+  - `Evidence:` REDIRECT item with both clocks present in `prontiq-usage`; integration test covers grace-active and grace-expired
+- [ ] Revoke key via `POST /v1/account/keys/revoke` (requires Clerk step-up; UpdateItem `active: false`; audit REVOKE; **does NOT touch REDIRECT records** — see §5.5.2 / §12.3 for why active-flag check naturally handles REVOKE-after-ROTATE)
+  - `Verify:` Click "Revoke" → confirmation dialog with step-up → key returns 401 on next API call. Separately: rotate key A → B, then revoke B; request with old raw A returns 401 (re-resolved through REDIRECT, fails active check on B)
+  - `Evidence:` DDB record shows `active: false`; integration test covers REVOKE-after-ROTATE
+- [ ] Audit trail visible on the page (last 10 lifecycle events from `prontiq-audit`)
+  - `Verify:` Each action (create, rotate, revoke) appears with actor, timestamp, IP
+  - `Evidence:` `prontiq-audit` query
+- [ ] Key limits enforced per tier (Free 2, Starter 5, Growth 20, Enterprise unlimited) — GSI count query against `orgId-index` with **`FilterExpression: "attribute_exists(keyPrefix) AND attribute_exists(active)"`** before PutItem (sentinel guard prevents the ORG envelope from eating one of the user's quota slots)
+  - `Verify:` Two tests: (a) Attempt 3rd key on Free tier → 403 `KEY_LIMIT_EXCEEDED`; (b) Verify the ORG envelope row is NOT counted — sign up + immediately try to create 2 keys on Free tier; both succeed (envelope doesn't count as a key)
+  - `Evidence:` Error response on (a); 2 successful creates on (b) proving sentinel filter works
 
 #### Scope
 
-**In:** Key CRUD, rotation, sandbox/live toggle, Unkey API integration
+**In:** Key CRUD via `/v1/account/keys/*` endpoints, Clerk step-up for rotate/revoke, audit trail display, key-limit enforcement
 
 **Out — Do Not Implement:**
 
+- Sandbox (`pq_test_`) keys → future (single prefix today per ADR-001)
 - Per-key rate limit customization → future
 - Key expiration dates → future
 - IP allowlisting per key → future
@@ -1815,7 +2261,7 @@ Stripe's embedded customer portal handles 90% of billing needs out of the box: p
   - `Verify:` Click "Manage Billing" → Stripe portal opens (same tab or new tab)
   - `Evidence:` Portal shows plan, payment method, invoices
 - [ ] Plan management: upgrade from Free → Starter → Growth
-  - `Verify:` Upgrade in portal → Unkey key limits update within 60 seconds (via webhook)
+  - `Verify:` Upgrade in portal → Stripe webhook updates `prontiq-keys` (tier, quota, subscriptionItems); next API request reflects the new limits
   - `Evidence:` API returns 200 for products previously blocked on free tier
 - [ ] Payment method update
   - `Verify:` Add/change card in portal → card updated in Stripe
@@ -1916,28 +2362,28 @@ tech_stack:
 
 #### User Story
 
-As a builder, I need a consistent component library so that all dashboard pages share the same design system and I don't reinvent UI primitives.
+As a builder, I need a consistent component library so that all `/account` tabs share the same design system and I don't reinvent UI primitives.
 
 #### Problem Statement
 
-Without a design system, each dashboard page will look different — inconsistent spacing, colors, button styles, table layouts. shadcn/ui provides accessible, composable components built on Radix UI + Tailwind. It's not a dependency — components are copied into the project and can be customized. The dashboard layout (sidebar navigation with collapsible mobile nav) is the shared shell for all pages.
+The `/account` page (ARCHITECTURE.MD §5.9) wraps Clerk's `<UserProfile />` with custom tabs for Usage, Billing, and API Keys. Each tab needs consistent UI primitives (buttons, tables, dialogs). shadcn/ui provides accessible, composable components built on Radix UI + Tailwind. It's not a dependency — components are copied into the project and can be customized. Lives in `packages/web/` (new package introduced by P1C).
 
 #### Definition of Done
 
 ##### Functional
 
-- [ ] Tailwind CSS v4 configured in dashboard package
-  - `Verify:` `pnpm --filter @prontiq/dashboard dev` → Tailwind classes apply correctly
-  - `Evidence:` `packages/dashboard/tailwind.config.ts` or CSS `@import` exists
+- [ ] Tailwind CSS v4 configured in the web package
+  - `Verify:` `pnpm --filter @prontiq/web dev` → Tailwind classes apply correctly
+  - `Evidence:` `packages/web/tailwind.config.ts` or CSS `@import` exists
 - [ ] shadcn/ui initialized with core components
-  - `Verify:` `ls packages/dashboard/components/ui/` shows component files
+  - `Verify:` `ls packages/web/components/ui/` shows component files
   - `Evidence:` Button, Card, Input, Table, Dialog, Sheet, Tabs, Badge, Skeleton present
 - [ ] Dark mode support (system preference + manual toggle)
   - `Verify:` Toggle dark mode → all components switch themes
   - `Evidence:` `ThemeProvider` wrapper in layout, `class="dark"` applied to `<html>`
-- [ ] Dashboard layout component with sidebar navigation
-  - `Verify:` All dashboard pages render inside the sidebar layout
-  - `Evidence:` Sidebar shows: Overview, Keys, Usage, Billing, Playground, Settings
+- [ ] `/account` page layout — sidebar-lite (Clerk `<UserProfile />` with custom tabs per ARCHITECTURE.MD §5.9.1)
+  - `Verify:` `/account` renders with tabs for Profile / Security / Usage / Billing / API Key
+  - `Evidence:` Clerk profile wrapper with custom tab components
 - [ ] Responsive: sidebar collapses to bottom nav or hamburger on mobile
   - `Verify:` Resize to 375px → sidebar becomes hamburger/bottom nav
   - `Evidence:` Working at mobile breakpoint
@@ -2045,11 +2491,11 @@ The Getting Started guide is the highest-traffic page on any API docs site. If a
   - `Verify:` Page explains header format, shows error responses for missing/invalid keys
   - `Evidence:` Code examples for curl, fetch, SDK
 - [ ] Rate limits & quotas page with per-tier breakdown table
-  - `Verify:` Table matches TIER_LIMITS in `packages/shared/src/constants.ts`
-  - `Evidence:` Free: 5K/mo, Starter: 10K/mo, Growth: 50K/mo per product
-- [ ] Error handling guide (all error codes, retry logic, request_id tracing)
-  - `Verify:` All 8 error codes documented with example responses
-  - `Evidence:` `INVALID_API_KEY`, `MISSING_API_KEY`, `RATE_LIMIT_EXCEEDED`, `QUOTA_EXCEEDED`, `PRODUCT_NOT_ALLOWED`, `INVALID_PARAMETERS`, `NOT_FOUND`, `INTERNAL_ERROR`
+  - `Verify:` Table matches `PLANS` in `packages/shared/src/constants.ts` (per ARCHITECTURE.MD §5.6.1)
+  - `Evidence:` Free: 5K/mo, Starter: 10K/mo, Growth: 50K/mo per product; rate limit rows per tier (10/50/100 req/sec)
+- [ ] Error handling guide (all error codes per ARCHITECTURE.MD §9, retry logic, request_id tracing)
+  - `Verify:` All live-today codes documented; forward-contract codes marked as "introduced in P1B.09 / P1C / etc."
+  - `Evidence:` Live: `MISSING_API_KEY`, `INVALID_API_KEY`, `PRODUCT_NOT_ALLOWED`, `QUOTA_EXCEEDED`. Forward: `RATE_LIMITED`, `KEY_LIMIT_EXCEEDED`, `UNAUTHORIZED`, `ORG_REQUIRED`, `INVALID_SIGNATURE`, `VALIDATION_ERROR`, `SERVICE_UNAVAILABLE`, `INTERNAL_ERROR`
 
 #### Scope
 
@@ -2932,7 +3378,7 @@ status: pending
 priority: p1-high
 epic: P2
 persona: [ops]
-depends_on: [P1B.08]
+depends_on: [P1B.10]
 completed: null
 ```
 
@@ -2942,25 +3388,28 @@ As a platform operator, ABN usage is metered and billed separately from address 
 
 #### Problem Statement
 
-The usage batch Lambda (P1B.08) already reports address usage to Stripe. Adding ABN requires a new Stripe meter and updating the batch Lambda to report ABN usage separately. The invoice should show "Address API — X requests" and "ABN Verification — Y requests" as separate line items.
+The billing cron (P1B.10) already reports address usage to Stripe via `subscriptionItems["address"]`. Adding ABN requires a new Stripe metered Price, an `"abn"` entry in each paid key's `subscriptionItems` map (populated on upgrade by P1B.06 Stripe webhook), and no changes to the cron itself — it already iterates the full `subscriptionItems` map. The invoice shows "Address API — X requests" and "ABN Verification — Y requests" as separate line items.
 
 #### Definition of Done
 
 ##### Functional
 
-- [ ] ABN usage meter created in Stripe
-  - `Verify:` Stripe dashboard Billing → Meters shows ABN meter
-  - `Evidence:` Meter ID documented
-- [ ] Usage batch Lambda reports ABN usage separately from address
-  - `Verify:` Make 10 ABN requests → hourly batch runs → Stripe shows 10 ABN usage records
-  - `Evidence:` Stripe usage records for ABN meter
+- [ ] ABN metered Price created in Stripe (with tiered allocations per plan, same shape as address per ARCHITECTURE.MD §5.6.1)
+  - `Verify:` Stripe dashboard Products → Prontiq ABN API shows metered Price with tiers
+  - `Evidence:` Price ID documented in PLANS constants
+- [ ] P1B.06 Stripe webhook populates `subscriptionItems["abn"]` on upgrade (automatic — already iterates all products in `checkout.session.completed` per §5.7.2)
+  - `Verify:` Upgrade a test account to Starter; `aws dynamodb get-item` on prontiq-keys shows `subscriptionItems.abn: "si_..."`
+  - `Evidence:` DDB record diff
+- [ ] Billing cron (P1B.10) reports ABN usage on next hourly run — no code change required; iterates the full subscriptionItems map
+  - `Verify:` Make 10 ABN requests → wait for hourly cron → Stripe usage records appear under ABN meter
+  - `Evidence:` Stripe → Billing → Meter usage
 - [ ] Invoice shows ABN line item alongside address line item
   - `Verify:` Generate test invoice → shows both product line items
   - `Evidence:` Invoice PDF with "Address API" and "ABN Verification" lines
 
 #### Scope
 
-**In:** Stripe ABN meter, batch Lambda update, invoice verification
+**In:** Stripe ABN metered Price with tiers, PLANS constants update, invoice verification (no billing-cron code change — P1B.10 already iterates subscriptionItems map)
 
 **Out — Do Not Implement:**
 
@@ -3268,7 +3717,7 @@ As a developer, I configure webhook URLs, notification preferences, and can dele
 
 #### Problem Statement
 
-Webhook URLs allow developers to receive events (quota warnings, key changes) in their own systems. Notification preferences control email alerts. Account deletion (GDPR Article 17) must cascade: delete Clerk user, cancel Stripe subscription, deactivate Unkey keys, soft-delete DynamoDB records.
+Webhook URLs allow developers to receive events (quota warnings, key changes) in their own systems. Notification preferences control email alerts. Account deletion (GDPR Article 17) must cascade: delete Clerk user, cancel Stripe subscription, purge `prontiq-keys` + `prontiq-usage` + `prontiq-audit` + `prontiq-ses-suppressions` for the org (see ARCHITECTURE.MD §11.1). Orchestrated by `scripts/purge-org.ts`.
 
 #### Definition of Done
 
@@ -3280,9 +3729,9 @@ Webhook URLs allow developers to receive events (quota warnings, key changes) in
 - [ ] Notification preferences (email alerts for quota 80%/100% warnings)
   - `Verify:` Toggle quota warning → email sent when 80% reached
   - `Evidence:` Email received with quota details
-- [ ] Account deletion flow (GDPR compliance)
-  - `Verify:` Click "Delete Account" → confirmation → all data removed
-  - `Evidence:` Clerk user deleted, Stripe subscription cancelled, Unkey keys deactivated, DynamoDB records soft-deleted
+- [ ] Account deletion flow (GDPR compliance; requires Clerk step-up + typed confirmation per ARCHITECTURE.MD §5.9.2)
+  - `Verify:` Click "Delete Account" → step-up → typed confirmation → all data removed
+  - `Evidence:` Clerk user deleted, Stripe subscription cancelled, all four DynamoDB tables purged for the org
 
 #### Scope
 
@@ -3304,7 +3753,7 @@ title: Stripe LEI Usage Meter
 status: pending
 priority: p1-high
 epic: P3
-depends_on: [P1B.08]
+depends_on: [P1B.10]
 completed: null
 ```
 
@@ -3316,16 +3765,19 @@ As a platform operator, LEI usage is metered and billed so that the invoice show
 
 ##### Functional
 
-- [ ] LEI usage meter created in Stripe
-  - `Verify:` Stripe dashboard shows LEI meter
-  - `Evidence:` Meter ID documented
-- [ ] Invoice shows 3 product line items (address, ABN, LEI)
+- [ ] LEI metered Price created in Stripe with tiered allocations
+  - `Verify:` Stripe dashboard shows LEI metered Price with tiers
+  - `Evidence:` Price ID documented in PLANS constants
+- [ ] P1B.06 Stripe webhook populates `subscriptionItems["lei"]` on upgrade (same auto-iteration as P2.06 for ABN)
+  - `Verify:` Upgrade a test account; `aws dynamodb get-item` shows `subscriptionItems.lei: "si_..."`
+  - `Evidence:` DDB record diff
+- [ ] Invoice shows 3 product line items (address, ABN, LEI) — no cron change required
   - `Verify:` Generate test invoice with usage across all 3 products
   - `Evidence:` Invoice PDF shows 3 separate line items with correct quantities
 
 #### Scope
 
-**In:** Stripe LEI meter, batch Lambda update, invoice verification
+**In:** Stripe LEI metered Price, PLANS constants update, invoice verification (no cron code changes — P1B.10 already iterates subscriptionItems)
 
 **Out — Do Not Implement:**
 
@@ -3420,9 +3872,9 @@ Shopify is the largest e-commerce platform in Australia. A checkout UI extension
 - [ ] OAuth install flow from Prontiq dashboard (P4.02 handles the auth)
   - `Verify:` Click "Install Shopify" → OAuth → extension installed
   - `Evidence:` Extension visible in merchant's Shopify admin
-- [ ] Store-scoped API key provisioned automatically on install
-  - `Verify:` After install, DynamoDB has a `pq_live_shopify_` key for the store
-  - `Evidence:` Key used by extension for API calls
+- [ ] Store-scoped API key provisioned automatically on install (per ADR-001 — single canonical `pq_live_` prefix; vendor scoping is metadata-driven, NOT encoded in the raw key format)
+  - `Verify:` After install, `prontiq-keys` has a record with `keyPrefix = "pq_live_"`, `scope = "shopify"`, `shopDomain = "<store>.myshopify.com"`, and `products = ["address", "abn"]` (per P4.02 contract)
+  - `Evidence:` `aws dynamodb query --table prontiq-keys --index-name orgId-index --filter-expression "scope = :s AND attribute_exists(keyPrefix)" --expression-attribute-values '{":s":{"S":"shopify"}}'` returns the record
 
 #### Scope
 
@@ -3448,7 +3900,7 @@ depends_on: [P4.01]
 completed: null
 tech_stack:
   auth: Shopify OAuth 2.0
-  keys: Unkey (store-scoped)
+  keys: DDB-native (store-scoped record in prontiq-keys)
 ```
 
 #### User Story
@@ -3457,7 +3909,7 @@ As a developer clicking "Install Shopify" on the dashboard, a store-scoped API k
 
 #### Problem Statement
 
-The Shopify install flow must be frictionless: click install → OAuth consent → key provisioned → extension active. The store-scoped key has a `pq_live_shopify_` prefix, is restricted to address + ABN products, and is tied to the merchant's Prontiq account for billing. Uninstalling deactivates the key.
+The Shopify install flow must be frictionless: click install → OAuth consent → key provisioned → extension active. The store-scoped key uses the standard `pq_live_` prefix (no vendor subprefix — ADR-001) with a `scope: "shopify"` attribute and `shopDomain` metadata on the `prontiq-keys` record. Restricted to address + ABN products. Uninstalling deactivates the key.
 
 #### Definition of Done
 
@@ -3466,13 +3918,13 @@ The Shopify install flow must be frictionless: click install → OAuth consent �
 - [ ] Dashboard integrations page: "Install Shopify" button triggers OAuth flow
   - `Verify:` Click → Shopify OAuth consent screen → redirect back to dashboard
   - `Evidence:` OAuth handshake completes; store token stored
-- [ ] Store-scoped Unkey key created with `pq_live_shopify_` prefix
-  - `Verify:` After install, Unkey shows key with store metadata
-  - `Evidence:` Key scoped to address + ABN products
-- [ ] Key synced to DynamoDB with store metadata (shop domain, install date)
-  - `Verify:` DynamoDB record includes `shopDomain` field
-  - `Evidence:` `aws dynamodb get-item` shows store-scoped key
-- [ ] `app.installed` webhook creates key; `app.uninstalled` deactivates it
+- [ ] `app.installed` webhook generates a store-scoped key via the DDB-native key module (P1B.02)
+  - `Verify:` After install, `prontiq-keys` shows new record with `keyPrefix = "pq_live_"`, `scope = "shopify"`, `shopDomain` metadata
+  - `Evidence:` `aws dynamodb get-item` shows store-scoped record
+- [ ] Key restricted to address + ABN products (`products: ["address", "abn"]` on the record)
+  - `Verify:` Request to `/v1/lei/lookup` with the store key → 403 `PRODUCT_NOT_ALLOWED`
+  - `Evidence:` Integration test
+- [ ] `app.uninstalled` webhook sets `active: false` on the store-scoped record
   - `Verify:` Uninstall from Shopify → DynamoDB key shows `active: false`
   - `Evidence:` Subsequent API calls with that key return 401
 
@@ -3556,15 +4008,15 @@ As a developer, I see store-scoped keys separately from personal keys on the das
 
 ##### Functional
 
-- [ ] Dashboard keys page shows store-scoped keys in a separate section
-  - `Verify:` Keys with `pq_live_shopify_` prefix grouped under "Integrations"
-  - `Evidence:` Clear visual separation from personal keys
-- [ ] Store-scoped keys restricted to address product by default (expandable)
-  - `Verify:` Store key only works for `/v1/address/*`; `/v1/abn/*` returns 403
-  - `Evidence:` Product scoping enforced in auth middleware
-- [ ] Usage tracked and billed per store key (appears on invoice)
-  - `Verify:` Store key usage shows separately in usage charts
-  - `Evidence:` DynamoDB tracks usage per key (already per-key)
+- [ ] Dashboard keys page shows store-scoped keys in a separate section, grouped by **`scope` attribute** (NOT raw-key prefix substring — vendor scoping is metadata-driven per ADR-001, see P4.02 contract)
+  - `Verify:` Keys with `scope === "shopify"` rendered under "Integrations" section; user-created keys (no `scope` attribute or `scope === "user"`) under "API Keys"
+  - `Evidence:` Clear visual separation; UI groups by `scope`, not by string-matching the masked prefix
+- [ ] Store-scoped keys restricted to the products provisioned at install (per P4.02: `products: ["address", "abn"]` for B2B-capable stores; `["address"]` for B2C-only stores)
+  - `Verify:` Store key with `products: ["address", "abn"]` works for `/v1/address/*` and `/v1/abn/*`; `/v1/lei/*` returns 403 `PRODUCT_NOT_ALLOWED`
+  - `Evidence:` Product scoping enforced in auth middleware against the v2.2 `products` list — same code path as user keys
+- [ ] Usage tracked and billed per store key (appears on invoice as part of the org's overall usage)
+  - `Verify:` Store key usage appears in `prontiq-usage` per `apiKeyHash`; aggregates into the org's billing
+  - `Evidence:` Per-key counters (already per-key in v2.2 schema)
 
 #### Scope
 
@@ -3758,25 +4210,28 @@ As a platform operator, all 5 products are metered and billed so that the invoic
 
 #### Problem Statement
 
-With 5 products live, the invoice must show 5 separate usage line items. The batch Lambda already supports multiple products — it just needs the new Stripe meters. This is the completion of the billing system: one subscription, one invoice, per-product line items, the Twilio model.
+With 5 products live, the invoice must show 5 separate usage line items. P1B.10 billing cron already iterates the full `subscriptionItems` map — it just needs new Stripe metered Prices and corresponding `subscriptionItems` entries populated by the Stripe webhook (P1B.06) on upgrade. This is the completion of the billing system: one subscription, one invoice, per-product line items, the Twilio model.
 
 #### Definition of Done
 
 ##### Functional
 
-- [ ] CVE + Patents usage meters created in Stripe
-  - `Verify:` Stripe dashboard Billing → Meters shows all 5 product meters
-  - `Evidence:` 5 meter IDs documented
+- [ ] CVE + Patents metered Prices created in Stripe (tiered allocations per plan)
+  - `Verify:` Stripe dashboard Products shows all 5 product metered Prices with tiers
+  - `Evidence:` 5 Price IDs documented in PLANS constants
+- [ ] P1B.06 Stripe webhook populates `subscriptionItems["cve"]` and `subscriptionItems["patents"]` on upgrade (auto — iterates full product set)
+  - `Verify:` Upgrade a test account; DDB record shows both entries
+  - `Evidence:` DDB diff
 - [ ] Invoice shows 5 product line items
   - `Verify:` Generate test invoice with usage across all 5 products
   - `Evidence:` Invoice PDF: "Address API — X", "ABN Verification — Y", "LEI Lookup — Z", "CVE Search — W", "Patent Search — V"
-- [ ] Batch Lambda reports all 5 products
-  - `Verify:` Usage across all products → hourly batch → Stripe records for each
+- [ ] Billing cron (P1B.10) reports all 5 products on next hourly run — no code change
+  - `Verify:` Usage across all products → hourly cron → Stripe records for each
   - `Evidence:` Stripe usage records for all 5 meters
 
 #### Scope
 
-**In:** Stripe meters for CVE + Patents, batch Lambda update, invoice verification
+**In:** Stripe metered Prices for CVE + Patents, PLANS constants update, invoice verification (no billing-cron code change)
 
 **Out — Do Not Implement:**
 

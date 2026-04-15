@@ -35,17 +35,29 @@ GET /v1/address/lookup/suburb?suburb=bondi+beach&state=NSW&limit=10
 - **OpenAPI schema expansion**: full G-NAF response shape (geocode, boundaries, electorates) typed in spec
 - **CI spec-drift gate**: blocks merges when `openapi.json` is stale vs Zod schemas
 
-### Next: Auth & Billing (P1B)
+### Next: Auth & Billing (P1B — v2.2, DDB-native)
 
-The platform serves real traffic from `api.prontiq.dev`. The prod DynamoDB keys table is currently seeded with one manual key (`pq_live_prod_000000000000000000000000`). Goal: replace manual provisioning with the Clerk → Unkey → Stripe → DynamoDB chain.
+The platform serves real traffic from `api.prontiq.dev`. The prod keys table today is the legacy `ApiKeyTable` (raw-key PK, nested usage map), seeded with one manual key (`pq_live_prod_000000000000000000000000`). Goal: replace manual provisioning with the Clerk → Stripe → DynamoDB chain (DDB-native keys, SHA-256 hash-based lookup, per ADR-001 and ARCHITECTURE.MD §5.5).
 
-**Sequence:**
+**13-ticket sequence** (see `ROADMAP.md` §P1B for full DoD):
 
-1. **P1B.01 — Clerk auth** for the dashboard (sign-up, login, OAuth)
-2. **P1B.02 — Clerk webhook → Unkey key issuance** on `user.created`
-3. **P1B.03 — Unkey webhook → DynamoDB sync** (hot-path verification stays in DynamoDB)
-4. **P1B.04 — Stripe customer + checkout** for tier upgrade
-5. **P1B.05 — Stripe metered billing** per-product per-call
+1. **P1B.01 — Clerk Application Setup** (OAuth, webhook, secrets)
+2. **P1B.02 — Key Module (crypto primitives)** — `packages/shared/src/keys.ts` `generateKey` + `hashKey` only. Pure `node:crypto`, no DDB. Parallel-safe.
+3. **P1B.03 — Stripe Setup** (products, tiered metered Prices, Pricing Table, PLANS constants, Smart Retries)
+4. **P1B.04 — DynamoDB Tables** (prontiq-keys, prontiq-usage, prontiq-audit, prontiq-ses-suppressions)
+5. **P1B.04b — Data Migration + Middleware Cutover** — migration script + `auth.ts`/`usage.ts` rewrite (hash lookup, REDIRECT fallback, usage-table writes) + seed-key rotation. Atomic flip of schema and code.
+6. **P1B.05 — Clerk Webhook Handler** (provisioning + idempotency lock)
+7. **P1B.06 — Stripe Webhook Handler** (4 events + 14-day grace)
+8. **P1B.07 — `prontiq-audit` Writer Helper**
+9. **P1B.08 — `prontiq-ses-suppressions` + Bounce Handler** (requires SES prod-access exit)
+10. **P1B.09 — Burst Rate Limiter Middleware** (in-memory token bucket; concurrency caveat)
+11. **P1B.10 — Billing Cron** (hourly → Stripe via subscriptionItems)
+12. **P1B.11 — Month-close Lambda** (00:30 UTC day 1)
+13. **P1B.12 — Auth Middleware Integration Test** (every error code + REDIRECT + burst + paymentOverdue — exercises the post-cutover middleware from P1B.04b)
+
+**Dependencies:** .01/.02/.03/.04 parallel; .04b blocks on .02 + .04 (needs crypto module + tables before it can rewrite middleware and run migration); .05 blocks on .01/.02/.03/.04; .06 blocks on .03/.04; .07/.08 block on .04; **.09 blocks on .02 + .04b** (burst limiter consumes `record.rateLimit` from the post-cutover auth context — wiring against the legacy shape would be throwaway work); .10 blocks on .03/.04/.06; .11 blocks on .10; .12 blocks on .05/.09/.04b.
+
+**Scope boundary (important):** P1B.02 is pure crypto primitives only. The auth/usage middleware refactor (hash-based lookup, REDIRECT fallback, usage-table writes) ships in P1B.04b because it's inseparable from the schema cutover. Repo-wide removal of legacy Unkey code / env vars is **not owned by any P1B ticket** — it's a separate follow-up PR (see Backlog).
 
 ### Backlog (not blocking auth)
 
@@ -53,13 +65,15 @@ The platform serves real traffic from `api.prontiq.dev`. The prod DynamoDB keys 
 - P1A.10: WAF + API Gateway throttling
 - Increase OpenSearch gp3 to 50GB (before next quarterly G-NAF ingest)
 - ABN pipeline (second product, P2)
+- Follow-up: `chore(webhooks): remove Unkey code` — scoped deletion of legacy `unkey.ts` and `UNKEY_*` env vars after PR 1-3 doc migration lands
 
 ## Reference Files
 
 | File | Purpose | When to Read |
 |------|---------|--------------|
 | `ARCHITECTURE.MD` | Full platform design | When you need design context |
-| `ROADMAP.md` | Master plan (72 tickets) | When you need the full scope |
+| `ROADMAP.md` | Master plan (76 tickets) | When you need the full scope |
+| `docs/decisions/001-remove-unkey.md` | ADR — why Unkey was removed | When auditing architecture decisions |
 | `sst.config.ts` | Infrastructure definition | When working on infra |
 | `packages/shared/src/constants.ts` | Product registry, tier limits | When working on auth/billing |
 | `packages/api/src/index.ts` | API entry point | When working on routes |
