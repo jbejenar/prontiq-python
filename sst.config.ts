@@ -71,7 +71,7 @@ export default $config({
     api.route("$default", {
       handler: "packages/api/src/index.handler",
       architecture: "arm64",
-      runtime: "nodejs20.x",
+      runtime: "nodejs24.x",
       memory: "512 MB",
       timeout: "30 seconds",
       link: [keyTable],
@@ -105,7 +105,7 @@ export default $config({
     const readManifestFn = new sst.aws.Function("PqIngestReadManifest", {
       handler: "packages/ingestion/src/read-manifest.handler",
       architecture: "arm64",
-      runtime: "nodejs20.x",
+      runtime: "nodejs24.x",
       memory: "512 MB",
       timeout: "2 minutes",
       permissions: [
@@ -118,7 +118,7 @@ export default $config({
     const createIndexFn = new sst.aws.Function("PqIngestCreateIndex", {
       handler: "packages/ingestion/src/create-index.handler",
       architecture: "arm64",
-      runtime: "nodejs20.x",
+      runtime: "nodejs24.x",
       memory: "512 MB",
       timeout: "60 seconds",
       permissions: [
@@ -134,7 +134,7 @@ export default $config({
     const healthCheckFn = new sst.aws.Function("PqIngestHealthCheck", {
       handler: "packages/ingestion/src/health-check.handler",
       architecture: "arm64",
-      runtime: "nodejs20.x",
+      runtime: "nodejs24.x",
       memory: "512 MB",
       timeout: "15 minutes",
       permissions: [
@@ -149,7 +149,7 @@ export default $config({
     const aliasSwapFn = new sst.aws.Function("PqIngestAliasSwap", {
       handler: "packages/ingestion/src/alias-swap.handler",
       architecture: "arm64",
-      runtime: "nodejs20.x",
+      runtime: "nodejs24.x",
       memory: "512 MB",
       timeout: "60 seconds",
       permissions: [
@@ -164,7 +164,7 @@ export default $config({
     const onFailureFn = new sst.aws.Function("PqIngestOnFailure", {
       handler: "packages/ingestion/src/on-failure.handler",
       architecture: "arm64",
-      runtime: "nodejs20.x",
+      runtime: "nodejs24.x",
       memory: "512 MB",
       timeout: "60 seconds",
       permissions: [
@@ -485,7 +485,7 @@ export default $config({
     const routerFn = new sst.aws.Function("PqIngestRouter", {
       handler: "packages/ingestion/src/router.handler",
       architecture: "arm64",
-      runtime: "nodejs20.x",
+      runtime: "nodejs24.x",
       memory: "512 MB",
       timeout: "60 seconds",
       permissions: [
@@ -532,7 +532,7 @@ export default $config({
       function: {
         handler: "packages/ingestion/src/cleanup.handler",
         architecture: "arm64",
-        runtime: "nodejs20.x",
+        runtime: "nodejs24.x",
         memory: "512 MB",
         timeout: "2 minutes",
         permissions: [
