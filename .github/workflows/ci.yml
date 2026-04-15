@@ -88,6 +88,13 @@ jobs:
     needs: [check, integration-test]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
+    # Serialize deploy-dev runs at the GHA layer so two concurrent
+    # pushes can't race the unlock-then-deploy sequence below.
+    # cancel-in-progress: false → second push QUEUES, never cancels
+    # an in-flight deploy.
+    concurrency:
+      group: sst-deploy-dev
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
 
@@ -105,23 +112,48 @@ jobs:
           role-to-assume: arn:aws:iam::493712557159:role/prontiq-platform-deploy-role
           aws-region: ap-southeast-2
 
-      # Clear any stale SST state lock from a prior failed CI run.
+      # Fail fast if any dev SST lock is held.
       #
-      # Discovered after PR #63 surfaced .sst/log/sst.log content:
-      # if a previous CI deploy was killed (timeout, manual cancel,
-      # runner crash) before SST could release its state-bucket lock,
-      # the next run hits "Concurrent update detected" and fails in
-      # 11 seconds. We were stuck in a vicious cycle: each timeout-
-      # killed run blocked the next.
+      # Earlier iteration (in this same PR's history) tried an age-based
+      # auto-unlock — "if lock > 11 minutes old it's stale". Codex
+      # review correctly pointed out the flaw: the 10-minute timeout
+      # only bounds OUR CI deploy. An operator running `sst deploy`
+      # locally, or a future workflow, or any other automation against
+      # the same SST state backend, can legitimately hold the lock
+      # longer than 11 minutes. Auto-clearing those by age would
+      # corrupt their in-flight state.
       #
-      # `sst unlock` is idempotent and safe — exits 0 whether or not
-      # a lock exists. `|| true` belt-and-braces if the binary itself
-      # errors for some reason; we still want the deploy to proceed.
+      # SST's lock file is just `{created, updateID, runID, command,
+      # ignore}` — no owner metadata we can use to identify "is this
+      # lock mine or someone else's". Without that, no automatic
+      # heuristic is provably safe.
       #
-      # Local equivalent: `pnpm exec sst unlock --stage dev` before
-      # any retry after a failed deploy.
-      - name: Clear stale SST lock from prior CI run
-        run: pnpm exec sst unlock --stage dev || true
+      # So: dev now matches prod. Fail fast if a lock exists; surface
+      # diagnostics; require operator action via `recover-lock.yml`
+      # (with the i-confirm-no-active-deploy gate) for recovery.
+      #
+      # Trade-off: when a CI run leaves a stale lock (timeout-killed
+      # deploy), the next push fails until an operator runs the
+      # recover-lock workflow. Cost: a manual button-click. Benefit:
+      # zero risk of clobbering an external deploy.
+      - name: Fail fast if dev SST lock is held
+        env:
+          STATE_BUCKET: sst-state-vbnmvbvmbzkk
+          LOCK_KEY: lock/prontiq/dev.json
+        run: |
+          set -euo pipefail
+          if aws s3api head-object \
+            --bucket "$STATE_BUCKET" \
+            --key "$LOCK_KEY" \
+            --region ap-southeast-2 >/dev/null 2>&1
+          then
+            LOCK_JSON=$(aws s3 cp "s3://$STATE_BUCKET/$LOCK_KEY" - --region ap-southeast-2)
+            echo "::error::Dev SST lock is held. Lock metadata: $LOCK_JSON"
+            echo "::error::To recover: confirm no active dev deploy is running anywhere (CI, local, automation),"
+            echo "::error::then run the 'Recover stale SST lock' workflow with stage=dev."
+            exit 1
+          fi
+          echo "No dev lock held — safe to deploy."
 
       # GitHub's `ubuntu-latest` image has Pulumi pre-installed at
       # /usr/local/bin/pulumi-language-nodejs. As of Pulumi v3.214.0

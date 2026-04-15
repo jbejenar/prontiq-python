@@ -11,6 +11,12 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     environment: production
+    # Serialize prod deploys at the GHA layer so multiple manual
+    # dispatches queue rather than race. cancel-in-progress: false
+    # because losing a half-applied prod deploy is worse than queueing.
+    concurrency:
+      group: sst-deploy-prod
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
 
@@ -30,9 +36,34 @@ jobs:
           role-to-assume: arn:aws:iam::493712557159:role/prontiq-platform-deploy-role
           aws-region: ap-southeast-2
 
-      # See ci.yml for rationale on these two pre-deploy steps.
-      - name: Clear stale SST lock from prior CI run
-        run: pnpm exec sst unlock --stage prod || true
+      # NO automatic unlock for prod. Higher stakes than dev — if a
+      # prod lock is held when this dispatch runs, FAIL FAST with
+      # clear recovery instructions. Operator must verify no active
+      # deploy exists and run the manual `recover-lock.yml` workflow
+      # to clear the lock before retrying.
+      #
+      # Rationale: an unconditional unlock could yank a live lock from
+      # an operator's local `sst deploy --stage prod` (rare, but
+      # possible). For prod the "safe but slow" cost of explicit
+      # operator action is preferable to the "fast but corrupting" cost
+      # of auto-recovery getting it wrong.
+      - name: Fail fast if prod lock is held
+        env:
+          STATE_BUCKET: sst-state-vbnmvbvmbzkk
+          LOCK_KEY: lock/prontiq/prod.json
+        run: |
+          set -euo pipefail
+          if aws s3api head-object \
+            --bucket "$STATE_BUCKET" \
+            --key "$LOCK_KEY" \
+            --region ap-southeast-2 >/dev/null 2>&1
+          then
+            LOCK_JSON=$(aws s3 cp "s3://$STATE_BUCKET/$LOCK_KEY" - --region ap-southeast-2)
+            echo "::error::Prod SST lock is held. Lock metadata: $LOCK_JSON"
+            echo "::error::To recover: confirm no active prod deploy is running, then run the 'Recover stale SST lock' workflow with stage=prod."
+            exit 1
+          fi
+          echo "No prod lock held — safe to deploy."
 
       - name: Workaround SST/Pulumi version conflict (sst#6314)
         run: sudo rm -f /usr/local/bin/pulumi-language-nodejs
