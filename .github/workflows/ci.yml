@@ -107,14 +107,39 @@ jobs:
 
       # Deploy first — creates ECR repo and all other infrastructure.
       #
-      # Expect a silent period of 3-15 minutes after the
-      # "Downloaded provider …" lines — that's Pulumi's non-TTY refresh
-      # phase walking the full stack (~100 resources, each requires an
-      # AWS describe/get call). Pulumi shows a spinner here in TTY mode,
-      # but the non-TTY CI log format does not emit per-resource events
-      # until the diff phase begins. See infra/README.md → "CI deploy
-      # silent-refresh window" for the signal-vs-noise heuristic.
-      - run: pnpm deploy:dev
+      # TEMPORARY DEBUG MODE. Recent CI runs hang mid-deploy after ~5-7
+      # min of visible AWS calls then go silent for 15+ min. My local
+      # `pnpm deploy:dev` runs the same commit through to completion
+      # cleanly — so the hang is environmental to GH Actions runners.
+      # CloudTrail can't resolve it (5-15 min lag), and Pulumi's non-TTY
+      # refresh emits nothing during the silent window, so we're blind.
+      #
+      # This block adds env-level verbosity so a stuck run has some
+      # signal to inspect post-mortem:
+      #   SST_VERBOSE=1        SST's own verbose mode — logs resource
+      #                        operations in more detail
+      #   PULUMI_DEBUG_COMMANDS=true  Pulumi logs each sub-command it
+      #                        spawns (provider processes, etc.)
+      #   NODE_DEBUG=net,tls,http,https
+      #                        libuv/Node-level logging of TCP connects
+      #                        and HTTP requests. If the hang is a
+      #                        stuck connection (which is the leading
+      #                        hypothesis) we'll see it here.
+      # Bash-level: `set -x` traces the command itself.
+      #
+      # These env vars DO produce significant output (MBs per deploy);
+      # with Node not block-buffering pipes, the volume is enough to
+      # consistently flush the stdout buffer so CI's log pane stays
+      # responsive. Revert this block once the root cause is identified.
+      - name: Deploy to dev (DEBUG MODE — see env + set -x)
+        shell: bash
+        env:
+          SST_VERBOSE: "1"
+          PULUMI_DEBUG_COMMANDS: "true"
+          NODE_DEBUG: "net,tls,http,https"
+        run: |
+          set -x
+          pnpm deploy:dev
 
       # Build and push Fargate image AFTER deploy so ECR repo exists
       - name: Login to Amazon ECR
