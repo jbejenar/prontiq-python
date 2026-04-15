@@ -140,11 +140,44 @@ jobs:
         env:
           AWS_EC2_METADATA_DISABLED: "true"
           AWS_SKIP_CREDENTIALS_VALIDATION: "true"
+          # Some SST hangs trace back to $USER being unset (see sst#5539).
+          # GH runners set USER but defensively pin it.
+          USER: "runner"
         run: |
           set -x
           timeout --signal=SIGTERM --kill-after=30s 10m pnpm deploy:dev || EXIT=$?
           echo "deploy exited with code: ${EXIT:-0}"
           exit "${EXIT:-0}"
+
+      # On any deploy outcome (success OR failure), surface the hidden
+      # SST/Pulumi log file. This is the canonical "what actually went wrong"
+      # data; SST writes it to .sst/log/pulumi.log but never echoes it to
+      # stdout in CI mode. Multiple SST issues recommend grabbing this when
+      # debugging (see sst#5539, sst#6314 thread).
+      - name: Dump SST/Pulumi log on completion
+        if: always()
+        shell: bash
+        run: |
+          echo "=========================================="
+          echo "  .sst/log/pulumi.log (last 500 lines)"
+          echo "=========================================="
+          if [ -f .sst/log/pulumi.log ]; then
+            tail -n 500 .sst/log/pulumi.log
+          else
+            echo "(file does not exist — check if .sst/log/ has anything)"
+            ls -la .sst/log/ 2>&1 || echo "(.sst/log/ also missing)"
+            ls -la .sst/ 2>&1 || echo "(.sst/ also missing)"
+          fi
+          echo "=========================================="
+
+      - name: Upload SST log as artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sst-log-deploy-dev
+          path: .sst/log/
+          if-no-files-found: warn
+          retention-days: 7
 
       # Build and push Fargate image AFTER deploy so ECR repo exists
       - name: Login to Amazon ECR
