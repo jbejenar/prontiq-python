@@ -57,7 +57,7 @@ The platform serves real traffic from `api.prontiq.dev`. The prod keys table tod
 
 **Dependencies:** .01/.02/.03/.04 parallel; .04b blocks on .02 + .04 (needs crypto module + tables before it can rewrite middleware and run migration); .05 blocks on .01/.02/.03/.04; .06 blocks on .03/.04; .07/.08 block on .04; **.09 blocks on .02 + .04b** (burst limiter consumes `record.rateLimit` from the post-cutover auth context — wiring against the legacy shape would be throwaway work); .10 blocks on .03/.04/.06; .11 blocks on .10; .12 blocks on .05/.09/.04b.
 
-**Scope boundary (important):** P1B.02 is pure crypto primitives only. The auth/usage middleware refactor (hash-based lookup, REDIRECT fallback, usage-table writes) ships in P1B.04b because it's inseparable from the schema cutover. Repo-wide removal of legacy Unkey code / env vars is **not owned by any P1B ticket** — it's a separate follow-up PR (see Backlog).
+**Scope boundary (important):** P1B.02 is pure crypto primitives only. The auth/usage middleware refactor (hash-based lookup, REDIRECT fallback, usage-table writes) ships in P1B.04b because it's inseparable from the schema cutover. Legacy Unkey code / env vars were removed in PR #68 — no P1B ticket owns that cleanup.
 
 ### Backlog (not blocking auth)
 
@@ -65,7 +65,6 @@ The platform serves real traffic from `api.prontiq.dev`. The prod keys table tod
 - P1A.10: WAF + API Gateway throttling
 - Increase OpenSearch gp3 to 50GB (before next quarterly G-NAF ingest)
 - ABN pipeline (second product, P2)
-- Follow-up: `chore(webhooks): remove Unkey code` — scoped deletion of legacy `unkey.ts` and `UNKEY_*` env vars after PR 1-3 doc migration lands
 
 ## Reference Files
 

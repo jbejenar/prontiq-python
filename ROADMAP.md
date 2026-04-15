@@ -1076,7 +1076,7 @@ Options:
 >
 > **Dependency graph:** P1B.01/.02/.03/.04 can run in parallel. P1B.04b depends on .02 + .04 (needs the crypto module + the tables to write the code cutover). P1B.05 depends on .01/.02/.03/.04. P1B.06 depends on .03/.04. P1B.07/.08 depend on .04. **P1B.09 depends on .02 + .04b** (the burst limiter middleware reads `record.rateLimit` from context — that context is established by the post-cutover auth middleware in .04b, not by the pure crypto module). P1B.10 depends on .03/.04/.06. P1B.11 depends on .10. P1B.12 depends on .05/.09/.04b (tests the cutover end-to-end).
 >
-> **Repo-wide Unkey removal** (legacy `packages/webhooks/src/unkey.ts`, `UNKEY_*` env vars in `.env.example` / `sst.config.ts` / GitHub Actions) is a separate follow-up PR — `chore(webhooks): remove Unkey code` — tracked in NEXT-WORK.md Backlog. **It is not owned by any P1B ticket.** P1B tickets only guarantee no NEW Unkey usage is introduced in the files they touch.
+> **Repo-wide Unkey removal** completed in PR #68 (`chore(webhooks): remove Unkey code`) — `packages/webhooks/src/unkey.ts`, `unkeyWebhook` export, `lastSyncedFromUnkey` field, and `UNKEY_*` env vars all gone from main. **No P1B ticket owns this cleanup.** Going forward, P1B tickets only need to guarantee no NEW Unkey references are introduced.
 >
 > **Architecture reference:** ARCHITECTURE.MD §5.5 (schema), §5.6 (billing), §5.7 (webhooks), §7 (endpoints), §9 (error taxonomy). Decision rationale: ADR-001.
 
@@ -1194,7 +1194,7 @@ v2.2 removes Unkey (ADR-001). Key generation and hashing are the foundational pr
 
 - Auth middleware refactor (hash-based lookup, REDIRECT fallback) → **P1B.04b** (cutover)
 - DynamoDB reads/writes → P1B.05 (Clerk webhook) for CREATE, P1B.04b for VERIFY path rewrite
-- Repo-wide Unkey code/env removal → **PR 4** (`chore(webhooks): remove Unkey code`)
+- Repo-wide Unkey code/env removal → already completed in PR #68 (merged)
 - Rotation / revoke / list endpoints → P1C.03 (`/v1/account/keys/*`)
 - Table creation → P1B.04
 - Data migration from legacy `ApiKeyTable` → P1B.04b
@@ -1430,7 +1430,7 @@ Live today is a single `ApiKeyTable` with raw-key PK and nested `usage: {product
 
 - Deleting legacy `ApiKeyTable` → separate follow-up after 14-day soak
 - Auto-creating subscription items for legacy upgraded keys → P1B.06 webhook handles this on next Stripe event
-- Repo-wide Unkey code removal → PR 4 (`chore(webhooks): remove Unkey code`)
+- Repo-wide Unkey code removal → already completed in PR #68 (merged)
 
 ---
 

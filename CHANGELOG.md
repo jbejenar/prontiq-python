@@ -41,7 +41,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
-- **Unkey dependency.** API keys are now DynamoDB-native (SHA-256 hash, ~80 LOC). See `docs/decisions/001-remove-unkey.md`. Code removal of `packages/webhooks/src/unkey.ts` + `UNKEY_*` env vars is tracked in a follow-up PR.
+- **Unkey dependency.** API keys are now DynamoDB-native (SHA-256 hash, ~80 LOC). See `docs/decisions/001-remove-unkey.md`. Code removal of `packages/webhooks/src/unkey.ts`, the `unkeyWebhook` export, the `lastSyncedFromUnkey` field on `ApiKeyRecord`, and the `UNKEY_*` env vars completed in PR #68 (`chore(webhooks): remove Unkey code`).
 - Reconciliation Lambda (15-min Unkey↔DynamoDB sync) — no longer needed; hot-path verification is direct DynamoDB lookup.
 - Legacy v2.1 error-code names (`RATE_LIMIT_EXCEEDED`, `INVALID_PARAMETERS`, `NOT_FOUND`) replaced by v2.2 taxonomy in §9.
 - Stray `dependabot_all.json` (added to `.gitignore`)
