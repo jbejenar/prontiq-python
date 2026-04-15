@@ -30,8 +30,6 @@ jobs:
           role-to-assume: arn:aws:iam::493712557159:role/prontiq-platform-deploy-role
           aws-region: ap-southeast-2
 
-      # See ci.yml for the rationale behind `script -qefc` — forces a pty so
-      # Node/Pulumi line-buffers progress output instead of block-buffering
-      # it silently.
-      - name: Deploy to prod (line-buffered for live progress)
-        run: script -qefc "pnpm deploy:prod" /dev/null
+      # See infra/README.md → "CI deploy silent-refresh window" for the
+      # expected 3-15 minute silent period after provider download.
+      - run: pnpm deploy:prod

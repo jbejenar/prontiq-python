@@ -201,7 +201,47 @@ aws iam create-open-id-connect-provider \
 
 The thumbprint above is GitHub's published OIDC signing certificate thumbprint; verify against <https://docs.github.com/en/actions/deployment/security-hardening-your-deployments/about-security-hardening-with-openid-connect> before running.
 
+## CI deploy silent-refresh window
+
+CI `deploy-dev` and `deploy-prod` jobs go silent for **3–15 minutes** after the initial `|  Info   Downloaded provider X` banner. This is **expected, not a hang.** Here's what's happening:
+
+- SST runs Pulumi under the hood.
+- Pulumi has two output modes based on `stdout.isTTY`:
+  - **TTY mode** (local): spinner + in-place progress board during state refresh.
+  - **Non-TTY mode** (CI): no per-resource events during refresh; silent until the diff phase begins.
+- Every `sst deploy` starts with a full state refresh — one AWS describe/get call per resource (~100 resources in our stack, ~100–200 ms each = 3–5 min typical, up to 15 min with cold-start caches or slow resources like CloudFront distributions).
+- During that refresh, non-TTY Pulumi emits nothing. The CI log pane looks identical to a hang.
+
+### How to tell "normal silent refresh" from "actually stuck"
+
+| Elapsed in step | Log pane state | Read |
+|---|---|---|
+| 0–3 min | Shows `Downloaded provider …` banner, then silent | Normal, refresh in progress |
+| 3–15 min | Still silent, no new lines | Normal, refresh still in progress |
+| 15–20 min | Still silent, no new lines | Edge — check `sst-state-vbnmvbvmbzkk` S3 bucket for lock, check CloudTrail for role's recent API calls |
+| 20+ min silent | No terminal lines, no completion | Actually stuck. Cancel, `sst unlock --stage <stage>`, investigate |
+| Any duration | `\| Refreshed` / `\| Created` / `\| Deleted` lines streaming | Normal — diff phase reached |
+| Any duration | `ERROR` / `UnauthorizedOperation` / `Lock` | Real failure — inspect log |
+
+### Failed fix attempts (so nobody re-introduces them)
+
+| Approach | Result | Why it failed |
+|---|---|---|
+| `script -qefc "pnpm deploy:dev" /dev/null` (PR #52) | Made it worse — CI log showed raw `0D` bytes for 7+ minutes | `script` allocates a pty → SST detects TTY → switches to TUI mode (spinner + carriage-return redraws) → GHA log viewer can't render escape sequences → shows raw `\r` as literal `0D` |
+| `pnpm deploy:dev \| awk '{ print; fflush(); }'` (PR #53, closed) | Would have been a no-op | **Node does NOT block-buffer when stdout is a pipe** — verified by direct experiment. `awk fflush` can only flush what it receives; it cannot force the upstream to emit earlier. The silence was never a buffering problem. |
+| `stdbuf -oL` | Would have been a no-op | Sets libc's `_IOLBF`; Node bypasses libc's FILE* for stdout (uses libuv streams on raw fds). |
+
+### If a future fix is needed
+
+Options investigated but not pursued (would fix visibility but add complexity):
+- Pre-refresh with `pulumi up --refresh --preview-only` as a separate CI step, then deploy with skip-refresh. Gives refresh its own visible step, but adds state-locking coordination complexity.
+- Periodic heartbeat wrapper: `pnpm deploy:dev & PID=$!; while kill -0 $PID 2>/dev/null; do sleep 30; echo "still refreshing, elapsed $SECONDS s"; done; wait $PID`. Emits heartbeat lines but adds a bash subshell harness to the workflow.
+- Capture Pulumi's `--json` event stream and re-emit. Most accurate; most code.
+
+Current call: **document the behavior, don't work around it.** The operator cost of "wait 15 min before suspecting stuck" is lower than the maintenance cost of any of the workaround options above.
+
 ## History
 
 - 2026-04-09 (P0.01) — role created manually with OIDC trust scoped to `repo:jbejenar/prontiq-platform:*`.
 - 2026-04-15 (PR #50) — role definition captured in this directory; `ec2:DescribeVpcAttribute` added to unblock Fargate bulk-ingest deploys; trust policy narrowed from `repo:*` wildcard to (a) `sub = ref:refs/heads/main` + (b) an explicit `job_workflow_ref` allowlist of the two approved deployment workflows. Intentional review now required before any new workflow can mint deploy credentials.
+- 2026-04-15 (PR #52, reverted) — attempted `script -qefc` pty wrapper on deploy steps to fix CI "silent grind". Misdiagnosis — it forced SST into TUI mode and produced literal `0D` bytes in CI log. Reverted the same day; real cause documented in "CI deploy silent-refresh window" section above.
