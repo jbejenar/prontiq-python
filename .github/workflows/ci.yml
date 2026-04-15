@@ -107,44 +107,53 @@ jobs:
 
       # Deploy first — creates ECR repo and all other infrastructure.
       #
-      # TEMPORARY DEBUG MODE v2. PR #55's first debug attempt used
-      # `NODE_DEBUG=net,tls,http,https`, which only logged the NODE HOST's
-      # own traffic (mostly localhost RPC to the Pulumi engine at
-      # 127.0.0.1:13557). The actual AWS SDK calls happen inside the
-      # `pulumi-resource-aws` SUBPROCESS (Go, not Node), so Node's debug
-      # never sees them. Can't diagnose the hang without provider-level
-      # visibility.
+      # TEMPORARY DEBUG MODE v3. v2 (PR #56) showed Pulumi gets as far as
+      # "pulumi-aws: credentials are valid" + "Retrieved caller identity
+      # from STS" and then goes silent. `PULUMI_LOG_VERBOSE=9` that I set
+      # was not a real Pulumi env var — typo'd for `PULUMI_DEBUG_GRPC`.
+      # Also AWS credential validation might be the hang (the log even
+      # hints at AWS_SKIP_CREDENTIALS_VALIDATION as a bypass).
       #
-      # v2 debug env:
-      #   TF_LOG=DEBUG                pulumi-resource-aws wraps
-      #                               terraform-provider-aws under the hood.
-      #                               TF_LOG=DEBUG enables provider-level
-      #                               logging of every AWS SDK request:
-      #                               endpoint, headers, response timing.
-      #                               This is the one that tells us if a
-      #                               specific AWS call is stuck.
-      #   PULUMI_LOG_VERBOSE=9        Pulumi engine's own max verbosity.
-      #                               Logs gRPC between engine, language
-      #                               host, and providers.
-      #   SST_VERBOSE=1               SST-level resource operation detail.
-      #   PULUMI_DEBUG_COMMANDS=true  Pulumi logs sub-command spawns.
+      # v3 changes vs v2:
+      #   AWS_SKIP_CREDENTIALS_VALIDATION=true
+      #     Explicitly skips the AWS provider's STS validation call at
+      #     startup. If the hang happens elsewhere, this still deploys;
+      #     if it happens during validation, we get past it and see the
+      #     next phase in logs. Safe because the actual role auth is
+      #     already verified by configure-aws-credentials@v4 higher up.
       #
-      # NODE_DEBUG dropped — redundant vs the above, and was too noisy
-      # with low signal.
+      #   PULUMI_DEBUG_GRPC=true
+      #     THIS is the real env var (v2 had PULUMI_LOG_VERBOSE=9 which
+      #     doesn't exist). Dumps gRPC traffic between the Pulumi engine
+      #     and the provider subprocesses. We need this to see what's
+      #     happening after "Retrieved caller identity from STS" —
+      #     specifically which gRPC request/response pair is pending.
       #
-      # Still a diagnostic-only block — revert once the root cause of
-      # the CI hang is found. TF_LOG=DEBUG may leak signed AWS request
-      # details into logs; tolerable during diagnosis, not long-term.
-      - name: Deploy to dev (DEBUG MODE v2 — TF_LOG + PULUMI_LOG)
+      #   timeout 600 wrapper
+      #     Force-kill the deploy after 10 min instead of waiting for us
+      #     to manually cancel. Node may dump a final state on SIGTERM
+      #     that we haven't seen yet. Exit code 124 = timeout fired.
+      #
+      # Kept from v2: TF_LOG=DEBUG, SST_VERBOSE, PULUMI_DEBUG_COMMANDS.
+      # Removed: PULUMI_LOG_VERBOSE (not a real env var).
+      #
+      # Still diagnostic-only.
+      - name: Deploy to dev (DEBUG MODE v3 — GRPC + skip-AWS-validation + timeout)
         shell: bash
         env:
           TF_LOG: "DEBUG"
-          PULUMI_LOG_VERBOSE: "9"
+          PULUMI_DEBUG_GRPC: "true"
+          AWS_SKIP_CREDENTIALS_VALIDATION: "true"
           SST_VERBOSE: "1"
           PULUMI_DEBUG_COMMANDS: "true"
         run: |
           set -x
-          pnpm deploy:dev
+          # 10-min cap — beyond the 3-15 min "normal silent-refresh" band.
+          # If the hang persists, SIGTERM triggers Node's default exit path
+          # which may print state we haven't seen. Exit 124 = timeout fired.
+          timeout --signal=SIGTERM --kill-after=30s 10m pnpm deploy:dev || EXIT=$?
+          echo "deploy exited with code: ${EXIT:-0}"
+          exit "${EXIT:-0}"
 
       # Build and push Fargate image AFTER deploy so ECR repo exists
       - name: Login to Amazon ECR
