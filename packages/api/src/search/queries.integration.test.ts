@@ -191,6 +191,115 @@ test("enrich: valid ID returns full record (happy path unchanged)", async () => 
   assert.equal((result as any).addressLabel, "16 HEATH CRESCENT");
 });
 
+test('validate: wrong street number caps confidence at "low"', async () => {
+  // Query "1 MARTIN PLACE" matches the fixture doc (numberFirst=1) with
+  // HIGH BM25 score — but "99 martin place sydney nsw 2000" has number 99,
+  // which must demote to "low" even though every other token agrees.
+  const result = await queries.validate("99 martin place sydney nsw 2000");
+  assert.equal(result.confidence, "low");
+});
+
+test('validate: prefix-unit form "unit 5 16 ..." extracts street number from after the unit', async () => {
+  // Leading "UNIT" + unit number "5" → street number is the NEXT numeric
+  // token (16). Must match matched doc's numberFirst=16 → not "low".
+  const result = await queries.validate(
+    "unit 5 16 heath crescent hampton east vic 3188",
+  );
+  assert.ok(result.match, "unit address should still match");
+  assert.notEqual(result.confidence, "low");
+});
+
+test('validate: slash-unit form "5/16 ..." extracts street number from after the slash', async () => {
+  // "5/16" = unit 5, street 16. Extractor must return 16 (not 5) so the
+  // gate passes against matched numberFirst=16.
+  const result = await queries.validate(
+    "5/16 heath crescent hampton east vic 3188",
+  );
+  assert.ok(result.match, "slash form should still match");
+  assert.notEqual(result.confidence, "low");
+});
+
+test('validate: prefix + slash "unit 5/16 ..." extracts street number from the slash token', async () => {
+  // Common combined AU form: keyword + slash-combined unit/street. Parser
+  // must handle this in one pass — earlier iteration returned undefined
+  // because the loop was only looking for pure-numeric tokens after the
+  // keyword, missing the slash token.
+  const result = await queries.validate(
+    "unit 5/16 heath crescent hampton east vic 3188",
+  );
+  assert.ok(result.match, "combined prefix+slash form should still match");
+  assert.notEqual(result.confidence, "low");
+});
+
+test('validate: prefix + slash with WRONG street "unit 5/99 ..." still caps at low', async () => {
+  // Negative counterpart: if the parser extracts the post-slash number
+  // correctly (99), and matched numberFirst is 16, the gate must fire.
+  // Proves the parser doesn't silently skip the gate for this form.
+  const result = await queries.validate(
+    "unit 5/99 heath crescent hampton east vic 3188",
+  );
+  assert.equal(
+    result.confidence,
+    "low",
+    "wrong post-slash street number must still trigger the gate",
+  );
+});
+
+test("validate: suffix-unit form still compares leading street number (regression for Bug 1)", async () => {
+  // Regression for the bug where any UNIT keyword ANYWHERE in the query
+  // disabled the street-number gate. Here the first token "99" IS the
+  // street number; the trailing "UNIT 5" must NOT disable extraction.
+  // Matched doc has numberFirst=16; query says 99 → must cap at "low".
+  const result = await queries.validate(
+    "99 heath crescent hampton east vic 3188 unit 5",
+  );
+  assert.equal(
+    result.confidence,
+    "low",
+    "leading 99 vs matched 16 must fire the gate even when UNIT appears later",
+  );
+});
+
+test('validate: "CRES" abbreviation does not trigger alien-token gate', async () => {
+  // "cres" is 4 chars, not a state, not in label tokens ("CRESCENT" is),
+  // and not within fuzzy edit distance of any label token (edit distance
+  // to CRESCENT is 4, limit for 4-char token is 1). Without the whitelist,
+  // this would demote to "low".
+  const result = await queries.validate(
+    "16 heath cres hampton east vic 3188",
+  );
+  assert.ok(result.match, "abbreviated street type should still match");
+  assert.notEqual(result.confidence, "low");
+  assert.notEqual(result.confidence, "none");
+});
+
+test("lookupSuburb: equal-distance fuzzy candidates break ties by address count", async () => {
+  // "BIGTOWS" → BIGTOWN (1 edit, S→N, 4 docs) and BIGTOWM (1 edit, S→M,
+  // 1 doc). SAME edit distance → tiebreak by count → populous BIGTOWN wins.
+  const result = await queries.lookupSuburb("bigtows", undefined, 10);
+  assert.equal(result.suburb, "BIGTOWN");
+  assert.equal(result.address_count, 4);
+});
+
+test("lookupSuburb: closer rare suburb beats farther populous suburb (regression for Bug 2)", async () => {
+  // "AVOCAL" → AVOCA (1 edit: delete L, 1 doc) and AVOCADO (2 edits: L→D
+  // + insert O, 5 docs). Closer wins on lexical distance even though
+  // AVOCADO is 5× more populous. Regression guard: population must only
+  // tiebreak within an equal-distance band, never override closeness.
+  const result = await queries.lookupSuburb("avocal", undefined, 10);
+  assert.equal(result.suburb, "AVOCA");
+  assert.equal(result.address_count, 1);
+});
+
+test("lookupSuburb: exact match wins over populous fuzzy neighbour", async () => {
+  // BIGTOWM is a valid (rare) suburb. Exact query must return BIGTOWM even
+  // though BIGTOWN (4 docs) is fuzzy-near. Without phase 1a, the fuzzy agg
+  // would rewrite BIGTOWM → BIGTOWN based on address count.
+  const result = await queries.lookupSuburb("BIGTOWM", undefined, 10);
+  assert.equal(result.suburb, "BIGTOWM");
+  assert.equal(result.address_count, 1);
+});
+
 test("lookupPostcode: postcode 2000 returns SYDNEY and HAYMARKET", async () => {
   const result = await queries.lookupPostcode("2000", 10);
   const names = result.localities.map((l) => l.name);

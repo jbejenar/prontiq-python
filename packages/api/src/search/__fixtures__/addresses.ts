@@ -7,6 +7,11 @@
  * - BONDI BEACH for suburb fuzzy match tests
  * - RICHMOND in three states for multi-state aggregation tests
  * - SYDNEY / HAYMARKET for postcode-lookup tests
+ * - BIGTOWN × 4 vs BIGTOWM × 1 for fuzzy-tiebreak-by-count tests
+ *
+ * `numberFirst` is populated on every doc so the street-number gate in
+ * scoreToConfidence() fires in tests. In real G-NAF data it's extracted
+ * from the unstructured address string during ingestion.
  */
 export const fixtureAddresses = [
   {
@@ -18,6 +23,7 @@ export const fixtureAddresses = [
     postcode: "2680",
     confidence: 2,
     location: { lat: -34.293, lon: 146.039 },
+    numberFirst: "16",
   },
   {
     id: "F_GAVIC420559144",
@@ -28,6 +34,7 @@ export const fixtureAddresses = [
     postcode: "3188",
     confidence: 2,
     location: { lat: -37.9376, lon: 145.0295 },
+    numberFirst: "16",
   },
   {
     id: "F_GANSW720158070",
@@ -38,6 +45,7 @@ export const fixtureAddresses = [
     postcode: "2179",
     confidence: 2,
     location: { lat: -33.979, lon: 150.811 },
+    numberFirst: "16",
   },
   {
     id: "F_GASA_415543154",
@@ -48,6 +56,7 @@ export const fixtureAddresses = [
     postcode: "5015",
     confidence: 2,
     location: { lat: -34.838, lon: 138.498 },
+    numberFirst: "16",
   },
   {
     id: "F_GANSW706085480",
@@ -58,6 +67,7 @@ export const fixtureAddresses = [
     postcode: "2428",
     confidence: 2,
     location: { lat: -32.175, lon: 152.507 },
+    numberFirst: "16",
   },
   {
     id: "F_BONDI_BEACH_1",
@@ -68,6 +78,7 @@ export const fixtureAddresses = [
     postcode: "2026",
     confidence: 2,
     location: { lat: -33.892, lon: 151.277 },
+    numberFirst: "1",
   },
   {
     id: "F_BONDI_BEACH_2",
@@ -78,6 +89,7 @@ export const fixtureAddresses = [
     postcode: "2026",
     confidence: 2,
     location: { lat: -33.891, lon: 151.278 },
+    numberFirst: "2",
   },
   {
     id: "F_RICHMOND_VIC",
@@ -88,6 +100,7 @@ export const fixtureAddresses = [
     postcode: "3121",
     confidence: 2,
     location: { lat: -37.818, lon: 144.998 },
+    numberFirst: "1",
   },
   {
     id: "F_RICHMOND_NSW",
@@ -98,6 +111,7 @@ export const fixtureAddresses = [
     postcode: "2753",
     confidence: 2,
     location: { lat: -33.598, lon: 150.749 },
+    numberFirst: "1",
   },
   {
     id: "F_RICHMOND_TAS",
@@ -108,6 +122,7 @@ export const fixtureAddresses = [
     postcode: "7025",
     confidence: 2,
     location: { lat: -42.735, lon: 147.438 },
+    numberFirst: "1",
   },
   {
     id: "F_SYDNEY_1",
@@ -118,6 +133,7 @@ export const fixtureAddresses = [
     postcode: "2000",
     confidence: 2,
     location: { lat: -33.867, lon: 151.209 },
+    numberFirst: "1",
   },
   {
     id: "F_HAYMARKET_1",
@@ -128,6 +144,137 @@ export const fixtureAddresses = [
     postcode: "2000",
     confidence: 2,
     location: { lat: -33.878, lon: 151.205 },
+    numberFirst: "1",
+  },
+  // ---- Fuzzy tie-break fixtures ----
+  // BIGTOWN = 4 addresses (populous), BIGTOWM = 1 address (rare, 1 edit away).
+  // Query "BIGTOWS" fuzzy-matches both; count-ordered agg must prefer BIGTOWN.
+  // Exact query "BIGTOWM" must still return BIGTOWM (rare exact must win).
+  {
+    id: "F_BIGTOWN_1",
+    addressLabel: "1 MAIN STREET",
+    addressLabelSearch: "1 MAIN STREET BIGTOWN WA 6000",
+    localityName: "BIGTOWN",
+    state: "WA",
+    postcode: "6000",
+    confidence: 2,
+    location: { lat: -31.0, lon: 115.0 },
+    numberFirst: "1",
+  },
+  {
+    id: "F_BIGTOWN_2",
+    addressLabel: "2 MAIN STREET",
+    addressLabelSearch: "2 MAIN STREET BIGTOWN WA 6000",
+    localityName: "BIGTOWN",
+    state: "WA",
+    postcode: "6000",
+    confidence: 2,
+    location: { lat: -31.0, lon: 115.0 },
+    numberFirst: "2",
+  },
+  {
+    id: "F_BIGTOWN_3",
+    addressLabel: "3 MAIN STREET",
+    addressLabelSearch: "3 MAIN STREET BIGTOWN WA 6000",
+    localityName: "BIGTOWN",
+    state: "WA",
+    postcode: "6000",
+    confidence: 2,
+    location: { lat: -31.0, lon: 115.0 },
+    numberFirst: "3",
+  },
+  {
+    id: "F_BIGTOWN_4",
+    addressLabel: "4 MAIN STREET",
+    addressLabelSearch: "4 MAIN STREET BIGTOWN WA 6000",
+    localityName: "BIGTOWN",
+    state: "WA",
+    postcode: "6000",
+    confidence: 2,
+    location: { lat: -31.0, lon: 115.0 },
+    numberFirst: "4",
+  },
+  {
+    id: "F_BIGTOWM_1",
+    addressLabel: "1 MAIN STREET",
+    addressLabelSearch: "1 MAIN STREET BIGTOWM WA 6001",
+    localityName: "BIGTOWM",
+    state: "WA",
+    postcode: "6001",
+    confidence: 2,
+    location: { lat: -31.0, lon: 115.0 },
+    numberFirst: "1",
+  },
+  // ---- Closer-rare vs farther-populous fixtures ----
+  // Query "AVOCAL": AVOCA (5 chars, 1 edit: delete L) vs AVOCADO (7 chars,
+  // 2 edits: L→D + insert O). Correct behavior: AVOCA wins on lexical
+  // closeness even though AVOCADO has more addresses. Guards against the
+  // "population overrides closeness" regression.
+  {
+    id: "F_AVOCA_1",
+    addressLabel: "1 BEACH ROAD",
+    addressLabelSearch: "1 BEACH ROAD AVOCA NSW 2251",
+    localityName: "AVOCA",
+    state: "NSW",
+    postcode: "2251",
+    confidence: 2,
+    location: { lat: -33.47, lon: 151.44 },
+    numberFirst: "1",
+  },
+  {
+    id: "F_AVOCADO_1",
+    addressLabel: "1 ORCHARD ROAD",
+    addressLabelSearch: "1 ORCHARD ROAD AVOCADO NSW 2250",
+    localityName: "AVOCADO",
+    state: "NSW",
+    postcode: "2250",
+    confidence: 2,
+    location: { lat: -33.43, lon: 151.34 },
+    numberFirst: "1",
+  },
+  {
+    id: "F_AVOCADO_2",
+    addressLabel: "2 ORCHARD ROAD",
+    addressLabelSearch: "2 ORCHARD ROAD AVOCADO NSW 2250",
+    localityName: "AVOCADO",
+    state: "NSW",
+    postcode: "2250",
+    confidence: 2,
+    location: { lat: -33.43, lon: 151.34 },
+    numberFirst: "2",
+  },
+  {
+    id: "F_AVOCADO_3",
+    addressLabel: "3 ORCHARD ROAD",
+    addressLabelSearch: "3 ORCHARD ROAD AVOCADO NSW 2250",
+    localityName: "AVOCADO",
+    state: "NSW",
+    postcode: "2250",
+    confidence: 2,
+    location: { lat: -33.43, lon: 151.34 },
+    numberFirst: "3",
+  },
+  {
+    id: "F_AVOCADO_4",
+    addressLabel: "4 ORCHARD ROAD",
+    addressLabelSearch: "4 ORCHARD ROAD AVOCADO NSW 2250",
+    localityName: "AVOCADO",
+    state: "NSW",
+    postcode: "2250",
+    confidence: 2,
+    location: { lat: -33.43, lon: 151.34 },
+    numberFirst: "4",
+  },
+  {
+    id: "F_AVOCADO_5",
+    addressLabel: "5 ORCHARD ROAD",
+    addressLabelSearch: "5 ORCHARD ROAD AVOCADO NSW 2250",
+    localityName: "AVOCADO",
+    state: "NSW",
+    postcode: "2250",
+    confidence: 2,
+    location: { lat: -33.43, lon: 151.34 },
+    numberFirst: "5",
   },
 ];
 
@@ -145,5 +292,6 @@ export const fixtureMappings = {
     postcode: { type: "keyword" },
     confidence: { type: "integer" },
     location: { type: "geo_point" },
+    numberFirst: { type: "keyword" },
   },
 } as const;
