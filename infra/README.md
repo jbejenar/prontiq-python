@@ -94,7 +94,10 @@ Confirm CI can assume the role again before making further changes.
 
 ## Verifying live state matches repo
 
-IAM's API surface returns policy documents either as parsed JSON objects (AWS CLI v2 with `--output json`, the current normal case) or as URL-encoded strings (older CLI versions, raw SDK calls). The normalizer below handles both shapes so the drift-check is robust across operator environments.
+Two stability concerns to handle:
+
+1. **Encoding** — IAM's API surface returns policy documents either as parsed JSON objects (AWS CLI v2 with `--output json`, the current normal case) or as URL-encoded strings (older CLI versions, raw SDK calls). The normalizer handles both shapes.
+2. **Key ordering** — AWS IAM returns object keys in **non-deterministic order** across calls (empirically, the same `get-role` call can return `aud`/`sub`/`job_workflow_ref` in different orders on back-to-back invocations). Comparing raw JSON would produce false-positive drift. The normalizer uses `sort_keys=True` on both sides to force canonical alphabetical key ordering. The repo files are also written in this canonical order so the diff always resolves cleanly.
 
 ```bash
 # Trust policy
@@ -107,7 +110,7 @@ import json, sys, urllib.parse
 doc = json.load(sys.stdin)['Role']['AssumeRolePolicyDocument']
 if isinstance(doc, str):
     doc = json.loads(urllib.parse.unquote(doc))
-print(json.dumps(doc, indent=2))
+print(json.dumps(doc, indent=2, sort_keys=True))
 " \
   | diff - infra/deploy-role-trust-policy.json
 
@@ -122,10 +125,14 @@ import json, sys, urllib.parse
 doc = json.load(sys.stdin)['PolicyDocument']
 if isinstance(doc, str):
     doc = json.loads(urllib.parse.unquote(doc))
-print(json.dumps(doc, indent=2))
+print(json.dumps(doc, indent=2, sort_keys=True))
 " \
   | diff - infra/deploy-role-policy.json
 ```
+
+### Regenerating the repo files from live state
+
+If you ever need to re-sync the repo files to match live AWS state (e.g., after an intentional console edit that needs to be captured back), replace the `| diff - …` tail with `> infra/deploy-role-trust-policy.json` (or `-policy.json`) in the commands above. The `sort_keys=True` + `indent=2` combination is the canonical form — any future diff will then be clean.
 
 No output from either command = match. Any diff = drift; investigate before making further changes.
 
@@ -147,9 +154,8 @@ approved = {
     'jbejenar/prontiq-platform/.github/workflows/ci.yml@refs/heads/main',
     'jbejenar/prontiq-platform/.github/workflows/deploy-prod.yml@refs/heads/main',
 }
-live = set(doc['Statement'][0]['Condition']['StringEquals']
-    .get('token.actions.githubusercontent.com:job_workflow_ref', []))
-if isinstance(live, str): live = {live}
+raw = doc['Statement'][0]['Condition']['StringEquals'].get('token.actions.githubusercontent.com:job_workflow_ref', [])
+live = {raw} if isinstance(raw, str) else set(raw)
 unapproved = live - approved
 missing = approved - live
 if unapproved: print('UNAPPROVED (live but not in allowlist):', unapproved)

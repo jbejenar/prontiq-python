@@ -1,9 +1,6 @@
 {
-  "Version": "2012-10-17",
   "Statement": [
     {
-      "Sid": "SSTBootstrapAndPulumiState",
-      "Effect": "Allow",
       "Action": [
         "s3:CreateBucket",
         "s3:PutObject",
@@ -29,27 +26,27 @@
         "dynamodb:UpdateTimeToLive",
         "dynamodb:DescribeTimeToLive"
       ],
-      "Resource": "*"
+      "Effect": "Allow",
+      "Resource": "*",
+      "Sid": "SSTBootstrapAndPulumiState"
     },
     {
-      "Sid": "LambdaManagement",
-      "Effect": "Allow",
       "Action": [
         "lambda:*"
       ],
-      "Resource": "*"
+      "Effect": "Allow",
+      "Resource": "*",
+      "Sid": "LambdaManagement"
     },
     {
-      "Sid": "APIGateway",
-      "Effect": "Allow",
       "Action": [
         "apigateway:*"
       ],
-      "Resource": "*"
+      "Effect": "Allow",
+      "Resource": "*",
+      "Sid": "APIGateway"
     },
     {
-      "Sid": "IAMPassRole",
-      "Effect": "Allow",
       "Action": [
         "iam:CreateRole",
         "iam:DeleteRole",
@@ -63,106 +60,106 @@
         "iam:TagRole",
         "iam:CreateServiceLinkedRole"
       ],
-      "Resource": "*"
+      "Effect": "Allow",
+      "Resource": "*",
+      "Sid": "IAMPassRole"
     },
     {
-      "Sid": "CloudWatch",
-      "Effect": "Allow",
       "Action": [
         "logs:*",
         "cloudwatch:*",
         "xray:*"
       ],
-      "Resource": "*"
+      "Effect": "Allow",
+      "Resource": "*",
+      "Sid": "CloudWatch"
     },
     {
-      "Sid": "OpenSearch",
-      "Effect": "Allow",
       "Action": [
         "es:ESHttp*",
         "es:DescribeElasticsearchDomain",
         "es:DescribeDomain"
       ],
-      "Resource": "arn:aws:es:ap-southeast-2:493712557159:domain/flat-white/*"
+      "Effect": "Allow",
+      "Resource": "arn:aws:es:ap-southeast-2:493712557159:domain/flat-white/*",
+      "Sid": "OpenSearch"
     },
     {
-      "Sid": "DataBucketAccess",
-      "Effect": "Allow",
       "Action": [
         "s3:GetObject",
         "s3:ListBucket"
       ],
+      "Effect": "Allow",
       "Resource": [
         "arn:aws:s3:::flat-white-address-493712557159-ap-southeast-2-an",
         "arn:aws:s3:::flat-white-address-493712557159-ap-southeast-2-an/*"
-      ]
+      ],
+      "Sid": "DataBucketAccess"
     },
     {
-      "Sid": "WAF",
-      "Effect": "Allow",
       "Action": [
         "wafv2:*"
       ],
-      "Resource": "*"
+      "Effect": "Allow",
+      "Resource": "*",
+      "Sid": "WAF"
     },
     {
-      "Sid": "EventBridgeAndStepFunctions",
-      "Effect": "Allow",
       "Action": [
         "events:*",
         "states:*",
         "sns:*",
         "sqs:*"
       ],
-      "Resource": "*"
+      "Effect": "Allow",
+      "Resource": "*",
+      "Sid": "EventBridgeAndStepFunctions"
     },
     {
-      "Sid": "SSM",
-      "Effect": "Allow",
       "Action": [
         "ssm:GetParameter",
         "ssm:PutParameter",
         "ssm:DeleteParameter",
         "ssm:GetParametersByPath"
       ],
-      "Resource": "*"
+      "Effect": "Allow",
+      "Resource": "*",
+      "Sid": "SSM"
     },
     {
-      "Sid": "CloudFrontForNextjs",
-      "Effect": "Allow",
       "Action": [
         "cloudfront:*"
       ],
-      "Resource": "*"
+      "Effect": "Allow",
+      "Resource": "*",
+      "Sid": "CloudFrontForNextjs"
     },
     {
-      "Sid": "ECRForDockerImages",
-      "Effect": "Allow",
       "Action": [
         "ecr:*"
       ],
-      "Resource": "*"
+      "Effect": "Allow",
+      "Resource": "*",
+      "Sid": "ECRForDockerImages"
     },
     {
-      "Sid": "STSForPulumi",
-      "Effect": "Allow",
       "Action": [
         "sts:GetCallerIdentity",
         "sts:AssumeRole"
       ],
-      "Resource": "*"
+      "Effect": "Allow",
+      "Resource": "*",
+      "Sid": "STSForPulumi"
     },
     {
-      "Sid": "ECSForFargate",
-      "Effect": "Allow",
       "Action": [
         "ecs:*"
       ],
-      "Resource": "*"
+      "Effect": "Allow",
+      "Resource": "*",
+      "Sid": "ECSForFargate"
     },
     {
-      "Sid": "EC2DescribeForVPC",
-      "Effect": "Allow",
       "Action": [
         "ec2:DescribeVpcs",
         "ec2:DescribeVpcAttribute",
@@ -173,7 +170,10 @@
         "ec2:DeleteNetworkInterface",
         "ec2:DescribeRouteTables"
       ],
-      "Resource": "*"
+      "Effect": "Allow",
+      "Resource": "*",
+      "Sid": "EC2DescribeForVPC"
     }
-  ]
+  ],
+  "Version": "2012-10-17"
 }

@@ -1,22 +1,22 @@
 {
-  "Version": "2012-10-17",
   "Statement": [
     {
-      "Effect": "Allow",
-      "Principal": {
-        "Federated": "arn:aws:iam::493712557159:oidc-provider/token.actions.githubusercontent.com"
-      },
       "Action": "sts:AssumeRoleWithWebIdentity",
       "Condition": {
         "StringEquals": {
           "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
-          "token.actions.githubusercontent.com:sub": "repo:jbejenar/prontiq-platform:ref:refs/heads/main",
           "token.actions.githubusercontent.com:job_workflow_ref": [
             "jbejenar/prontiq-platform/.github/workflows/ci.yml@refs/heads/main",
             "jbejenar/prontiq-platform/.github/workflows/deploy-prod.yml@refs/heads/main"
-          ]
+          ],
+          "token.actions.githubusercontent.com:sub": "repo:jbejenar/prontiq-platform:ref:refs/heads/main"
         }
+      },
+      "Effect": "Allow",
+      "Principal": {
+        "Federated": "arn:aws:iam::493712557159:oidc-provider/token.actions.githubusercontent.com"
       }
     }
-  ]
+  ],
+  "Version": "2012-10-17"
 }
