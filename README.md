@@ -48,7 +48,7 @@ Free open dataset → independent pipeline → S3 (NDJSON + manifest.json)
     → auth / billing / docs
 ```
 
-See [`ARCHITECTURE.MD`](ARCHITECTURE.MD) for the full design (1,451 lines).
+See [`ARCHITECTURE.MD`](ARCHITECTURE.MD) for the full design.
 
 ## Monorepo Structure
 
@@ -57,7 +57,7 @@ packages/
   shared/          @prontiq/shared      Types, constants, Zod schemas
   api/             @prontiq/api         Hono API on Lambda (ARM64)
   ingestion/       @prontiq/ingestion   Step Functions + Lambda indexing
-  webhooks/        @prontiq/webhooks    Clerk, Stripe, Unkey handlers (future — P1B)
+  webhooks/        @prontiq/webhooks    Clerk + Stripe handlers (future — P1B)
   docs/            @prontiq/docs        Mintlify documentation
   plugins/
     shopify/                            Checkout UI Extension
@@ -72,23 +72,23 @@ packages/
 | Infrastructure | SST v4 + Pulumi                                        |
 | API            | Hono + @hono/zod-openapi on Lambda (ARM64, Node.js 20) |
 | Search         | OpenSearch 2.19 (managed)                              |
-| API Keys       | DynamoDB (hot-path verification; Unkey webhook sync planned — P1B) |
+| API Keys       | DynamoDB-native (`pq_live_` + SHA-256 hash-based lookup; ADR-001) |
 | Auth (portal)  | Clerk (planned — P1B)                                  |
 | Billing        | Stripe (planned — P1B)                                 |
-| Dashboard      | Removed — to be rebuilt per Architecture v2.1 §7 (P1C) |
+| Dashboard      | `/account` page — to be rebuilt per ARCHITECTURE.MD §5.9 (P1C) |
 | Docs           | Mintlify at `docs.prontiq.dev` (live)                  |
 | SDKs           | Speakeasy generates `@prontiq/sdk` (TypeScript) — npm publish pending NPM_TOKEN |
 | CI/CD          | GitHub Actions + OIDC (no stored credentials)          |
 
 ## Roadmap Progress
 
-See [`ROADMAP.md`](ROADMAP.md) for the full 72-ticket plan.
+See [`ROADMAP.md`](ROADMAP.md) for the full 76-ticket plan.
 
 | Phase   | Epic                      | Tickets | Done      |
 | ------- | ------------------------- | ------- | --------- |
 | **P0**  | Infrastructure Foundation | 6       | 6/6       |
 | **P1A** | API Core (Address)        | 13      | 9/13      |
-| **P1B** | Auth & Billing            | 9       | 0/9       |
+| **P1B** | Auth & Billing            | 13      | 0/13      |
 | **P1C** | Dashboard                 | 7       | 0/7       |
 | **P1D** | Docs & SDK                | 5       | 2/5       |
 | **P1E** | Ingestion                 | 6       | 4/6       |
@@ -97,7 +97,7 @@ See [`ROADMAP.md`](ROADMAP.md) for the full 72-ticket plan.
 | **P3**  | LEI + Full Dashboard      | 7       | 0/7       |
 | **P4**  | Shopify + WooCommerce     | 5       | 0/5       |
 | **P5**  | CVE/NVD + Patents         | 4       | 0/4       |
-|         |                           | **72**  | **22/72** |
+|         |                           | **76**  | **22/76** |
 
 ## Commands
 

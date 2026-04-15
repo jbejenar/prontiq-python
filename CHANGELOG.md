@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Architecture v2.2 docs** — ARCHITECTURE.MD + ROADMAP.md + ADR-001 (`docs/decisions/001-remove-unkey.md`). See sub-bullets below.
+- New ARCHITECTURE.MD top-level sections: §7 Auth & Endpoint Reference (complete endpoint table + §7.5 success response shapes for Speakeasy SDK codegen), §8 Security, §9 Error Taxonomy, §10 Monitoring & Alerting, §11 Retention, §12 Edge Cases & Failure Modes. New §5.10 Brand section.
+- Payment Failure & Grace Period spec (§5.6.3) — 14-day grace via `paymentOverdue` flag on `prontiq-keys` + `customer.subscription.updated` past_due handler + Stripe Dashboard Smart Retries config.
+- Burst Rate Limiting spec (§5.4.1) — in-memory token bucket per `apiKeyHash`, with Lambda-concurrency caveat preserved.
+- DynamoDB schema extensions: Stripe `subscriptionItems` map on `prontiq-keys` (required for billing cron), `REGISTRY#active-keys` billing index item, `PROVISION#{orgId}` idempotency lock, `REDIRECT#{oldHash}` rotation-safety record in `prontiq-usage`. New tables: `prontiq-audit` (365-day TTL) + `prontiq-ses-suppressions`.
+- ROADMAP P1B new tickets: P1B.02 DDB-native key module, P1B.04 DynamoDB tables (4-table infra), P1B.04b data migration, P1B.07 audit writer helper, P1B.08 SES suppressions + bounce handler, P1B.09 burst rate limiter middleware, P1B.11 month-close Lambda.
+- ADR-001 `docs/decisions/001-remove-unkey.md` captures the decision rationale (Status/Context/Decision/Consequences/Alternatives).
 - Search relevance + fuzzy matching across address endpoints (P1A.11):
   - Autocomplete: `operator: "and"` so all tokens must match (last as prefix)
   - Autocomplete: `fuzziness: "AUTO"` for typo tolerance in completed words
@@ -19,16 +26,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- ROADMAP P1B ticket count expanded from 9 to 13 (3 Unkey tickets deleted, 7 new DDB-native tickets added). Total ROADMAP ticket count: 72 → 76.
+- ARCHITECTURE.MD numbering flattened: new §7–§12 inserted; existing §7 CI/CD → §13, §8 Phasing → §14, §9 Competitive Position → §15, §10 Design Principles → §16, Licence → §17. §14 Phasing rewritten with security deliverables per phase (v2.2 §18).
+- Endpoint reference (§7.3) canonicalized to live query-param form (`/lookup/postcode?postcode=…`, not path-param). Corrects v2.2 draft spec to match live `packages/api/src/routes/address.ts`.
+- Error taxonomy (§9) canonicalized to live prod codes: `PRODUCT_NOT_ALLOWED` (not `PRODUCT_NOT_ENABLED`). Matches `packages/shared/src/constants.ts`.
+- Monorepo structure (ARCHITECTURE.MD §6) rewritten to match live `packages/` (`api`, `docs`, `ingestion`, `plugins`, `shared`, `webhooks`). `packages/web/` documented as planned P1C addition (neither `packages/web` nor `packages/dashboard` existed in any prior state).
+- P1C.07 aligned with §6 — `@prontiq/web` / `packages/web/` (was `@prontiq/dashboard`).
+- §5.9 renamed to "Dashboard & Account Security" and rewritten to describe Clerk `<UserProfile />` + custom tabs, not a separate dashboard app.
+- §3.2 Stack Decision Table "Dashboard" row renamed "Account page" to match v2.2 architecture.
+- SST version references in ARCHITECTURE.MD updated v3 → v4 across 6 locations (matches live `sst.config.ts`).
+- CHANGELOG (this file) restructured to properly separate Added / Changed / Removed for v2.2 migration.
 - Postcode lookup default page size: 50 → 10 (max 50)
 - Suburb lookup default page size: 20 → 10 (max 20)
+
+### Removed
+
+- **Unkey dependency.** API keys are now DynamoDB-native (SHA-256 hash, ~80 LOC). See `docs/decisions/001-remove-unkey.md`. Code removal of `packages/webhooks/src/unkey.ts` + `UNKEY_*` env vars is tracked in a follow-up PR.
+- Reconciliation Lambda (15-min Unkey↔DynamoDB sync) — no longer needed; hot-path verification is direct DynamoDB lookup.
+- Legacy v2.1 error-code names (`RATE_LIMIT_EXCEEDED`, `INVALID_PARAMETERS`, `NOT_FOUND`) replaced by v2.2 taxonomy in §9.
+- Stray `dependabot_all.json` (added to `.gitignore`)
 
 ### Fixed
 
 - Autocomplete ranking: prefix-matching street types (CRESCENT) no longer ranked equally with non-matching types (ROAD/STREET) when user types a prefix
-
-### Removed
-
-- Stray `dependabot_all.json` (added to `.gitignore`)
+- ARCHITECTURE.MD §5.5.1 billing-registry event table no longer contradicts §5.7.3 webhook flow on DOWNGRADE behaviour (paid→paid plan change keeps hash in registry; only paid→free/CANCEL deletes).
 
 ## 2026-04-13
 

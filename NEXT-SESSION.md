@@ -31,7 +31,7 @@
 1. Read NEXT-WORK.md
 2. Verify PR #38 on dev API after CI deploy: `q=16+heath+crese` returns CRESCENT first; `q=16+haeth+crescent` finds via fuzzy
 3. If verified, deploy PR #38 to prod
-4. Begin P1B (auth & billing): Clerk → Unkey → DynamoDB → Stripe provisioning chain
+4. Begin P1B (auth & billing): Clerk → Stripe → DynamoDB provisioning chain (DDB-native keys — Unkey removed; see ADR-001)
 
 ---
 
@@ -175,7 +175,7 @@
   - C4: Index naming inconsistent → standardized `{product}-{version}`
   - C5: No NDJSON content validation → sampling step added
   - C6: SST v3 deploy role wrong permissions → Pulumi state backend
-  - S1-S6: OpenSearch HA trigger, caching, usage reliability, Unkey reconciliation, retention, lock
+  - S1-S6: OpenSearch HA trigger, caching, usage reliability, key-rotation REDIRECT semantics, retention, idempotency lock
   - M1-M9: Health endpoint, request ID, WAF, force merge, cold starts, Clerk migration, billing, connections
 - [x] Wrote zero-downtime index lifecycle section (5.2) with blue-green deployment, alias swap, rollback, backups, capacity planning
 - [x] Applied all fixes to ARCHITECTURE.MD (now 1,451 lines)
