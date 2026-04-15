@@ -105,35 +105,36 @@ jobs:
           role-to-assume: arn:aws:iam::493712557159:role/prontiq-platform-deploy-role
           aws-region: ap-southeast-2
 
+      # GitHub's `ubuntu-latest` image has Pulumi pre-installed at
+      # /usr/local/bin/pulumi-language-nodejs. As of Pulumi v3.214.0
+      # (Jan 2026), that binary's `-root` flag was removed:
+      #   https://github.com/pulumi/pulumi/pull/21065
+      # SST (all 3.x and 4.x versions we tested) still passes `-root`.
+      # When SST's child-process invocation finds the system binary
+      # first on PATH, it silently hangs immediately after AWS provider
+      # init — matches our exact symptom (no output after
+      # "Retrieved caller identity from STS", killed by timeout).
+      # Upstream SST issue (still open as of this PR):
+      #   https://github.com/sst/sst/issues/6314
+      # Removing the system binary forces SST to use its OWN bundled
+      # Pulumi (downloaded to ~/.config/sst/bin/ on Linux), which is
+      # a compatible version.
+      - name: Workaround SST/Pulumi version conflict (sst#6314)
+        run: sudo rm -f /usr/local/bin/pulumi-language-nodejs
+
       # Deploy first — creates ECR repo and all other infrastructure.
       #
-      # CI hang diagnosis working hypothesis (after 3 rounds of debug
-      # env iteration — PRs #55/56/58):
-      #
-      #   GitHub Actions runners are NOT EC2 instances, but AWS SDKs
-      #   (Go, JS, Python) all have IMDS — the EC2 Instance Metadata
-      #   Service at 169.254.169.254 — in their default credential
-      #   resolver chain. Even with env-var creds populated by
-      #   configure-aws-credentials@v4, some providers still probe IMDS
-      #   at startup. The connection attempt to 169.254.169.254 has a
-      #   default timeout of several minutes (varies by SDK version),
-      #   and the probe is silent in non-TTY mode, explaining our
-      #   invisible stall right after "Retrieved caller identity from
-      #   STS".
-      #
-      #   `AWS_EC2_METADATA_DISABLED=true` is the standard env var that
-      #   all AWS SDKs honor to bypass IMDS entirely. Safe because we
-      #   already have env-var creds from OIDC, so IMDS fallback isn't
-      #   needed.
-      #
-      # Kept: AWS_SKIP_CREDENTIALS_VALIDATION (no cost, closes a
-      # separate potential hang source). `timeout 10m` wrapper (belt
-      # and braces — if IMDS isn't the cause, we still exit cleanly
-      # instead of running the runner for hours).
-      #
-      # Dropped: all the *_DEBUG / *_VERBOSE env vars from v3. Debug
-      # output was useful for diagnosis but noisy in normal operation.
-      # Add back selectively if this fix turns out to be wrong.
+      # Retained from earlier diagnostic iterations:
+      #   AWS_EC2_METADATA_DISABLED=true
+      #     Bypasses IMDS credential lookup (169.254.169.254 link-local
+      #     is unreachable on GH runners). No cost when env creds exist.
+      #   AWS_SKIP_CREDENTIALS_VALIDATION=true
+      #     Skips the AWS provider's startup STS validation. No cost —
+      #     actual role auth is verified at configure-aws-credentials
+      #     above.
+      #   timeout 10m wrapper
+      #     Belt-and-braces — if the Pulumi fix above is wrong, force
+      #     exit instead of running the runner for hours.
       - name: Deploy to dev
         shell: bash
         env:

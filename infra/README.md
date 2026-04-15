@@ -201,44 +201,75 @@ aws iam create-open-id-connect-provider \
 
 The thumbprint above is GitHub's published OIDC signing certificate thumbprint; verify against <https://docs.github.com/en/actions/deployment/security-hardening-your-deployments/about-security-hardening-with-openid-connect> before running.
 
-## CI deploy silent-refresh window
+## CI deploy hang — root cause and fix (sst#6314)
 
-CI `deploy-dev` and `deploy-prod` jobs go silent for **3–15 minutes** after the initial `|  Info   Downloaded provider X` banner. This is **expected, not a hang.** Here's what's happening:
+From roughly mid-April 2026, CI `deploy-dev` runs hung silently after
+`|  Info  Downloaded provider aws-7.20.0`, killed only by our 10-minute
+timeout wrapper. Local deploys of the same commit completed cleanly.
+After extensive misdiagnosis (see "Failed fix attempts" below), the
+root cause turned out to be upstream.
 
-- SST runs Pulumi under the hood.
-- Pulumi has two output modes based on `stdout.isTTY`:
-  - **TTY mode** (local): spinner + in-place progress board during state refresh.
-  - **Non-TTY mode** (CI): no per-resource events during refresh; silent until the diff phase begins.
-- Every `sst deploy` starts with a full state refresh — one AWS describe/get call per resource (~100 resources in our stack, ~100–200 ms each = 3–5 min typical, up to 15 min with cold-start caches or slow resources like CloudFront distributions).
-- During that refresh, non-TTY Pulumi emits nothing. The CI log pane looks identical to a hang.
+### Root cause
 
-### How to tell "normal silent refresh" from "actually stuck"
+GitHub's `ubuntu-latest` image ships with Pulumi pre-installed at
+`/usr/local/bin/pulumi-language-nodejs`. As of Pulumi **v3.214.0**
+(January 2026) the `-root` flag was removed from that binary
+([pulumi/pulumi#21065](https://github.com/pulumi/pulumi/pull/21065)).
+SST (all versions through 4.6.x at time of writing) still passes
+`-root` when spawning the language host.
 
-| Elapsed in step | Log pane state | Read |
-|---|---|---|
-| 0–3 min | Shows `Downloaded provider …` banner, then silent | Normal, refresh in progress |
-| 3–15 min | Still silent, no new lines | Normal, refresh still in progress |
-| 15–20 min | Still silent, no new lines | Edge — check `sst-state-vbnmvbvmbzkk` S3 bucket for lock, check CloudTrail for role's recent API calls |
-| 20+ min silent | No terminal lines, no completion | Actually stuck. Cancel, `sst unlock --stage <stage>`, investigate |
-| Any duration | `\| Refreshed` / `\| Created` / `\| Deleted` lines streaming | Normal — diff phase reached |
-| Any duration | `ERROR` / `UnauthorizedOperation` / `Lock` | Real failure — inspect log |
+When SST's child-process invocation finds the system `/usr/local/bin`
+copy on PATH first, it silently hangs immediately after AWS provider
+credential acquisition. No error output; the process just never
+proceeds to the refresh/diff phase.
 
-### Failed fix attempts (so nobody re-introduces them)
+Local deploys are unaffected because SST downloads its own compatible
+Pulumi to `~/Library/Application Support/sst/bin/` (macOS) or
+`~/.config/sst/bin/` (Linux) and uses that.
 
-| Approach | Result | Why it failed |
-|---|---|---|
-| `script -qefc "pnpm deploy:dev" /dev/null` (PR #52) | Made it worse — CI log showed raw `0D` bytes for 7+ minutes | `script` allocates a pty → SST detects TTY → switches to TUI mode (spinner + carriage-return redraws) → GHA log viewer can't render escape sequences → shows raw `\r` as literal `0D` |
-| `pnpm deploy:dev \| awk '{ print; fflush(); }'` (PR #53, closed) | Would have been a no-op | **Node does NOT block-buffer when stdout is a pipe** — verified by direct experiment. `awk fflush` can only flush what it receives; it cannot force the upstream to emit earlier. The silence was never a buffering problem. |
-| `stdbuf -oL` | Would have been a no-op | Sets libc's `_IOLBF`; Node bypasses libc's FILE* for stdout (uses libuv streams on raw fds). |
+Upstream SST issue: [anomalyco/sst#6314](https://github.com/anomalyco/sst/issues/6314).
 
-### If a future fix is needed
+### Fix
 
-Options investigated but not pursued (would fix visibility but add complexity):
-- Pre-refresh with `pulumi up --refresh --preview-only` as a separate CI step, then deploy with skip-refresh. Gives refresh its own visible step, but adds state-locking coordination complexity.
-- Periodic heartbeat wrapper: `pnpm deploy:dev & PID=$!; while kill -0 $PID 2>/dev/null; do sleep 30; echo "still refreshing, elapsed $SECONDS s"; done; wait $PID`. Emits heartbeat lines but adds a bash subshell harness to the workflow.
-- Capture Pulumi's `--json` event stream and re-emit. Most accurate; most code.
+Both `.github/workflows/ci.yml` and `.github/workflows/deploy-prod.yml`
+have a one-line step before the deploy:
 
-Current call: **document the behavior, don't work around it.** The operator cost of "wait 15 min before suspecting stuck" is lower than the maintenance cost of any of the workaround options above.
+```yaml
+- name: Workaround SST/Pulumi version conflict (sst#6314)
+  run: sudo rm -f /usr/local/bin/pulumi-language-nodejs
+```
+
+This removes the system's incompatible binary, forcing SST to fall
+back to its bundled compatible one.
+
+### Remove this workaround when
+
+1. SST releases a version that tolerates the missing `-root` flag, **or**
+2. SST's bundled Pulumi consistently wins PATH resolution ahead of the system binary.
+
+Track [anomalyco/sst#6314](https://github.com/anomalyco/sst/issues/6314) for either.
+
+### Failed fix attempts (documented so they don't get re-introduced)
+
+These all assumed the hang was environmental or buffering-related. None were correct, but each taught us something:
+
+| Approach | PR | Result | Why it failed |
+|---|---|---|---|
+| `script -qefc "..." /dev/null` pty wrapper | #52 (reverted by #54) | `0D` bytes in CI log for 7+ min | pty made SST think TTY → TUI mode → carriage-return redraws that GHA's log viewer can't render |
+| `pnpm deploy:dev \| awk '{print; fflush()}'` | #53 (closed) | Would've been no-op | Node doesn't block-buffer when stdout is a pipe (verified experimentally); awk can only flush what it receives |
+| `stdbuf -oL` | considered | Wouldn't help | Sets libc's `_IOLBF`; Node bypasses libc's FILE* layer |
+| `NODE_DEBUG=net,tls,http,https` | #55 | Showed Node host alive but misled | Only logs Node host's own traffic; actual AWS calls are in the provider subprocess |
+| `TF_LOG=DEBUG` + `PULUMI_LOG_VERBOSE=9` | #56 | Gave useful checkpoint data | Showed hang was AFTER credential acquisition; `PULUMI_LOG_VERBOSE` wasn't a real env var (typo for `PULUMI_DEBUG_GRPC`) |
+| `PULUMI_DEBUG_GRPC=true` + `AWS_SKIP_CREDENTIALS_VALIDATION` + 10-min timeout | #58 | Ruled out AWS cred validation | Hang persisted in same spot |
+| `AWS_EC2_METADATA_DISABLED=true` | #61 | Ruled out IMDS timeout | Hang persisted in same spot. This env var is still kept though — it's cost-free and closes a theoretically-valid hang vector |
+
+### Retained safety belts from the iteration
+
+The following stayed in the workflow even after the root-cause fix landed:
+
+- `AWS_EC2_METADATA_DISABLED=true` — prevents AWS SDK from probing the link-local IMDS endpoint (169.254.169.254) on non-EC2 runners. Free.
+- `AWS_SKIP_CREDENTIALS_VALIDATION=true` — skips the AWS provider's startup STS validation. Actual auth is verified by `configure-aws-credentials@v4` step above; this avoids a redundant round-trip.
+- `timeout --signal=SIGTERM --kill-after=30s 10m` wrapper — if any future upstream change re-introduces a hang, we exit cleanly in 10 min with exit code 124 rather than blocking the runner for hours.
 
 ## History
 
