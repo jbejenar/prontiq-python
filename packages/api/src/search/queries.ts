@@ -245,13 +245,28 @@ function scoreToConfidence(
 }
 
 export async function enrich(id: string) {
-  const response = await getOpenSearchClient().get({
-    index: ADDRESS_ALIAS,
-    id,
-  });
+  const response = await getOpenSearchClient().get(
+    { index: ADDRESS_ALIAS, id },
+    // Suppress the client's throw on 404 so we can distinguish doc-missing
+    // (benign) from index-missing (infrastructure failure).
+    { ignore: [404] },
+  );
 
-  if (!response.body.found) {
+  // Benign: document not found (index exists, id doesn't).
+  if (response.statusCode === 404 && response.body?.found === false) {
     return null;
+  }
+
+  // Any other non-2xx (including 404 without `found: false` — e.g. index
+  // missing) is an infrastructure failure. Surface as 500 via the global
+  // handler rather than masquerading as "doc not found".
+  if (
+    response.statusCode != null &&
+    (response.statusCode < 200 || response.statusCode >= 300)
+  ) {
+    throw new Error(
+      `OpenSearch enrich returned ${response.statusCode}: ${JSON.stringify(response.body)}`,
+    );
   }
 
   return { id: response.body._id, ...(response.body._source as AnyRecord) };

@@ -176,6 +176,21 @@ test("validate: alien-token detection doesn't penalize real typos", async () => 
   assert.notEqual(result.confidence, "none");
 });
 
+test("enrich: non-existent ID returns null (no throw)", async () => {
+  // Regression: OpenSearch client throws on 404 by default, which surfaced as
+  // HTTP 500 at the API boundary. enrich() must suppress the throw for
+  // missing-doc 404s and return null (route handler maps null → HTTP 404).
+  const result = await queries.enrich("GA_DOES_NOT_EXIST_XYZ_123");
+  assert.equal(result, null);
+});
+
+test("enrich: valid ID returns full record (happy path unchanged)", async () => {
+  const result = await queries.enrich("F_GAVIC420559144");
+  assert.ok(result, "valid ID should return a record");
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  assert.equal((result as any).addressLabel, "16 HEATH CRESCENT");
+});
+
 test("lookupPostcode: postcode 2000 returns SYDNEY and HAYMARKET", async () => {
   const result = await queries.lookupPostcode("2000", 10);
   const names = result.localities.map((l) => l.name);
