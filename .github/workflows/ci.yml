@@ -58,6 +58,13 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 20
+      # DynamoDB Local for the REDIRECT GSI smoke test (P1B.04 DoD).
+      # `amazon/dynamodb-local` has no curl/wget baked in, so no --health-cmd
+      # — the test step polls readiness itself before running node --test.
+      dynamodb:
+        image: amazon/dynamodb-local:2.5.2
+        ports:
+          - 8000:8000
     steps:
       - uses: actions/checkout@v6
       - uses: pnpm/action-setup@v6
@@ -77,9 +84,22 @@ jobs:
           done
           echo "OpenSearch never became ready"
           exit 1
+      - name: Wait for DynamoDB Local
+        run: |
+          for i in {1..30}; do
+            # DDB Local responds 400 to a bare GET /, which proves it's up.
+            if curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/ | grep -q "^400$"; then
+              echo "DynamoDB Local ready"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "DynamoDB Local never became ready"
+          exit 1
       - name: Run integration tests
         env:
           OPENSEARCH_TEST_URL: http://localhost:9200
+          DYNAMODB_TEST_URL: http://localhost:8000
         # The script builds workspace dependencies via `pnpm -w build --filter`
         # (Turbo handles topological ordering for project references).
         run: pnpm --filter @prontiq/api test:integration

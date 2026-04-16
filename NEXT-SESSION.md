@@ -5,6 +5,51 @@
 
 ---
 
+## Session 9 — 2026-04-16
+
+**Focus:** P1B.04 — DynamoDB Tables (4 tables + schema)
+
+**Completed:**
+
+- [x] `sst.config.ts`: 4 new `sst.aws.Dynamo` components (`PqAuthKeys`, `PqAuthUsage`, `PqAuthAudit`, `PqSesSuppressions`) with stage-qualified physical names (`prontiq-keys`, `prontiq-usage`, `prontiq-audit`, `prontiq-ses-suppressions` in prod; `-{stage}` suffix elsewhere). Additive to the legacy `PqKeys` table — no hot-path linkage yet (that's P1B.04b).
+- [x] `PqAuthUsage` has the `newHash-redirect-index` GSI with `KEYS_ONLY` projection — required by P1B.10 billing cron for rotation-chain attribution.
+- [x] `PqAuthKeys` has `orgId-index` GSI for the CREATE handler's key-limit check and LIST handler's per-org query.
+- [x] TTL enabled on `prontiq-usage`, `prontiq-audit`, `prontiq-ses-suppressions` (attribute name `ttl`). Value semantics (90d/365d/etc.) owned by writer tickets (P1B.07/.08).
+- [x] All tables default to `PAY_PER_REQUEST` (SST default, verified at `.sst/platform/src/components/aws/dynamo.ts:522`).
+- [x] `packages/api/src/middleware/redirect-gsi.integration.test.ts` — 2-test smoke suite (indexed-match + sparse-miss), verified against `amazon/dynamodb-local:2.5.2` locally.
+- [x] `packages/api/package.json`: `test:integration` script runs both OpenSearch and DDB suites.
+- [x] `.github/workflows/ci.yml`: added `dynamodb` service container to `integration-test` job + readiness poll + `DYNAMODB_TEST_URL` env.
+- [x] Roadmap: P1B.04 status → `in-progress`, 6/7 DoD boxes checked, last box deferred pending user `sst diff --stage prod`.
+- [x] NEXT-WORK.md: P1B.04 struck through (pending merge), added to Recent ships with unlock notes.
+
+**Verification evidence:**
+
+- `pnpm lint` → clean (all 4 packages)
+- `pnpm typecheck` → clean (5 packages, cached)
+- `pnpm build` → clean
+- `pnpm test` → 23/23 pass (shared 10, api 13)
+- REDIRECT GSI integration test against DDB Local 2.5.2 → 2/2 pass (`✔ REDIRECT GSI returns exactly one item keyed by newHash`, `✔ REDIRECT GSI returns zero items for unknown newHash`)
+- `pnpm generate:openapi` → no diff (no route changes this ticket)
+
+**Deliberately not done (scope boundary):**
+
+- No link of new tables into the API Lambda handler. The hot-path rewrite (hash-based GetItem, REDIRECT fallback, usage-table writes) is P1B.04b.
+- No data migration from the legacy `PqKeys` table — that's P1B.04b.
+- No `sst diff --stage prod` capture — autonomous session has no prod credentials. User runs this before merge per CLAUDE.md infra rule; that's the 7th DoD box.
+
+**Autonomy boundary note (IMMUTABLE RULE 3):**
+
+This PR creates 4 new AWS DynamoDB tables on merge-to-main via the dev deploy. Documented in PR body. User review at merge time is the approval gate.
+
+**Next session should start with:**
+
+1. Read NEXT-WORK.md.
+2. After user merges this PR and runs `sst diff --stage prod` (checks the 7th DoD box), flip P1B.04 to `status: done`, bump summary counters (P1B 1/13 → 2/13, total 23/76 → 24/76).
+3. P1B.04b is now unblocked (needs P1B.02 ✅ + P1B.04 ✅). That ticket is the atomic schema-and-middleware cutover: migrate data from legacy `ApiKeyTable` → new `prontiq-keys`, rewrite `auth.ts`/`usage.ts` for hash-based GetItem + REDIRECT fallback + usage-table writes, rotate the seed key `pq_live_prod_000000000000000000000000`. Start there.
+4. P1B.01 (Clerk) and P1B.03 (Stripe) still require external account setup — defer until the user confirms accounts/secrets are ready.
+
+---
+
 ## Session 8 — 2026-04-16
 
 **Focus:** P1B.02 — Key Module (crypto primitives)

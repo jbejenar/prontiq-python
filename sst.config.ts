@@ -50,8 +50,67 @@ export default $config({
       primaryIndex: { hashKey: "apiKey" },
     });
 
-    // -- API: Hono on Lambda (single handler for all routes) --
     const isProd = $app.stage === "prod";
+
+    // -- DynamoDB: v2.2 auth/billing tables (P1B.04) --
+    //
+    // Additive to PqKeys above. Schemas mirror ARCHITECTURE.MD §5.5.1.
+    // Not yet linked into the API Lambda — the hot-path cutover (hash-based
+    // GetItem, REDIRECT fallback, usage writes) ships in P1B.04b. Declaring
+    // the infra here so P1B.04b's migration script has a target.
+    const authKeysName = isProd ? "prontiq-keys" : `prontiq-keys-${$app.stage}`;
+    const authUsageName = isProd ? "prontiq-usage" : `prontiq-usage-${$app.stage}`;
+    const auditTableName = isProd ? "prontiq-audit" : `prontiq-audit-${$app.stage}`;
+    const suppressionsName = isProd
+      ? "prontiq-ses-suppressions"
+      : `prontiq-ses-suppressions-${$app.stage}`;
+
+    new sst.aws.Dynamo("PqAuthKeys", {
+      fields: {
+        apiKeyHash: "string",
+        orgId: "string",
+      },
+      primaryIndex: { hashKey: "apiKeyHash" },
+      globalIndexes: {
+        "orgId-index": { hashKey: "orgId" },
+      },
+      transform: { table: { name: authKeysName } },
+    });
+
+    new sst.aws.Dynamo("PqAuthUsage", {
+      fields: {
+        apiKeyHash: "string",
+        scope: "string",
+        newHash: "string",
+      },
+      primaryIndex: { hashKey: "apiKeyHash", rangeKey: "scope" },
+      globalIndexes: {
+        "newHash-redirect-index": { hashKey: "newHash", projection: "keys-only" },
+      },
+      ttl: "ttl",
+      transform: { table: { name: authUsageName } },
+    });
+
+    new sst.aws.Dynamo("PqAuthAudit", {
+      fields: {
+        orgId: "string",
+        "timestamp#eventId": "string",
+      },
+      primaryIndex: { hashKey: "orgId", rangeKey: "timestamp#eventId" },
+      ttl: "ttl",
+      transform: { table: { name: auditTableName } },
+    });
+
+    new sst.aws.Dynamo("PqSesSuppressions", {
+      fields: {
+        email: "string",
+      },
+      primaryIndex: { hashKey: "email" },
+      ttl: "ttl",
+      transform: { table: { name: suppressionsName } },
+    });
+
+    // -- API: Hono on Lambda (single handler for all routes) --
 
     const api = new sst.aws.ApiGatewayV2("PqApi", {
       domain: isProd

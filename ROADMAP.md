@@ -1268,7 +1268,7 @@ Stripe metered billing needs one subscription per organisation with per-product 
 ```yaml
 id: P1B.04
 title: DynamoDB Tables (4 tables + schema)
-status: pending
+status: in-progress
 priority: p0-critical
 epic: P1B
 persona: [builder]
@@ -1291,25 +1291,25 @@ v2.2 splits the single legacy `ApiKeyTable` into four purpose-specific tables: h
 
 ##### Functional
 
-- [ ] `prontiq-keys` table with PK `apiKeyHash` (string), GSI `orgId-index` on `orgId` (sparse — sentinel rows like `ORG#{orgId}` and `REGISTRY#active-keys` deliberately do NOT set an `orgId` attribute, so they are excluded from the index per ARCHITECTURE.MD §5.5.1 "Sentinel record discriminator")
+- [x] `prontiq-keys` table with PK `apiKeyHash` (string), GSI `orgId-index` on `orgId` (sparse — sentinel rows like `ORG#{orgId}` and `REGISTRY#active-keys` deliberately do NOT set an `orgId` attribute, so they are excluded from the index per ARCHITECTURE.MD §5.5.1 "Sentinel record discriminator")
   - `Verify:` `aws dynamodb describe-table --table-name prontiq-keys` shows `orgId-index` GSI
-  - `Evidence:` SST config + describe-table JSON
-- [ ] `prontiq-usage` table with PK `apiKeyHash` (string) + SK `scope` (string); TTL enabled on `ttl` attribute; **GSI `newHash-redirect-index`** on `newHash` (sparse — only REDIRECT items have a `newHash` attribute) with `KEYS_ONLY` projection. Required by P1B.10 billing cron for rotation-chain attribution per ARCHITECTURE.MD §5.5.1 REDIRECT schema + §5.6.2 cron flow.
+  - `Evidence:` `sst.config.ts` `PqAuthKeys` component declares PK `apiKeyHash` + `orgId-index` GSI with default ALL projection; physical AWS name `prontiq-keys` (prod) / `prontiq-keys-{stage}` (non-prod). `describe-table` verification runs against dev after CI deploy post-merge.
+- [x] `prontiq-usage` table with PK `apiKeyHash` (string) + SK `scope` (string); TTL enabled on `ttl` attribute; **GSI `newHash-redirect-index`** on `newHash` (sparse — only REDIRECT items have a `newHash` attribute) with `KEYS_ONLY` projection. Required by P1B.10 billing cron for rotation-chain attribution per ARCHITECTURE.MD §5.5.1 REDIRECT schema + §5.6.2 cron flow.
   - `Verify:` `aws dynamodb describe-table --table-name prontiq-usage` shows both TTL on `ttl` AND `newHash-redirect-index` GSI with `KEYS_ONLY` projection
-  - `Evidence:` SST config exposes the GSI; describe-table JSON confirms attribute definitions, key schema, projection type
-- [ ] **REDIRECT GSI smoke test** — seed a REDIRECT item `{apiKeyHash: oldHash, scope: "REDIRECT", newHash: newHash, authValidUntil, ttl}`; query `newHash-redirect-index` where `newHash = newHash`; assert exactly 1 result (the seeded oldHash). Required because P1B.10 will fail without this index.
+  - `Evidence:` `sst.config.ts` `PqAuthUsage` component declares PK `apiKeyHash` + SK `scope`, `ttl: "ttl"`, `newHash-redirect-index` GSI with `projection: "keys-only"` (SST maps to `KEYS_ONLY`).
+- [x] **REDIRECT GSI smoke test** — seed a REDIRECT item `{apiKeyHash: oldHash, scope: "REDIRECT", newHash: newHash, authValidUntil, ttl}`; query `newHash-redirect-index` where `newHash = newHash`; assert exactly 1 result (the seeded oldHash). Required because P1B.10 will fail without this index.
   - `Verify:` Integration test against DynamoDB Local
-  - `Evidence:` Test passes
-- [ ] `prontiq-audit` table with PK `orgId` + SK `timestamp#eventId`; TTL enabled on `ttl` (365 days)
+  - `Evidence:` `packages/api/src/middleware/redirect-gsi.integration.test.ts` (2 tests: indexed-match + sparse-miss) passes against DDB Local 2.5.2. CI runs it in the `integration-test` job alongside OpenSearch.
+- [x] `prontiq-audit` table with PK `orgId` + SK `timestamp#eventId`; TTL enabled on `ttl` (365 days)
   - `Verify:` `aws dynamodb describe-table --table-name prontiq-audit`
-  - `Evidence:` TTL specification
-- [ ] `prontiq-ses-suppressions` table with PK `email`; TTL enabled on `ttl` (90 days for bounces)
+  - `Evidence:` `sst.config.ts` `PqAuthAudit` component declares PK `orgId` + SK `timestamp#eventId`, `ttl: "ttl"`. The 365-day retention is enforced by writer helper (P1B.07) setting the `ttl` attribute value — DDB TTL is attribute-driven, not schema-driven.
+- [x] `prontiq-ses-suppressions` table with PK `email`; TTL enabled on `ttl` (90 days for bounces)
   - `Verify:` `aws dynamodb describe-table --table-name prontiq-ses-suppressions`
-  - `Evidence:` TTL specification
-- [ ] All tables on-demand (PAY_PER_REQUEST) billing
+  - `Evidence:` `sst.config.ts` `PqSesSuppressions` component declares PK `email`, `ttl: "ttl"`. The 90-day retention for bounces / null TTL for complaints is enforced by the bounce handler (P1B.08) setting the `ttl` attribute value.
+- [x] All tables on-demand (PAY_PER_REQUEST) billing
   - `Verify:` describe-table shows `BillingModeSummary: PAY_PER_REQUEST`
-  - `Evidence:` SST config
-- [ ] `sst diff --stage prod` reviewed before prod deploy (per CLAUDE.md infra rules)
+  - `Evidence:` `sst.aws.Dynamo` defaults to `billingMode: "PAY_PER_REQUEST"` (confirmed at `.sst/platform/src/components/aws/dynamo.ts:522`). No explicit override needed.
+- [ ] `sst diff --stage prod` reviewed before prod deploy (per CLAUDE.md infra rules) [DEFERRED: requires AWS prod credentials — user runs before merge per CLAUDE.md "Run `pnpm exec sst diff --stage prod` before merging any prod-affecting PR"]
   - `Verify:` Captured in PR description
   - `Evidence:` Diff output
 

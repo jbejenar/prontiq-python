@@ -15,7 +15,7 @@
     "build": "tsc",
     "typecheck": "tsc --noEmit",
     "test": "pnpm -w build --filter @prontiq/api... && node --test dist/search/queries.test.js",
-    "test:integration": "pnpm -w build --filter @prontiq/api... && node --test dist/search/queries.integration.test.js",
+    "test:integration": "pnpm -w build --filter @prontiq/api... && node --test dist/search/queries.integration.test.js dist/middleware/redirect-gsi.integration.test.js",
     "smoke": "pnpm -w build --filter @prontiq/api... && node dist/scripts/smoke-test.js",
     "smoke:prod": "pnpm -w build --filter @prontiq/api... && PRONTIQ_API=https://api.prontiq.dev node dist/scripts/smoke-test.js",
     "lint": "eslint src/",

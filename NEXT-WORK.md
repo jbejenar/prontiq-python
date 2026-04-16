@@ -1,7 +1,7 @@
 # NEXT-WORK.md — Active Sprint
 
 > Extracted from ROADMAP.md. This is what agents should work on NOW.
-> Last updated: 2026-04-16
+> Last updated: 2026-04-16 (Session 9)
 
 ## Current Phase: P1B — Auth & Billing (provisioning chain)
 
@@ -28,6 +28,7 @@ GET /v1/address/lookup/suburb?suburb=bondi+beach&state=NSW&limit=10
 
 ### Recent ships (since last NEXT-WORK update)
 
+- **P1B.04** (pending user merge): 4 DynamoDB tables declared in `sst.config.ts` (`prontiq-keys`, `prontiq-usage`, `prontiq-audit`, `prontiq-ses-suppressions`) + REDIRECT GSI integration test + CI DDB Local service. 6/7 DoD boxes checked; `sst diff --stage prod` deferred to user pre-merge. Unblocks P1B.04b/.06/.07/.08.
 - **P1B.02**: Key module (`packages/shared/src/keys.ts` — `generateKey` + `hashKey`, pure `node:crypto`; unblocks P1B.04b/.05/.09)
 - **P1A.11**: Search relevance + fuzzy matching (autocomplete operator AND, validate fuzzy, suburb fuzzy + matched name, lookup limit params) — PR #38
 - **P1F.01**: `api.prontiq.dev` custom domain (ACM cert via Vercel DNS, SST gated to prod)
@@ -45,8 +46,8 @@ The platform serves real traffic from `api.prontiq.dev`. The prod keys table tod
 1. **P1B.01 — Clerk Application Setup** (OAuth, webhook, secrets)
 2. ~~**P1B.02 — Key Module (crypto primitives)**~~ ✅ shipped 2026-04-16 (`packages/shared/src/keys.ts`)
 3. **P1B.03 — Stripe Setup** (products, tiered metered Prices, Pricing Table, PLANS constants, Smart Retries)
-4. **P1B.04 — DynamoDB Tables** (prontiq-keys, prontiq-usage, prontiq-audit, prontiq-ses-suppressions)
-5. **P1B.04b — Data Migration + Middleware Cutover** — migration script + `auth.ts`/`usage.ts` rewrite (hash lookup, REDIRECT fallback, usage-table writes) + seed-key rotation. Atomic flip of schema and code.
+4. ~~**P1B.04 — DynamoDB Tables**~~ 🟡 PR pending user merge (Session 9) — 6/7 DoD boxes checked; `sst diff --stage prod` deferred to user pre-merge
+5. **P1B.04b — Data Migration + Middleware Cutover** — migration script + `auth.ts`/`usage.ts` rewrite (hash lookup, REDIRECT fallback, usage-table writes) + seed-key rotation. Atomic flip of schema and code. **Unblocked once P1B.04 PR merges.**
 6. **P1B.05 — Clerk Webhook Handler** (provisioning + idempotency lock)
 7. **P1B.06 — Stripe Webhook Handler** (4 events + 14-day grace)
 8. **P1B.07 — `prontiq-audit` Writer Helper**
