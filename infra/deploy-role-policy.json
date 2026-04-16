@@ -27,7 +27,9 @@
         "dynamodb:DeleteTable",
         "dynamodb:TagResource",
         "dynamodb:UpdateTimeToLive",
-        "dynamodb:DescribeTimeToLive"
+        "dynamodb:DescribeTimeToLive",
+        "dynamodb:UpdateContinuousBackups",
+        "dynamodb:DescribeContinuousBackups"
       ],
       "Effect": "Allow",
       "Resource": "*",
