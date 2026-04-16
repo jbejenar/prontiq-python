@@ -31,9 +31,10 @@ This runbook covers the internal-only cutover from the legacy raw-key `ApiKeyTab
 1. Deploy the runtime cutover.
 2. Run `pnpm --filter @prontiq/api migrate:api-keys` against prod credentials.
 3. If the migration exits non-zero or reports `conflictKeys`, stop the cutover and inspect the conflicting rows before serving traffic from the new runtime.
-4. Generate and distribute a replacement for the internal legacy seed key if it still uses the `pq_live_prod_` prefix.
-5. Verify the replacement key works on `/v1/address/*`.
-6. Revoke the old seed key manually after the replacement has been confirmed.
+4. If the internal legacy seed key still uses the `pq_live_prod_` prefix, run:
+   `PRONTIQ_API=https://api.prontiq.dev pnpm --filter @prontiq/api rotate:prod-key`
+5. Store the emitted replacement key securely and distribute it to the internal owner.
+6. The rotation command creates the replacement rows, verifies the new key against the live API, and only then revokes the old key.
 7. Keep `ApiKeyTable` intact for the soak window.
 
 ## Verification
@@ -42,6 +43,7 @@ This runbook covers the internal-only cutover from the legacy raw-key `ApiKeyTab
 2. Confirm a known paid key can exceed quota and emits `X-RateLimit-Over: true`.
 3. Confirm the API returns `RATE_LIMITED` for burst exhaustion.
 4. Confirm a REDIRECT record resolves to the new key hash exactly once.
+5. Confirm the old seed key now returns `INVALID_API_KEY` and the replacement key succeeds.
 
 ## Rollback
 
