@@ -1,7 +1,7 @@
 # Prontiq Platform — Roadmap
 
 > A unified data API platform for Australian and global open data.
-> Last updated: 2026-04-14 · v1.2
+> Last updated: 2026-04-16 · v1.3
 >
 > **Reference:** `ARCHITECTURE.MD` is the authoritative design doc. This roadmap is the execution plan.
 
@@ -47,7 +47,7 @@
 ```yaml
 id: P0.01
 title: IAM Deploy Role for SST v3
-status: done
+status: complete
 priority: p0-critical
 epic: P0
 persona: [builder]
@@ -108,7 +108,7 @@ SST v3 uses Pulumi under the hood (not CloudFormation). The deploy role needs S3
 ```yaml
 id: P0.02
 title: SST Bootstrap + First Deploy
-status: done
+status: complete
 priority: p0-critical
 epic: P0
 persona: [builder]
@@ -244,7 +244,7 @@ CI pipeline fully operational. `check` job runs lint → typecheck → build →
 ```yaml
 id: P0.04
 title: ESLint + Prettier Configuration
-status: done
+status: complete
 priority: p1-high
 epic: P0
 persona: [builder, contributor]
@@ -301,7 +301,7 @@ Without a linter and formatter, AI agents and human contributors produce inconsi
 ```yaml
 id: P0.05
 title: Dependabot Configuration
-status: done
+status: complete
 priority: p2-value
 epic: P0
 persona: [builder]
@@ -410,7 +410,7 @@ Fully verified. `addresses` alias → `address-2026-02-7` with 15,015,573 docs. 
 ```yaml
 id: P1A.01
 title: Migrate Routes to @hono/zod-openapi
-status: done
+status: complete
 priority: p0-critical
 epic: P1A
 persona: [builder]
@@ -968,7 +968,6 @@ epic: P1A
 persona: [builder]
 depends_on: [P1A.02, P1A.03, P1A.06, P1A.07]
 completed: 2026-04-14
-completed: null
 tech_stack:
   test_runner: node:test (built-in)
   mocking: __setClientForTesting injection point
@@ -1143,7 +1142,7 @@ Clerk handles human identity: sign-up, login, OAuth (Google/GitHub), organisatio
 ```yaml
 id: P1B.02
 title: Key Module (crypto primitives)
-status: done
+status: complete
 priority: p0-critical
 epic: P1B
 persona: [builder]
@@ -2464,7 +2463,7 @@ Mintlify is connected to the repository with monorepo docs root `/packages/docs`
 ```yaml
 id: P1D.02
 title: Getting Started Guide
-status: pending
+status: in-progress
 priority: p0-critical
 epic: P1D
 persona: [api-consumer]
@@ -2514,7 +2513,7 @@ The Getting Started guide is the highest-traffic page on any API docs site. If a
 ```yaml
 id: P1D.03
 title: Address API Documentation
-status: pending
+status: in-progress
 priority: p0-critical
 epic: P1D
 persona: [api-consumer]
@@ -2960,7 +2959,7 @@ Without cache invalidation, clients could receive stale data for up to 1 hour (t
 ```yaml
 id: P1E.06
 title: Index Cleanup Lambda
-status: pending
+status: in-progress
 priority: p1-high
 epic: P1E
 persona: [ops]
