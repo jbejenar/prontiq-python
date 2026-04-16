@@ -23,8 +23,8 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@aws-sdk/client-dynamodb": "^3.750.0",
-    "@aws-sdk/lib-dynamodb": "^3.750.0",
+    "@aws-sdk/client-dynamodb": "^3.1030.0",
+    "@aws-sdk/lib-dynamodb": "^3.1030.0",
     "@hono/node-server": "^1.13.0",
     "@hono/zod-openapi": "^1.2.4",
     "@opensearch-project/opensearch": "^3.2.0",
