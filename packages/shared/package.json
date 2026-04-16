@@ -16,11 +16,11 @@
     }
   },
   "scripts": {
-    "build": "tsc",
+    "build": "node ../../scripts/ts-package-build.mjs build",
     "typecheck": "tsc --noEmit",
     "test": "pnpm -w build --filter @prontiq/shared... && node --test 'dist/**/*.test.js'",
     "lint": "eslint src/",
-    "clean": "rm -rf dist"
+    "clean": "node ../../scripts/ts-package-build.mjs clean"
   },
   "dependencies": {
     "zod": "^4.3.6"
