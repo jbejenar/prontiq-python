@@ -11,8 +11,6 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     environment: production
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
     # Serialize prod deploys at the GHA layer so multiple manual
     # dispatches queue rather than race. cancel-in-progress: false
     # because losing a half-applied prod deploy is worse than queueing.
@@ -20,11 +18,11 @@ jobs:
       group: sst-deploy-prod
       cancel-in-progress: false
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version-file: ".nvmrc"
           cache: "pnpm"
@@ -33,7 +31,7 @@ jobs:
 
       - run: pnpm build
 
-      - uses: aws-actions/configure-aws-credentials@v4
+      - uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: arn:aws:iam::493712557159:role/prontiq-platform-deploy-role
           aws-region: ap-southeast-2

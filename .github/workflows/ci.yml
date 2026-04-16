@@ -13,19 +13,12 @@ permissions:
 jobs:
   check:
     runs-on: ubuntu-latest
-    # Opt JavaScript actions (actions/checkout, setup-node, etc.) into their
-    # Node 24 runtime immediately. Without this, they run on Node 20 which
-    # emits a deprecation warning on every run. June 2026 will force this
-    # anyway; flipping it now catches any incompatibility ahead of the
-    # mandatory cutover.
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version-file: ".nvmrc"
           cache: "pnpm"
@@ -51,8 +44,6 @@ jobs:
   integration-test:
     needs: check
     runs-on: ubuntu-latest
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
     services:
       opensearch:
         image: opensearchproject/opensearch:2.19.0
@@ -68,9 +59,9 @@ jobs:
           --health-timeout 5s
           --health-retries 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v6
         with:
           node-version-file: ".nvmrc"
           cache: "pnpm"
@@ -97,8 +88,6 @@ jobs:
     needs: [check, integration-test]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
     # Serialize deploy-dev runs at the GHA layer so two concurrent
     # pushes can't race the unlock-then-deploy sequence below.
     # cancel-in-progress: false → second push QUEUES, never cancels
@@ -107,11 +96,11 @@ jobs:
       group: sst-deploy-dev
       cancel-in-progress: false
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version-file: ".nvmrc"
           cache: "pnpm"
@@ -131,7 +120,7 @@ jobs:
       # was missing it.
       - run: pnpm build
 
-      - uses: aws-actions/configure-aws-credentials@v4
+      - uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: arn:aws:iam::493712557159:role/prontiq-platform-deploy-role
           aws-region: ap-southeast-2
@@ -246,7 +235,7 @@ jobs:
 
       - name: Upload SST log as artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: sst-log-deploy-dev
           path: .sst/log/
