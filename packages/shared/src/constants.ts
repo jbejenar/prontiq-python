@@ -50,29 +50,54 @@ export const PRODUCT_REGISTRY: Record<string, ProductConfig> = {
   },
 } as const;
 
-export const TIER_LIMITS: Record<Tier, { monthlyQuotaPerProduct: number; products: string[] }> = {
+export interface PlanDefinition {
+  stripePriceId: string | null;
+  quotaPerProduct: number | null;
+  rateLimit: number | null;
+  products: string[];
+  maxKeys: number;
+  overagePerThousand: number | null;
+}
+
+export const PLANS: Record<Tier, PlanDefinition> = {
   free: {
-    monthlyQuotaPerProduct: 5_000,
-    products: ["address", "abn"],
+    stripePriceId: null,
+    quotaPerProduct: 5_000,
+    rateLimit: 10,
+    products: ["address"],
+    maxKeys: 2,
+    overagePerThousand: null,
   },
   starter: {
-    monthlyQuotaPerProduct: 10_000,
+    stripePriceId: null,
+    quotaPerProduct: 10_000,
+    rateLimit: 50,
     products: ["address", "abn", "lei", "cve", "patents"],
+    maxKeys: 5,
+    overagePerThousand: 150,
   },
   growth: {
-    monthlyQuotaPerProduct: 50_000,
+    stripePriceId: null,
+    quotaPerProduct: 50_000,
+    rateLimit: 100,
     products: ["address", "abn", "lei", "cve", "patents"],
+    maxKeys: 20,
+    overagePerThousand: 100,
   },
   enterprise: {
-    monthlyQuotaPerProduct: Number.MAX_SAFE_INTEGER,
+    stripePriceId: null,
+    quotaPerProduct: null,
+    rateLimit: null,
     products: ["address", "abn", "lei", "cve", "patents"],
+    maxKeys: Number.MAX_SAFE_INTEGER,
+    overagePerThousand: null,
   },
 };
 
 export const ERROR_CODES = {
   INVALID_API_KEY: { status: 401, message: "Invalid API key" },
   MISSING_API_KEY: { status: 401, message: "Missing X-Api-Key header" },
-  RATE_LIMIT_EXCEEDED: { status: 429, message: "Rate limit exceeded" },
+  RATE_LIMITED: { status: 429, message: "Rate limit exceeded" },
   QUOTA_EXCEEDED: { status: 429, message: "Monthly quota exceeded" },
   PRODUCT_NOT_ALLOWED: { status: 403, message: "Product not included in your plan" },
   INVALID_PARAMETERS: { status: 400, message: "Invalid request parameters" },

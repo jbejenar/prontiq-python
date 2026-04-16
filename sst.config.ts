@@ -65,7 +65,7 @@ export default $config({
       ? "prontiq-ses-suppressions"
       : `prontiq-ses-suppressions-${$app.stage}`;
 
-    new sst.aws.Dynamo("PqAuthKeys", {
+    const authKeysTable = new sst.aws.Dynamo("PqAuthKeys", {
       fields: {
         apiKeyHash: "string",
         orgId: "string",
@@ -77,7 +77,7 @@ export default $config({
       transform: { table: { name: authKeysName } },
     });
 
-    new sst.aws.Dynamo("PqAuthUsage", {
+    const authUsageTable = new sst.aws.Dynamo("PqAuthUsage", {
       fields: {
         apiKeyHash: "string",
         scope: "string",
@@ -133,7 +133,7 @@ export default $config({
       runtime: "nodejs24.x",
       memory: "512 MB",
       timeout: "30 seconds",
-      link: [keyTable],
+      link: [authKeysTable, authUsageTable],
       permissions: [
         {
           actions: ["es:ESHttpGet", "es:ESHttpPost", "es:ESHttpHead"],
@@ -142,7 +142,8 @@ export default $config({
       ],
       environment: {
         OPENSEARCH_ENDPOINT: process.env.OPENSEARCH_ENDPOINT ?? OPENSEARCH_ENDPOINT_DEFAULT,
-        API_KEY_TABLE_NAME: keyTable.name,
+        KEYS_TABLE_NAME: authKeysTable.name,
+        USAGE_TABLE_NAME: authUsageTable.name,
       },
     });
 

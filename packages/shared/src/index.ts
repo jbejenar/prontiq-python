@@ -5,14 +5,18 @@ export type {
   ManifestV2,
   Manifest,
   ManifestFile,
+  ApiKeySubscriptionItems,
   ApiKeyRecord,
+  UsageCounterRecord,
+  RedirectRecord,
   Tier,
   ApiErrorBody,
   ApiErrorResponse,
   ErrorCode,
 } from "./types.js";
 
-export { PRODUCT_REGISTRY, TIER_LIMITS, ERROR_CODES } from "./constants.js";
+export { PRODUCT_REGISTRY, PLANS, ERROR_CODES } from "./constants.js";
+export type { PlanDefinition } from "./constants.js";
 
 export {
   manifestV1Schema,

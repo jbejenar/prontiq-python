@@ -3,7 +3,6 @@ import { cors } from "hono/cors";
 import { handle } from "hono/aws-lambda";
 import { requestId } from "./middleware/request-id.js";
 import { auth } from "./middleware/auth.js";
-import { usage } from "./middleware/usage.js";
 import { addressRoutes } from "./routes/address.js";
 
 const app = new OpenAPIHono();
@@ -59,7 +58,6 @@ app.doc31("/openapi.json", {
 
 // Authenticated routes
 app.use("/v1/*", auth());
-app.use("/v1/*", usage());
 
 // Product route groups
 app.route("/v1/address", addressRoutes);

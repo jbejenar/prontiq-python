@@ -82,15 +82,47 @@ export interface ManifestFile {
   sha256: string;
 }
 
+export interface ApiKeySubscriptionItems {
+  [product: string]: string;
+}
+
 export interface ApiKeyRecord {
-  apiKey: string;
+  apiKeyHash: string;
+  keyPrefix: string;
   ownerEmail: string;
   orgId: string;
   tier: Tier;
   products: string[];
-  monthlyQuotaPerProduct: number;
-  usage: Record<string, Record<string, number>>;
+  quotaPerProduct: number | null;
+  rateLimit: number | null;
   active: boolean;
+  paymentOverdue: boolean;
+  stripeCustomerId: string | null;
+  stripeSubscriptionId: string | null;
+  subscriptionItems: ApiKeySubscriptionItems;
+  createdAt: string;
+  lastUsedAt: string | null;
+}
+
+export interface UsageCounterRecord {
+  apiKeyHash: string;
+  scope: string;
+  requestCount: number;
+  ttl: number;
+  lastUsedAt?: string;
+  lastPushedCumulativeCount: number;
+  warningEmailSent?: boolean;
+  limitEmailSent?: boolean;
+  closed?: boolean;
+}
+
+export interface RedirectRecord {
+  apiKeyHash: string;
+  scope: "REDIRECT";
+  newHash: string;
+  authValidUntil: number;
+  ttl: number;
+  revokedByRotateAt?: string;
 }
 
 export type Tier = "free" | "starter" | "growth" | "enterprise";
@@ -112,7 +144,7 @@ export interface ApiErrorResponse {
 export type ErrorCode =
   | "INVALID_API_KEY"
   | "MISSING_API_KEY"
-  | "RATE_LIMIT_EXCEEDED"
+  | "RATE_LIMITED"
   | "QUOTA_EXCEEDED"
   | "PRODUCT_NOT_ALLOWED"
   | "INVALID_PARAMETERS"
