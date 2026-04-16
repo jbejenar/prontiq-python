@@ -100,6 +100,10 @@ importers:
       zod:
         specifier: ^4.3.6
         version: 4.3.6
+    devDependencies:
+      '@types/node':
+        specifier: ^25.5.2
+        version: 25.5.2
 
   packages/webhooks:
     dependencies:

@@ -23,7 +23,7 @@
 | --------- | -------------------------- | ------- | ---------- | ----------- |
 | **P0**    | Infrastructure Foundation  | 6       | 6/6 ✅     | Week 1      |
 | **P1A**   | API Core (Address)         | 13      | 9/13       | Weeks 2-3   |
-| **P1B**   | Auth & Billing             | 13      | 0/13       | Weeks 3-4   |
+| **P1B**   | Auth & Billing             | 13      | 1/13       | Weeks 3-4   |
 | **P1C**   | Dashboard                  | 7       | 0/7        | Weeks 4-5   |
 | **P1D**   | Docs & SDK                 | 5       | 2/5        | Week 5      |
 | **P1E**   | Ingestion (Phase 1)        | 6       | 4/6        | Week 6      |
@@ -32,7 +32,7 @@
 | **P3**    | GLEIF/LEI + Full Dashboard | 7       | 0/7        | Weeks 11-13 |
 | **P4**    | Shopify + WooCommerce      | 5       | 0/5        | Weeks 14-17 |
 | **P5**    | CVE/NVD + Patents          | 4       | 0/4        | Weeks 18-21 |
-| **Total** |                            | **76**  | **22/76**  |             |
+| **Total** |                            | **76**  | **23/76**  |             |
 
 ---
 
@@ -1143,12 +1143,12 @@ Clerk handles human identity: sign-up, login, OAuth (Google/GitHub), organisatio
 ```yaml
 id: P1B.02
 title: Key Module (crypto primitives)
-status: pending
+status: done
 priority: p0-critical
 epic: P1B
 persona: [builder]
 depends_on: []
-completed: null
+completed: 2026-04-16
 tech_stack:
   keys: custom (node:crypto only — no DDB dependency)
 ```
@@ -1167,24 +1167,24 @@ v2.2 removes Unkey (ADR-001). Key generation and hashing are the foundational pr
 
 ##### Functional
 
-- [ ] `packages/shared/src/keys.ts` exports `generateKey()` and `hashKey(raw: string)`
+- [x] `packages/shared/src/keys.ts` exports `generateKey()` and `hashKey(raw: string)`
   - `Verify:` Module loads via `import { generateKey, hashKey } from "@prontiq/shared/keys"` (or equivalent export path in `index.ts`)
-  - `Evidence:` File exists with both exports; `pnpm typecheck` passes
-- [ ] `generateKey()` returns `{ raw: string; hash: string; prefix: string }`
+  - `Evidence:` File created with both exports; re-exported from `packages/shared/src/index.ts`; `pnpm typecheck` passes
+- [x] `generateKey()` returns `{ raw: string; hash: string; prefix: string }`
   - `Verify:` Unit test asserts shape
-  - `Evidence:` `raw = "pq_live_" + randomBytes(24).toString("hex")` (56 chars total: 8-char prefix + 48 hex); `hash = SHA-256(raw)` in lowercase hex (64 chars); `prefix = raw.slice(0, 12)`
-- [ ] `hashKey(raw)` returns the same SHA-256 hex for the same input
+  - `Evidence:` `raw = "pq_live_" + randomBytes(24).toString("hex")` (56 chars total); `hash = SHA-256(raw)` lowercase hex (64 chars); `prefix = raw.slice(0, 12)` — all asserted in `keys.test.ts`
+- [x] `hashKey(raw)` returns the same SHA-256 hex for the same input
   - `Verify:` Unit test: `hashKey(key.raw) === key.hash` for any `key = generateKey()`
-  - `Evidence:` Vitest run
-- [ ] Module has **zero imports** from `@aws-sdk/*`, `@prontiq/api`, or Unkey SDKs — only `node:crypto`
+  - `Evidence:` `pnpm --filter @prontiq/shared test` (10/10 pass, includes determinism + known SHA-256 vector check)
+- [x] Module has **zero imports** from `@aws-sdk/*`, `@prontiq/api`, or Unkey SDKs — only `node:crypto`
   - `Verify:` `grep -E "^import" packages/shared/src/keys.ts` shows only `node:crypto`
-  - `Evidence:` Module stays pure so it can be used both in the API Lambda (hot path) and in scripts (migration, seeding) without pulling AWS SDK
+  - `Evidence:` Confirmed — single import `{ createHash, randomBytes } from "node:crypto"`
 
 ##### Testing
 
-- [ ] Unit tests cover: prefix is `pq_live_`, length is 56, hex suffix has 48 chars `[a-f0-9]{48}`, 1000 successive `generateKey()` calls produce no duplicates, `hashKey` is deterministic + matches `generateKey().hash`
+- [x] Unit tests cover: prefix is `pq_live_`, length is 56, hex suffix has 48 chars `[a-f0-9]{48}`, 1000 successive `generateKey()` calls produce no duplicates, `hashKey` is deterministic + matches `generateKey().hash`
   - `Verify:` `pnpm --filter @prontiq/shared test`
-  - `Evidence:` All assertions pass
+  - `Evidence:` 10 tests pass via `node --test` (repo convention; `node:test` in lieu of Vitest — matches `packages/ingestion/src/lib.test.ts`)
 
 #### Scope
 

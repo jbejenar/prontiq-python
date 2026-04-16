@@ -9,15 +9,23 @@
     ".": {
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts"
+    },
+    "./keys": {
+      "import": "./dist/keys.js",
+      "types": "./dist/keys.d.ts"
     }
   },
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
+    "test": "pnpm -w build --filter @prontiq/shared... && node --test 'dist/**/*.test.js'",
     "lint": "eslint src/",
     "clean": "rm -rf dist"
   },
   "dependencies": {
     "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "^25.5.2"
   }
 }

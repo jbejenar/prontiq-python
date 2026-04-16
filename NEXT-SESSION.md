@@ -5,6 +5,43 @@
 
 ---
 
+## Session 8 — 2026-04-16
+
+**Focus:** P1B.02 — Key Module (crypto primitives)
+
+**Completed:**
+
+- [x] `packages/shared/src/keys.ts` with `generateKey()` + `hashKey()` — pure `node:crypto`, no AWS SDK, no DDB
+- [x] `packages/shared/src/keys.test.ts` — 10 unit tests (shape, prefix, length, hex regex, determinism, known SHA-256 vector, 1000-call dedupe)
+- [x] Re-exported from `packages/shared/src/index.ts`
+- [x] Added `test` script to `@prontiq/shared` (`node --test dist/keys.test.js`, matches ingestion convention)
+- [x] Wired `@types/node` into `packages/shared` (devDep + `types: ["node"]` in tsconfig) — required because the composite shared project wasn't auto-including `@types/*`
+- [x] Roadmap: P1B.02 status → done, all DoD boxes checked, P1B summary 0/13 → 1/13, total 22/76 → 23/76
+- [x] NEXT-WORK.md: P1B.02 struck through in sequence, added to Recent ships
+
+**Verification evidence:**
+
+- `pnpm --filter @prontiq/shared test` → 10/10 pass
+- `pnpm lint` → clean
+- `pnpm typecheck` → clean
+- `pnpm build` → clean
+- `pnpm test` → all packages pass (shared 10, api 13, ingestion 21)
+- `grep -E "^import" packages/shared/src/keys.ts` → single `node:crypto` import, no AWS SDK / Unkey
+
+**Honest caveats:**
+
+- Roadmap DoD evidence line said "Vitest run" but the repo already standardised on `node:test` (see `packages/ingestion/src/lib.test.ts`). Followed the repo convention to avoid introducing a parallel test framework.
+- Shared package previously had no `test` script — added one rather than letting the turbo `test` task silently skip the package.
+
+**Next session should start with:**
+
+1. Read NEXT-WORK.md
+2. P1B.04 — DynamoDB Tables (SST v4 declarations for `prontiq-keys`, `prontiq-usage`, `prontiq-audit`, `prontiq-ses-suppressions`). This is the next parallel-safe ticket; only P0.02 is required, and that's already done. **New AWS resources → flag for user approval in the PR per IMMUTABLE RULE 3.**
+3. P1B.01 (Clerk) and P1B.03 (Stripe) both require external account setup — defer until the user confirms accounts/secrets are ready.
+4. After P1B.04 ships, P1B.04b becomes unblocked (requires P1B.02 ✅ + P1B.04).
+
+---
+
 ## Session 7 — 2026-04-14
 
 **Focus:** Search relevance + comprehensive doc audit
