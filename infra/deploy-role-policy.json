@@ -100,10 +100,13 @@
         "iam:PassRole",
         "iam:AttachRolePolicy",
         "iam:DetachRolePolicy",
+        "iam:ListAttachedRolePolicies",
         "iam:PutRolePolicy",
         "iam:DeleteRolePolicy",
         "iam:GetRolePolicy",
+        "iam:ListRolePolicies",
         "iam:TagRole",
+        "iam:ListRoleTags",
         "iam:CreateServiceLinkedRole"
       ],
       "Effect": "Allow",
