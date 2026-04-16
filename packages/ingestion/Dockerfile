@@ -4,14 +4,15 @@ RUN corepack enable && corepack prepare pnpm@latest --activate
 
 WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY scripts/ scripts/
+COPY tsconfig.json ./
 COPY packages/shared/package.json packages/shared/
 COPY packages/ingestion/package.json packages/ingestion/
 
-RUN pnpm install --frozen-lockfile --filter @prontiq/ingestion...
+RUN pnpm install --frozen-lockfile
 
 COPY packages/shared/ packages/shared/
 COPY packages/ingestion/ packages/ingestion/
-COPY tsconfig.json ./
 
 RUN pnpm --filter @prontiq/shared build && pnpm --filter @prontiq/ingestion build
 
