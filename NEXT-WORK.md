@@ -1,9 +1,9 @@
 # NEXT-WORK.md — Active Sprint
 
 > Extracted from ROADMAP.md. This is what agents should work on NOW.
-> Last updated: 2026-04-16 (Session 9)
+> Last updated: 2026-04-17 (Session 10)
 
-## Current Phase: P1B — Auth & Billing (provisioning chain)
+## Current Phase: Post-cutover stabilization + next backlog selection
 
 ### What's Live
 
@@ -14,6 +14,15 @@
 | TypeScript SDK | `sdks/typescript/` (`@prontiq/sdk` v0.1.0) | ✅ Auto-generated; npm publish pending NPM_TOKEN secret |
 | OpenAPI spec | `/openapi.json` (committed in `packages/docs/`) | ✅ Generated from Zod, CI verifies freshness |
 | Ingestion | EventBridge → Step Function → Fargate → OpenSearch | ✅ Automated, alias swap, blue-green |
+
+### Platform State
+
+- Hash-based API key auth (`prontiq-keys` + `prontiq-usage`) is live in production.
+- The P1B.04/P1B.04b cutover shipped on 2026-04-16 and has been exercised in prod.
+- The legacy raw-key table is retained only for rollback/soak; the old `pq_live_prod_...` seed key has been rotated and revoked.
+- Future prod seed-key rotation now has an operator command:
+  `PRONTIQ_API=https://api.prontiq.dev pnpm --filter @prontiq/api rotate:prod-key`
+- CI, `deploy-dev`, and `deploy-prod` are green after the deterministic TypeScript build and ingestion Docker-context fixes.
 
 ### Live Endpoints (all require `X-Api-Key` header)
 
@@ -26,10 +35,16 @@ GET /v1/address/lookup/postcode?postcode=2000&limit=10
 GET /v1/address/lookup/suburb?suburb=bondi+beach&state=NSW&limit=10
 ```
 
-### Recent ships (since last NEXT-WORK update)
+### Recent Ships
 
-- **P1B.04** (pending user merge): 4 DynamoDB tables declared in `sst.config.ts` (`prontiq-keys`, `prontiq-usage`, `prontiq-audit`, `prontiq-ses-suppressions`) + REDIRECT GSI integration test + CI DDB Local service. 6/7 DoD boxes checked; `sst diff --stage prod` deferred to user pre-merge. Unblocks P1B.04b/.06/.07/.08.
-- **P1B.02**: Key module (`packages/shared/src/keys.ts` — `generateKey` + `hashKey`, pure `node:crypto`; unblocks P1B.04b/.05/.09)
+- **P1B.02**: key module shipped (`packages/shared/src/keys.ts` — `generateKey` + `hashKey`)
+- **P1B.04**: DynamoDB auth/billing tables shipped (`prontiq-keys`, `prontiq-usage`, `prontiq-audit`, `prontiq-ses-suppressions`)
+- **P1B.04b**: legacy-to-v2.2 cutover shipped (`auth.ts` hash lookup, REDIRECT fallback, usage-table writes, migration path)
+- **Prod cutover executed**: `prontiq-keys` / `prontiq-usage` populated and live auth verified on `api.prontiq.dev`
+- **Prod seed-key rotation executed**: old `pq_live_prod_...` key revoked; replacement `pq_live_...` key active
+- **Deterministic TS build path shipped**: referenced-project outputs pruned before rebuilds
+- **Ingestion Docker build fixed**: `.dockerignore` + Dockerfile changes prevent host artifact leakage
+- **Operator tooling added**: `pnpm --filter @prontiq/api rotate:prod-key`
 - **P1A.11**: Search relevance + fuzzy matching (autocomplete operator AND, validate fuzzy, suburb fuzzy + matched name, lookup limit params) — PR #38
 - **P1F.01**: `api.prontiq.dev` custom domain (ACM cert via Vercel DNS, SST gated to prod)
 - **P1D.04**: Speakeasy TypeScript SDK pipeline (CI generates SDK PR on spec change)
@@ -37,29 +52,43 @@ GET /v1/address/lookup/suburb?suburb=bondi+beach&state=NSW&limit=10
 - **OpenAPI schema expansion**: full G-NAF response shape (geocode, boundaries, electorates) typed in spec
 - **CI spec-drift gate**: blocks merges when `openapi.json` is stale vs Zod schemas
 
-### Next: Auth & Billing (P1B — v2.2, DDB-native)
+## Next Candidates
 
-The platform serves real traffic from `api.prontiq.dev`. The prod keys table today is the legacy `ApiKeyTable` (raw-key PK, nested usage map), seeded with one manual key (`pq_live_prod_000000000000000000000000`). Goal: replace manual provisioning with the Clerk → Stripe → DynamoDB chain (DDB-native keys, SHA-256 hash-based lookup, per ADR-001 and ARCHITECTURE.MD §5.5).
+### 1. Finish auth/billing control plane
 
-**13-ticket sequence** (see `ROADMAP.md` §P1B for full DoD):
+- P1B.05 — Clerk webhook handler
+- P1B.06 — Stripe webhook handler
+- P1B.07 — `prontiq-audit` writer helper
+- P1B.08 — SES suppression / bounce handling
+- P1B.10 — billing cron
+- P1B.11 — month-close job
 
-1. **P1B.01 — Clerk Application Setup** (OAuth, webhook, secrets)
-2. ~~**P1B.02 — Key Module (crypto primitives)**~~ ✅ shipped 2026-04-16 (`packages/shared/src/keys.ts`)
-3. **P1B.03 — Stripe Setup** (products, tiered metered Prices, Pricing Table, PLANS constants, Smart Retries)
-4. ~~**P1B.04 — DynamoDB Tables**~~ 🟡 PR pending user merge (Session 9) — 6/7 DoD boxes checked; `sst diff --stage prod` deferred to user pre-merge
-5. **P1B.04b — Data Migration + Middleware Cutover** — migration script + `auth.ts`/`usage.ts` rewrite (hash lookup, REDIRECT fallback, usage-table writes) + seed-key rotation. Atomic flip of schema and code. **Unblocked once P1B.04 PR merges.**
-6. **P1B.05 — Clerk Webhook Handler** (provisioning + idempotency lock)
-7. **P1B.06 — Stripe Webhook Handler** (4 events + 14-day grace)
-8. **P1B.07 — `prontiq-audit` Writer Helper**
-9. **P1B.08 — `prontiq-ses-suppressions` + Bounce Handler** (requires SES prod-access exit)
-10. **P1B.09 — Burst Rate Limiter Middleware** (in-memory token bucket; concurrency caveat)
-11. **P1B.10 — Billing Cron** (hourly → Stripe via subscriptionItems)
-12. **P1B.11 — Month-close Lambda** (00:30 UTC day 1)
-13. **P1B.12 — Auth Middleware Integration Test** (every error code + REDIRECT + burst + paymentOverdue — exercises the post-cutover middleware from P1B.04b)
+### 2. Finish ingestion hardening
 
-**Dependencies:** .01/.02/.03/.04 parallel; .04b blocks on .02 + .04 (needs crypto module + tables before it can rewrite middleware and run migration); .05 blocks on .01/.02/.03/.04; .06 blocks on .03/.04; .07/.08 block on .04; **.09 blocks on .02 + .04b** (burst limiter consumes `record.rateLimit` from the post-cutover auth context — wiring against the legacy shape would be throwaway work); .10 blocks on .03/.04/.06; .11 blocks on .10; .12 blocks on .05/.09/.04b.
+- P1E.05 — cache invalidation after alias swap
+- P1E.06 — cleanup Lambda completion / enforcement
 
-**Scope boundary (important):** P1B.02 is pure crypto primitives only. The auth/usage middleware refactor (hash-based lookup, REDIRECT fallback, usage-table writes) ships in P1B.04b because it's inseparable from the schema cutover. Legacy Unkey code / env vars were removed in PR #68 — no P1B ticket owns that cleanup.
+### 3. Finish operational visibility
+
+- P1F.02 — monitoring, alerting, dashboards
+
+### 4. Rebuild customer-facing account surface
+
+- P1C remains effectively a fresh build; the older dashboard codepath is gone and should not be treated as partially live.
+
+## Recommended Next Work
+
+Recommended priority:
+
+1. P1B.05 — Clerk webhook handler
+2. P1B.06 — Stripe webhook handler
+3. P1F.02 — monitoring + alerting
+
+Reason:
+
+- the request-time auth path is now live and healthy
+- the biggest remaining gap is control-plane completeness, not hot-path architecture
+- monitoring should land before more customer-facing surface area
 
 ### Backlog (not blocking auth)
 
@@ -78,7 +107,9 @@ The platform serves real traffic from `api.prontiq.dev`. The prod keys table tod
 | `sst.config.ts` | Infrastructure definition | When working on infra |
 | `packages/shared/src/constants.ts` | Product registry, tier limits | When working on auth/billing |
 | `packages/api/src/index.ts` | API entry point | When working on routes |
+| `packages/api/src/scripts/rotate-prod-key.ts` | Prod key rotation operator command | When rotating the seed key |
 | `packages/api/src/search/queries.ts` | OpenSearch queries | When tuning search |
 | `packages/docs/openapi.json` | Committed OpenAPI spec | Source of truth for SDK/docs |
 | `.speakeasy/workflow.yaml` | SDK generation config | When adding SDK languages |
 | `docs/operations/ingestion-runbook.md` | Ingestion operator guide | When running ingestion |
+| `docs/runbooks/p1b04b-cutover.md` | Auth/billing cutover + rotation runbook | When operating the v2.2 key model |

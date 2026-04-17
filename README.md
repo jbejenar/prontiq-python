@@ -72,7 +72,7 @@ packages/
 | Infrastructure | SST v4 + Pulumi                                        |
 | API            | Hono + @hono/zod-openapi on Lambda (ARM64, Node.js 20) |
 | Search         | OpenSearch 2.19 (managed)                              |
-| API Keys       | DynamoDB-native (`pq_live_` + SHA-256 hash-based lookup; ADR-001) |
+| API Keys       | DynamoDB-native (`pq_live_` + SHA-256 hash-based lookup; live in prod) |
 | Auth (portal)  | Clerk (planned — P1B)                                  |
 | Billing        | Stripe (planned — P1B)                                 |
 | Dashboard      | `/account` page — to be rebuilt per ARCHITECTURE.MD §5.9 (P1C) |
@@ -88,7 +88,7 @@ See [`ROADMAP.md`](ROADMAP.md) for the full 76-ticket plan.
 | ------- | ------------------------- | ------- | --------- |
 | **P0**  | Infrastructure Foundation | 6       | 6/6       |
 | **P1A** | API Core (Address)        | 13      | 9/13      |
-| **P1B** | Auth & Billing            | 13      | 1/13      |
+| **P1B** | Auth & Billing            | 13      | 3/13      |
 | **P1C** | Dashboard                 | 7       | 0/7       |
 | **P1D** | Docs & SDK                | 5       | 2/5       |
 | **P1E** | Ingestion                 | 6       | 4/6       |
@@ -97,7 +97,7 @@ See [`ROADMAP.md`](ROADMAP.md) for the full 76-ticket plan.
 | **P3**  | LEI + Full Dashboard      | 7       | 0/7       |
 | **P4**  | Shopify + WooCommerce     | 5       | 0/5       |
 | **P5**  | CVE/NVD + Patents         | 4       | 0/4       |
-|         |                           | **76**  | **23/76** |
+|         |                           | **76**  | **25/76** |
 
 ## Commands
 
