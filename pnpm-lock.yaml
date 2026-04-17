@@ -69,6 +69,28 @@ importers:
         specifier: ^4.3.6
         version: 4.3.6
 
+  packages/control-plane:
+    dependencies:
+      '@aws-sdk/client-dynamodb':
+        specifier: ^3.1030.0
+        version: 3.1030.0
+      '@aws-sdk/lib-dynamodb':
+        specifier: ^3.1030.0
+        version: 3.1030.0(@aws-sdk/client-dynamodb@3.1030.0)
+      '@prontiq/shared':
+        specifier: workspace:*
+        version: link:../shared
+      stripe:
+        specifier: ^22.0.1
+        version: 22.0.1(@types/node@25.6.0)
+      ulid:
+        specifier: ^3.0.1
+        version: 3.0.2
+    devDependencies:
+      '@types/node':
+        specifier: ^25.6.0
+        version: 25.6.0
+
   packages/docs: {}
 
   packages/ingestion:
@@ -1215,6 +1237,10 @@ packages:
   typescript@6.0.2:
     resolution: {integrity: sha512-bGdAIrZ0wiGDo5l8c++HWtbaNCWTS4UTv7RaTH/ThVIgjkveJt83m74bBHMJkuCbslY8ixgLBVZJIOiQlQTjfQ==}
     engines: {node: '>=14.17'}
+    hasBin: true
+
+  ulid@3.0.2:
+    resolution: {integrity: sha512-yu26mwteFYzBAot7KVMqFGCVpsF6g8wXfJzQUHvu1no3+rRRSFcSV2nKeYvNPLD2J4b08jYBDhHUjeH0ygIl9w==}
     hasBin: true
 
   undici-types@7.19.2:
@@ -2882,6 +2908,8 @@ snapshots:
       - supports-color
 
   typescript@6.0.2: {}
+
+  ulid@3.0.2: {}
 
   undici-types@7.19.2: {}
 

@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`@prontiq/control-plane` package** containing the `provisionOrg` service (recovered from a prior uncommitted design — implements ARCH §5.7.1 verbatim with three hardenings: monotonic ULID audit eventIds, `Stripe({ maxNetworkRetries: 3 })`, and 4xx-vs-5xx Stripe error classification) and the `writeAudit` / `buildAuditTransactItem` helpers (closes P1B.07). Dual audit API: `buildAuditTransactItem` for atomic grouping inside `TransactWriteItems`; `writeAudit` for standalone callers. Shared types `OrgEnvelopeRecord` + `AuditRecord` added to `@prontiq/shared`. Sets up PR 2 of P1B.05, where the Clerk webhook handler will consume `createProvisioningService()`.
 - **Architecture v2.2 docs** — ARCHITECTURE.MD + ROADMAP.md + ADR-001 (`docs/decisions/001-remove-unkey.md`). See sub-bullets below.
 - New ARCHITECTURE.MD top-level sections: §7 Auth & Endpoint Reference (complete endpoint table + §7.5 success response shapes for Speakeasy SDK codegen), §8 Security, §9 Error Taxonomy, §10 Monitoring & Alerting, §11 Retention, §12 Edge Cases & Failure Modes. New §5.10 Brand section.
 - Payment Failure & Grace Period spec (§5.6.3) — 14-day grace via `paymentOverdue` flag on `prontiq-keys` + `customer.subscription.updated` past_due handler + Stripe Dashboard Smart Retries config.

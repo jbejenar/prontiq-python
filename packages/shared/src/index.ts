@@ -9,6 +9,8 @@ export type {
   ApiKeyRecord,
   UsageCounterRecord,
   RedirectRecord,
+  OrgEnvelopeRecord,
+  AuditRecord,
   Tier,
   ApiErrorBody,
   ApiErrorResponse,

@@ -1,7 +1,7 @@
 # NEXT-WORK.md — Active Sprint
 
 > Extracted from ROADMAP.md. This is what agents should work on NOW.
-> Last updated: 2026-04-17 (Session 10)
+> Last updated: 2026-04-17 (Session 11)
 
 ## Current Phase: Post-cutover stabilization + next backlog selection
 
@@ -37,6 +37,7 @@ GET /v1/address/lookup/suburb?suburb=bondi+beach&state=NSW&limit=10
 
 ### Recent Ships
 
+- **P1B.07**: audit writer helper shipped in `packages/control-plane/src/audit.ts` (location revised from `shared` because the helper needs the AWS SDK DDB clients). Dual API: `buildAuditTransactItem` for atomic grouping inside `TransactWriteItems`; `writeAudit` for standalone callers. Lands as part of the new `@prontiq/control-plane` package alongside the recovered `provisionOrg` service for P1B.05.
 - **P1B.02**: key module shipped (`packages/shared/src/keys.ts` — `generateKey` + `hashKey`)
 - **P1B.04**: DynamoDB auth/billing tables shipped (`prontiq-keys`, `prontiq-usage`, `prontiq-audit`, `prontiq-ses-suppressions`)
 - **P1B.04b**: legacy-to-v2.2 cutover shipped (`auth.ts` hash lookup, REDIRECT fallback, usage-table writes, migration path)
@@ -56,9 +57,9 @@ GET /v1/address/lookup/suburb?suburb=bondi+beach&state=NSW&limit=10
 
 ### 1. Finish auth/billing control plane
 
-- P1B.05 — Clerk webhook handler
+- P1B.05 — Clerk webhook handler (provisioning service is recovered into `@prontiq/control-plane`; PR 2 of the P1B.05 ticket wires the handler + Svix verify + SST infra)
 - P1B.06 — Stripe webhook handler
-- P1B.07 — `prontiq-audit` writer helper
+- ~~P1B.07 — `prontiq-audit` writer helper~~ ✅ shipped
 - P1B.08 — SES suppression / bounce handling
 - P1B.10 — billing cron
 - P1B.11 — month-close job

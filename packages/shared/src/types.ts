@@ -125,6 +125,32 @@ export interface RedirectRecord {
   revokedByRotateAt?: string;
 }
 
+export interface OrgEnvelopeRecord {
+  apiKeyHash: string;
+  stripeCustomerId: string;
+  ownerEmail: string;
+  tier: "free";
+  hasFirstKey: boolean;
+  completedAt: string;
+}
+
+export interface AuditRecord {
+  orgId: string;
+  "timestamp#eventId": string;
+  action: string;
+  actorId: string;
+  /**
+   * Present for key-scoped events (CREATE / ROTATE / REVOKE) so audit
+   * queries can filter by the affected key. Absent for org-scoped events
+   * (e.g. ORG_PROVISIONED, UPGRADE / DOWNGRADE) where the action targets
+   * the org envelope rather than a specific key. Writers populate this
+   * via `buildAuditTransactItem({ apiKeyHash, ... })`.
+   */
+  apiKeyHash?: string;
+  metadata?: Record<string, unknown>;
+  ttl: number;
+}
+
 export type Tier = "free" | "starter" | "growth" | "enterprise";
 
 /** The inner error object — used by middleware/handlers to construct errors */

@@ -23,7 +23,7 @@
 | --------- | -------------------------- | ------- | ---------- | ----------- |
 | **P0**    | Infrastructure Foundation  | 6       | 6/6 ✅     | Week 1      |
 | **P1A**   | API Core (Address)         | 13      | 9/13       | Weeks 2-3   |
-| **P1B**   | Auth & Billing             | 13      | 3/13       | Weeks 3-4   |
+| **P1B**   | Auth & Billing             | 13      | 4/13       | Weeks 3-4   |
 | **P1C**   | Dashboard                  | 7       | 0/7        | Weeks 4-5   |
 | **P1D**   | Docs & SDK                 | 5       | 2/5        | Week 5      |
 | **P1E**   | Ingestion (Phase 1)        | 6       | 4/6        | Week 6      |
@@ -32,7 +32,7 @@
 | **P3**    | GLEIF/LEI + Full Dashboard | 7       | 0/7        | Weeks 11-13 |
 | **P4**    | Shopify + WooCommerce      | 5       | 0/5        | Weeks 14-17 |
 | **P5**    | CVE/NVD + Patents          | 4       | 0/4        | Weeks 18-21 |
-| **Total** |                            | **76**  | **25/76**  |             |
+| **Total** |                            | **76**  | **26/76**  |             |
 
 ---
 
@@ -1595,12 +1595,12 @@ Four event types: `checkout.session.completed` (initial upgrade), `customer.subs
 ```yaml
 id: P1B.07
 title: prontiq-audit Writer Helper
-status: pending
+status: complete
 priority: p1-high
 epic: P1B
 persona: [builder]
 depends_on: [P1B.04]
-completed: null
+completed: 2026-04-17
 ```
 
 #### User Story
@@ -1615,16 +1615,22 @@ CREATE/ROTATE/REVOKE/UPGRADE/DOWNGRADE events need identical row shapes for late
 
 ##### Functional
 
-- [ ] `writeAudit({orgId, action, apiKeyHash, actorId, metadata})` in `packages/shared/src/audit.ts`
-  - `Verify:` Called from P1B.05 (CREATE), P1B.06 (UPGRADE / DOWNGRADE), P1C.03 (ROTATE / REVOKE)
-  - `Evidence:` Import in each caller
-- [ ] ULID generated per call; timestamp is ISO 8601; SK = `{timestamp}#{ulid}`
-  - `Verify:` Query audit table; rows sort chronologically
-  - `Evidence:` Sample rows
-- [ ] TTL set to `now + 365 days` (unix seconds)
-  - `Verify:` Sample item's `ttl` matches expected value
-  - `Evidence:` `describe` output
-- [ ] Unit test covers all 5 action values
+- [x] `writeAudit({orgId, action, apiKeyHash, actorId, metadata})` in `packages/control-plane/src/audit.ts` — **location revised from `packages/shared/src/audit.ts` because the helper requires the AWS SDK DynamoDB clients, which don't belong in `@prontiq/shared` (kept dep-light for cross-package consumption). The new `@prontiq/control-plane` package is the natural home; webhooks and API consume it as a workspace dep.**
+  - `Verify:` Called from P1B.05 (ORG_PROVISIONED — via `buildAuditTransactItem` inside the provisioning service TransactWriteItems); ready for P1B.06 (UPGRADE / DOWNGRADE) and P1C.03 (ROTATE / REVOKE) to import
+  - `Evidence:` `packages/control-plane/src/provisioning.ts` imports `buildAuditTransactItem`; `packages/control-plane/src/index.ts` re-exports `writeAudit` + `buildAuditTransactItem`
+- [x] ULID generated per call (monotonic); timestamp is ISO 8601; SK = `{timestamp}#{ulid}`
+  - `Verify:` `packages/control-plane/src/audit.test.ts` asserts SK format + monotonicity across same-ms calls
+  - `Evidence:` Test "ULID sort keys generated within the same millisecond are strictly monotonic" passes
+- [x] TTL set to `now + 365 days` (unix seconds)
+  - `Verify:` `getAuditTtlSeconds(now) === floor(now/1000) + 365*24*60*60`
+  - `Evidence:` Test "buildAuditTransactItem TTL is now + 365 days in seconds" passes
+- [x] Unit test covers all 5 action values
+  - `Verify:` Test "all 5 lifecycle actions produce a valid row" iterates CREATE / ROTATE / REVOKE / UPGRADE / DOWNGRADE
+  - `Evidence:` 20/20 tests pass in `pnpm --filter @prontiq/control-plane test`
+
+##### Dual API (above the DoD baseline)
+
+- [x] `buildAuditTransactItem()` returns a DynamoDB `TransactWriteItem` so callers that need atomicity (P1B.05 provisioning, future rotation) can bundle the audit write into a single transaction. Standalone `writeAudit()` remains available for callers that don't need grouping (P1B.10 billing cron).
 
 #### Scope
 

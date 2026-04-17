@@ -99,9 +99,11 @@ jobs:
         env:
           OPENSEARCH_TEST_URL: http://localhost:9200
           DYNAMODB_TEST_URL: http://localhost:8000
-        # The script builds workspace dependencies via `pnpm -w build --filter`
+        # The scripts build workspace dependencies via `pnpm -w build --filter`
         # (Turbo handles topological ordering for project references).
-        run: pnpm --filter @prontiq/api test:integration
+        run: |
+          pnpm --filter @prontiq/api test:integration
+          pnpm --filter @prontiq/control-plane test:integration
 
   deploy-dev:
     needs: [check, integration-test]
