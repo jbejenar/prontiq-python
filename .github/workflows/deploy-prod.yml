@@ -10,7 +10,7 @@ permissions:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    environment: production
+    environment: prod
     # Serialize prod deploys at the GHA layer so multiple manual
     # dispatches queue rather than race. cancel-in-progress: false
     # because losing a half-applied prod deploy is worse than queueing.
@@ -73,6 +73,13 @@ jobs:
         env:
           AWS_EC2_METADATA_DISABLED: "true"
           AWS_SKIP_CREDENTIALS_VALIDATION: "true"
+          CLERK_ISSUER: ${{ vars.CLERK_ISSUER }}
+          CLERK_JWKS_URL: ${{ vars.CLERK_JWKS_URL }}
+          CLERK_WEBHOOK_SECRET: ${{ secrets.CLERK_WEBHOOK_SECRET }}
+          PRONTIQ_ACCOUNT_URL: ${{ vars.PRONTIQ_ACCOUNT_URL }}
+          PRONTIQ_DOCS_URL: ${{ vars.PRONTIQ_DOCS_URL }}
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+          WELCOME_EMAIL_FROM: ${{ vars.WELCOME_EMAIL_FROM }}
         run: |
           set -x
           timeout --signal=SIGTERM --kill-after=30s 10m pnpm deploy:prod || EXIT=$?

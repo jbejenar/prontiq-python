@@ -108,6 +108,7 @@ jobs:
     needs: [check, integration-test]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
+    environment: dev
     # Serialize deploy-dev runs at the GHA layer so two concurrent
     # pushes can't race the unlock-then-deploy sequence below.
     # cancel-in-progress: false → second push QUEUES, never cancels
@@ -223,9 +224,16 @@ jobs:
         env:
           AWS_EC2_METADATA_DISABLED: "true"
           AWS_SKIP_CREDENTIALS_VALIDATION: "true"
+          CLERK_ISSUER: ${{ vars.CLERK_ISSUER }}
+          CLERK_JWKS_URL: ${{ vars.CLERK_JWKS_URL }}
+          CLERK_WEBHOOK_SECRET: ${{ secrets.CLERK_WEBHOOK_SECRET }}
+          PRONTIQ_ACCOUNT_URL: ${{ vars.PRONTIQ_ACCOUNT_URL }}
+          PRONTIQ_DOCS_URL: ${{ vars.PRONTIQ_DOCS_URL }}
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
           # Some SST hangs trace back to $USER being unset (see sst#5539).
           # GH runners set USER but defensively pin it.
           USER: "runner"
+          WELCOME_EMAIL_FROM: ${{ vars.WELCOME_EMAIL_FROM }}
         run: |
           set -x
           timeout --signal=SIGTERM --kill-after=30s 10m pnpm deploy:dev || EXIT=$?
