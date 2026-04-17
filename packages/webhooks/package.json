@@ -8,12 +8,22 @@
   "scripts": {
     "build": "node ../../scripts/ts-package-build.mjs build",
     "typecheck": "tsc --noEmit",
+    "test": "pnpm -w build --filter @prontiq/webhooks... && node --test dist/clerk.test.js",
+    "test:integration": "pnpm -w build --filter @prontiq/webhooks... && node --test dist/clerk.integration.test.js",
     "lint": "eslint src/",
     "clean": "node ../../scripts/ts-package-build.mjs clean"
   },
   "dependencies": {
+    "@clerk/backend": "^3.2.12",
+    "@prontiq/control-plane": "workspace:*",
     "@prontiq/shared": "workspace:*",
     "stripe": "^22.0.1",
     "svix": "^1.60.0"
+  },
+  "devDependencies": {
+    "@aws-sdk/client-dynamodb": "^3.1030.0",
+    "@aws-sdk/lib-dynamodb": "^3.1030.0",
+    "@types/aws-lambda": "^8.10.155",
+    "@types/node": "^25.6.0"
   }
 }

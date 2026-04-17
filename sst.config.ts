@@ -91,7 +91,7 @@ export default $config({
       transform: { table: { name: authUsageName } },
     });
 
-    new sst.aws.Dynamo("PqAuthAudit", {
+    const auditTable = new sst.aws.Dynamo("PqAuthAudit", {
       fields: {
         orgId: "string",
         "timestamp#eventId": "string",
@@ -101,7 +101,7 @@ export default $config({
       transform: { table: { name: auditTableName } },
     });
 
-    new sst.aws.Dynamo("PqSesSuppressions", {
+    const suppressionsTable = new sst.aws.Dynamo("PqSesSuppressions", {
       fields: {
         email: "string",
       },
@@ -109,6 +109,21 @@ export default $config({
       ttl: "ttl",
       transform: { table: { name: suppressionsName } },
     });
+
+    // -- Secrets (P1B.05) --
+    //
+    // Set per-stage via `sst secret set <Name> <value> --stage <stage>`
+    // BEFORE merging the PR that wires the consumers (CI deploys to dev
+    // automatically on merge). The Clerk webhook handler crashes with
+    // "CLERK_WEBHOOK_SECRET is required" if the value is unset at
+    // Lambda init.
+    //
+    // ClerkSecretKey is declared here for PR 3 (/v1/account/setup Clerk
+    // JWT verification) so the operator runs `sst secret set` once
+    // rather than twice across the two PRs.
+    const clerkWebhookSecret = new sst.Secret("ClerkWebhookSecret");
+    const stripeSecretKey = new sst.Secret("StripeSecretKey");
+    const clerkSecretKey = new sst.Secret("ClerkSecretKey");
 
     // -- API: Hono on Lambda (single handler for all routes) --
 
@@ -604,6 +619,103 @@ export default $config({
         ],
         environment: { OPENSEARCH_ENDPOINT: opensearchEndpoint },
       },
+    });
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // CONTROL PLANE — Clerk webhook handler (P1B.05)
+    // ═══════════════════════════════════════════════════════════════════════
+    //
+    // Wires `POST /webhooks/clerk` on the existing PqApi to a dedicated
+    // PqClerkWebhook Lambda. ApiGatewayV2's explicit-route precedence
+    // means this route lands on PqClerkWebhook; everything else still
+    // hits the $default address-API Lambda. The address-API IAM stays
+    // untouched.
+    //
+    // Clerk dashboard already points at this URL (the dev stage's
+    // execute-api endpoint at /webhooks/clerk). PR PR 3 of P1B.05 will
+    // add /v1/account/setup as a separate route mapped to its own
+    // PqAccount Lambda — not this one — to keep address-API IAM minimal.
+    //
+    // SES IAM: scoped to the prontiq.dev domain identity. Operator must
+    // verify the SES domain identity in ap-southeast-2 (one-time DKIM
+    // CNAME setup via Vercel DNS) and request removal from SES sandbox
+    // before the welcome email path goes live in prod.
+
+    // Declare the Function explicitly (rather than inline in api.route)
+    // so the CloudWatch alarm below can reference its name
+    // deterministically. With inline specs SST generates names like
+    // `prontiq-{stage}-PqApiRoute<hash>HandlerFunction-<rand>` which
+    // don't give us a stable handle.
+    const clerkWebhookFn = new sst.aws.Function("PqClerkWebhook", {
+      handler: "packages/webhooks/src/clerk.handler",
+      architecture: "arm64",
+      runtime: "nodejs24.x",
+      memory: "512 MB",
+      timeout: "30 seconds",
+      link: [
+        authKeysTable,
+        auditTable,
+        suppressionsTable,
+        clerkWebhookSecret,
+        clerkSecretKey,
+        stripeSecretKey,
+      ],
+      permissions: [
+        {
+          actions: ["ses:SendEmail", "ses:SendRawEmail"],
+          resources: [
+            `arn:aws:ses:${AWS_REGION}:${AWS_ACCOUNT_ID}:identity/prontiq.dev`,
+          ],
+        },
+      ],
+      environment: {
+        CLERK_WEBHOOK_SECRET: clerkWebhookSecret.value,
+        // CLERK_SECRET_KEY is required by the handler now (not just by
+        // PR 3 of P1B.05) — the post-Bug-2 fix resolves the verified
+        // primary email via Clerk Backend API rather than trusting
+        // public_user_data.identifier (which can be a phone/username).
+        CLERK_SECRET_KEY: clerkSecretKey.value,
+        // CLERK_ADMIN_ROLES — comma-separated. Empty string falls
+        // back to the handler's built-in default of "org:admin,admin".
+        // Operators set this via GitHub Environment vars
+        // (`vars.CLERK_ADMIN_ROLES`) which the deploy workflows export
+        // to process.env before `sst deploy`. Wired end-to-end so a
+        // custom Clerk role set is configurable without code changes.
+        CLERK_ADMIN_ROLES: process.env.CLERK_ADMIN_ROLES ?? "",
+        STRIPE_SECRET_KEY: stripeSecretKey.value,
+        KEYS_TABLE_NAME: authKeysTable.name,
+        AUDIT_TABLE_NAME: auditTable.name,
+        SUPPRESSIONS_TABLE_NAME: suppressionsTable.name,
+        WELCOME_EMAIL_FROM: process.env.WELCOME_EMAIL_FROM ?? "noreply@prontiq.dev",
+        PRONTIQ_ACCOUNT_URL:
+          process.env.PRONTIQ_ACCOUNT_URL ?? "https://prontiq.dev/account",
+        PRONTIQ_DOCS_URL: process.env.PRONTIQ_DOCS_URL ?? "https://docs.prontiq.dev",
+        AWS_REGION,
+      },
+    });
+
+    api.route("POST /webhooks/clerk", clerkWebhookFn.arn);
+
+    // CloudWatch alarm: > 5 errors in 15 minutes on the Clerk webhook
+    // Lambda fires the existing ingestAlerts SNS topic. Webhook DLQ
+    // semantics: ApiGatewayV2 doesn't have a sync-invoke DLQ — the
+    // operational DLQ is Svix's own redelivery queue (visible in the
+    // Clerk dashboard) plus this alarm.
+    new aws.cloudwatch.MetricAlarm("PqClerkWebhookErrors", {
+      comparisonOperator: "GreaterThanThreshold",
+      evaluationPeriods: 1,
+      datapointsToAlarm: 1,
+      metricName: "Errors",
+      namespace: "AWS/Lambda",
+      period: 900, // 15 minutes
+      statistic: "Sum",
+      threshold: 5,
+      treatMissingData: "notBreaching",
+      alarmDescription:
+        "Clerk webhook Lambda errored more than 5 times in 15 minutes. Check CloudWatch Logs for the handler and the Svix message queue in the Clerk dashboard for stuck deliveries.",
+      alarmActions: [ingestAlerts.arn],
+      okActions: [ingestAlerts.arn],
+      dimensions: { FunctionName: clerkWebhookFn.name },
     });
 
     return {

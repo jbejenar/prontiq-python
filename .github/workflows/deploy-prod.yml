@@ -75,6 +75,7 @@ jobs:
         env:
           AWS_EC2_METADATA_DISABLED: "true"
           AWS_SKIP_CREDENTIALS_VALIDATION: "true"
+          CLERK_ADMIN_ROLES: ${{ vars.CLERK_ADMIN_ROLES }}
           CLERK_ISSUER: ${{ vars.CLERK_ISSUER }}
           CLERK_JWKS_URL: ${{ vars.CLERK_JWKS_URL }}
           CLERK_WEBHOOK_SECRET: ${{ secrets.CLERK_WEBHOOK_SECRET }}
