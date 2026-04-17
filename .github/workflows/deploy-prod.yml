@@ -4,13 +4,15 @@ on:
   workflow_dispatch:
 
 permissions:
-  id-token: write
   contents: read
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
     environment: prod
+    permissions:
+      id-token: write
+      contents: read
     # Serialize prod deploys at the GHA layer so multiple manual
     # dispatches queue rather than race. cancel-in-progress: false
     # because losing a half-applied prod deploy is worse than queueing.

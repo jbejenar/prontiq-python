@@ -10,8 +10,8 @@
             "jbejenar/prontiq-platform/.github/workflows/deploy-prod.yml@refs/heads/main"
           ],
           "token.actions.githubusercontent.com:sub": [
-            "repo:jbejenar/prontiq-platform:ref:refs/heads/main",
-            "repo:jbejenar/prontiq-platform:environment:production"
+            "repo:jbejenar/prontiq-platform:environment:dev",
+            "repo:jbejenar/prontiq-platform:environment:prod"
           ]
         }
       },

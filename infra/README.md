@@ -24,15 +24,18 @@ Together these two files fully define the role. If AWS state is lost or the role
 The trust policy enforces three independent conditions (all must match for the role to be assumable):
 
 1. **Audience** — `aud = sts.amazonaws.com`. Prevents token confusion attacks.
-2. **Subject** — `sub = repo:jbejenar/prontiq-platform:ref:refs/heads/main`. Only pushes to `main` and `workflow_dispatch` from `main` can mint credentials. PR events, tag events, and pushes to non-main branches are rejected at the OIDC layer.
+2. **Subject** — `sub` must match one of the explicit allowlisted GitHub subject claims below. Today that means:
+   - `repo:jbejenar/prontiq-platform:environment:dev`
+   - `repo:jbejenar/prontiq-platform:environment:prod`
+   Non-environment jobs, PR events, tag events, and pushes to non-main branches are rejected at the OIDC layer.
 3. **Approved workflow allowlist** — `job_workflow_ref` must match one of the explicit entries below. Adding a new workflow file to `.github/workflows/` does **NOT** automatically grant deploy access; the trust policy must be updated in a separate PR with intentional review.
 
 ### Currently approved workflows
 
 | Workflow file | Trigger | Purpose |
 |---|---|---|
-| `jbejenar/prontiq-platform/.github/workflows/ci.yml@refs/heads/main` | push to main | `deploy-dev` job |
-| `jbejenar/prontiq-platform/.github/workflows/deploy-prod.yml@refs/heads/main` | `workflow_dispatch` | manual prod deploy |
+| `jbejenar/prontiq-platform/.github/workflows/ci.yml@refs/heads/main` | push to main with GitHub environment `dev` | `deploy-dev` job only |
+| `jbejenar/prontiq-platform/.github/workflows/deploy-prod.yml@refs/heads/main` | `workflow_dispatch` with GitHub environment `prod` | manual prod deploy |
 
 If either of those file paths changes (rename, move, workflow removal), the trust policy must be updated to match. The `job_workflow_ref` values are pinned to the full file path plus `@refs/heads/main` — they're not globs.
 
@@ -44,6 +47,8 @@ If either of those file paths changes (rename, move, workflow removal), the trus
 4. After merge, follow the standard apply sequence below (permissions first if the PR touches them; then trust policy).
 
 **Why explicit allowlist rather than a glob:** `main` is not branch-protected yet (per CLAUDE.md follow-up). Any pusher with write access could add an unreviewed workflow on `main`; a glob would give that workflow deploy credentials immediately. The allowlist forces a second, deliberate review step — authorship of a workflow is separated from authorization to deploy.
+
+**Why environment-only subjects matter:** GitHub environment subjects are narrower than plain branch subjects. Once deploy jobs are environment-bound (`dev` / `prod`), the trust policy should only allow those environment subjects, and the workflows should grant `id-token: write` only to the deploy jobs that actually assume AWS credentials. Otherwise unrelated jobs in an allowlisted workflow file could still mint OIDC tokens and call STS directly.
 
 **Separate roles per deploy context (future improvement):** `deploy-dev` and `deploy-prod` currently share a role despite having different blast radii. Splitting into distinct roles (e.g., `prontiq-platform-deploy-dev-role` and `-prod-role`) with least-privilege scoping is a worthwhile future enhancement; out of scope for this iteration.
 
@@ -274,5 +279,6 @@ The following stayed in the workflow even after the root-cause fix landed:
 ## History
 
 - 2026-04-09 (P0.01) — role created manually with OIDC trust scoped to `repo:jbejenar/prontiq-platform:*`.
-- 2026-04-15 (PR #50) — role definition captured in this directory; `ec2:DescribeVpcAttribute` added to unblock Fargate bulk-ingest deploys; trust policy narrowed from `repo:*` wildcard to (a) `sub = ref:refs/heads/main` + (b) an explicit `job_workflow_ref` allowlist of the two approved deployment workflows. Intentional review now required before any new workflow can mint deploy credentials.
+- 2026-04-15 (PR #50) — role definition captured in this directory; `ec2:DescribeVpcAttribute` added to unblock Fargate bulk-ingest deploys; trust policy narrowed from `repo:*` wildcard to (a) explicit `sub` allowlist entries and (b) an explicit `job_workflow_ref` allowlist of the two approved deployment workflows. Intentional review now required before any new workflow can mint deploy credentials.
+- 2026-04-17 (PR #92 follow-up) — GitHub Actions deploy jobs were moved onto environment-scoped secrets (`dev` / `prod`). Trust policy subjects were tightened to the live `environment:dev` and `environment:prod` claims only, and workflow-wide `id-token: write` was removed so only deploy jobs can mint OIDC credentials.
 - 2026-04-15 (PR #52, reverted) — attempted `script -qefc` pty wrapper on deploy steps to fix CI "silent grind". Misdiagnosis — it forced SST into TUI mode and produced literal `0D` bytes in CI log. Reverted the same day; real cause documented in "CI deploy silent-refresh window" section above.
