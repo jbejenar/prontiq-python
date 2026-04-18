@@ -13,8 +13,9 @@ import {
   UpdateCommand,
 } from "@aws-sdk/lib-dynamodb";
 import { createBillingCronService } from "./billing-cron.js";
-import { BILLING_ENDPOINTS, type ApiKeyRecord, type UsageCounterRecord } from "@prontiq/shared";
-import Stripe from "stripe";
+import { BILLING_ENDPOINTS } from "@prontiq/shared";
+import type { ApiKeyRecord, UsageCounterRecord } from "@prontiq/shared";
+import type Stripe from "stripe";
 
 const DDB_URL = process.env.DYNAMODB_TEST_URL ?? "http://localhost:8000";
 const SUFFIX = Date.now().toString();
