@@ -1471,6 +1471,9 @@ Every hour:
      `retired` = hashes recently downgraded/cancelled out of paid billing
      but still waiting for their final current/previous-month credit delta
      to be pushed.
+     `active=false` still blocks request authentication (§5.5.3), but it
+     does NOT block retired-billing finalisation here as long as the hash
+     still has Stripe customer linkage and outstanding billable history.
 
   2. For each apiKeyHash (= "current hash") in the union of active + retired:
      a. BatchGetItem prontiq-keys for stripeCustomerId + enabled products

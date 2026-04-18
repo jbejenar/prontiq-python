@@ -588,7 +588,7 @@ export function createBillingCronService(
 
     for (const [apiKeyHash, registryStatus] of registryStatuses) {
       const key = await loadKey(dependencies.ddb, dependencies.keysTableName, apiKeyHash);
-      if (!key || !key.active || !key.stripeCustomerId) {
+      if (!key || !key.stripeCustomerId || (registryStatus === "active" && !key.active)) {
         summary.scopesSkipped += 1;
         continue;
       }
