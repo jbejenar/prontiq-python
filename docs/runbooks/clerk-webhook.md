@@ -17,29 +17,25 @@ The Clerk dashboard's webhook configuration points at the dev URL today. The pro
 
 1. **SES domain identity verified** for `prontiq.dev` in `ap-southeast-2`. Add the DKIM CNAME records emitted by `aws ses verify-domain-identity --domain prontiq.dev` to Vercel DNS. Welcome emails fail silently (logged; `emailSent: false` in the response) until verified — provisioning durability is unaffected.
 2. **SES sandbox removal** requested via AWS support case for `ap-southeast-2`. While in sandbox, only verified email addresses can receive welcome emails.
-3. **SST secrets set per stage** — ALL THREE are now required by the webhook Lambda (CLERK_SECRET_KEY is no longer PR-3-only — the handler resolves the verified primary email via Clerk Backend API):
-   ```sh
-   sst secret set ClerkWebhookSecret <svix-signing-secret>   --stage <stage>
-   sst secret set ClerkSecretKey     <clerk-backend-sk-key>  --stage <stage>
-   sst secret set StripeSecretKey    <sk_test_or_live>       --stage <stage>
-   ```
-   The Lambda crashes with `CLERK_WEBHOOK_SECRET is required` (or the equivalent for the other two) at init if any value is unset. **Set BEFORE merging the PR that wires the consumers** (CI auto-deploys to dev on merge).
-4. **Clerk dashboard configured**: `organizationMembership.created` event subscribed; signing secret matches the value set above.
-5. **Optional — `CLERK_ADMIN_ROLES` env var**: Defaults to `"org:admin,admin"`. Override only if your Clerk app uses custom organization roles for the creator. Comma-separated list, e.g. `owner,principal`.
+3. **GitHub Environment secrets set per environment** (Settings → Environments → `dev` / `prod` → Environment secrets) — ALL THREE are required by the webhook Lambda. CLERK_SECRET_KEY is no longer PR-3-only; the handler resolves the verified primary email via the Clerk Backend API.
+   - `CLERK_WEBHOOK_SECRET` — Svix signing secret. Clerk dashboard → Webhooks → endpoint detail → Signing Secret. Format: `whsec_...`.
+   - `CLERK_SECRET_KEY` — Clerk Backend API key. Clerk dashboard → API Keys → Backend (Secret Keys). Format: `sk_test_...` for dev, `sk_live_...` for prod.
+   - `STRIPE_SECRET_KEY` — Stripe restricted key. Format: `sk_test_...` for dev, `sk_live_...` for prod.
 
-   **End-to-end configuration path** (so the override actually reaches the deployed Lambda):
+   The values flow: GitHub Environment secret → workflow `env:` block → `process.env.X` at SST-config time → baked into the Lambda's environment variable. The handler reads `process.env.CLERK_WEBHOOK_SECRET` etc. at runtime.
 
-   ```
-   GitHub Environment vars (Settings → Environments → dev/prod → Variables → CLERK_ADMIN_ROLES)
-     → deploy-{dev,prod}.yml exports as env: CLERK_ADMIN_ROLES
-       → sst.config.ts reads process.env.CLERK_ADMIN_ROLES at deploy time
-         → bakes into PqClerkWebhook Lambda env var
-           → handler reads process.env.CLERK_ADMIN_ROLES at runtime
-   ```
+   `sst.config.ts` enforces these at deploy time for the `dev` and `prod` stages:
+   - **Trims** leading/trailing whitespace before validation so a copy-paste artefact like a trailing newline doesn't slip through (whitespace-only values fail the same as truly-unset).
+   - **Fails fast** with a clear error pointing at the GitHub Environment if any required value is empty after trimming, rather than shipping a Lambda that returns 500 on every request.
+   - **Encrypts at rest** in Pulumi state via `$util.secret()` — values are redacted from previews, diffs, and stack outputs. Lambda still receives them as standard env vars (KMS-encrypted at rest by AWS).
 
-   To override: set the GitHub variable in the appropriate environment, then trigger a redeploy. No code change required.
+   Personal stages (e.g. `jbejenar`) skip the validation guard so `sst dev` works locally without all secrets configured.
 
-   To verify the deployed value: `aws lambda get-function-configuration --function-name prontiq-<stage>-PqClerkWebhookFunction --query 'Environment.Variables.CLERK_ADMIN_ROLES'`.
+   **Do NOT use `sst secret set`** for these — the codebase's convention is GitHub Environment vars/secrets exported via the deploy workflow. `sst.Secret` (SSM-backed) was tried in an earlier iteration of this PR and conflicted with the env-var pattern.
+4. **Clerk dashboard configured**: `organizationMembership.created` event subscribed; signing secret matches the GitHub Environment value.
+5. **Optional — `CLERK_ADMIN_ROLES` GitHub Environment variable** (NOT a secret): Defaults to `"org:admin,admin"`. Override only if your Clerk app uses custom organization roles for the creator. Comma-separated list, e.g. `owner,principal`. Same end-to-end configuration path as the secrets above (Settings → Environments → `dev` / `prod` → Variables).
+
+   To verify the deployed value reached the Lambda: `aws lambda get-function-configuration --function-name $(aws lambda list-functions --region ap-southeast-2 --query 'Functions[?contains(FunctionName, \`prontiq-<stage>-PqClerkWebhook\`)].FunctionName' --output text) --query 'Environment.Variables'`.
 6. **User email requirement**: This handler requires the org creator's Clerk user to have a verified primary email address. Phone-only / OAuth-only users without a primary email return 500 `fatal_failure` with `reason: "user_has_no_primary_email"`. Operator fix is to add a primary email in the Clerk dashboard, then "Resend" the failed message.
 
 ## Healthy delivery (golden path)
@@ -70,14 +66,25 @@ When a user accepts an invite (not the org creator), Clerk fires `organizationMe
 ### 401 invalid signature
 
 Causes:
-- Wrong `CLERK_WEBHOOK_SECRET` set in SST secrets vs the Clerk dashboard's signing secret.
+- Wrong `CLERK_WEBHOOK_SECRET` in the GitHub Environment vs the Clerk dashboard's signing secret.
 - Clock skew > 5 min between Clerk and AWS (Svix's tolerance).
 - Body mutation by a proxy / CDN before the Lambda receives it.
 
 Recovery:
-1. Compare `sst secret list --stage <stage>` against the value visible in the Clerk dashboard ("Reveal" button on the endpoint).
-2. Check Lambda time vs UTC: `aws logs tail /aws/lambda/prontiq-<stage>-PqClerkWebhookFunction-<rand> --follow` and look at log timestamps.
-3. Re-set the secret with `sst secret set` and redeploy if the value drifted.
+1. **Verify the deployed Lambda's env value matches Clerk:**
+   ```sh
+   # Show the value baked into the deployed Lambda (not the GitHub Environment secret directly — GitHub doesn't expose secret values back):
+   FUNC=$(aws lambda list-functions --region ap-southeast-2 \
+     --query 'Functions[?contains(FunctionName, `prontiq-<stage>-PqClerkWebhook`)].FunctionName' \
+     --output text)
+   aws lambda get-function-configuration --function-name "$FUNC" \
+     --query 'Environment.Variables.CLERK_WEBHOOK_SECRET' --output text
+   ```
+   Compare against the Clerk dashboard → Webhooks → endpoint detail → Signing Secret (click "Reveal").
+2. **If values differ**: update the GitHub Environment secret (Settings → Environments → `<stage>` → Environment secrets → `CLERK_WEBHOOK_SECRET` → "Update secret"), then redeploy:
+   - For `dev`: push any commit to `main`, OR re-run the most recent CI workflow's `deploy-dev` job (`gh run rerun <run-id> --failed`)
+   - For `prod`: trigger the "Deploy to Production" workflow (`gh workflow run deploy-prod.yml`)
+3. **Check Lambda time vs UTC** if values match: `aws logs tail "/aws/lambda/$FUNC" --follow --region ap-southeast-2` and look at log timestamps for clock-skew evidence.
 
 ### 5xx after Stripe customer creation (retryable_failure)
 
@@ -148,4 +155,4 @@ Rare case where Clerk's webhook delivery system loses the event entirely. The us
 1. Disable the endpoint in the Clerk dashboard (do NOT delete — keeps the audit history of past deliveries).
 2. Remove the `api.route("POST /webhooks/clerk", ...)` line + `clerkWebhookFn` declaration + alarm from `sst.config.ts`.
 3. Deploy. SST will delete the Lambda, the route, and the alarm. The DDB tables and SNS topic remain (used by other consumers).
-4. Optionally `sst secret remove ClerkWebhookSecret --stage <stage>` once you're sure no other code reads it.
+4. Optionally remove the GitHub Environment secrets (`CLERK_WEBHOOK_SECRET`, `CLERK_SECRET_KEY`, `STRIPE_SECRET_KEY`, and `vars.CLERK_ADMIN_ROLES`) for the corresponding environment once you're sure no other code reads them: Settings → Environments → `<stage>` → Environment secrets / Variables → "Remove secret".

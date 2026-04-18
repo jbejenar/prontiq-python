@@ -65,15 +65,28 @@ const DEFAULT_ADMIN_ROLES = ["org:admin", "admin"] as const;
 
 function getAdminRoles(): Set<string> {
   const override = process.env.CLERK_ADMIN_ROLES;
-  if (typeof override === "string" && override.length > 0) {
-    return new Set(
-      override
-        .split(",")
-        .map((s) => s.trim())
-        .filter((s) => s.length > 0),
-    );
+  if (typeof override !== "string" || override.length === 0) {
+    return new Set(DEFAULT_ADMIN_ROLES);
   }
-  return new Set(DEFAULT_ADMIN_ROLES);
+  const parsed = new Set(
+    override
+      .split(",")
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0),
+  );
+  // Whitespace-only / commas-only override (operator typo) parses to
+  // an empty set. Falling through with that would skip every event as
+  // non-admin — silent provisioning failure with 200 responses, no
+  // alarm. Fall back to defaults instead and log so the typo is
+  // visible in CloudWatch.
+  if (parsed.size === 0) {
+    console.warn(
+      "CLERK_ADMIN_ROLES is set but contains no valid role tokens after parsing — falling back to defaults",
+      { rawValue: override, defaultRoles: [...DEFAULT_ADMIN_ROLES] },
+    );
+    return new Set(DEFAULT_ADMIN_ROLES);
+  }
+  return parsed;
 }
 
 let cachedService: ReturnType<typeof createProvisioningService> | undefined;

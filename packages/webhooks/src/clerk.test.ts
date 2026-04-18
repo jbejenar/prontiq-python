@@ -432,6 +432,41 @@ test("Bug 1: CLERK_ADMIN_ROLES env override accepts a custom role set", async ()
   }
 });
 
+test("Bug 1 / hotfix: whitespace-only CLERK_ADMIN_ROLES falls back to defaults (does NOT silently disable provisioning)", async () => {
+  // Operator typo case: setting CLERK_ADMIN_ROLES to "  " or ", , ,"
+  // would parse to an empty Set and skip every event as non-admin —
+  // silent provisioning failure with 200 responses. Must fall back
+  // to defaults instead.
+  const cases = ["   ", ",,,", " , , ", "\t\n"];
+  for (const value of cases) {
+    const service = makeFakeService({ status: "created", emailSent: true });
+    const { client: clerkClient } = makeFakeClerkClient({ user: STANDARD_USER });
+    const previous = process.env.CLERK_ADMIN_ROLES;
+    process.env.CLERK_ADMIN_ROLES = value;
+    try {
+      const handler = createClerkHandler({ service, webhookSecret: TEST_SECRET, clerkClient });
+      // org:admin is in the DEFAULT set — should still trigger provisioning
+      // when the override parses to empty.
+      const event = signedEvent(adminMembershipPayload(`org_ws_${value.length}`, "org:admin"));
+      const result = await handler(event);
+      const { statusCode, body } = decodeBody(result);
+      assert.equal(
+        statusCode,
+        200,
+        `whitespace-only override "${JSON.stringify(value)}" must fall back to defaults`,
+      );
+      assert.equal(body.status, "created");
+      assert.equal(service.calls.length, 1);
+    } finally {
+      if (previous === undefined) {
+        delete process.env.CLERK_ADMIN_ROLES;
+      } else {
+        process.env.CLERK_ADMIN_ROLES = previous;
+      }
+    }
+  }
+});
+
 test("Bug 1: explicit adminRoles override takes precedence over default + env", async () => {
   const service = makeFakeService({ status: "created", emailSent: true });
   const { client: clerkClient } = makeFakeClerkClient({ user: STANDARD_USER });

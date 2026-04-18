@@ -110,20 +110,76 @@ export default $config({
       transform: { table: { name: suppressionsName } },
     });
 
-    // -- Secrets (P1B.05) --
+    // -- Required secrets (P1B.05) --
     //
-    // Set per-stage via `sst secret set <Name> <value> --stage <stage>`
-    // BEFORE merging the PR that wires the consumers (CI deploys to dev
-    // automatically on merge). The Clerk webhook handler crashes with
-    // "CLERK_WEBHOOK_SECRET is required" if the value is unset at
-    // Lambda init.
+    // Sourced from GitHub Environment secrets (Settings → Environments →
+    // dev/prod → Environment secrets), exported by the deploy-{dev,prod}
+    // workflows as `env: NAME: ${{ secrets.NAME }}`, read here as
+    // process.env.NAME. Same pattern as the pre-existing WELCOME_EMAIL_FROM
+    // / PRONTIQ_ACCOUNT_URL config — keeps secret management in one place.
     //
-    // ClerkSecretKey is declared here for PR 3 (/v1/account/setup Clerk
-    // JWT verification) so the operator runs `sst secret set` once
-    // rather than twice across the two PRs.
-    const clerkWebhookSecret = new sst.Secret("ClerkWebhookSecret");
-    const stripeSecretKey = new sst.Secret("StripeSecretKey");
-    const clerkSecretKey = new sst.Secret("ClerkSecretKey");
+    // Earlier iteration of this PR used sst.Secret() (SSM-backed via
+    // `sst secret set`). That fought with the GitHub-Environment pattern:
+    // values landed in process.env at deploy time but the SST runtime
+    // tried to resolve them from SSM, SecretMissingError. Aligned to a
+    // single source of truth.
+    //
+    // TWO security/reliability properties enforced below:
+    //
+    //  1. Whitespace-trim before validation AND before wiring into the
+    //     Lambda env. A pasted value with a trailing newline or all-
+    //     whitespace value would otherwise pass the length check and
+    //     ship an invalid secret to the Lambda — recreating the silent-
+    //     deploy-broken-runtime failure mode this hotfix is supposed to
+    //     prevent. `readGithubSecret` normalises once at the boundary.
+    //
+    //  2. $util.secret() wraps the values when passed to the Function
+    //     environment block. Without this wrapper, plain string inputs
+    //     to Pulumi `environment` get serialized as plaintext in
+    //     deployment state, previews, and diffs — visible to anyone who
+    //     can read the SST/Pulumi state backend. Wrapping marks them as
+    //     secret-typed Outputs so Pulumi encrypts them in state and
+    //     redacts them from previews/diffs/CloudWatch logs that surface
+    //     stack outputs. Lambda still receives them as env vars
+    //     (KMS-encrypted at rest by AWS), so handler code is unchanged.
+    //
+    // Fail-fast guard for deployed stages (dev, prod): GitHub Actions
+    // resolves an unset `${{ secrets.X }}` to an empty string. Without
+    // this check, an unset secret silently produces a Lambda that
+    // returns 500 on every request. We instead fail the deploy with a
+    // clear error pointing at the GitHub Environment.
+    //
+    // Personal stages (jbejenar etc.) skip the guard so `sst dev`
+    // works locally without all secrets configured — handler's runtime
+    // guard still catches missing values during local manual testing.
+    const REQUIRED_WEBHOOK_SECRETS = [
+      "CLERK_WEBHOOK_SECRET",
+      "CLERK_SECRET_KEY",
+      "STRIPE_SECRET_KEY",
+    ] as const;
+    function readGithubSecret(name: string): string {
+      const raw = process.env[name];
+      if (raw === undefined) return "";
+      // Trim leading/trailing whitespace including newlines — common
+      // copy-paste artefact when operators paste from the Clerk/Stripe
+      // dashboards. Whitespace-only values become empty here and fail
+      // the same validation as truly-unset secrets.
+      return raw.trim();
+    }
+    const isDeployedStage = $app.stage === "dev" || $app.stage === "prod";
+    if (isDeployedStage) {
+      const missing = REQUIRED_WEBHOOK_SECRETS.filter(
+        (name) => readGithubSecret(name).length === 0,
+      );
+      if (missing.length > 0) {
+        throw new Error(
+          `Missing or whitespace-only GitHub Environment secrets for stage "${$app.stage}": ` +
+            `${missing.join(", ")}. ` +
+            `Set them at Settings → Environments → ${$app.stage} → Environment secrets ` +
+            `(values must be non-empty after trimming), then re-run the deploy workflow.`,
+        );
+      }
+    }
 
     // -- API: Hono on Lambda (single handler for all routes) --
 
@@ -652,14 +708,7 @@ export default $config({
       runtime: "nodejs24.x",
       memory: "512 MB",
       timeout: "30 seconds",
-      link: [
-        authKeysTable,
-        auditTable,
-        suppressionsTable,
-        clerkWebhookSecret,
-        clerkSecretKey,
-        stripeSecretKey,
-      ],
+      link: [authKeysTable, auditTable, suppressionsTable],
       permissions: [
         {
           actions: ["ses:SendEmail", "ses:SendRawEmail"],
@@ -669,20 +718,16 @@ export default $config({
         },
       ],
       environment: {
-        CLERK_WEBHOOK_SECRET: clerkWebhookSecret.value,
-        // CLERK_SECRET_KEY is required by the handler now (not just by
-        // PR 3 of P1B.05) — the post-Bug-2 fix resolves the verified
-        // primary email via Clerk Backend API rather than trusting
-        // public_user_data.identifier (which can be a phone/username).
-        CLERK_SECRET_KEY: clerkSecretKey.value,
-        // CLERK_ADMIN_ROLES — comma-separated. Empty string falls
-        // back to the handler's built-in default of "org:admin,admin".
-        // Operators set this via GitHub Environment vars
-        // (`vars.CLERK_ADMIN_ROLES`) which the deploy workflows export
-        // to process.env before `sst deploy`. Wired end-to-end so a
-        // custom Clerk role set is configurable without code changes.
+        // Secrets wrapped with $util.secret() so Pulumi encrypts them
+        // in state, redacts them from previews/diffs, and treats stack-
+        // output references as secret-typed. Read via readGithubSecret
+        // so trailing-newline / whitespace-only values get normalised
+        // consistently with the validation guard above.
+        CLERK_WEBHOOK_SECRET: $util.secret(readGithubSecret("CLERK_WEBHOOK_SECRET")),
+        CLERK_SECRET_KEY: $util.secret(readGithubSecret("CLERK_SECRET_KEY")),
+        STRIPE_SECRET_KEY: $util.secret(readGithubSecret("STRIPE_SECRET_KEY")),
+        // Non-secret config — plaintext in state is fine.
         CLERK_ADMIN_ROLES: process.env.CLERK_ADMIN_ROLES ?? "",
-        STRIPE_SECRET_KEY: stripeSecretKey.value,
         KEYS_TABLE_NAME: authKeysTable.name,
         AUDIT_TABLE_NAME: auditTable.name,
         SUPPRESSIONS_TABLE_NAME: suppressionsTable.name,
