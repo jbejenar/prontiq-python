@@ -89,3 +89,51 @@ jobs:
           timeout --signal=SIGTERM --kill-after=30s 10m pnpm deploy:prod || EXIT=$?
           echo "deploy exited with code: ${EXIT:-0}"
           exit "${EXIT:-0}"
+
+  # Post-deploy verification — same intent as the dev smoke job in
+  # ci.yml. Mints a real Clerk JWT via the Backend API and exercises
+  # the deployed POST /v1/account/setup end-to-end. Catches
+  # regressions that unit / integration tests can't.
+  #
+  # Required GitHub Environment config (Settings → Environments → prod):
+  #   - secrets.CLERK_SECRET_KEY  — already configured for the deploy
+  #   - vars.CLERK_TEST_USER_ID   — Clerk user_id (operator-created
+  #                                 prod test user; see runbook)
+  #   - vars.CLERK_TEST_ORG_ID    — optional but recommended
+  #
+  # Failure semantics: if smoke fails after a successful prod deploy,
+  # this job goes red and notifies the operator. The deploy already
+  # happened — operator decides whether to roll back via revert PR or
+  # investigate. This is post-deploy verification, not a deploy gate.
+  #
+  # **Caveat for prod:** the smoke needs an active Clerk session for
+  # the test user. Clerk's createSession Backend API is dev-only on
+  # most plans, so the prod tenant needs an existing session. Either:
+  #   (a) operator pre-establishes via Clerk Dashboard "Impersonate
+  #       user" before merging the prod-impacting change, OR
+  #   (b) accept that the smoke fails with exit code 2 ("couldn't
+  #       run") on first prod deploy, and use it as the prompt to
+  #       impersonate.
+  # The script's error message points operators at the right fix.
+  smoke-account-setup-prod:
+    needs: [deploy]
+    runs-on: ubuntu-latest
+    environment: prod
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: ".nvmrc"
+          cache: "pnpm"
+      - run: pnpm install --frozen-lockfile
+
+      - name: Smoke POST /v1/account/setup against deployed prod
+        env:
+          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
+          CLERK_TEST_USER_ID: ${{ vars.CLERK_TEST_USER_ID }}
+          CLERK_TEST_ORG_ID: ${{ vars.CLERK_TEST_ORG_ID }}
+          PRONTIQ_API: https://api.prontiq.dev
+        run: pnpm --filter @prontiq/api smoke:account-setup:prod
