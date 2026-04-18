@@ -215,9 +215,22 @@ export default $config({
         // — negligible for our QPS, but the operational clarity
         // (separate alarms / runbooks per ingress surface) is
         // worth it.
+        //
+        // **CRITICAL — throttle limits MUST be set explicitly when
+        // defaultRouteSettings is configured.** AWS API Gateway
+        // treats omitted throttlingBurstLimit / throttlingRateLimit
+        // fields as 0 (NOT "inherit account default") whenever
+        // defaultRouteSettings is set, which throttles every
+        // request to the API. Setting them to the AWS account
+        // defaults (10000 req/s sustained, 5000 burst) restores
+        // the prior implicit behaviour. Caught the hard way in PR
+        // #101 — initial deploy 429'd every prod request including
+        // /v1/health. Do NOT remove these values.
         stage: {
           defaultRouteSettings: {
             detailedMetricsEnabled: true,
+            throttlingBurstLimit: 5000,
+            throttlingRateLimit: 10000,
           },
         },
       },
