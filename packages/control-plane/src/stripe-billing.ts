@@ -935,13 +935,6 @@ async function processPlanTransition(
     keys.map((key) => key.apiKeyHash),
     "add",
   );
-  await updateRegistryMembership(
-    dependencies.ddb,
-    dependencies.keysTableName,
-    RETIRED_BILLING_REGISTRY_KEY,
-    keys.map((key) => key.apiKeyHash),
-    "delete",
-  );
   await resetUsageFlagsForCurrentMonth(
     dependencies.ddb,
     dependencies.usageTableName,

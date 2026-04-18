@@ -1130,13 +1130,16 @@ PK:   apiKeyHash           "REGISTRY#retired-billing-keys"   (reserved, not a re
 ```
 
 `REGISTRY#active-keys` contains currently billable paid-tier keys. `REGISTRY#retired-billing-keys`
-contains hashes that were just downgraded/cancelled out of paid billing but still have
-outstanding or pending meter deltas that must be flushed before billing discovery can stop.
-Free keys are active in `prontiq-keys` but absent from both registries once drained.
+contains hashes that were downgraded/cancelled out of paid billing and still have outstanding
+or pending meter deltas that must be flushed before billing discovery can stop. A hash may
+temporarily exist in **both** registries: live entitlement processing resumes immediately via
+the active registry, while the retired registry keeps historical current/previous-month billing
+discovery alive until the chain-aware drain check says the hash is fully settled. Free keys are
+active in `prontiq-keys` but absent from both registries once drained.
 
 | Event | Registry Action |
 |---|---|
-| **UPGRADE** (free → paid) | ADD hash to set |
+| **UPGRADE** (free → paid) | ADD hash to `REGISTRY#active-keys`; if the hash is still present in `REGISTRY#retired-billing-keys`, leave it there until the hourly cron confirms historical billable scopes are fully drained |
 | **DOWNGRADE** (paid → paid, e.g. Growth → Starter) | Keep in registry (still billable) — only the `tier` / `quotaPerProduct` / `subscriptionItems` change |
 | **DOWNGRADE to free** / **CANCEL** (`customer.subscription.deleted`) | DELETE hash from `REGISTRY#active-keys`, ADD hash to `REGISTRY#retired-billing-keys` until the hourly cron drains any remaining current/previous-month billable deltas, then DELETE from retired registry |
 | **ROTATE** (if billable) | DELETE old hash + ADD new hash |

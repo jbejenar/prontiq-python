@@ -36,6 +36,11 @@ interface MeterPushPlan {
   targetCumulativeCount: number;
 }
 
+interface RegistryMembershipState {
+  active: boolean;
+  retired: boolean;
+}
+
 const ACTIVE_HASHES_ATTRIBUTE = "activeHashes";
 const CURRENT_HASH_SCOPE_TTL_SECONDS = 90 * 24 * 60 * 60;
 const MAX_CHAIN_DEPTH = 10;
@@ -574,21 +579,24 @@ export function createBillingCronService(
       dependencies.keysTableName,
       RETIRED_REGISTRY_KEY,
     );
-    const registryStatuses = new Map<string, "active" | "retired">();
+    const registryStatuses = new Map<string, RegistryMembershipState>();
     for (const hash of activeApiKeyHashes) {
-      registryStatuses.set(hash, "active");
+      const current = registryStatuses.get(hash) ?? { active: false, retired: false };
+      current.active = true;
+      registryStatuses.set(hash, current);
     }
     for (const hash of retiredApiKeyHashes) {
-      if (!registryStatuses.has(hash)) {
-        registryStatuses.set(hash, "retired");
-      }
+      const current = registryStatuses.get(hash) ?? { active: false, retired: false };
+      current.retired = true;
+      registryStatuses.set(hash, current);
     }
     const monthKeys = getBillingMonthKeys(now);
     const retirementBlockingMonthKeys = getRetirementBlockingMonthKeys(now);
 
     for (const [apiKeyHash, registryStatus] of registryStatuses) {
       const key = await loadKey(dependencies.ddb, dependencies.keysTableName, apiKeyHash);
-      if (!key || !key.stripeCustomerId || (registryStatus === "active" && !key.active)) {
+      const canProcessForBilling = registryStatus.retired || key?.active === true;
+      if (!key || !key.stripeCustomerId || !canProcessForBilling) {
         summary.scopesSkipped += 1;
         continue;
       }
@@ -669,7 +677,7 @@ export function createBillingCronService(
       }
 
       if (
-        registryStatus === "retired" &&
+        registryStatus.retired &&
         !hasOutstandingBillableUsage(apiKeyHash, retirementBlockingMonthKeys, usageRowsByHash, chain)
       ) {
         await updateRegistryMembership(

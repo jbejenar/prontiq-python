@@ -31,8 +31,9 @@
  *   - `CLERK_TEST_SESSION_ID` — pin a specific session by ID. Use
  *     when multiple sessions match the target org and the script
  *     reports candidates.
- *   - `PRONTIQ_API` — base URL of the API. Defaults to dev's
- *     ApiGateway URL. Set to `https://api.prontiq.dev` to smoke prod.
+ *   - `PRONTIQ_API` — base URL of the API. Optional when a fresh
+ *     `.sst/outputs.json` is present in the current checkout;
+ *     otherwise required. Set to `https://api.prontiq.dev` to smoke prod.
  *   - `EXPECT` — `created` | `already_exists` | `403` | `400` —
  *     fail the script if the response status doesn't match. Useful
  *     in CI. Defaults to accepting both 201 (created) and 200
@@ -74,6 +75,8 @@
  *   - 2 — smoke could not run (env missing, no suitable session,
  *         timeout, transport error, or non-JSON upstream response)
  */
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createClerkClient } from "@clerk/backend";
 import type { Session } from "@clerk/backend";
@@ -94,7 +97,6 @@ interface SetupError {
   };
 }
 
-const DEV_API_DEFAULT = "https://59jym47ia1.execute-api.ap-southeast-2.amazonaws.com";
 const DEFAULT_TIMEOUT_MS = 15_000;
 const RAW_BODY_SNIPPET_BYTES = 500;
 
@@ -106,9 +108,25 @@ function getRequiredEnv(name: string): string {
   return value.trim();
 }
 
-function getOptionalEnv(name: string, fallback: string): string {
-  const value = process.env[name];
-  return value && value.trim().length > 0 ? value.trim() : fallback;
+function resolveApiBaseUrl(): string {
+  const configured = process.env.PRONTIQ_API;
+  if (configured && configured.trim().length > 0) {
+    return configured.trim();
+  }
+
+  const outputsPath = path.resolve(process.cwd(), ".sst/outputs.json");
+  try {
+    const parsed = JSON.parse(readFileSync(outputsPath, "utf8")) as { api?: unknown };
+    if (typeof parsed.api === "string" && parsed.api.trim().length > 0) {
+      return parsed.api.trim();
+    }
+  } catch {
+    // Fall through to the explicit operator-facing error below.
+  }
+
+  throw new Error(
+    "PRONTIQ_API is required when .sst/outputs.json is unavailable or missing the api output.",
+  );
 }
 
 function getOptionalEnvOrNull(name: string): string | null {
@@ -456,7 +474,7 @@ export async function run(): Promise<number> {
   const userId = getRequiredEnv("CLERK_TEST_USER_ID");
   const targetOrgId = getOptionalEnvOrNull("CLERK_TEST_ORG_ID");
   const pinnedSessionId = getOptionalEnvOrNull("CLERK_TEST_SESSION_ID");
-  const apiUrl = getOptionalEnv("PRONTIQ_API", DEV_API_DEFAULT);
+  const apiUrl = resolveApiBaseUrl();
   const expect = process.env.EXPECT?.trim();
   const timeoutMs = getTimeoutMs();
 

@@ -57,7 +57,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Autocomplete ranking: prefix-matching street types (CRESCENT) no longer ranked equally with non-matching types (ROAD/STREET) when user types a prefix
 - ARCHITECTURE.MD §5.5.1 billing-registry event table no longer contradicts §5.7.3 webhook flow on DOWNGRADE behaviour (paid→paid plan change keeps hash in registry; only paid→free/CANCEL deletes).
 - Restored deployed `/v1/account/setup` smoke checks in both `ci.yml` (dev after main deploy) and `deploy-prod.yml` (prod after manual deploy) so real Clerk-backed JWT verification, route wiring, and stage env drift are still caught outside local tests.
+- Dev post-deploy `/v1/account/setup` smoke now reads the API base URL from the deploy's `.sst/outputs.json` instead of a hardcoded API Gateway ID, so legitimate API replacement or stage reprovisioning does not create false CI failures. The reusable smoke script now also resolves `PRONTIQ_API` from `.sst/outputs.json` when available.
 - Past-due billing email copy now comes from shared grace-period constants (`14` days total from first failed renewal, `7` days remaining once the subscription is already `past_due`) instead of a hardcoded string in `stripe-billing.ts`.
+- Re-entering paid billing no longer clears retired-billing discovery prematurely. Hashes can now exist in both `REGISTRY#active-keys` and `REGISTRY#retired-billing-keys` until the billing cron confirms historical current/previous-month deltas across the redirect chain are fully drained, preventing revoked or predecessor-only debt from becoming undiscoverable.
 
 ## 2026-04-13
 
