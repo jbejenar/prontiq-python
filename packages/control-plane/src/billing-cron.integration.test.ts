@@ -127,6 +127,18 @@ async function seedRegistry(activeHashes: string[]): Promise<void> {
   );
 }
 
+async function seedRetiredRegistry(activeHashes: string[]): Promise<void> {
+  await ddb.send(
+    new PutCommand({
+      TableName: KEYS_TABLE,
+      Item: {
+        apiKeyHash: "REGISTRY#retired-billing-keys",
+        activeHashes: new Set(activeHashes),
+      },
+    }),
+  );
+}
+
 function makeStripeRecorder(): {
   calls: Array<{
     event_name: string;
@@ -482,5 +494,64 @@ test("billing cron still meters removed products during previous-month grace swe
       }),
     );
     assert.equal(usage.Item?.lastPushedCumulativeCount, 14);
+  });
+});
+
+test("billing cron meters retired hashes until their final delta is drained, then removes them from the retired registry", async () => {
+  await withTemporaryBillingEndpoint("abn.lookup", {
+    creditCost: 2,
+    displayName: "ABN Lookup",
+    familyDisplayName: "ABN API",
+    meterEventName: "prontiq_abn_requests",
+    product: "abn",
+  }, async () => {
+    const now = new Date("2026-04-18T08:00:00.000Z");
+    const hash = "g".repeat(64);
+    await seedKey(makeKey({
+      apiKeyHash: hash,
+      products: ["address"],
+      tier: "free",
+      subscriptionItems: {},
+    }));
+    await seedRetiredRegistry([hash]);
+    await seedUsage(makeUsage({
+      apiKeyHash: hash,
+      lastPushedCumulativeCount: 2,
+      requestCount: 9,
+      scope: "abn#2026-04",
+    }));
+
+    const { calls, stripe } = makeStripeRecorder();
+    const service = createBillingCronService({
+      ddb,
+      keysTableName: KEYS_TABLE,
+      logger: console,
+      stripe,
+      usageTableName: USAGE_TABLE,
+    });
+
+    const firstSummary = await service.handleTick(now);
+    assert.equal(firstSummary.meterEventsSent, 1);
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0]?.payload?.request_count, "7");
+
+    const retiredAfterFirstRun = await ddb.send(
+      new GetCommand({
+        TableName: KEYS_TABLE,
+        Key: { apiKeyHash: "REGISTRY#retired-billing-keys" },
+      }),
+    );
+    assert.deepEqual(Array.from((retiredAfterFirstRun.Item?.activeHashes as Set<string>) ?? []), [hash]);
+
+    const secondSummary = await service.handleTick(new Date("2026-04-18T09:00:00.000Z"));
+    assert.equal(secondSummary.meterEventsSent, 0);
+
+    const retiredAfterDrain = await ddb.send(
+      new GetCommand({
+        TableName: KEYS_TABLE,
+        Key: { apiKeyHash: "REGISTRY#retired-billing-keys" },
+      }),
+    );
+    assert.deepEqual(Array.from((retiredAfterDrain.Item?.activeHashes as Set<string>) ?? []), []);
   });
 });

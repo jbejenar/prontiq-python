@@ -41,7 +41,8 @@ const CURRENT_HASH_SCOPE_TTL_SECONDS = 90 * 24 * 60 * 60;
 const MAX_CHAIN_DEPTH = 10;
 const NEW_HASH_REDIRECT_INDEX = "newHash-redirect-index";
 const REDIRECT_SCOPE = "REDIRECT";
-const REGISTRY_KEY = "REGISTRY#active-keys";
+const ACTIVE_REGISTRY_KEY = "REGISTRY#active-keys";
+const RETIRED_REGISTRY_KEY = "REGISTRY#retired-billing-keys";
 
 let cachedDdb: DynamoDBDocumentClient | undefined;
 let cachedStripe: Stripe | undefined;
@@ -114,17 +115,43 @@ function parseActiveHashes(value: unknown): string[] {
   return [];
 }
 
-async function loadActiveApiKeyHashes(
+async function loadRegistryApiKeyHashes(
   ddb: DynamoDBDocumentClient,
   keysTableName: string,
+  registryKey: string,
 ): Promise<string[]> {
   const response = await ddb.send(
     new GetCommand({
       TableName: keysTableName,
-      Key: { apiKeyHash: REGISTRY_KEY },
+      Key: { apiKeyHash: registryKey },
     }),
   );
   return parseActiveHashes(response.Item?.[ACTIVE_HASHES_ATTRIBUTE]);
+}
+
+async function updateRegistryMembership(
+  ddb: DynamoDBDocumentClient,
+  keysTableName: string,
+  registryKey: string,
+  apiKeyHashes: string[],
+  mode: "add" | "delete",
+): Promise<void> {
+  if (apiKeyHashes.length === 0) {
+    return;
+  }
+  await ddb.send(
+    new UpdateCommand({
+      TableName: keysTableName,
+      Key: { apiKeyHash: registryKey },
+      UpdateExpression: mode === "add" ? "ADD #activeHashes :hashes" : "DELETE #activeHashes :hashes",
+      ExpressionAttributeNames: {
+        "#activeHashes": ACTIVE_HASHES_ATTRIBUTE,
+      },
+      ExpressionAttributeValues: {
+        ":hashes": new Set(apiKeyHashes),
+      },
+    }),
+  );
 }
 
 async function loadKey(
@@ -276,6 +303,51 @@ function discoverProductsForMonth(
     }
   }
   return Array.from(discovered).sort();
+}
+
+function hasOutstandingBillableUsage(
+  currentHash: string,
+  monthKeys: string[],
+  usageRowsByHash: Map<string, Map<string, UsageCounterRecord>>,
+  chain: string[],
+): boolean {
+  const currentUsageRows = usageRowsByHash.get(currentHash);
+  if (!currentUsageRows) {
+    return false;
+  }
+
+  const candidateProducts = new Set<string>();
+  for (const monthKey of monthKeys) {
+    for (const product of discoverProductsForMonth([], usageRowsByHash, chain, monthKey)) {
+      candidateProducts.add(product);
+    }
+  }
+
+  for (const product of candidateProducts) {
+    if (!getMeterEventNameForProduct(product)) {
+      continue;
+    }
+    for (const monthKey of monthKeys) {
+      const scope = getScope(product, monthKey);
+      const currentUsage = currentUsageRows.get(scope);
+      if (
+        typeof currentUsage?.pendingMeterTargetCumulativeCount === "number" ||
+        typeof currentUsage?.pendingMeterEventIdentifier === "string"
+      ) {
+        return true;
+      }
+      const sumRequestCount = chain.reduce((sum, apiKeyHash) => {
+        const usage = usageRowsByHash.get(apiKeyHash)?.get(scope);
+        return sum + (usage?.requestCount ?? 0);
+      }, 0);
+      const currentLastPushed = currentUsage?.lastPushedCumulativeCount ?? 0;
+      if (sumRequestCount > currentLastPushed) {
+        return true;
+      }
+    }
+  }
+
+  return false;
 }
 
 async function clearPendingMeterPush(
@@ -491,10 +563,28 @@ export function createBillingCronService(
       scopesSkipped: 0,
     };
 
-    const activeApiKeyHashes = await loadActiveApiKeyHashes(dependencies.ddb, dependencies.keysTableName);
+    const activeApiKeyHashes = await loadRegistryApiKeyHashes(
+      dependencies.ddb,
+      dependencies.keysTableName,
+      ACTIVE_REGISTRY_KEY,
+    );
+    const retiredApiKeyHashes = await loadRegistryApiKeyHashes(
+      dependencies.ddb,
+      dependencies.keysTableName,
+      RETIRED_REGISTRY_KEY,
+    );
+    const registryStatuses = new Map<string, "active" | "retired">();
+    for (const hash of activeApiKeyHashes) {
+      registryStatuses.set(hash, "active");
+    }
+    for (const hash of retiredApiKeyHashes) {
+      if (!registryStatuses.has(hash)) {
+        registryStatuses.set(hash, "retired");
+      }
+    }
     const monthKeys = getBillingMonthKeys(now);
 
-    for (const apiKeyHash of activeApiKeyHashes) {
+    for (const [apiKeyHash, registryStatus] of registryStatuses) {
       const key = await loadKey(dependencies.ddb, dependencies.keysTableName, apiKeyHash);
       if (!key || !key.active || !key.stripeCustomerId) {
         summary.scopesSkipped += 1;
@@ -574,6 +664,19 @@ export function createBillingCronService(
           }
           summary.meterEventsSent += 1;
         }
+      }
+
+      if (
+        registryStatus === "retired" &&
+        !hasOutstandingBillableUsage(apiKeyHash, monthKeys, usageRowsByHash, chain)
+      ) {
+        await updateRegistryMembership(
+          dependencies.ddb,
+          dependencies.keysTableName,
+          RETIRED_REGISTRY_KEY,
+          [apiKeyHash],
+          "delete",
+        );
       }
     }
 

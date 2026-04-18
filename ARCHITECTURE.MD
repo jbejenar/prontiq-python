@@ -1112,27 +1112,37 @@ PK:   email                string    The suppressed email address
       ttl                  number    90 days for bounces, no TTL for complaints (permanent)
 ```
 
-##### Billing Registry Item (stored in `prontiq-keys`)
+##### Billing Registry Items (stored in `prontiq-keys`)
 
-A single item indexes all billable keys for the hourly Stripe cron.
+Two reserved items index billable keys for the hourly Stripe cron.
 
 ```
 PK:   apiKeyHash           "REGISTRY#active-keys"    (reserved, not a real key hash)
 
       activeHashes         string set                  All BILLABLE apiKeyHash values
+
+PK:   apiKeyHash           "REGISTRY#retired-billing-keys"   (reserved, not a real key hash)
+
+      activeHashes         string set                  Formerly billable apiKeyHash values
+                                                     still waiting for their final
+                                                     current/previous-month Stripe
+                                                     meter delta to be flushed
 ```
 
-Only paid-tier keys. Free keys are active in `prontiq-keys` but absent from the registry.
+`REGISTRY#active-keys` contains currently billable paid-tier keys. `REGISTRY#retired-billing-keys`
+contains hashes that were just downgraded/cancelled out of paid billing but still have
+outstanding or pending meter deltas that must be flushed before billing discovery can stop.
+Free keys are active in `prontiq-keys` but absent from both registries once drained.
 
 | Event | Registry Action |
 |---|---|
 | **UPGRADE** (free → paid) | ADD hash to set |
 | **DOWNGRADE** (paid → paid, e.g. Growth → Starter) | Keep in registry (still billable) — only the `tier` / `quotaPerProduct` / `subscriptionItems` change |
-| **DOWNGRADE to free** / **CANCEL** (`customer.subscription.deleted`) | DELETE hash |
+| **DOWNGRADE to free** / **CANCEL** (`customer.subscription.deleted`) | DELETE hash from `REGISTRY#active-keys`, ADD hash to `REGISTRY#retired-billing-keys` until the hourly cron drains any remaining current/previous-month billable deltas, then DELETE from retired registry |
 | **ROTATE** (if billable) | DELETE old hash + ADD new hash |
 | **REVOKE** (if billable) | DELETE hash |
 
-> **Sharding ceiling:** DynamoDB item-size limit is 400 KiB (409,600 bytes). A 64-char SHA-256 hex hash is ~64 bytes plus string-set overhead. Theoretical maximum is ~6,400 hashes; practical ceiling is ~6,000 billable keys per registry item once attribute-name overhead and set metadata are accounted for. At that scale, shard into `REGISTRY#active-keys#{0..N}` keyed by the first N bits of the hash (trigger: Phase 5).
+> **Sharding ceiling:** DynamoDB item-size limit is 400 KiB (409,600 bytes). A 64-char SHA-256 hex hash is ~64 bytes plus string-set overhead. Theoretical maximum is ~6,400 hashes; practical ceiling is ~6,000 billable keys per registry item once attribute-name overhead and set metadata are accounted for. At that scale, shard both `REGISTRY#active-keys#{0..N}` and `REGISTRY#retired-billing-keys#{0..N}` keyed by the first N bits of the hash (trigger: Phase 5).
 
 ##### Stripe Webhook Completion Marker (stored in `prontiq-keys`)
 
@@ -1455,10 +1465,14 @@ Scheduled Lambda (EventBridge cron, hourly). Targeted reads, not a table scan. *
 
 ```
 Every hour:
-  1. Read REGISTRY#active-keys from prontiq-keys
-     (single item with string set of all BILLABLE apiKeyHashes)
+  1. Read `REGISTRY#active-keys` and `REGISTRY#retired-billing-keys`
+     from prontiq-keys.
+     `active` = currently billable hashes.
+     `retired` = hashes recently downgraded/cancelled out of paid billing
+     but still waiting for their final current/previous-month credit delta
+     to be pushed.
 
-  2. For each apiKeyHash (= "current hash"):
+  2. For each apiKeyHash (= "current hash") in the union of active + retired:
      a. BatchGetItem prontiq-keys for stripeCustomerId + enabled products
 
      b. **Discover full attribution chain via recursive GSI traversal**
@@ -1531,7 +1545,11 @@ Every hour:
         (Conditional on the same pending identifier/target still being
          present so a stale worker cannot overwrite newer state.)
 
-  3. Stripe aggregates meter events per metered Price and invoices at month end.
+  3. If a retired hash has no outstanding/pending current-month or
+     previous-month billable scopes after the sweep, remove it from
+     `REGISTRY#retired-billing-keys`.
+
+  4. Stripe aggregates meter events per metered Price and invoices at month end.
 ```
 
 **Worked example — rotation correctness** (this is the test case that pinned the previous design's bug):
@@ -1770,9 +1788,12 @@ The `/v1/account/keys/create` endpoint (P1C.03):
 3. Query prontiq-keys by orgId → ALL keys
 4. Update each key: tier → "free", products → free list, quotaPerProduct → 10000
 5. Clear stripeSubscriptionId, subscriptionItems, paymentOverdue on each key
-6. DELETE each apiKeyHash from REGISTRY#active-keys
-7. Write DOWNGRADE to prontiq-audit
-8. Return 200
+6. DELETE each apiKeyHash from `REGISTRY#active-keys`
+7. ADD each apiKeyHash to `REGISTRY#retired-billing-keys`
+   (keeps the hash discoverable for the hourly billing cron until the
+    final current/previous-month meter deltas are flushed)
+8. Write DOWNGRADE to prontiq-audit
+9. Return 200
 ```
 
 Stripe is configured with `cancel_at_period_end: true` on user-initiated cancellation. The webhook fires at period end, not at cancellation time.

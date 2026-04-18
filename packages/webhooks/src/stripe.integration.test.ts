@@ -1002,7 +1002,7 @@ test("customer.subscription.updated writes one audit row when billing drift and 
   assert.equal((auditRows[0]?.metadata as Record<string, unknown>)?.billingStateReconciled, true);
 });
 
-test("customer.subscription.deleted downgrades keys and envelope to free and removes registry membership", async () => {
+test("customer.subscription.deleted downgrades keys and envelope to free, removes active billing registry membership, and queues retired billing drain", async () => {
   const orgId = `org_stripe_deleted_${SUFFIX}`;
   const apiKeyHash = `hash_deleted_${SUFFIX}`;
   await ddb.send(new PutCommand({
@@ -1082,4 +1082,9 @@ test("customer.subscription.deleted downgrades keys and envelope to free and rem
 
   const registry = await ddb.send(new GetCommand({ TableName: KEYS_TABLE, Key: { apiKeyHash: "REGISTRY#active-keys" } }));
   assert.deepEqual(Array.from((registry.Item?.activeHashes as Set<string>) ?? []), []);
+
+  const retiredRegistry = await ddb.send(
+    new GetCommand({ TableName: KEYS_TABLE, Key: { apiKeyHash: "REGISTRY#retired-billing-keys" } }),
+  );
+  assert.deepEqual(Array.from((retiredRegistry.Item?.activeHashes as Set<string>) ?? []), [apiKeyHash]);
 });

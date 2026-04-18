@@ -86,6 +86,7 @@ const COMPLETION_MARKER_PREFIX = "WEBHOOK#stripe#";
 const COMPLETION_MARKER_TTL_SECONDS = 7 * 24 * 60 * 60;
 const PROCESSING_LEASE_SECONDS = 5 * 60;
 const REGISTRY_KEY = "REGISTRY#active-keys";
+const RETIRED_BILLING_REGISTRY_KEY = "REGISTRY#retired-billing-keys";
 const REGISTRY_ACTIVE_HASHES = "activeHashes";
 const ORG_ID_INDEX = "orgId-index";
 const BILLING_ACTOR_ID = "stripe-webhook";
@@ -617,6 +618,7 @@ async function setPaymentOverdueState(
 async function updateRegistryMembership(
   ddb: DynamoDBDocumentClient,
   keysTableName: string,
+  registryKey: string,
   apiKeyHashes: string[],
   mode: "add" | "delete",
 ): Promise<void> {
@@ -628,7 +630,7 @@ async function updateRegistryMembership(
   await ddb.send(
     new UpdateCommand({
       TableName: keysTableName,
-      Key: { apiKeyHash: REGISTRY_KEY },
+      Key: { apiKeyHash: registryKey },
       UpdateExpression: updateExpression,
       ExpressionAttributeNames: {
         "#activeHashes": REGISTRY_ACTIVE_HASHES,
@@ -908,8 +910,16 @@ async function processPlanTransition(
   await updateRegistryMembership(
     dependencies.ddb,
     dependencies.keysTableName,
+    REGISTRY_KEY,
     keys.map((key) => key.apiKeyHash),
     "add",
+  );
+  await updateRegistryMembership(
+    dependencies.ddb,
+    dependencies.keysTableName,
+    RETIRED_BILLING_REGISTRY_KEY,
+    keys.map((key) => key.apiKeyHash),
+    "delete",
   );
   await resetUsageFlagsForCurrentMonth(
     dependencies.ddb,
@@ -1054,8 +1064,16 @@ async function processSubscriptionDeleted(
   await updateRegistryMembership(
     dependencies.ddb,
     dependencies.keysTableName,
+    REGISTRY_KEY,
     keys.map((key) => key.apiKeyHash),
     "delete",
+  );
+  await updateRegistryMembership(
+    dependencies.ddb,
+    dependencies.keysTableName,
+    RETIRED_BILLING_REGISTRY_KEY,
+    keys.map((key) => key.apiKeyHash),
+    "add",
   );
   await writeAudit({
     ddb: dependencies.ddb,
