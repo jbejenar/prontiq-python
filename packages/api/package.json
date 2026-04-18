@@ -18,6 +18,8 @@
     "test:integration": "pnpm -w build --filter @prontiq/api... && node --test dist/search/queries.integration.test.js dist/middleware/auth.integration.test.js dist/middleware/redirect-gsi.integration.test.js dist/routes/account.integration.test.js",
     "smoke": "pnpm -w build --filter @prontiq/api... && node dist/scripts/smoke-test.js",
     "smoke:prod": "pnpm -w build --filter @prontiq/api... && PRONTIQ_API=https://api.prontiq.dev node dist/scripts/smoke-test.js",
+    "smoke:account-setup": "pnpm -w build --filter @prontiq/api... && node dist/scripts/smoke-account-setup.js",
+    "smoke:account-setup:prod": "pnpm -w build --filter @prontiq/api... && PRONTIQ_API=https://api.prontiq.dev node dist/scripts/smoke-account-setup.js",
     "migrate:api-keys": "pnpm -w build --filter @prontiq/api... && node dist/scripts/migrate-api-keys.js",
     "rotate:prod-key": "pnpm -w build --filter @prontiq/api... && node dist/scripts/rotate-prod-key.js",
     "lint": "eslint src/",
