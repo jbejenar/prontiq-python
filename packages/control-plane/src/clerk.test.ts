@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { ClerkClient } from "@clerk/backend";
-import { resolvePrimaryEmail } from "./clerk.js";
+import { DEFAULT_ADMIN_ROLES, getAdminRoles, resolvePrimaryEmail } from "./clerk.js";
 
 interface ClerkEmailAddressStub {
   id: string;
@@ -185,4 +185,72 @@ test("transient_failure: Clerk SDK throws non-Error → wrapped into Error, neve
     assert.ok(result.error instanceof Error);
     assert.equal(result.error.message, "raw string failure");
   }
+});
+
+// ─── getAdminRoles ────────────────────────────────────────────────────
+//
+// Org-admin role gate shared between the Clerk webhook (gates on
+// `data.role`) and the JWT-authenticated /v1/account/setup endpoint
+// (gates on the `org_role` claim). Centralising in @prontiq/control-plane
+// means a single CLERK_ADMIN_ROLES env override applies uniformly to
+// both ingress paths — no risk of the two diverging.
+
+function withEnv<T>(key: string, value: string | undefined, fn: () => T): T {
+  const prev = process.env[key];
+  if (value === undefined) {
+    delete process.env[key];
+  } else {
+    process.env[key] = value;
+  }
+  try {
+    return fn();
+  } finally {
+    if (prev === undefined) {
+      delete process.env[key];
+    } else {
+      process.env[key] = prev;
+    }
+  }
+}
+
+test("getAdminRoles: defaults to org:admin + admin when env unset", () => {
+  withEnv("CLERK_ADMIN_ROLES", undefined, () => {
+    const roles = getAdminRoles();
+    assert.deepEqual([...roles].sort(), [...DEFAULT_ADMIN_ROLES].sort());
+  });
+});
+
+test("getAdminRoles: defaults when env is empty string", () => {
+  withEnv("CLERK_ADMIN_ROLES", "", () => {
+    const roles = getAdminRoles();
+    assert.deepEqual([...roles].sort(), [...DEFAULT_ADMIN_ROLES].sort());
+  });
+});
+
+test("getAdminRoles: env override accepts a custom comma-separated set", () => {
+  withEnv("CLERK_ADMIN_ROLES", "owner,principal", () => {
+    const roles = getAdminRoles();
+    assert.deepEqual([...roles].sort(), ["owner", "principal"]);
+  });
+});
+
+test("getAdminRoles: trims whitespace per token", () => {
+  withEnv("CLERK_ADMIN_ROLES", "  owner  ,   principal  ", () => {
+    const roles = getAdminRoles();
+    assert.deepEqual([...roles].sort(), ["owner", "principal"]);
+  });
+});
+
+test("getAdminRoles: whitespace-only env falls back to defaults (operator typo guard)", () => {
+  withEnv("CLERK_ADMIN_ROLES", "   ,   ,   ", () => {
+    const roles = getAdminRoles();
+    assert.deepEqual([...roles].sort(), [...DEFAULT_ADMIN_ROLES].sort());
+  });
+});
+
+test("getAdminRoles: single role override (no commas) works", () => {
+  withEnv("CLERK_ADMIN_ROLES", "owner", () => {
+    const roles = getAdminRoles();
+    assert.deepEqual([...roles], ["owner"]);
+  });
 });

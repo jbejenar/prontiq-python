@@ -17,6 +17,7 @@ Live at `https://api.prontiq.dev`. Docs at `https://docs.prontiq.dev`. TypeScrip
 | Endpoint | Purpose | Auth |
 |---|---|---|
 | `POST /webhooks/clerk` | Clerk `organizationMembership.created` → ORG envelope provisioning (Stripe customer + DDB record + audit row + best-effort welcome email). See `docs/runbooks/clerk-webhook.md`. | Svix signature (no API key) |
+| `POST /v1/account/setup` | Dashboard recovery for org provisioning when the Clerk webhook missed delivery. Idempotent — runs the same `provisionOrg` code path as the webhook. See [`api-reference/account-setup`](https://docs.prontiq.dev/api-reference/account-setup). | Clerk session token (`Authorization: Bearer <jwt>`) |
 
 Future products are roadmap items, not active docs/API surfaces yet.
 
@@ -80,7 +81,7 @@ packages/
 | API            | Hono + @hono/zod-openapi on Lambda (ARM64, Node.js 20) |
 | Search         | OpenSearch 2.19 (managed)                              |
 | API Keys       | DynamoDB-native (`pq_live_` + SHA-256 hash-based lookup; live in prod) |
-| Auth (portal)  | Clerk — webhook live in prod (`POST /webhooks/clerk` provisions org envelope on `organizationMembership.created`); JWT-based account API (P1B.05 PR 3/3) pending |
+| Auth (portal)  | Clerk — webhook live in prod (`POST /webhooks/clerk`) AND JWT-authenticated `POST /v1/account/setup` recovery endpoint live in prod (P1B.05 complete) |
 | Billing        | Stripe customer creation live (via Clerk webhook → control-plane); subscription webhook (P1B.06) and billing cron (P1B.10) pending |
 | Dashboard      | `/account` page — to be rebuilt per ARCHITECTURE.MD §5.9 (P1C) |
 | Docs           | Mintlify at `docs.prontiq.dev` (live)                  |
@@ -95,7 +96,7 @@ See [`ROADMAP.md`](ROADMAP.md) for the full 76-ticket plan.
 | ------- | ------------------------- | ------- | --------- |
 | **P0**  | Infrastructure Foundation | 6       | 6/6       |
 | **P1A** | API Core (Address)        | 13      | 9/13      |
-| **P1B** | Auth & Billing            | 13      | 4/13      |
+| **P1B** | Auth & Billing            | 13      | 5/13      |
 | **P1C** | Dashboard                 | 7       | 0/7       |
 | **P1D** | Docs & SDK                | 5       | 2/5       |
 | **P1E** | Ingestion                 | 6       | 4/6       |
@@ -104,7 +105,7 @@ See [`ROADMAP.md`](ROADMAP.md) for the full 76-ticket plan.
 | **P3**  | LEI + Full Dashboard      | 7       | 0/7       |
 | **P4**  | Shopify + WooCommerce     | 5       | 0/5       |
 | **P5**  | CVE/NVD + Patents         | 4       | 0/4       |
-|         |                           | **76**  | **26/76** |
+|         |                           | **76**  | **27/76** |
 
 ## Commands
 

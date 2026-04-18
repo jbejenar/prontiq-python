@@ -18,5 +18,5 @@ export type {
   WriteAuditResult,
 } from "./audit.js";
 
-export { resolvePrimaryEmail } from "./clerk.js";
+export { resolvePrimaryEmail, getAdminRoles, DEFAULT_ADMIN_ROLES } from "./clerk.js";
 export type { EmailLookupResult, ClerkClient } from "./clerk.js";

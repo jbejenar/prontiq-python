@@ -35,7 +35,22 @@ The Clerk dashboard's webhook configuration points at the dev URL today. The pro
 4. **Clerk dashboard configured**: `organizationMembership.created` event subscribed; signing secret matches the GitHub Environment value.
 5. **Optional — `CLERK_ADMIN_ROLES` GitHub Environment variable** (NOT a secret): Defaults to `"org:admin,admin"`. Override only if your Clerk app uses custom organization roles for the creator. Comma-separated list, e.g. `owner,principal`. Same end-to-end configuration path as the secrets above (Settings → Environments → `dev` / `prod` → Variables).
 
-   To verify the deployed value reached the Lambda: `aws lambda get-function-configuration --function-name $(aws lambda list-functions --region ap-southeast-2 --query 'Functions[?contains(FunctionName, \`prontiq-<stage>-PqClerkWebhook\`)].FunctionName' --output text) --query 'Environment.Variables'`.
+   **Applies to BOTH Lambdas** — the webhook gates on the Svix-signed `data.role` field, and the account-setup endpoint's `clerkAdminOnly()` middleware gates on the JWT `org_role` claim. Both call the same `getAdminRoles()` helper from `@prontiq/control-plane`, which reads this env var. `sst.config.ts` wires the same value into both Lambdas via the shared `controlPlaneEnv()` helper, so a divergence between the two ingress paths is impossible by construction.
+
+   To verify the deployed value reached BOTH Lambdas:
+
+   ```bash
+   for fn in PqClerkWebhook PqAccount; do
+     echo "=== $fn ==="
+     aws lambda get-function-configuration \
+       --function-name $(aws lambda list-functions --region ap-southeast-2 \
+         --query "Functions[?contains(FunctionName, \`prontiq-<stage>-${fn}\`)].FunctionName" \
+         --output text) \
+       --query 'Environment.Variables.CLERK_ADMIN_ROLES'
+   done
+   ```
+
+   Both should print the same value (or both empty for the default).
 6. **User email requirement**: This handler requires the org creator's Clerk user to have a verified primary email address. Phone-only / OAuth-only users without a primary email return 500 `fatal_failure` with `reason: "user_has_no_primary_email"`. Operator fix is to add a primary email in the Clerk dashboard, then "Resend" the failed message.
 
 ## Healthy delivery (golden path)
@@ -132,7 +147,28 @@ Svix still redelivers, but a real fatal will exhaust retries. Then:
 
 ### Manual recovery — webhook never arrived
 
-Rare case where Clerk's webhook delivery system loses the event entirely. The user signs in to `/account` and sees no envelope. The recovery endpoint `POST /v1/account/setup` (PR 3 of P1B.05) runs the same `provisionOrg` service, authenticated via Clerk JWT. Same code path; user-driven instead of webhook-driven.
+Rare case where Clerk's webhook delivery system loses the event entirely. The user signs in to `/account` and sees no envelope. **Recovery: `POST /v1/account/setup`** — Clerk-JWT-authenticated, runs the same `createProvisioningService().provisionOrg(...)` code path as this webhook. Same idempotency invariant: a delayed webhook + a recovery call collapse to one envelope, one Stripe customer, one audit row.
+
+**Operator preconditions** (BOTH dev and prod tenants — these are not caught by the `REQUIRED_WEBHOOK_SECRETS` deploy guard because they're Clerk-dashboard config, not env vars):
+
+1. **Clerk session token JWT template must include BOTH `org_id` AND `org_role`.** Clerk Dashboard → Sessions → Customize session token → add `{ "org_id": "{{org.id}}", "org_role": "{{org.role}}" }` to the template. Missing `org_id` → `400 NO_ACTIVE_ORG`. Missing `org_role` → `400 NO_ROLE_CLAIM`.
+2. **Frontend must call `setActive({ organization })`** before invoking `/v1/account/setup`. Even with the JWT template above, `org_id` and `org_role` are only populated when the session has an active organization.
+
+**Authorization mirrors the webhook's role gate.** The endpoint is admin-only. `org_role` must be in `getAdminRoles()` (defaults to `org:admin` + `admin`; operator-overridable via the `CLERK_ADMIN_ROLES` env var on the `PqAccount` Lambda — same env var the webhook uses). Non-admin callers receive `403 INSUFFICIENT_ROLE` with the role surfaced in `details.role`. This prevents an invited org member from racing a delayed webhook and becoming the recorded `ownerEmail` / Stripe customer for the org.
+
+**Failure modes mirror this webhook's** (`primary_email_unverified`, `user_has_no_primary_email`, `clerk_api_lookup_failed`) — same operator-facing fixes apply (verify primary email in Clerk, add a primary email, retry). Distinct from the webhook: a transient Clerk Backend API failure surfaces as `503 RETRYABLE_FAILURE` (sync HTTP) rather than 500 (which would trigger Svix redelivery in the webhook flow).
+
+**JWT-verifier-side failure modes** (introduced after PR #101 review #3 — Bug 4):
+
+- **`401 INVALID_TOKEN`** — caller fault. Token expired, tampered, signature mismatch, or otherwise bad. Surfaced with `details.reason` carrying the Clerk `TokenVerificationErrorReason` (e.g., `token-expired`, `token-invalid-signature`). User-facing fix: sign in again.
+- **`503 VERIFIER_UNAVAILABLE`** — upstream / network outage. Clerk's JWKS endpoint or Backend API was unreachable, returned 5xx, or rate-limited us. Surfaced with `details.reason` (e.g., `remote-jwk-failed-to-load`, `clerk_api_503`, `clerk_api_429`, `network_error`) and an optional `details.retryAfter` (seconds). The token may be perfectly valid — the dashboard should retry the same request rather than prompt re-auth. **Triggers `PqAccountErrors`** so sustained Clerk outages alarm operators.
+- **`500 INTERNAL_ERROR`** — operator config bug or unknown error. Includes missing `CLERK_SECRET_KEY` env, malformed secret key (Clerk rejects with `invalid-secret-key`), or unrecognised exception class. Triggers `PqAccountErrors`.
+
+The classifier lives in `packages/api/src/middleware/clerk-jwt.ts` (`classifyVerifierError`); the unit-test matrix pins each branch.
+
+**CloudWatch logs**: `/aws/lambda/prontiq-<stage>-PqAccountFunction-<rand>` — search by `request_id` (returned in the `X-Request-Id` response header and the error envelope's `request_id` field).
+
+**CloudWatch alarm**: `PqAccountErrors` — fires on > 5 ApiGateway 5xx responses / 15min on the `ANY /v1/account/{proxy+}` route. **Catches both** unhandled Lambda exceptions (which propagate to API Gateway as 5xx) AND handler-returned 500/503 envelopes (`RETRYABLE_FAILURE`, `FATAL_FAILURE`). Wired to the same `PqIngestAlerts` SNS topic as `PqClerkWebhookErrors`.
 
 ## Replaying a delivery (Clerk dashboard)
 
@@ -147,7 +183,7 @@ Rare case where Clerk's webhook delivery system loses the event entirely. The us
 | Resource | Path |
 |---|---|
 | Handler logs | `/aws/lambda/prontiq-<stage>-PqClerkWebhookFunction-<rand>` |
-| Error alarm | `PqClerkWebhookErrors` (region `ap-southeast-2`) |
+| Error alarm | `PqClerkWebhookErrors` (region `ap-southeast-2`). Tracks `AWS/ApiGateway 5xx` on the `POST /webhooks/clerk` route (covers both unhandled Lambda exceptions AND handler-returned 500s). |
 | Alarm SNS topic | `PqIngestAlerts` (reused for control-plane alerting until P1F.02 lands) |
 
 ## Tear-down (only if the entire webhook surface is being replaced)

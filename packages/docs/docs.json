@@ -46,7 +46,7 @@
         "tab": "API Reference",
         "groups": [
           {
-            "group": "Endpoints",
+            "group": "Address API",
             "pages": [
               "api-reference/autocomplete",
               "api-reference/validate",
@@ -54,6 +54,12 @@
               "api-reference/reverse",
               "api-reference/postcode-lookup",
               "api-reference/suburb-lookup"
+            ]
+          },
+          {
+            "group": "Account",
+            "pages": [
+              "api-reference/account-setup"
             ]
           }
         ]

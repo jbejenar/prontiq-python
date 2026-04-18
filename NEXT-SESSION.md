@@ -5,6 +5,36 @@
 
 ---
 
+## Session 13 — 2026-04-18
+
+**Focus:** P1B.05 PR 3 — split into PR 3a (refactor: move `resolvePrimaryEmail` to `@prontiq/control-plane`) → dev → prod, then PR 3b (`POST /v1/account/setup` recovery endpoint + `PqAccount` Lambda + JWT middleware + Mintlify reference page) → dev → prod. Closes P1B.05 ticket end-to-end.
+
+### Shipped to prod
+
+- **PR #100 — `resolvePrimaryEmail` moved to `@prontiq/control-plane` (P1B.05 PR 3a refactor).** Pure refactor; webhook behaviour identical at runtime. `@clerk/backend` declared explicitly on `@prontiq/control-plane` (no transitive hoisting). 12 new node:test cases covering all 4 `EmailLookupResult` variants. ADR-002 amended with hardening contract #6. Merged 2026-04-18, dev verified, prod-deployed via Deploy to Production workflow run 24595460142 (success).
+- **PR #__ — `POST /v1/account/setup` recovery endpoint (P1B.05 PR 3b, the feature).** Clerk-JWT-authenticated endpoint that reuses `createProvisioningService().provisionOrg(...)` from `@prontiq/control-plane`. New `PqAccount` Lambda separate from address-API `$default` (verified isolation: `packages/api/src/index.ts` carries a doc-comment forbidding `@prontiq/control-plane` and `@clerk/backend` imports — bundle stays minimal). Mounted via `api.route("ANY /v1/account/{proxy+}", accountFn.arn)` with explicit-route precedence in front of `$default`. CORS extended on `PqApi` to allow POST + Authorization (additive — no existing-flow rejection). New `PqAccountErrors` CloudWatch alarm. New Mintlify page `packages/docs/api-reference/account-setup.mdx` documents the operator preconditions (Clerk dashboard JWT template needs `{ "org_id": "{{org.id}}" }` in BOTH dev and prod tenants; frontend must `setActive({ organization })` — neither caught by the deploy guard).
+- **ROADMAP P1B.05 flipped to `complete`** with `completed: 2026-04-18`. P1B counter 4/13 → 5/13; total 26/76 → 27/76.
+
+### Verification evidence
+
+- 5 new control-plane unit tests (clerk.test.ts) + 14 new api unit tests (clerk-jwt.test.ts) + 5 new api integration tests (account.integration.test.ts including all 4 ROADMAP DoD scenarios).
+- `grep -rn "provisionOrg" packages/` shows 1 definition (`@prontiq/control-plane`) + 2 imports (`@prontiq/webhooks/src/clerk.ts`, `@prontiq/api/src/routes/account.ts`) — single source of truth invariant holds.
+- `grep -rn "resolvePrimaryEmail" packages/` shows definition in `@prontiq/control-plane/src/clerk.ts`, re-export from index, and 2 imports (webhook + account route).
+
+### Hard lessons (added to memory / process)
+
+- **Clerk SDK's public `verifyToken` throws on error** (wrapped via `withLegacyReturn` internally), even though the underlying `verifyJwt` returns `JwtReturnType<...>`. Plan assumed try/catch — verified this is correct from the actual `node_modules/.pnpm/@clerk+backend@3.2.12/.../dist/index.d.ts` signature before writing the middleware. Lesson: verify SDK contracts against the installed package, not against memory of the public API.
+- **Lambda bundle isolation is enforced by import graph, not package.json.** Adding `@clerk/backend` + `@prontiq/control-plane` as deps on `@prontiq/api` is fine — SST/esbuild bundles each `handler` export's transitive imports. The doc-comment in `packages/api/src/index.ts` is the actual contract; the package.json deps are just resolution metadata.
+- **Mintlify reference pages don't need to be in the OpenAPI spec.** The address API's `openapi.json` is generated from `packages/api/src/index.ts` only; the account endpoint runs on a separate Lambda + separate `OpenAPIHono` instance. We document `/v1/account/setup` in a hand-written MDX page instead. Trade-off: SDK doesn't get an auto-generated client for the account endpoint (acceptable — SDK is for data API consumers; dashboard developers calling `/v1/account/setup` invoke it directly via `fetch` with their own Clerk SDK).
+
+### Next session should start with
+
+1. Read NEXT-WORK.md.
+2. **P1B.06 — Stripe webhook handler.** Three events to handle (`customer.subscription.updated`, `invoice.payment_succeeded`, `customer.subscription.deleted`) plus the 14-day `past_due` grace flag on `prontiq-keys`. Reuses the audit + provisioning helpers from `@prontiq/control-plane`. ARCH §5.7.3-5 has the per-event spec.
+3. **Operator follow-up that doesn't block next ticket:** SES domain identity verify for `prontiq.dev` in `ap-southeast-2` + sandbox-out request. Steps in `docs/runbooks/clerk-webhook.md`. Until done, both ingress paths log `emailSent: false` (provisioning durability unaffected).
+
+---
+
 ## Session 12 — 2026-04-17 → 2026-04-18
 
 **Focus:** P1B.05 PR 2/3 — Clerk webhook handler. Repo audit; PR 1 (control-plane recovery) → prod; PR 2 (webhook handler) → dev → prod after iterating through 7 review-bot findings + a CI race + a deploy-script architectural rewrite.

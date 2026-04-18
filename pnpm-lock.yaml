@@ -50,6 +50,9 @@ importers:
       '@aws-sdk/lib-dynamodb':
         specifier: ^3.1030.0
         version: 3.1030.0(@aws-sdk/client-dynamodb@3.1030.0)
+      '@clerk/backend':
+        specifier: ^3.2.12
+        version: 3.2.12
       '@hono/node-server':
         specifier: ^1.19.14
         version: 1.19.14(hono@4.12.14)
@@ -59,6 +62,9 @@ importers:
       '@opensearch-project/opensearch':
         specifier: ^3.2.0
         version: 3.5.1
+      '@prontiq/control-plane':
+        specifier: workspace:*
+        version: link:../control-plane
       '@prontiq/shared':
         specifier: workspace:*
         version: link:../shared
@@ -68,6 +74,10 @@ importers:
       zod:
         specifier: ^4.3.6
         version: 4.3.6
+    devDependencies:
+      stripe:
+        specifier: ^22.0.1
+        version: 22.0.1(@types/node@25.6.0)
 
   packages/control-plane:
     dependencies:

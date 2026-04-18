@@ -71,6 +71,51 @@ export async function resolvePrimaryEmail(
   }
 }
 
+/**
+ * Org-admin role gate. Both ingress paths to `provisionOrg` (Clerk
+ * webhook on `organizationMembership.created`, and the JWT-authenticated
+ * `POST /v1/account/setup` recovery endpoint) MUST gate on this so a
+ * non-admin org member can't hijack ownership of the org's envelope by
+ * racing the webhook.
+ *
+ * Clerk's canonical org-creator role identifier as of v3 of the Backend
+ * API is `org:admin`. The bare `admin` token covers (a) pre-namespace
+ * clients still in the wild, (b) custom role sets that re-use the
+ * `admin` slug, and (c) historical integration test fixtures. Operators
+ * can override via the `CLERK_ADMIN_ROLES` env var (comma-separated)
+ * without redeploying code — the env var must be set on BOTH the
+ * webhook Lambda AND the account-setup Lambda for the override to apply
+ * uniformly across both ingress paths.
+ *
+ * Returns the parsed role set with safe-fallback semantics: a
+ * whitespace-only / commas-only override (operator typo) parses to an
+ * empty set, which would silently classify every caller as non-admin
+ * and skip every provisioning event. Falling back to defaults instead
+ * + logging the typo to CloudWatch is the safer behaviour.
+ */
+export const DEFAULT_ADMIN_ROLES = ["org:admin", "admin"] as const;
+
+export function getAdminRoles(): Set<string> {
+  const override = process.env.CLERK_ADMIN_ROLES;
+  if (typeof override !== "string" || override.length === 0) {
+    return new Set(DEFAULT_ADMIN_ROLES);
+  }
+  const parsed = new Set(
+    override
+      .split(",")
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0),
+  );
+  if (parsed.size === 0) {
+    console.warn(
+      "CLERK_ADMIN_ROLES is set but contains no valid role tokens after parsing — falling back to defaults",
+      { rawValue: override, defaultRoles: [...DEFAULT_ADMIN_ROLES] },
+    );
+    return new Set(DEFAULT_ADMIN_ROLES);
+  }
+  return parsed;
+}
+
 // Re-export ClerkClient type so callers can `import { type ClerkClient } from "@prontiq/control-plane"`
 // without adding @clerk/backend to their own deps just for the type.
 export type { ClerkClient };

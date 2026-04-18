@@ -5,6 +5,22 @@ import { requestId } from "./middleware/request-id.js";
 import { auth } from "./middleware/auth.js";
 import { addressRoutes } from "./routes/address.js";
 
+/**
+ * Address-API `$default` Lambda entry point — serves the hot path
+ * (`/v1/health`, `/v1/address/*`).
+ *
+ * **Bundle isolation contract**: do NOT import `@prontiq/control-plane`
+ * or `@clerk/backend` from this file or from any module it
+ * transitively imports. SST/esbuild bundles each Lambda based on the
+ * import graph rooted at its `handler` export — a stray import here
+ * silently bloats the address-API bundle (slower cold-starts +
+ * unrelated dep surface in the hot path).
+ *
+ * Account / Clerk-authenticated routes have their own Lambda entry
+ * point at `account-handler.ts` (the `PqAccount` Function in
+ * `sst.config.ts`). Mount new admin / control-plane endpoints there,
+ * not here.
+ */
 const app = new OpenAPIHono();
 
 // Global middleware

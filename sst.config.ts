@@ -193,8 +193,33 @@ export default $config({
         : undefined,
       cors: {
         allowOrigins: ["*"],
-        allowMethods: ["GET", "OPTIONS"],
-        allowHeaders: ["X-Api-Key", "Content-Type"],
+        // POST + Authorization added in P1B.05 PR 3 for the
+        // /v1/account/setup endpoint. Scope is wider than that one
+        // endpoint — the CORS config on ApiGatewayV2 applies to ALL
+        // routes — but additive: the address API is GET-only with
+        // X-Api-Key auth, so a browser POST or Authorization header
+        // on /v1/address/* is either rejected as 404 (no POST route
+        // declared) or ignored by the auth middleware (which keys
+        // off X-Api-Key only). No existing-flow rejection.
+        allowMethods: ["GET", "POST", "OPTIONS"],
+        allowHeaders: ["X-Api-Key", "Authorization", "Content-Type"],
+      },
+      transform: {
+        // Enable per-route CloudWatch metrics so the
+        // PqClerkWebhookErrors / PqAccountErrors alarms below can
+        // dimension on `Route` and fire only for their own route
+        // group (not on every PqApi 5xx). Without this flag the
+        // default ApiGatewayV2 metrics expose only ApiId + Stage
+        // dimensions, which would force a single combined alarm
+        // for the entire API. Cost is ~$0.09 per million requests
+        // — negligible for our QPS, but the operational clarity
+        // (separate alarms / runbooks per ingress surface) is
+        // worth it.
+        stage: {
+          defaultRouteSettings: {
+            detailedMetricsEnabled: true,
+          },
+        },
       },
     });
 
@@ -697,6 +722,66 @@ export default $config({
     // CNAME setup via Vercel DNS) and request removal from SES sandbox
     // before the welcome email path goes live in prod.
 
+    // ─── Shared env contract for ALL control-plane Lambdas ───
+    //
+    // Both `PqClerkWebhook` (Svix-signed `POST /webhooks/clerk`) and
+    // `PqAccount` (Clerk-JWT-authenticated `POST /v1/account/setup`)
+    // call into `@prontiq/control-plane` and MUST be configured with
+    // the same env so they enforce the same provisioning + auth policy.
+    //
+    // Why a single helper instead of two parallel env blocks:
+    //   - `getAdminRoles()` (in `@prontiq/control-plane`) reads
+    //     `process.env.CLERK_ADMIN_ROLES` at runtime. If one Lambda
+    //     receives the override and the other doesn't, the two ingress
+    //     paths silently disagree on who can provision an org — exactly
+    //     the policy divergence the centralised helper was meant to
+    //     prevent. Bot review on PR #101 (Bug 3) caught this after the
+    //     two env blocks were declared independently.
+    //   - Future env additions for control-plane logic (e.g. a SES
+    //     suppression-table name when P1B.08 ships) need to land on
+    //     BOTH Lambdas. A single source makes it impossible to forget
+    //     one, and a future reviewer can audit the contract by reading
+    //     ten lines instead of diffing two blocks.
+    //
+    // Webhook-only env (currently just `CLERK_WEBHOOK_SECRET`) is
+    // spread on top in the webhook's own declaration.
+    //
+    // Note on AWS_REGION: intentionally NOT set in either Lambda —
+    // it's a Lambda reserved key that the runtime auto-populates with
+    // the function's deploy region. Setting it explicitly causes
+    // CreateFunction to reject the request with
+    // InvalidParameterValueException. The hand-rolled SES SigV4
+    // signing in `provisioning.ts` reads `process.env.AWS_REGION` via
+    // `getOptionalEnv("AWS_REGION", "ap-southeast-2")` — the runtime
+    // value is what it gets.
+    function controlPlaneEnv() {
+      return {
+        // Secrets wrapped with $util.secret() so Pulumi encrypts them
+        // in state, redacts them from previews/diffs, and treats
+        // stack-output references as secret-typed. Read via
+        // readGithubSecret so trailing-newline / whitespace-only
+        // values get normalised consistently with the validation
+        // guard above.
+        CLERK_SECRET_KEY: $util.secret(readGithubSecret("CLERK_SECRET_KEY")),
+        STRIPE_SECRET_KEY: $util.secret(readGithubSecret("STRIPE_SECRET_KEY")),
+        // Non-secret config — plaintext in state is fine.
+        // Consumed by `getAdminRoles()` in `@prontiq/control-plane`,
+        // called by BOTH the webhook handler (gates on the Svix-
+        // signed `data.role` field) AND the account-setup endpoint's
+        // `clerkAdminOnly()` middleware (gates on the JWT `org_role`
+        // claim). Same env var → same role set → no divergence.
+        CLERK_ADMIN_ROLES: process.env.CLERK_ADMIN_ROLES ?? "",
+        KEYS_TABLE_NAME: authKeysTable.name,
+        AUDIT_TABLE_NAME: auditTable.name,
+        SUPPRESSIONS_TABLE_NAME: suppressionsTable.name,
+        WELCOME_EMAIL_FROM:
+          process.env.WELCOME_EMAIL_FROM ?? "noreply@prontiq.dev",
+        PRONTIQ_ACCOUNT_URL:
+          process.env.PRONTIQ_ACCOUNT_URL ?? "https://prontiq.dev/account",
+        PRONTIQ_DOCS_URL: process.env.PRONTIQ_DOCS_URL ?? "https://docs.prontiq.dev",
+      };
+    }
+
     // Declare the Function explicitly (rather than inline in api.route)
     // so the CloudWatch alarm below can reference its name
     // deterministically. With inline specs SST generates names like
@@ -718,56 +803,121 @@ export default $config({
         },
       ],
       environment: {
-        // Secrets wrapped with $util.secret() so Pulumi encrypts them
-        // in state, redacts them from previews/diffs, and treats stack-
-        // output references as secret-typed. Read via readGithubSecret
-        // so trailing-newline / whitespace-only values get normalised
-        // consistently with the validation guard above.
+        ...controlPlaneEnv(),
+        // Webhook-only: the Svix signing secret used to verify the
+        // `POST /webhooks/clerk` body. The account-setup endpoint
+        // doesn't need this — it authenticates via Clerk JWT instead.
         CLERK_WEBHOOK_SECRET: $util.secret(readGithubSecret("CLERK_WEBHOOK_SECRET")),
-        CLERK_SECRET_KEY: $util.secret(readGithubSecret("CLERK_SECRET_KEY")),
-        STRIPE_SECRET_KEY: $util.secret(readGithubSecret("STRIPE_SECRET_KEY")),
-        // Non-secret config — plaintext in state is fine.
-        CLERK_ADMIN_ROLES: process.env.CLERK_ADMIN_ROLES ?? "",
-        KEYS_TABLE_NAME: authKeysTable.name,
-        AUDIT_TABLE_NAME: auditTable.name,
-        SUPPRESSIONS_TABLE_NAME: suppressionsTable.name,
-        WELCOME_EMAIL_FROM: process.env.WELCOME_EMAIL_FROM ?? "noreply@prontiq.dev",
-        PRONTIQ_ACCOUNT_URL:
-          process.env.PRONTIQ_ACCOUNT_URL ?? "https://prontiq.dev/account",
-        PRONTIQ_DOCS_URL: process.env.PRONTIQ_DOCS_URL ?? "https://docs.prontiq.dev",
-        // AWS_REGION is intentionally NOT set here — it's a Lambda
-        // reserved key that the runtime auto-populates with the
-        // function's deploy region. Setting it explicitly causes
-        // CreateFunction to reject the request with
-        // InvalidParameterValueException. The hand-rolled SES SigV4
-        // signing in provisioning.ts reads process.env.AWS_REGION via
-        // getOptionalEnv("AWS_REGION", "ap-southeast-2") — the runtime
-        // value is what it gets.
       },
     });
 
     api.route("POST /webhooks/clerk", clerkWebhookFn.arn);
 
-    // CloudWatch alarm: > 5 errors in 15 minutes on the Clerk webhook
-    // Lambda fires the existing ingestAlerts SNS topic. Webhook DLQ
-    // semantics: ApiGatewayV2 doesn't have a sync-invoke DLQ — the
-    // operational DLQ is Svix's own redelivery queue (visible in the
-    // Clerk dashboard) plus this alarm.
+    // CloudWatch alarm: > 5 5xx responses in 15 minutes on the Clerk
+    // webhook route fires the existing ingestAlerts SNS topic.
+    //
+    // **Why AWS/ApiGateway 5xx instead of AWS/Lambda Errors:** the
+    // handler reports most failure modes by RETURNING json with HTTP
+    // 500 (retryable_failure / fatal_failure / clerk_api_lookup_failed),
+    // not by throwing. From Lambda's perspective those invocations
+    // succeed — `AWS/Lambda Errors` stays at 0. The ApiGateway 5xx
+    // metric counts both unhandled Lambda exceptions (which propagate
+    // to API Gateway as 5xx) AND handler-returned 5xx, so it's a
+    // strict superset. Bot review on PR #101 surfaced this; the same
+    // bug was latent on the existing webhook alarm and is fixed here
+    // alongside the new account alarm.
+    //
+    // Webhook DLQ semantics: ApiGatewayV2 doesn't have a sync-invoke
+    // DLQ — the operational DLQ is Svix's own redelivery queue
+    // (visible in the Clerk dashboard) plus this alarm.
     new aws.cloudwatch.MetricAlarm("PqClerkWebhookErrors", {
       comparisonOperator: "GreaterThanThreshold",
       evaluationPeriods: 1,
       datapointsToAlarm: 1,
-      metricName: "Errors",
-      namespace: "AWS/Lambda",
+      metricName: "5xx",
+      namespace: "AWS/ApiGateway",
       period: 900, // 15 minutes
       statistic: "Sum",
       threshold: 5,
       treatMissingData: "notBreaching",
       alarmDescription:
-        "Clerk webhook Lambda errored more than 5 times in 15 minutes. Check CloudWatch Logs for the handler and the Svix message queue in the Clerk dashboard for stuck deliveries.",
+        "Clerk webhook route returned more than 5 5xx responses in 15 minutes. Catches both unhandled Lambda exceptions AND handler-returned 500s (retryable_failure, fatal_failure, clerk_api_lookup_failed). Check CloudWatch Logs for the handler and the Svix message queue in the Clerk dashboard for stuck deliveries.",
       alarmActions: [ingestAlerts.arn],
       okActions: [ingestAlerts.arn],
-      dimensions: { FunctionName: clerkWebhookFn.name },
+      dimensions: {
+        ApiId: api.nodes.api.id,
+        Stage: "$default",
+        Route: "POST /webhooks/clerk",
+      },
+    });
+
+    // ─── Account-handler Lambda (P1B.05 PR 3): POST /v1/account/setup ───
+    //
+    // Same control-plane env contract as PqClerkWebhook — see the
+    // controlPlaneEnv() helper above. Both Lambdas share the same
+    // CLERK_ADMIN_ROLES override (so the admin-role policy is
+    // uniform across both ingress paths), the same DDB table names,
+    // the same Stripe + Clerk Backend API secrets, etc. Webhook adds
+    // CLERK_WEBHOOK_SECRET on top; this Lambda doesn't need it
+    // (authenticates via Clerk JWT instead of Svix signature).
+    //
+    // Separate Lambda from the address-API $default so the hot path
+    // (autocomplete / validate) doesn't inherit the @clerk/backend +
+    // @prontiq/control-plane bundle. Mounted on the same ApiGatewayV2
+    // via an explicit route below — explicit-route precedence catches
+    // /v1/account/* before $default. NO CLERK_WEBHOOK_SECRET — the
+    // account endpoint authenticates via Clerk JWT, not Svix
+    // signature. CLERK_ADMIN_ROLES IS shared (via controlPlaneEnv())
+    // so any custom-role override applies uniformly to both this
+    // Lambda's clerkAdminOnly() gate and the webhook's role gate.
+    // The existing REQUIRED_WEBHOOK_SECRETS guard above validates the
+    // two secrets this Lambda needs (CLERK_SECRET_KEY +
+    // STRIPE_SECRET_KEY) for dev/prod stages.
+    const accountFn = new sst.aws.Function("PqAccount", {
+      handler: "packages/api/src/account-handler.handler",
+      architecture: "arm64",
+      runtime: "nodejs24.x",
+      memory: "512 MB",
+      timeout: "30 seconds",
+      link: [authKeysTable, auditTable, suppressionsTable],
+      permissions: [
+        {
+          actions: ["ses:SendEmail", "ses:SendRawEmail"],
+          resources: [
+            `arn:aws:ses:${AWS_REGION}:${AWS_ACCOUNT_ID}:identity/prontiq.dev`,
+          ],
+        },
+      ],
+      environment: controlPlaneEnv(),
+    });
+
+    api.route("ANY /v1/account/{proxy+}", accountFn.arn);
+
+    // Same shape as PqClerkWebhookErrors above (AWS/ApiGateway 5xx)
+    // for the same reason: the account handler returns 500/503 as JSON
+    // envelopes for retryable/fatal failures and AWS/Lambda Errors
+    // would miss those. The Resource dimension scopes the alarm to the
+    // account route group so a webhook 5xx doesn't trigger this alarm
+    // (and vice-versa) — separate operator runbooks for each surface.
+    new aws.cloudwatch.MetricAlarm("PqAccountErrors", {
+      comparisonOperator: "GreaterThanThreshold",
+      evaluationPeriods: 1,
+      datapointsToAlarm: 1,
+      metricName: "5xx",
+      namespace: "AWS/ApiGateway",
+      period: 900, // 15 minutes
+      statistic: "Sum",
+      threshold: 5,
+      treatMissingData: "notBreaching",
+      alarmDescription:
+        "Account route (/v1/account/*) returned more than 5 5xx responses in 15 minutes. Catches unhandled Lambda exceptions AND handler-returned 500/503 (RETRYABLE_FAILURE, FATAL_FAILURE). Check CloudWatch Logs for the PqAccount Lambda.",
+      alarmActions: [ingestAlerts.arn],
+      okActions: [ingestAlerts.arn],
+      dimensions: {
+        ApiId: api.nodes.api.id,
+        Stage: "$default",
+        Route: "ANY /v1/account/{proxy+}",
+      },
     });
 
     return {

@@ -1,0 +1,462 @@
+/**
+ * `POST /v1/account/setup` end-to-end integration test (P1B.05 PR 3 DoD).
+ *
+ * Exercises the full request → middleware → route → provisioning →
+ * DDB stack against a real DDB Local with a stubbed Stripe + stubbed
+ * Clerk Backend client + stubbed JWT verifier. Covers the four DoD
+ * scenarios at ROADMAP.md:1502-1507:
+ *   (a) Fresh org → 201 + envelope + audit row
+ *   (b) Replay → 200 zero side-effects (idempotency)
+ *   (c) DDB transient on first attempt → retry succeeds; exactly one
+ *       Stripe customer (idempotency-key reuse) + one envelope
+ *   (d) `grep -rn "provisionOrg" packages/` shows webhook + account
+ *       route + control-plane definition only (verified out-of-band
+ *       in the PR description, not asserted here)
+ *
+ * Run locally:
+ *   docker run -p 8000:8000 amazon/dynamodb-local:2.5.2
+ *   pnpm --filter @prontiq/api test:integration
+ *
+ * In CI: runs as a service container (see .github/workflows/ci.yml).
+ */
+import test, { before, after } from "node:test";
+import assert from "node:assert/strict";
+import {
+  DynamoDBClient,
+  CreateTableCommand,
+  DeleteTableCommand,
+  DescribeTableCommand,
+} from "@aws-sdk/client-dynamodb";
+import {
+  DynamoDBDocumentClient,
+  GetCommand,
+  QueryCommand,
+} from "@aws-sdk/lib-dynamodb";
+import { OpenAPIHono } from "@hono/zod-openapi";
+import type Stripe from "stripe";
+import type { ClerkClient } from "@clerk/backend";
+import { createProvisioningService, type EmailSender } from "@prontiq/control-plane";
+import { clerkAdminOnly, clerkJwt, type ClerkVerifier } from "../middleware/clerk-jwt.js";
+import { requestId } from "../middleware/request-id.js";
+import { createAccountRoutes } from "./account.js";
+
+const DDB_URL = process.env.DYNAMODB_TEST_URL ?? "http://localhost:8000";
+const SUFFIX = Date.now().toString();
+const KEYS_TABLE = `prontiq-keys-test-${SUFFIX}`;
+const AUDIT_TABLE = `prontiq-audit-test-${SUFFIX}`;
+
+const ddbRaw = new DynamoDBClient({
+  endpoint: DDB_URL,
+  region: "ap-southeast-2",
+  credentials: { accessKeyId: "test", secretAccessKey: "test" },
+});
+const ddb = DynamoDBDocumentClient.from(ddbRaw);
+
+before(async () => {
+  await ddbRaw.send(
+    new CreateTableCommand({
+      TableName: KEYS_TABLE,
+      AttributeDefinitions: [
+        { AttributeName: "apiKeyHash", AttributeType: "S" },
+        { AttributeName: "orgId", AttributeType: "S" },
+      ],
+      KeySchema: [{ AttributeName: "apiKeyHash", KeyType: "HASH" }],
+      GlobalSecondaryIndexes: [
+        {
+          IndexName: "orgId-index",
+          KeySchema: [{ AttributeName: "orgId", KeyType: "HASH" }],
+          Projection: { ProjectionType: "ALL" },
+        },
+      ],
+      BillingMode: "PAY_PER_REQUEST",
+    }),
+  );
+  await ddbRaw.send(
+    new CreateTableCommand({
+      TableName: AUDIT_TABLE,
+      AttributeDefinitions: [
+        { AttributeName: "orgId", AttributeType: "S" },
+        { AttributeName: "timestamp#eventId", AttributeType: "S" },
+      ],
+      KeySchema: [
+        { AttributeName: "orgId", KeyType: "HASH" },
+        { AttributeName: "timestamp#eventId", KeyType: "RANGE" },
+      ],
+      BillingMode: "PAY_PER_REQUEST",
+    }),
+  );
+  for (const tableName of [KEYS_TABLE, AUDIT_TABLE]) {
+    for (let i = 0; i < 20; i++) {
+      const { Table } = await ddbRaw.send(new DescribeTableCommand({ TableName: tableName }));
+      if (Table?.TableStatus === "ACTIVE") break;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+  }
+});
+
+after(async () => {
+  await ddbRaw.send(new DeleteTableCommand({ TableName: KEYS_TABLE }));
+  await ddbRaw.send(new DeleteTableCommand({ TableName: AUDIT_TABLE }));
+});
+
+interface ClerkUserStub {
+  primaryEmailAddressId: string;
+  emailAddresses: Array<{
+    id: string;
+    emailAddress: string;
+    verification: { status: string };
+  }>;
+}
+
+function makeClerkClientStub(user: ClerkUserStub): ClerkClient {
+  return {
+    users: {
+      async getUser() {
+        return user;
+      },
+    },
+  } as unknown as ClerkClient;
+}
+
+const VERIFIED_USER: ClerkUserStub = {
+  primaryEmailAddressId: "idn_primary",
+  emailAddresses: [
+    { id: "idn_primary", emailAddress: "owner@example.com", verification: { status: "verified" } },
+  ],
+};
+
+interface StripeStubControl {
+  stripe: Stripe;
+  callCount: () => number;
+  resetCallCount: () => void;
+}
+
+function makeStripeStub(idCounter: { value: number }): StripeStubControl {
+  let calls = 0;
+  const stripe = {
+    customers: {
+      async create() {
+        calls += 1;
+        idCounter.value += 1;
+        return { id: `cus_acct_${idCounter.value}` };
+      },
+    },
+  } as unknown as Stripe;
+  return {
+    stripe,
+    callCount: () => calls,
+    resetCallCount: () => {
+      calls = 0;
+    },
+  };
+}
+
+const noopEmail: EmailSender = async () => true;
+const noopLogger = { error: () => {}, warn: () => {} };
+
+interface BuildAppOpts {
+  orgId: string;
+  userId?: string;
+  /**
+   * Caller's org role embedded in the verified JWT. Defaults to
+   * `org:admin` so happy-path tests work unchanged. Pass `org:member`
+   * (or any non-admin string) to exercise the clerkAdminOnly() gate.
+   * Pass `null` to omit the org_role claim entirely (operator JWT-
+   * template gap scenario).
+   */
+  orgRole?: string | null;
+  stripe: Stripe;
+  clerkClient: ClerkClient;
+  ddbOverride?: DynamoDBDocumentClient;
+}
+
+function buildApp(opts: BuildAppOpts) {
+  const verifier: ClerkVerifier = async () => {
+    const claims: Record<string, unknown> = {
+      sub: opts.userId ?? "user_acct_test",
+      org_id: opts.orgId,
+    };
+    const role = opts.orgRole === undefined ? "org:admin" : opts.orgRole;
+    if (role !== null) {
+      claims.org_role = role;
+    }
+    return claims;
+  };
+
+  const service = createProvisioningService({
+    ddb: opts.ddbOverride ?? ddb,
+    keysTableName: KEYS_TABLE,
+    auditTableName: AUDIT_TABLE,
+    stripe: opts.stripe,
+    sendWelcomeEmail: noopEmail,
+    logger: noopLogger,
+    sleep: async () => {},
+  });
+
+  const accountRoutes = createAccountRoutes({
+    clerkClient: opts.clerkClient,
+    service,
+  });
+
+  const app = new OpenAPIHono();
+  app.use("*", requestId());
+  app.onError((err, c) => {
+    return c.json(
+      {
+        error: {
+          code: "INTERNAL_ERROR",
+          message: err.message,
+          status: 500,
+          request_id: c.get("requestId"),
+        },
+      },
+      500,
+    );
+  });
+  // Production stack mounts BOTH clerkJwt and clerkAdminOnly on
+  // /v1/account/* (see account-handler.ts). The integration test
+  // mirrors that exactly so the admin-role gate is exercised end-to-
+  // end alongside the JWT verification.
+  app.use("/v1/account/*", clerkJwt({ verifier }));
+  app.use("/v1/account/*", clerkAdminOnly());
+  app.route("/v1/account", accountRoutes);
+  return app;
+}
+
+async function callSetup(app: OpenAPIHono): Promise<{ status: number; body: Record<string, unknown> }> {
+  const res = await app.request("/v1/account/setup", {
+    method: "POST",
+    headers: { Authorization: "Bearer good_token" },
+  });
+  const body = (await res.json()) as Record<string, unknown>;
+  return { status: res.status, body };
+}
+
+test("DoD scenario (a): fresh org → 201 created + envelope + audit row", async () => {
+  const orgId = `org_acct_a_${SUFFIX}`;
+  const counter = { value: 0 };
+  const { stripe } = makeStripeStub(counter);
+  const app = buildApp({ orgId, stripe, clerkClient: makeClerkClientStub(VERIFIED_USER) });
+
+  const { status, body } = await callSetup(app);
+  assert.equal(status, 201);
+  assert.equal(body.status, "created");
+  assert.equal(typeof body.stripeCustomerId, "string");
+  assert.match(body.stripeCustomerId as string, /^cus_acct_/);
+
+  const envelope = await ddb.send(
+    new GetCommand({ TableName: KEYS_TABLE, Key: { apiKeyHash: `ORG#${orgId}` } }),
+  );
+  assert.ok(envelope.Item, "envelope must be present in keys table");
+  assert.equal(envelope.Item?.tier, "free");
+  assert.equal(envelope.Item?.ownerEmail, "owner@example.com");
+  assert.equal(envelope.Item?.hasFirstKey, false);
+
+  const auditRows = await ddb.send(
+    new QueryCommand({
+      TableName: AUDIT_TABLE,
+      KeyConditionExpression: "orgId = :o",
+      ExpressionAttributeValues: { ":o": orgId },
+    }),
+  );
+  assert.equal(auditRows.Count, 1, "exactly one audit row written");
+  assert.equal(auditRows.Items?.[0]?.action, "ORG_PROVISIONED");
+  assert.equal(auditRows.Items?.[0]?.actorId, "user_acct_test");
+  const metadata = auditRows.Items?.[0]?.metadata as Record<string, unknown> | undefined;
+  assert.equal(metadata?.source, "account-setup");
+});
+
+test("DoD scenario (b): replay → 200 already_exists + zero new side-effects (idempotency)", async () => {
+  const orgId = `org_acct_b_${SUFFIX}`;
+  const counter = { value: 0 };
+  const { stripe, callCount } = makeStripeStub(counter);
+  const app = buildApp({ orgId, stripe, clerkClient: makeClerkClientStub(VERIFIED_USER) });
+
+  const first = await callSetup(app);
+  assert.equal(first.status, 201);
+  assert.equal(callCount(), 1, "first call creates one Stripe customer");
+
+  const replay = await callSetup(app);
+  assert.equal(replay.status, 200);
+  assert.equal(replay.body.status, "already_exists");
+  assert.equal(replay.body.stripeCustomerId, first.body.stripeCustomerId);
+  assert.equal(callCount(), 1, "replay MUST NOT create a second Stripe customer");
+
+  const auditRows = await ddb.send(
+    new QueryCommand({
+      TableName: AUDIT_TABLE,
+      KeyConditionExpression: "orgId = :o",
+      ExpressionAttributeValues: { ":o": orgId },
+    }),
+  );
+  assert.equal(auditRows.Count, 1, "no new audit rows on replay");
+});
+
+test("DoD scenario (c): DDB transient on first attempt → retry succeeds; exactly 1 Stripe customer + 1 envelope", async () => {
+  const orgId = `org_acct_c_${SUFFIX}`;
+  const counter = { value: 0 };
+  const { stripe, callCount } = makeStripeStub(counter);
+
+  // Wrap the doc client to inject a transient TransactWrite failure
+  // on the FIRST TransactWriteItems call only. Subsequent calls fall
+  // through to the real DDB Local. The provisioning state machine's
+  // retry loop (with the deterministic Stripe idempotency-key) must
+  // recover without a second Stripe customer creation.
+  let transactWriteAttempts = 0;
+  const flakeyDdb = new Proxy(ddb, {
+    get(target, prop, receiver) {
+      if (prop === "send") {
+        return async (command: { constructor: { name: string } }) => {
+          if (command.constructor.name === "TransactWriteCommand") {
+            transactWriteAttempts += 1;
+            if (transactWriteAttempts === 1) {
+              const err = new Error("ProvisionedThroughputExceededException simulated") as Error & {
+                name: string;
+              };
+              err.name = "ProvisionedThroughputExceededException";
+              throw err;
+            }
+          }
+          return target.send(command as never);
+        };
+      }
+      return Reflect.get(target, prop, receiver);
+    },
+  });
+
+  const app = buildApp({
+    orgId,
+    stripe,
+    clerkClient: makeClerkClientStub(VERIFIED_USER),
+    ddbOverride: flakeyDdb,
+  });
+
+  const result = await callSetup(app);
+  assert.equal(result.status, 201, "retry must succeed after the simulated transient");
+  assert.equal(callCount(), 1, "Stripe customer created exactly once across both attempts (idempotency-key reuse)");
+  assert.ok(transactWriteAttempts >= 2, "TransactWrite was retried at least once after the transient");
+
+  const envelope = await ddb.send(
+    new GetCommand({ TableName: KEYS_TABLE, Key: { apiKeyHash: `ORG#${orgId}` } }),
+  );
+  assert.ok(envelope.Item, "exactly one envelope present after retry");
+});
+
+test("middleware integration: missing Authorization → 401 INVALID_TOKEN (no provisioning attempted)", async () => {
+  const orgId = `org_acct_missing_auth_${SUFFIX}`;
+  const counter = { value: 0 };
+  const { stripe, callCount } = makeStripeStub(counter);
+  const app = buildApp({ orgId, stripe, clerkClient: makeClerkClientStub(VERIFIED_USER) });
+
+  const res = await app.request("/v1/account/setup", { method: "POST" });
+  assert.equal(res.status, 401);
+  const body = (await res.json()) as { error: { code: string } };
+  assert.equal(body.error.code, "INVALID_TOKEN");
+  assert.equal(callCount(), 0, "no Stripe customer creation when auth fails");
+
+  const envelope = await ddb.send(
+    new GetCommand({ TableName: KEYS_TABLE, Key: { apiKeyHash: `ORG#${orgId}` } }),
+  );
+  assert.equal(envelope.Item, undefined, "no envelope written when auth fails");
+});
+
+test("not_verified email → 500 fatal_failure with primary_email_unverified reason (no provisioning attempted)", async () => {
+  const orgId = `org_acct_unverif_${SUFFIX}`;
+  const counter = { value: 0 };
+  const { stripe, callCount } = makeStripeStub(counter);
+  const unverifiedUser: ClerkUserStub = {
+    primaryEmailAddressId: "idn_unv",
+    emailAddresses: [
+      { id: "idn_unv", emailAddress: "typo@exmaple.com", verification: { status: "unverified" } },
+    ],
+  };
+  const app = buildApp({
+    orgId,
+    stripe,
+    clerkClient: makeClerkClientStub(unverifiedUser),
+  });
+
+  const { status, body } = await callSetup(app);
+  assert.equal(status, 500);
+  const error = body.error as { code: string; details: { reason: string; verificationStatus: string } };
+  assert.equal(error.code, "FATAL_FAILURE");
+  assert.equal(error.details.reason, "primary_email_unverified");
+  assert.equal(error.details.verificationStatus, "unverified");
+  assert.equal(callCount(), 0, "MUST NOT forward unverified email to Stripe");
+
+  const envelope = await ddb.send(
+    new GetCommand({ TableName: KEYS_TABLE, Key: { apiKeyHash: `ORG#${orgId}` } }),
+  );
+  assert.equal(envelope.Item, undefined, "no envelope written for unverified primary email");
+});
+
+test("admin-gate: non-admin org member (org_role: org:member) → 403 INSUFFICIENT_ROLE; zero side-effects (Bug 1 regression)", async () => {
+  // Bot review PR #101 Bug 1: without the clerkAdminOnly() gate, an
+  // invited org:member could race a delayed Clerk webhook and become
+  // the recorded ownerEmail / Stripe customer / welcome-email
+  // recipient for the org. This regression test pins the fix: an
+  // org:member calling the recovery endpoint receives 403 with NO
+  // Stripe call and NO envelope write.
+  const orgId = `org_acct_member_${SUFFIX}`;
+  const counter = { value: 0 };
+  const { stripe, callCount } = makeStripeStub(counter);
+  const app = buildApp({
+    orgId,
+    orgRole: "org:member",
+    stripe,
+    clerkClient: makeClerkClientStub(VERIFIED_USER),
+  });
+
+  const { status, body } = await callSetup(app);
+  assert.equal(status, 403);
+  const error = body.error as { code: string; status: number; details: { role: string } };
+  assert.equal(error.code, "INSUFFICIENT_ROLE");
+  assert.equal(error.status, 403);
+  assert.equal(error.details.role, "org:member");
+  assert.equal(callCount(), 0, "MUST NOT create a Stripe customer for non-admin caller");
+
+  const envelope = await ddb.send(
+    new GetCommand({ TableName: KEYS_TABLE, Key: { apiKeyHash: `ORG#${orgId}` } }),
+  );
+  assert.equal(envelope.Item, undefined, "no envelope written when admin gate rejects");
+});
+
+test("admin-gate: missing org_role claim → 400 NO_ROLE_CLAIM; zero side-effects (operator JWT-template gap)", async () => {
+  const orgId = `org_acct_missing_role_${SUFFIX}`;
+  const counter = { value: 0 };
+  const { stripe, callCount } = makeStripeStub(counter);
+  const app = buildApp({
+    orgId,
+    orgRole: null, // omits the claim entirely
+    stripe,
+    clerkClient: makeClerkClientStub(VERIFIED_USER),
+  });
+
+  const { status, body } = await callSetup(app);
+  assert.equal(status, 400);
+  const error = body.error as { code: string; message: string };
+  assert.equal(error.code, "NO_ROLE_CLAIM");
+  assert.match(error.message, /JWT template/, "operator-helpful message");
+  assert.equal(callCount(), 0);
+
+  const envelope = await ddb.send(
+    new GetCommand({ TableName: KEYS_TABLE, Key: { apiKeyHash: `ORG#${orgId}` } }),
+  );
+  assert.equal(envelope.Item, undefined);
+});
+
+test("admin-gate: bare 'admin' role (legacy default) → 200 (matches webhook's role policy)", async () => {
+  const orgId = `org_acct_legacy_admin_${SUFFIX}`;
+  const counter = { value: 0 };
+  const { stripe } = makeStripeStub(counter);
+  const app = buildApp({
+    orgId,
+    orgRole: "admin",
+    stripe,
+    clerkClient: makeClerkClientStub(VERIFIED_USER),
+  });
+
+  const { status, body } = await callSetup(app);
+  assert.equal(status, 201, "bare 'admin' is in DEFAULT_ADMIN_ROLES — same as webhook");
+  assert.equal(body.status, "created");
+});

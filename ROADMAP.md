@@ -23,7 +23,7 @@
 | --------- | -------------------------- | ------- | ---------- | ----------- |
 | **P0**    | Infrastructure Foundation  | 6       | 6/6 ✅     | Week 1      |
 | **P1A**   | API Core (Address)         | 13      | 9/13       | Weeks 2-3   |
-| **P1B**   | Auth & Billing             | 13      | 4/13       | Weeks 3-4   |
+| **P1B**   | Auth & Billing             | 13      | 5/13       | Weeks 3-4   |
 | **P1C**   | Dashboard                  | 7       | 0/7        | Weeks 4-5   |
 | **P1D**   | Docs & SDK                 | 5       | 2/5        | Week 5      |
 | **P1E**   | Ingestion (Phase 1)        | 6       | 4/6        | Week 6      |
@@ -32,7 +32,7 @@
 | **P3**    | GLEIF/LEI + Full Dashboard | 7       | 0/7        | Weeks 11-13 |
 | **P4**    | Shopify + WooCommerce      | 5       | 0/5        | Weeks 14-17 |
 | **P5**    | CVE/NVD + Patents          | 4       | 0/4        | Weeks 18-21 |
-| **Total** |                            | **76**  | **26/76**  |             |
+| **Total** |                            | **76**  | **27/76**  |             |
 
 ---
 
@@ -1440,15 +1440,13 @@ Live today is a single `ApiKeyTable` with raw-key PK and nested `usage: {product
 ```yaml
 id: P1B.05
 title: Clerk Webhook Handler (Provisioning)
-status: in-progress
+status: complete
 priority: p0-critical
 epic: P1B
 persona: [api-consumer]
 depends_on: [P1B.01, P1B.02, P1B.03, P1B.04]
-completed: null
+completed: 2026-04-18
 ```
-
-> **Status note (2026-04-18):** PR 2 of 3 (the webhook handler itself) is **live in dev + prod** as of `a8f181b` / prod deploy run 24594121766. Verified end-to-end on real Svix traffic in dev — `org_3CTU4Oh1XTqVdEGcyTBGqRWujCm` provisioned with Stripe customer `cus_UM5zw8xl8HgS9n`, idempotency invariant proven across 5 deliveries (1 envelope + 1 audit row). Prod smoke-tested with non-admin `org:member` payload (correctly skipped). Ticket remains `in-progress` because the recovery endpoint (PR 3 of 3 — see `##### Recovery Endpoint` section below) is still pending. Will flip to `complete` when PR 3 ships.
 
 #### User Story
 
@@ -1500,13 +1498,13 @@ This ticket covers only the webhook side. P1C.03 covers the user-driven key crea
 
 ##### Recovery Endpoint
 
-- [ ] Implement `POST /v1/account/setup` (Clerk-authenticated). Idempotent. If `ORG#{orgId}` exists → 200 (no side effects). If missing → run the same Stripe-customer-create + ORG-envelope-PutItem flow as the webhook handler (factored into a shared service).
+- [x] Implement `POST /v1/account/setup` (Clerk-authenticated). Idempotent. If `ORG#{orgId}` exists → 200 (no side effects). If missing → run the same Stripe-customer-create + ORG-envelope-PutItem flow as the webhook handler (factored into a shared service).
   - `Verify:` **Route-level integration tests** (no UI dependency — UI is owned by P1C.03):
     - (a) Call `POST /v1/account/setup` with a Clerk-authenticated test principal whose ORG envelope does not exist → 201 + envelope created + audit row
     - (b) Call same endpoint twice in a row → second returns 200 with no DDB writes (idempotent)
     - (c) Inject Stripe-create success then DDB failure on first attempt → retry succeeds; verify exactly 1 Stripe customer (Idempotency-Key reuse) and 1 ORG envelope
     - (d) Verify both the webhook handler AND `/setup` endpoint import from the same shared service
-  - `Evidence:` All four assertions pass; `grep -rn "provisionOrg\|provisionEnvelope" packages/` shows webhook + setup route + nothing else
+  - `Evidence:` `packages/api/src/routes/account.integration.test.ts` covers (a), (b), (c) against DDB Local with stubbed Stripe + Clerk + JWT verifier. (d) verified via `grep -rn "provisionOrg" packages/` showing 1 definition (`@prontiq/control-plane/src/provisioning.ts`) + 2 imports (`@prontiq/webhooks/src/clerk.ts`, `@prontiq/api/src/routes/account.ts`). `resolvePrimaryEmail` lives in `@prontiq/control-plane` and is shared by both consumers (PR 3a refactor, 2026-04-18). New `PqAccount` Lambda separate from address-API `$default` so the hot path bundle stays minimal; mounted via `api.route("ANY /v1/account/{proxy+}", accountFn.arn)` with explicit-route precedence in front of `$default`. `PqAccountErrors` CloudWatch alarm wired to the existing `PqIngestAlerts` SNS topic.
   - `Note:` UI-level verification (the `/account` page detecting missing envelope and rendering the "Set up your account" CTA that calls this endpoint) lives in **P1C.03 DoD** — not here, because P1B.05 ships before any UI work and shouldn't depend on dashboard rendering.
 
 #### Scope

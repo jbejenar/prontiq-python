@@ -14,8 +14,8 @@
   "scripts": {
     "build": "node ../../scripts/ts-package-build.mjs build",
     "typecheck": "tsc --noEmit",
-    "test": "pnpm -w build --filter @prontiq/api... && node --test dist/search/queries.test.js dist/scripts/migrate-api-keys.test.js dist/scripts/rotate-prod-key.test.js",
-    "test:integration": "pnpm -w build --filter @prontiq/api... && node --test dist/search/queries.integration.test.js dist/middleware/auth.integration.test.js dist/middleware/redirect-gsi.integration.test.js",
+    "test": "pnpm -w build --filter @prontiq/api... && node --test dist/search/queries.test.js dist/scripts/migrate-api-keys.test.js dist/scripts/rotate-prod-key.test.js dist/middleware/clerk-jwt.test.js",
+    "test:integration": "pnpm -w build --filter @prontiq/api... && node --test dist/search/queries.integration.test.js dist/middleware/auth.integration.test.js dist/middleware/redirect-gsi.integration.test.js dist/routes/account.integration.test.js",
     "smoke": "pnpm -w build --filter @prontiq/api... && node dist/scripts/smoke-test.js",
     "smoke:prod": "pnpm -w build --filter @prontiq/api... && PRONTIQ_API=https://api.prontiq.dev node dist/scripts/smoke-test.js",
     "migrate:api-keys": "pnpm -w build --filter @prontiq/api... && node dist/scripts/migrate-api-keys.js",
@@ -26,11 +26,16 @@
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.1030.0",
     "@aws-sdk/lib-dynamodb": "^3.1030.0",
+    "@clerk/backend": "^3.2.12",
     "@hono/node-server": "^1.19.14",
     "@hono/zod-openapi": "^1.3.0",
     "@opensearch-project/opensearch": "^3.2.0",
+    "@prontiq/control-plane": "workspace:*",
     "@prontiq/shared": "workspace:*",
     "hono": "^4.12.14",
     "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "stripe": "^22.0.1"
   }
 }

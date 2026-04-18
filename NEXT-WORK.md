@@ -1,9 +1,9 @@
 # NEXT-WORK.md — Active Sprint
 
 > Extracted from ROADMAP.md. This is what agents should work on NOW.
-> Last updated: 2026-04-18 (Session 12)
+> Last updated: 2026-04-18 (Session 13)
 
-## Current Phase: Control-plane provisioning live in prod; next backlog selection
+## Current Phase: P1B.05 complete; selecting next P1B ticket
 
 ### What's Live
 
@@ -12,6 +12,7 @@
 | API | `https://api.prontiq.dev` | ✅ 6 endpoints, 15M docs, custom domain |
 | Docs | `https://docs.prontiq.dev` | ✅ Mintlify Luma theme, OpenAPI playground |
 | Clerk webhook | `https://api.prontiq.dev/webhooks/clerk` | ✅ verifies Svix sig, provisions ORG envelope on `organizationMembership.created` (admin role) |
+| Account setup | `POST https://api.prontiq.dev/v1/account/setup` | ✅ Clerk-JWT recovery endpoint; same `provisionOrg` code path as the webhook; idempotent |
 | TypeScript SDK | `sdks/typescript/` (`@prontiq/sdk` v0.1.0) | ✅ Auto-generated; npm publish pending NPM_TOKEN secret |
 | OpenAPI spec | `/openapi.json` (committed in `packages/docs/`) | ✅ Generated from Zod, CI verifies freshness |
 | Ingestion | EventBridge → Step Function → Fargate → OpenSearch | ✅ Automated, alias swap, blue-green |
@@ -20,8 +21,8 @@
 
 - Hash-based API key auth (`prontiq-keys` + `prontiq-usage`) is live in production.
 - The P1B.04/P1B.04b cutover shipped on 2026-04-16 and has been exercised in prod.
-- **Clerk webhook handler** (P1B.05 PR 2/3) shipped to dev + prod on 2026-04-18. Dev verified end-to-end with real Svix traffic: `org_3CTU4Oh1XTqVdEGcyTBGqRWujCm` provisioned (Stripe customer `cus_UM5zw8xl8HgS9n`, ORG envelope, audit row, all atomic via `TransactWriteItems`); 4 subsequent Svix retries returned `already_exists` with zero side effects (idempotency proven). Prod webhook smoked with a non-admin role payload — handler skipped correctly with `200 { skipped: true, reason: "non_admin_membership" }` in 13ms.
-- **`@prontiq/control-plane` package** (recovered from prior design + hardened) provides `createProvisioningService()` and `writeAudit()` / `buildAuditTransactItem()`. Both webhook handler and the upcoming `/v1/account/setup` recovery endpoint (P1B.05 PR 3/3) consume the same service.
+- **P1B.05 complete (2026-04-18).** Clerk webhook handler (`POST /webhooks/clerk`) AND `POST /v1/account/setup` recovery endpoint both live in dev + prod. Webhook dev verified end-to-end with real Svix traffic on 2026-04-18: `org_3CTU4Oh1XTqVdEGcyTBGqRWujCm` provisioned (Stripe customer `cus_UM5zw8xl8HgS9n`, ORG envelope, audit row, all atomic via `TransactWriteItems`); 4 subsequent Svix retries returned `already_exists` with zero side effects. Account-setup endpoint runs the same `createProvisioningService().provisionOrg(...)` code path as the webhook, so a delayed/missed webhook is recoverable from the dashboard. Three Lambdas now serve `PqApi`: address-API `$default` (hot path), `PqClerkWebhook` (Svix-signed), `PqAccount` (Clerk-JWT-authenticated `/v1/account/*`).
+- **`@prontiq/control-plane` package** (recovered from prior design + hardened) provides `createProvisioningService()`, `writeAudit()` / `buildAuditTransactItem()`, AND `resolvePrimaryEmail()`. Both ingress paths (Clerk webhook + `/v1/account/setup`) consume the same provisioning service AND the same verified-primary-email helper — invariants enforced once at the package boundary.
 - The legacy raw-key table is retained only for rollback/soak; the old `pq_live_prod_...` seed key has been rotated and revoked.
 - Future prod seed-key rotation now has an operator command:
   `PRONTIQ_API=https://api.prontiq.dev pnpm --filter @prontiq/api rotate:prod-key`
@@ -37,10 +38,13 @@ GET  /v1/address/reverse?lat=-33.8568&lon=151.2153&radius=200&limit=5
 GET  /v1/address/lookup/postcode?postcode=2000&limit=10
 GET  /v1/address/lookup/suburb?suburb=bondi+beach&state=NSW&limit=10
 POST /webhooks/clerk    (Svix-signed; no API key — control-plane provisioning)
+POST /v1/account/setup  (Clerk JWT; not API key — recovery provisioning)
 ```
 
 ### Recent Ships
 
+- **P1B.05 PR 3/3 (prod-cutover 2026-04-18)**: `POST /v1/account/setup` recovery endpoint live in dev + prod. Clerk-JWT-authenticated (`@clerk/backend.verifyToken({ secretKey })` with 5s clock skew); reads `sub` + `org_id` from the verified JWT; calls `resolvePrimaryEmail` (shared with the webhook via `@prontiq/control-plane`) then `createProvisioningService().provisionOrg(...)`. New `PqAccount` Lambda separate from address-API `$default` (keeps the hot path bundle minimal: `@clerk/backend` + `@prontiq/control-plane` only land in the new Lambda — verified by adding a doc-comment in `packages/api/src/index.ts` forbidding those imports). Mounted via `api.route("ANY /v1/account/{proxy+}", accountFn.arn)` with explicit-route precedence in front of `$default`. CORS extended on `PqApi` to allow POST + Authorization (additive — no rejection of existing GET / X-Api-Key flows). New `PqAccountErrors` CloudWatch alarm wired to `PqIngestAlerts` SNS topic. Mintlify reference page documents operator preconditions (Clerk dashboard JWT template needs `{ "org_id": "{{org.id}}" }` in BOTH dev and prod tenants; frontend must `setActive({ organization })`). Closes P1B.05 ticket.
+- **P1B.05 PR 3a refactor (prod-cutover 2026-04-18)**: `resolvePrimaryEmail` + `EmailLookupResult` moved from `packages/webhooks/src/clerk.ts` into `packages/control-plane/src/clerk.ts` so the new `/v1/account/setup` endpoint can import the same helper without an `api → webhooks` dep direction. `@clerk/backend` now declared explicitly on `@prontiq/control-plane` (no transitive hoisting). 12 new node:test cases for the helper + ADR-002 contract #6 added. Pure refactor; webhook behaviour identical at runtime. PR #100.
 - **P1B.05 PR 2/3 (prod-cutover 2026-04-18)**: Clerk webhook handler (`POST /webhooks/clerk` on the existing `PqApi`) live in dev + prod. Verifies Svix signature, gates on `role ∈ {org:admin, admin}`, resolves verified primary email via Clerk Backend API (does NOT trust `public_user_data.identifier`), calls `createProvisioningService().provisionOrg(...)`. End-to-end DoD verified on real Svix traffic in dev (1 envelope + 1 audit row across 5 deliveries — idempotency proven). New `PqClerkWebhook` Lambda (separate from address-API `$default`) + 3 GitHub Environment secrets sourced via deploy workflows + `$util.secret()` wrapping in Pulumi state + `REQUIRED_WEBHOOK_SECRETS` fail-fast deploy guard + `PqClerkWebhookErrors` CloudWatch alarm. Operator runbook in `docs/runbooks/clerk-webhook.md`. Welcome emails currently `emailSent: false` until SES domain identity for `prontiq.dev` is verified in `ap-southeast-2` and account is out of sandbox (operator one-time, doesn't affect provisioning durability). Recovery endpoint `POST /v1/account/setup` is the next ticket (P1B.05 PR 3/3).
 - **P1B.07**: audit writer helper shipped in `packages/control-plane/src/audit.ts` (location revised from `shared` because the helper needs the AWS SDK DDB clients). Dual API: `buildAuditTransactItem` for atomic grouping inside `TransactWriteItems`; `writeAudit` for standalone callers. Lands as part of the new `@prontiq/control-plane` package alongside the recovered `provisionOrg` service for P1B.05.
 - **P1B.02**: key module shipped (`packages/shared/src/keys.ts` — `generateKey` + `hashKey`)
@@ -62,10 +66,10 @@ POST /webhooks/clerk    (Svix-signed; no API key — control-plane provisioning)
 
 ### 1. Finish auth/billing control plane
 
-- **P1B.05 PR 3/3** — `POST /v1/account/setup` recovery endpoint. Authenticates via `@clerk/backend.verifyToken(token, { secretKey: process.env.CLERK_SECRET_KEY })` (single env var, same one the webhook already uses for Clerk Backend API user lookups — `CLERK_ISSUER`/`CLERK_JWKS_URL`/`CLERK_ADMIN_ROLES` are not used by this endpoint). Extracts `sub` + `org_id` claims from the verified JWT, resolves verified primary email via `clerkClient.users.getUser(userId)` (mirrors the webhook's Bug-2 fix), then calls the same `createProvisioningService().provisionOrg(...)` as the webhook. Needed because the future `/account` page (P1C.03) detects "no envelope" and calls this endpoint as the manual fallback when the webhook missed. Implement as a separate `PqAccount` Lambda on the existing `PqApi` so the address-API `$default` IAM stays minimal. Full implementation contract in `NEXT-SESSION.md` § Session 12 → "Next session should start with" → item 2.
-- P1B.06 — Stripe webhook handler
+- ~~P1B.05 — Clerk webhook handler + recovery endpoint~~ ✅ shipped (2026-04-18)
+- P1B.06 — Stripe webhook handler (`customer.subscription.updated` for tier change + `past_due` grace flag; `invoice.payment_succeeded` for monthly counter reset; `customer.subscription.deleted` for downgrade)
 - ~~P1B.07 — `prontiq-audit` writer helper~~ ✅ shipped
-- P1B.08 — SES suppression / bounce handling (also unblocks the welcome email path going green for P1B.05)
+- P1B.08 — SES suppression / bounce handling (also unblocks the welcome email path going green from `emailSent: false`)
 - P1B.10 — billing cron
 - P1B.11 — month-close job
 
@@ -86,15 +90,15 @@ POST /webhooks/clerk    (Svix-signed; no API key — control-plane provisioning)
 
 Recommended priority:
 
-1. **P1B.05 PR 3/3 — `/v1/account/setup` recovery endpoint.** Closes out the P1B.05 ticket end-to-end. Smallest scope of the remaining work; reuses the existing `provisionOrg` service via `@prontiq/control-plane`. Needed before any dashboard work (P1C) can demo the "set up your account" CTA.
-2. P1B.06 — Stripe webhook handler.
-3. P1F.02 — monitoring + alerting (only one alarm exists today: `PqClerkWebhookErrors`; need broader CloudWatch coverage before more customer-facing surface area).
+1. **P1B.06 — Stripe webhook handler.** With P1B.05 complete, billing automation is now the biggest remaining gap in P1B. Three events to handle (`customer.subscription.updated`, `invoice.payment_succeeded`, `customer.subscription.deleted`) plus the 14-day `past_due` grace flag on `prontiq-keys`. Reuses the audit + provisioning helpers from `@prontiq/control-plane`; extends `prontiq-keys` write paths but no schema change.
+2. P1B.08 — SES suppression / bounce handling. Currently the Clerk webhook + account-setup endpoint both log `emailSent: false` when SES rejects the welcome email (sandbox / unverified domain identity). Once SES is out of sandbox, this ticket adds the SES bounce/complaint subscriber that suppresses retries against bouncing addresses.
+3. P1F.02 — monitoring + alerting. Two CloudWatch alarms exist today: `PqClerkWebhookErrors`, `PqAccountErrors`. Need broader coverage (DDB throttle, Stripe API error rate, OpenSearch query latency) before P1C dashboard work goes live.
 
 Reason:
 
-- The request-time auth path AND the org-provisioning path are now live and healthy.
-- The biggest remaining gap in P1B is the user-driven recovery surface (`/v1/account/setup`) plus billing automation (P1B.06/.10/.11).
-- Monitoring should land before P1C dashboard work so the customer-visible auth/billing flows have alarm coverage.
+- P1B.05 (Clerk webhook + recovery endpoint) closed end-to-end on 2026-04-18 — auth + provisioning paths are durable and idempotent.
+- The biggest remaining gap in P1B is billing automation (Stripe webhook → cron → month-close).
+- SES suppression cleanup and broader monitoring should land before P1C dashboard work so the customer-visible flows have full alarm coverage.
 
 ### Operator follow-ups (one-time, not blocking next ticket)
 

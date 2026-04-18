@@ -1929,24 +1929,29 @@ Live layout. The account Next.js app (`/account` page) and `brand.ts` in `shared
 prontiq-platform/
 ├── sst.config.ts                       # SST v4 + Pulumi — deploys everything
 ├── packages/
-│   ├── api/                            # Hono on Lambda — product routes, auth middleware,
-│   │   │                               #   usage tracking, CORS, circuit breaker, burst rate limiting
+│   ├── api/                            # Hono on Lambda — TWO entry points: index.ts ($default
+│   │   │                               #   address-API hot path) and account-handler.ts
+│   │   │                               #   (PqAccount Lambda for /v1/account/*; bundle isolation)
 │   │   ├── src/
 │   │   │   ├── routes/                 # /v1/{product}/*
 │   │   │   │   ├── address.ts
+│   │   │   │   ├── account.ts          # POST /setup — Clerk-JWT recovery (P1B.05 PR 3/3, live)
 │   │   │   │   ├── abn.ts              # (Phase 2)
 │   │   │   │   ├── lei.ts              # (Phase 3)
 │   │   │   │   ├── cve.ts              # (Phase 5)
 │   │   │   │   └── patents.ts          # (Phase 5)
 │   │   │   ├── middleware/
 │   │   │   │   ├── auth.ts             # SHA-256 key verification (post-P1B.04b migration)
+│   │   │   │   ├── clerk-jwt.ts        # Clerk session-token verification for /v1/account/* (P1B.05 PR 3)
 │   │   │   │   ├── rate-limit.ts       # Token bucket (P1B.09)
 │   │   │   │   └── usage.ts            # Atomic counter increment on prontiq-usage
 │   │   │   ├── search/
 │   │   │   │   ├── client.ts           # OpenSearch SigV4 client
 │   │   │   │   ├── queries.ts          # Query builders per product
 │   │   │   │   └── relevance.ts
-│   │   │   └── index.ts                # Hono app entry point
+│   │   │   ├── index.ts                # $default Lambda — address-API hot path; do NOT
+│   │   │   │                           #   import @prontiq/control-plane or @clerk/backend here
+│   │   │   └── account-handler.ts      # PqAccount Lambda — /v1/account/* with clerk-jwt mounted
 │   │   └── package.json
 │   ├── shared/                         # Shared types, constants, utilities
 │   │   ├── src/
@@ -1968,15 +1973,16 @@ prontiq-platform/
 │   │   │   ├── alias-swap.ts
 │   │   │   └── cleanup.ts
 │   │   └── package.json
-│   ├── control-plane/                  # @prontiq/control-plane — provisionOrg service + audit helpers
+│   ├── control-plane/                  # @prontiq/control-plane — provisionOrg service + audit + clerk helpers
 │   │   ├── src/
 │   │   │   ├── provisioning.ts         # createProvisioningService() — Stripe customer create + TransactWriteItems envelope+audit + best-effort SES welcome email; exception-free public surface (read-result discriminated union); strong reads on every envelope check
 │   │   │   ├── audit.ts                # buildAuditTransactItem (atomic grouping) + writeAudit (standalone) + monotonic ULID + idempotent on eventId
+│   │   │   ├── clerk.ts                # resolvePrimaryEmail (verified-primary-email invariant — shared by webhook + /v1/account/setup)
 │   │   │   └── index.ts
-│   │   └── package.json                # Consumed by webhooks today; api in P1B.05 PR 3/3
+│   │   └── package.json                # Consumed by webhooks AND api
 │   ├── webhooks/                       # Lambdas: clerk.ts (live) + stripe.ts (P1B.06 stub)
 │   │   ├── src/
-│   │   │   ├── clerk.ts                # organizationMembership.created (admin role) → resolvePrimaryEmail via @clerk/backend → provisionOrg
+│   │   │   ├── clerk.ts                # organizationMembership.created (admin role) → resolvePrimaryEmail (from @prontiq/control-plane) → provisionOrg
 │   │   │   ├── stripe.ts               # 4 events (§5.7) — stub; P1B.06
 │   │   │   └── index.ts                # Router
 │   │   └── package.json
