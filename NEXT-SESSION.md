@@ -5,6 +5,74 @@
 
 ---
 
+## Session 12 — 2026-04-17 → 2026-04-18
+
+**Focus:** P1B.05 PR 2/3 — Clerk webhook handler. Repo audit; PR 1 (control-plane recovery) → prod; PR 2 (webhook handler) → dev → prod after iterating through 7 review-bot findings + a CI race + a deploy-script architectural rewrite.
+
+### Shipped to prod
+
+- **PR #94 — `@prontiq/control-plane` package (P1B.05 PR 1/3 + closes P1B.07).** Recovered the `provisionOrg` service from prior uncommitted dist artefacts; added `writeAudit` / `buildAuditTransactItem` helpers; added `OrgEnvelopeRecord` + `AuditRecord` to `@prontiq/shared`; ADR-002 (`docs/decisions/002-control-plane-package.md`) captures (a) why control-plane is a separate package, (b) why we recovered the dist instead of rewriting, (c) the dual audit API rationale, (d) four hardening contracts surfaced during 4 rounds of code review (read-result discriminated union, audit idempotency via eventId+now, welcome-email boundary guard, unified DDB error classifier with safe-default-on-ambiguity). 51 control-plane tests + 1 integration test against DDB Local.
+- **PR #95 — Clerk webhook handler + SST infra (P1B.05 PR 2/3 v1).** First version. Wired `POST /webhooks/clerk` on existing PqApi → new `PqClerkWebhook` Lambda that calls `provisionOrg`. Used `sst.Secret` (SSM-backed). Merged but failed deploy-dev with `SecretMissingError`.
+- **PR #97 — Hotfix replacing #96.** Switched secrets from `sst.Secret` (SSM) to `process.env` (matches existing `WELCOME_EMAIL_FROM` GitHub-Environment pattern). Plus 5 review-bot findings addressed (Bug 1 admin-role gate `org:admin` not just `admin`; Bug 2 verified primary email via `@clerk/backend` users.getUser; Bug 3 wire `CLERK_ADMIN_ROLES` end-to-end through deploy plumbing; Bug 4 `Verification.status === "verified"` check; Bug 5 `getAdminRoles` whitespace fallback; Bug 6 `$util.secret()` Pulumi state encryption; Bug 7 trim secret values before validation).
+- **PR #98 — Hotfix: drop `AWS_REGION` from PqClerkWebhook env.** Lambda reserved key; `CreateFunction` rejected explicit values. Doc-comment so it can't sneak back.
+- **Prod deploy (`Deploy to Production` workflow on `a8f181b`)** triggered manually after dev was verified end-to-end on real Svix traffic (`org_3CTU4Oh1XTqVdEGcyTBGqRWujCm` provisioned: Stripe customer + envelope + audit row, all atomic; 4 subsequent retries returned `already_exists` with zero side effects). Prod smoke-tested with non-admin role payload — handler skipped correctly in 13ms.
+
+### Verification evidence
+
+- 129 tests pass workspace-wide (10 shared + 50 control-plane + 21 ingestion + 20 api + 28 webhooks).
+- 4 integration tests pass against `amazon/dynamodb-local:2.5.2` (1 control-plane, 3 webhooks).
+- Dev `prontiq-keys-dev` has `ORG#org_3CTU4Oh1XTqVdEGcyTBGqRWujCm` envelope with `tier: "free"`, `hasFirstKey: false`, `stripeCustomerId: cus_UM5zw8xl8HgS9n`.
+- Dev `prontiq-audit-dev` has 1 `ORG_PROVISIONED` row (idempotency invariant proven across 5 deliveries).
+- Stripe Dashboard shows 1 customer with `metadata.orgId: org_3CTU4Oh1XTqVdEGcyTBGqRWujCm`.
+- Prod `POST /webhooks/clerk` returns 401 on unsigned, 200 `{skipped: true, reason: "non_admin_membership"}` on signed non-admin payload, all secrets present with correct prefixes (`whsec_`, `sk_`, `sk_`).
+- `PqClerkWebhookErrors` CloudWatch alarm in OK state on both dev + prod.
+
+### Hard lessons (added to memory / process)
+
+- **Discipline matters between tickets.** I shipped PR #94 → merged → IMMEDIATELY started PR 2 work without waiting for dev verify or prod promotion. User ("discipline... do we not wait for dev deploy then prod?") corrected. Sequence is: PR → CI → merge → CI auto-deploy-dev → manual dev smoke → `sst diff --stage prod` (via GitHub Actions, not local) → manual prod deploy via Deploy to Production workflow → manual prod smoke. No skipping.
+- **Pre-merge risk register IS a checklist, not just commentary.** I flagged "verify the admin-role identifier against an actual payload before merging" as Risk #6 in PR #95's plan but didn't actually do it; bot caught Bug 1 (`admin` ≠ `org:admin`) — would have been a CRITICAL silent-failure bug in prod. Future risk-register items must be done, not noted.
+- **Existing conventions trump new patterns.** I introduced `sst.Secret()` in PR #95 without recognising the codebase's existing convention is GitHub Environment vars/secrets exported via the deploy workflow's `env:` block (matching `WELCOME_EMAIL_FROM`). The two patterns can't coexist for one value. Always grep for the existing pattern before introducing a new one.
+- **The build script's recursive deletion was a latent bug** (added by ts-package-build.mjs walking tsconfig references and deleting upstream dist). Pre-PR-94 it never surfaced because no concurrent reads of shared/dist happened during builds; PR 94 introduced control-plane as a downstream of shared and triggered the race. Fix: each package's build only cleans its own outputs; `tsc --build` (no `--force`) respects upstream tsbuildinfo.
+- **Lambda has reserved env keys.** `AWS_REGION` is one — runtime auto-populates it, `CreateFunction` rejects explicit values. Caught only at deploy time because SST/Pulumi config eval and `pnpm typecheck` both accept the value locally.
+
+### Next session should start with
+
+1. Read NEXT-WORK.md.
+
+2. **P1B.05 PR 3/3 — `POST /v1/account/setup` recovery endpoint.** Plan it as a separate `PqAccount` Lambda on the existing `PqApi` so the address-API `$default` Lambda's IAM stays minimal. Architectural notes captured in `docs/decisions/002-control-plane-package.md`.
+
+   **Auth contract (single source of truth for this endpoint):**
+   - Verify the `Authorization: Bearer <jwt>` header via `@clerk/backend`'s `verifyToken(token, { secretKey: process.env.CLERK_SECRET_KEY })`. This delegates JWKS resolution to the Clerk Backend API — no `CLERK_ISSUER` / `CLERK_JWKS_URL` / `jwtKey` needed for verification.
+   - **Required env var:** `CLERK_SECRET_KEY` only. Already configured in the dev + prod GitHub Environment secrets (operator set 2026-04-17). Wired through the deploy workflows' `env:` block alongside the webhook's existing `CLERK_SECRET_KEY` use.
+   - **Not used by this endpoint:** `CLERK_ADMIN_ROLES` (webhook-only — for the `organizationMembership.created` role gate), `CLERK_ISSUER` / `CLERK_JWKS_URL` (used by the frontend Clerk SDK and the future `/account` page in P1C, not by API-side JWT verify under the secretKey model).
+   - **Claims extracted from the verified JWT:** `sub` → `userId`, `org_id` → `orgId`. If `org_id` is absent (user is signed in but has no active org context), return `400 NO_ACTIVE_ORG` per the existing API error envelope.
+   - **Email resolution:** mirror the webhook's pattern — call `clerkClient.users.getUser(userId)` via the same `@clerk/backend` client and use the verified primary email (the `Bug 4` invariant from PR #97 — never trust client-side claims for the `ownerEmail` going to Stripe).
+
+   **Implementation flow:**
+   - New `packages/api/src/middleware/clerk-jwt.ts` — Hono middleware that verifies the JWT and sets `c.set("clerkPrincipal", { userId, orgId })`.
+   - New `packages/api/src/routes/account.ts` — `POST /v1/account/setup` route. Reuses `createProvisioningService` from `@prontiq/control-plane`. Maps `ProvisioningResult.status` → 200 (`already_exists`), 201 (`created`), 503 (`retryable_failure`), 500 (`fatal_failure`).
+   - New `packages/api/src/account-handler.ts` — separate Lambda entry point (mounts only the Clerk-JWT middleware + account routes; does NOT include the address routes or API-key auth middleware).
+   - `sst.config.ts` — `api.route("ANY /v1/account/{proxy+}", { handler: ".../account-handler.handler", link: [...], permissions: [SES], environment: { CLERK_SECRET_KEY, STRIPE_SECRET_KEY, ... } })`. Reuse the same `REQUIRED_WEBHOOK_SECRETS` fail-fast guard pattern (or factor it to cover the account Lambda too).
+   - Update CORS on `PqApi` to include `POST` + `Authorization` (currently `GET` + `X-Api-Key` only) so the future browser dashboard can call this endpoint.
+
+3. **Operator follow-up that doesn't block next ticket:** SES domain identity verify for `prontiq.dev` in `ap-southeast-2` + sandbox-out request. Steps in `docs/runbooks/clerk-webhook.md`. Until done, every webhook delivery logs `emailSent: false` (provisioning durability unaffected).
+
+4. **Observability gap noted but deferred:** when `sendSignedSesEmail` returns `false` (SES-rejected `response.ok`), no log line tells the operator why. Worth adding a `console.warn` with the SES response status code — small follow-up on the next webhook PR.
+
+---
+
+## Session 11 — 2026-04-17 (earlier)
+
+**Focus:** P1B.05 PR 1/3 — `@prontiq/control-plane` package recovery. PR #94. Shipped to prod 2026-04-17. See PR #94 description + `docs/decisions/002-control-plane-package.md` for the four hardening contracts surfaced through 4 rounds of code review.
+
+---
+
+## Session 10 — 2026-04-17 (audit + planning)
+
+**Focus:** Audit roadmap-vs-built, surface "ghost" `packages/control-plane/dist/` (compiled but never committed source), plan P1B.05 with 3-PR breakdown. Plan written to `~/.claude/plans/ok-scan-the-repo-composed-dragon.md` (gitignored).
+
+---
+
 ## Session 9 — 2026-04-16
 
 **Focus:** P1B.04 — DynamoDB Tables (4 tables + schema)

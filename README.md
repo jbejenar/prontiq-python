@@ -12,6 +12,12 @@ Prontiq is starting with developer-friendly Australian address validation. The b
 
 Live at `https://api.prontiq.dev`. Docs at `https://docs.prontiq.dev`. TypeScript SDK auto-generated to `sdks/typescript/` (npm publish pending).
 
+### Server-to-server surface
+
+| Endpoint | Purpose | Auth |
+|---|---|---|
+| `POST /webhooks/clerk` | Clerk `organizationMembership.created` → ORG envelope provisioning (Stripe customer + DDB record + audit row + best-effort welcome email). See `docs/runbooks/clerk-webhook.md`. | Svix signature (no API key) |
+
 Future products are roadmap items, not active docs/API surfaces yet.
 
 ## Quick Start
@@ -54,15 +60,16 @@ See [`ARCHITECTURE.MD`](ARCHITECTURE.MD) for the full design.
 
 ```
 packages/
-  shared/          @prontiq/shared      Types, constants, Zod schemas
-  api/             @prontiq/api         Hono API on Lambda (ARM64)
-  ingestion/       @prontiq/ingestion   Step Functions + Lambda indexing
-  webhooks/        @prontiq/webhooks    Clerk + Stripe handlers (future — P1B)
-  docs/            @prontiq/docs        Mintlify documentation
+  shared/          @prontiq/shared          Types, constants, Zod schemas (dep-light)
+  control-plane/   @prontiq/control-plane   provisionOrg service + writeAudit helpers (consumed by webhooks + api)
+  api/             @prontiq/api             Hono API on Lambda (ARM64)
+  ingestion/       @prontiq/ingestion       Step Functions + Lambda indexing
+  webhooks/        @prontiq/webhooks        Clerk webhook (live) + Stripe stub (P1B.06 pending)
+  docs/            @prontiq/docs            Mintlify documentation
   plugins/
-    shopify/                            Checkout UI Extension
-    woocommerce/                        WP plugin
-    web-component/                      <prontiq-address> widget
+    shopify/                                Checkout UI Extension
+    woocommerce/                            WP plugin
+    web-component/                          <prontiq-address> widget
 ```
 
 ## Stack
@@ -73,8 +80,8 @@ packages/
 | API            | Hono + @hono/zod-openapi on Lambda (ARM64, Node.js 20) |
 | Search         | OpenSearch 2.19 (managed)                              |
 | API Keys       | DynamoDB-native (`pq_live_` + SHA-256 hash-based lookup; live in prod) |
-| Auth (portal)  | Clerk (planned — P1B)                                  |
-| Billing        | Stripe (planned — P1B)                                 |
+| Auth (portal)  | Clerk — webhook live in prod (`POST /webhooks/clerk` provisions org envelope on `organizationMembership.created`); JWT-based account API (P1B.05 PR 3/3) pending |
+| Billing        | Stripe customer creation live (via Clerk webhook → control-plane); subscription webhook (P1B.06) and billing cron (P1B.10) pending |
 | Dashboard      | `/account` page — to be rebuilt per ARCHITECTURE.MD §5.9 (P1C) |
 | Docs           | Mintlify at `docs.prontiq.dev` (live)                  |
 | SDKs           | Speakeasy generates `@prontiq/sdk` (TypeScript) — npm publish pending NPM_TOKEN |
@@ -88,7 +95,7 @@ See [`ROADMAP.md`](ROADMAP.md) for the full 76-ticket plan.
 | ------- | ------------------------- | ------- | --------- |
 | **P0**  | Infrastructure Foundation | 6       | 6/6       |
 | **P1A** | API Core (Address)        | 13      | 9/13      |
-| **P1B** | Auth & Billing            | 13      | 3/13      |
+| **P1B** | Auth & Billing            | 13      | 4/13      |
 | **P1C** | Dashboard                 | 7       | 0/7       |
 | **P1D** | Docs & SDK                | 5       | 2/5       |
 | **P1E** | Ingestion                 | 6       | 4/6       |
@@ -97,7 +104,7 @@ See [`ROADMAP.md`](ROADMAP.md) for the full 76-ticket plan.
 | **P3**  | LEI + Full Dashboard      | 7       | 0/7       |
 | **P4**  | Shopify + WooCommerce     | 5       | 0/5       |
 | **P5**  | CVE/NVD + Patents         | 4       | 0/4       |
-|         |                           | **76**  | **25/76** |
+|         |                           | **76**  | **26/76** |
 
 ## Commands
 

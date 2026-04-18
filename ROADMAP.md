@@ -1440,13 +1440,15 @@ Live today is a single `ApiKeyTable` with raw-key PK and nested `usage: {product
 ```yaml
 id: P1B.05
 title: Clerk Webhook Handler (Provisioning)
-status: pending
+status: in-progress
 priority: p0-critical
 epic: P1B
 persona: [api-consumer]
 depends_on: [P1B.01, P1B.02, P1B.03, P1B.04]
 completed: null
 ```
+
+> **Status note (2026-04-18):** PR 2 of 3 (the webhook handler itself) is **live in dev + prod** as of `a8f181b` / prod deploy run 24594121766. Verified end-to-end on real Svix traffic in dev — `org_3CTU4Oh1XTqVdEGcyTBGqRWujCm` provisioned with Stripe customer `cus_UM5zw8xl8HgS9n`, idempotency invariant proven across 5 deliveries (1 envelope + 1 audit row). Prod smoke-tested with non-admin `org:member` payload (correctly skipped). Ticket remains `in-progress` because the recovery endpoint (PR 3 of 3 — see `##### Recovery Endpoint` section below) is still pending. Will flip to `complete` when PR 3 ships.
 
 #### User Story
 

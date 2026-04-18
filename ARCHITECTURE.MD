@@ -1968,10 +1968,16 @@ prontiq-platform/
 │   │   │   ├── alias-swap.ts
 │   │   │   └── cleanup.ts
 │   │   └── package.json
-│   ├── webhooks/                       # 2 Lambdas: clerk.ts + stripe.ts (5 event types)
+│   ├── control-plane/                  # @prontiq/control-plane — provisionOrg service + audit helpers
 │   │   ├── src/
-│   │   │   ├── clerk.ts                # user.created → provision key
-│   │   │   ├── stripe.ts               # 4 events (§5.7)
+│   │   │   ├── provisioning.ts         # createProvisioningService() — Stripe customer create + TransactWriteItems envelope+audit + best-effort SES welcome email; exception-free public surface (read-result discriminated union); strong reads on every envelope check
+│   │   │   ├── audit.ts                # buildAuditTransactItem (atomic grouping) + writeAudit (standalone) + monotonic ULID + idempotent on eventId
+│   │   │   └── index.ts
+│   │   └── package.json                # Consumed by webhooks today; api in P1B.05 PR 3/3
+│   ├── webhooks/                       # Lambdas: clerk.ts (live) + stripe.ts (P1B.06 stub)
+│   │   ├── src/
+│   │   │   ├── clerk.ts                # organizationMembership.created (admin role) → resolvePrimaryEmail via @clerk/backend → provisionOrg
+│   │   │   ├── stripe.ts               # 4 events (§5.7) — stub; P1B.06
 │   │   │   └── index.ts                # Router
 │   │   └── package.json
 │   └── plugins/                        # Phase 4 distribution
@@ -1982,8 +1988,8 @@ prontiq-platform/
 │   # Planned (P1C):
 │   # └── web/                          # Next.js — landing page + /account page (Clerk UserProfile + custom tabs)
 │
-├── scripts/                            # sync-brand-to-mintlify.ts, seed-test-data.ts, purge-org.ts
-├── docs/                               # ARCHITECTURE.MD, ROADMAP.md, decisions/, operations/
+├── scripts/                            # sync-brand-to-mintlify.ts, seed-test-data.ts, purge-org.ts, ts-package-build.mjs
+├── docs/                               # ARCHITECTURE.MD, ROADMAP.md, decisions/, operations/, runbooks/
 ├── .github/
 │   └── workflows/                      # ci.yml, deploy-prod.yml, generate-sdks.yml
 ├── package.json                        # Workspace root
@@ -1991,7 +1997,7 @@ prontiq-platform/
 └── tsconfig.json
 ```
 
-Six packages today (`api`, `docs`, `ingestion`, `plugins`, `shared`, `webhooks`). The seventh (`web`) is added in P1C when the `/account` page ships. No dashboard application — the account page is a thin Clerk-wrapped Next.js view over DynamoDB-backed and Stripe-hosted components.
+Seven packages today (`api`, `control-plane`, `docs`, `ingestion`, `plugins`, `shared`, `webhooks`). The eighth (`web`) is added in P1C when the `/account` page ships. No dashboard application — the account page is a thin Clerk-wrapped Next.js view over DynamoDB-backed and Stripe-hosted components. `control-plane` was added in P1B.05 PR 1/3 to keep `provisionOrg` callable from both `webhooks` (server-to-server) and `api` (user-driven recovery via `/v1/account/setup`, P1B.05 PR 3/3) without an awkward `api → webhooks` dep direction.
 
 ---
 

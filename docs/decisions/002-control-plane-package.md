@@ -116,6 +116,20 @@ For `TransactionCanceledException`, the classifier walks `CancellationReasons[]`
 
 The first cost is much worse, so post-Stripe ambiguous errors retry rather than fail. The reads share the same classifier (read failures default to transient too — no side-effect has occurred yet, retry is unconditionally safe).
 
+### 5. Webhook secrets flow through GitHub Environment, NOT `sst.Secret()` (with `$util.secret()` for Pulumi state encryption)
+
+PR #95 (the first version of the Clerk webhook handler) introduced `sst.Secret("ClerkWebhookSecret")` and friends for the three required secret values. That conflicted with the codebase's existing convention: secrets / config flow GitHub Environment secret/var → workflow `env:` block → `process.env.X` at SST-config evaluation time → baked into the Lambda env. Same pattern as the pre-existing `WELCOME_EMAIL_FROM` / `STRIPE_SECRET_KEY` / `PRONTIQ_ACCOUNT_URL` config that was already wired through the deploy workflows.
+
+The two patterns can't coexist for one value: GitHub Environment lands in `process.env`, but `sst.Secret` expects SSM. Result: `SecretMissingError` despite the operator having set `CLERK_WEBHOOK_SECRET` and `STRIPE_SECRET_KEY` in the GitHub Environment. PR #97 ripped out the `sst.Secret` declarations, switched to `process.env.X` reads matching the existing convention, and added two further hardenings surfaced during PR #97's review:
+
+1. **`$util.secret()` (Pulumi `secret()`) wrapping** for the values when passed to the Function `environment` block. Without this wrapper, plain string inputs to Pulumi `environment` get serialised as plaintext in deployment state, previews, diffs, and any stack outputs that reference them — visible to anyone with read access to the SST/Pulumi state backend (private S3 bucket, IAM-restricted to the deploy role + account root). The original `sst.Secret` had this property because it produced `Output<string>` with the secret-typed marker; switching to plain `process.env` would have dropped it without the wrapper. With `$util.secret()`: encrypted in state, redacted from previews/diffs, and secret-typed end-to-end. Lambda still receives them as standard env vars (KMS-encrypted at rest by AWS), so handler code is unchanged.
+
+2. **Whitespace-trim before validation AND wiring** via a `readGithubSecret(name)` helper in `sst.config.ts`. GitHub Actions resolves an unset `${{ secrets.X }}` to `""`, which is rejected by the validation guard. But a copy-paste artefact like a trailing newline (`"sk_test_abc\n"`) or a whitespace-only paste (`"   "`) would otherwise pass a `length === 0` check and ship an invalid secret to the Lambda — recreating the silent-deploy-broken-runtime failure mode. The helper trims once at the boundary; both the validation guard and the env-block use it, so normalisation is consistent across the two paths.
+
+A `REQUIRED_WEBHOOK_SECRETS` fail-fast guard at the top of `sst.config.ts` enforces that all three (`CLERK_WEBHOOK_SECRET`, `CLERK_SECRET_KEY`, `STRIPE_SECRET_KEY`) are non-empty after trimming for `dev` / `prod` stages — `sst deploy` fails with a clear error pointing at the GitHub Environment instead of shipping a Lambda that returns 500 on every request. Personal stages (`jbejenar` etc.) skip the guard so `sst dev` works locally without all secrets configured.
+
+Operator-facing rule (also in `docs/runbooks/clerk-webhook.md` § preconditions and `AGENTS.md` § Do NOT): **never use `sst secret set` for these values**. The single source of truth is the GitHub Environment.
+
 ## Alternatives Considered
 
 1. **Put `provisionOrg` and `writeAudit` in `@prontiq/shared`.** Rejected: pollutes the dep-light shared package with the AWS SDK + Stripe.
