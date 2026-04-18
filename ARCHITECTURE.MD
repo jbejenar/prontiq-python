@@ -1136,14 +1136,18 @@ Only paid-tier keys. Free keys are active in `prontiq-keys` but absent from the 
 
 ##### Stripe Webhook Completion Marker (stored in `prontiq-keys`)
 
-Replay-safe dedupe marker written after successful Stripe webhook state convergence.
+Replay-safe dedupe/claim record for Stripe webhook processing. The handler
+claims the record as `processing` before side effects, finishes replay-safe
+state writes, then finalizes the same record as `completed`.
 
 ```
 PK:   apiKeyHash           "WEBHOOK#stripe#{eventId}"   (reserved — not a real key hash)
 
+      claimedAt            string                       ISO 8601 — current worker lease timestamp
+      status               "processing" | "completed"  Event claim state
       eventType            string                       Stripe event type
-      webhookOrgId         string                       Clerk org ID resolved from customer metadata
-      completedAt          string                       ISO 8601 — when the replay-safe write sequence finished
+      webhookOrgId         string | null                Org ID resolved from customer metadata
+      completedAt          string?                      ISO 8601 — when replay-safe state convergence finished
       ttl                  number                       Unix timestamp — 7 days
 ```
 
@@ -1715,10 +1719,12 @@ The `/v1/account/keys/create` endpoint (P1C.03):
 
 8. Write UPGRADE to prontiq-audit (one entry per orgId+timestamp).
 
-9. Write a completion-marker reserved item in prontiq-keys:
+9. Finalize the claimed webhook marker in prontiq-keys:
      PK = WEBHOOK#stripe#{eventId}
-   Duplicate delivery first checks this marker; once present, replay
-   returns 200 no-op.
+     status = completed
+   Duplicate delivery returns 200 only once the marker is completed;
+   a fresh duplicate that sees `status=processing` returns 500 so
+   Stripe retries after the active worker finishes.
 
 10. Return 200.
 ```
@@ -2484,7 +2490,7 @@ On account deletion, purge: `prontiq-keys` (all org keys + `ORG#{orgId}` envelop
 
 **Idempotency.**
 - **Clerk provisioning** (`user.created`): writes the `ORG#{orgId}` envelope record after creating the Stripe customer (§5.7.1). A retry that hits an existing `ORG#{orgId}` returns 200 immediately. Stripe customer creation uses `Idempotency-Key: clerk-provision-{orgId}` so retries reuse the same `cus_...`. **The webhook does NOT mint API keys** — those are user-driven via `/v1/account/keys/create` after sign-in, which puts the raw key in a user-visible HTTP response (the only safe place for hash-only-stored secrets).
-- **Stripe webhooks**: dedupe on `event.id` via a completion-marker reserved item in `prontiq-keys` (`WEBHOOK#stripe#{eventId}`). The handler first checks for the marker, then reapplies replay-safe target-state writes, then writes the marker last. Stripe redelivers events; the marker keeps repeated processing harmless without a long-lived lease/lock protocol.
+- **Stripe webhooks**: dedupe on `event.id` via a claim/finalize reserved item in `prontiq-keys` (`WEBHOOK#stripe#{eventId}`). The handler claims the item as `processing`, applies replay-safe target-state writes, then finalizes it as `completed`. Stripe duplicates that arrive while a fresh `processing` claim exists return 500 so Stripe retries later; completed markers return 200 no-op.
 
 **Clerk webhook failure → manual recovery.** Two independent failure cases, both fully recoverable from the user side:
 

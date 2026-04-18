@@ -124,9 +124,11 @@ export interface UsageCounterRecord {
 
 export interface StripeWebhookCompletionRecord {
   apiKeyHash: string;
+  claimedAt: string;
+  completedAt?: string;
   eventType: string;
-  webhookOrgId: string;
-  completedAt: string;
+  status: "processing" | "completed";
+  webhookOrgId: string | null;
   ttl: number;
 }
 

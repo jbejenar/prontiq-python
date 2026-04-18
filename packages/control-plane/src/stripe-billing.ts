@@ -67,6 +67,7 @@ interface TierResolution {
 
 const COMPLETION_MARKER_PREFIX = "WEBHOOK#stripe#";
 const COMPLETION_MARKER_TTL_SECONDS = 7 * 24 * 60 * 60;
+const PROCESSING_LEASE_SECONDS = 5 * 60;
 const REGISTRY_KEY = "REGISTRY#active-keys";
 const REGISTRY_ACTIVE_HASHES = "activeHashes";
 const ORG_ID_INDEX = "orgId-index";
@@ -108,6 +109,10 @@ function getCompletionMarkerKey(eventId: string): string {
 
 function getCompletionMarkerTtl(now: Date): number {
   return Math.floor(now.getTime() / 1000) + COMPLETION_MARKER_TTL_SECONDS;
+}
+
+function getProcessingLeaseCutoff(now: Date): string {
+  return new Date(now.getTime() - PROCESSING_LEASE_SECONDS * 1000).toISOString();
 }
 
 function getCurrentMonthKey(now: Date): string {
@@ -176,16 +181,73 @@ async function writeCompletionMarker(
   ddb: DynamoDBDocumentClient,
   keysTableName: string,
   event: Stripe.Event,
+  claimedAt: string,
   orgId: string,
 ): Promise<"written" | "exists"> {
   const completedAt = new Date().toISOString();
+  try {
+    await ddb.send(
+      new UpdateCommand({
+        TableName: keysTableName,
+        Key: { apiKeyHash: getCompletionMarkerKey(event.id) },
+        ConditionExpression: "#status = :processing AND #claimedAt = :claimedAt",
+        UpdateExpression: [
+          "SET #status = :completed",
+          "#completedAt = :completedAt",
+          "#eventType = :eventType",
+          "#webhookOrgId = :orgId",
+          "#ttl = :ttl",
+        ].join(", "),
+        ExpressionAttributeNames: {
+          "#claimedAt": "claimedAt",
+          "#completedAt": "completedAt",
+          "#eventType": "eventType",
+          "#status": "status",
+          "#ttl": "ttl",
+          "#webhookOrgId": "webhookOrgId",
+        },
+        ExpressionAttributeValues: {
+          ":claimedAt": claimedAt,
+          ":completed": "completed",
+          ":completedAt": completedAt,
+          ":eventType": event.type,
+          ":orgId": orgId,
+          ":processing": "processing",
+          ":ttl": getCompletionMarkerTtl(new Date()),
+        },
+      }),
+    );
+    return "written";
+  } catch (error) {
+    if (isConditionalCheckFailure(error)) {
+      return "exists";
+    }
+    throw error;
+  }
+}
+
+type MarkerClaimResult =
+  | { kind: "claimed"; claimedAt: string }
+  | { kind: "completed" }
+  | { kind: "in_progress" };
+
+async function claimCompletionMarker(
+  ddb: DynamoDBDocumentClient,
+  keysTableName: string,
+  event: Stripe.Event,
+  orgId: string,
+  now: Date,
+): Promise<MarkerClaimResult> {
+  const claimedAt = now.toISOString();
   const item: StripeWebhookCompletionRecord = {
     apiKeyHash: getCompletionMarkerKey(event.id),
+    claimedAt,
     eventType: event.type,
+    status: "processing",
     webhookOrgId: orgId,
-    completedAt,
-    ttl: getCompletionMarkerTtl(new Date()),
+    ttl: getCompletionMarkerTtl(now),
   };
+
   try {
     await ddb.send(
       new PutCommand({
@@ -194,10 +256,61 @@ async function writeCompletionMarker(
         ConditionExpression: "attribute_not_exists(apiKeyHash)",
       }),
     );
-    return "written";
+    return { kind: "claimed", claimedAt };
+  } catch (error) {
+    if (!isConditionalCheckFailure(error)) {
+      throw error;
+    }
+  }
+
+  const existingMarker = await readCompletionMarker(ddb, keysTableName, event.id);
+  if (!existingMarker) {
+    return claimCompletionMarker(ddb, keysTableName, event, orgId, now);
+  }
+  if (existingMarker.status === "completed") {
+    return { kind: "completed" };
+  }
+  if (existingMarker.claimedAt > getProcessingLeaseCutoff(now)) {
+    return { kind: "in_progress" };
+  }
+
+  try {
+    await ddb.send(
+      new UpdateCommand({
+        TableName: keysTableName,
+        Key: { apiKeyHash: getCompletionMarkerKey(event.id) },
+        ConditionExpression: "#status = :processing AND #claimedAt = :previousClaimedAt",
+        UpdateExpression: [
+          "SET #claimedAt = :claimedAt",
+          "#eventType = :eventType",
+          "#webhookOrgId = :orgId",
+          "#ttl = :ttl",
+        ].join(", "),
+        ExpressionAttributeNames: {
+          "#claimedAt": "claimedAt",
+          "#eventType": "eventType",
+          "#status": "status",
+          "#ttl": "ttl",
+          "#webhookOrgId": "webhookOrgId",
+        },
+        ExpressionAttributeValues: {
+          ":claimedAt": claimedAt,
+          ":eventType": event.type,
+          ":orgId": orgId,
+          ":previousClaimedAt": existingMarker.claimedAt,
+          ":processing": "processing",
+          ":ttl": getCompletionMarkerTtl(now),
+        },
+      }),
+    );
+    return { kind: "claimed", claimedAt };
   } catch (error) {
     if (isConditionalCheckFailure(error)) {
-      return "exists";
+      const refreshedMarker = await readCompletionMarker(ddb, keysTableName, event.id);
+      if (refreshedMarker?.status === "completed") {
+        return { kind: "completed" };
+      }
+      return { kind: "in_progress" };
     }
     throw error;
   }
@@ -294,7 +407,9 @@ async function resolveTierStateForEvent(
     }
     const product = item.price.product.metadata.prontiqProduct;
     if (typeof product !== "string" || product.length === 0) {
-      continue;
+      throw new Error(
+        `Subscription item ${item.id} is missing price.product.metadata.prontiqProduct`,
+      );
     }
     if (!isKnownProntiqProduct(product)) {
       throw new Error(`Stripe product ${item.price.product.id} has unknown prontiqProduct ${product}`);
@@ -305,7 +420,9 @@ async function resolveTierStateForEvent(
       );
     }
     if (product in subscriptionItems) {
-      continue;
+      throw new Error(
+        `Subscription ${subscriptionId} has duplicate metered items for prontiqProduct ${product}`,
+      );
     }
     subscriptionItems[product] = item.id;
     enabledProducts.add(product);
@@ -901,18 +1018,34 @@ export function createStripeBillingService(
       return { status: "processed", httpStatus: 200, body: { ok: true, skipped: true, type: event.type } };
     }
 
-    const existingMarker = await readCompletionMarker(dependencies.ddb, dependencies.keysTableName, event.id);
-    if (existingMarker) {
-      return {
-        status: "duplicate",
-        httpStatus: 200,
-        body: { ok: true, status: "duplicate", type: event.type },
-      };
-    }
+    let claimedAt: string | null = null;
 
     try {
       const now = new Date();
       const customer = await loadCustomerContext(dependencies.stripe, event);
+      const claim = await claimCompletionMarker(
+        dependencies.ddb,
+        dependencies.keysTableName,
+        event,
+        customer.orgId,
+        now,
+      );
+      if (claim.kind === "completed") {
+        return {
+          status: "duplicate",
+          httpStatus: 200,
+          body: { ok: true, status: "duplicate", type: event.type },
+        };
+      }
+      if (claim.kind === "in_progress") {
+        return {
+          status: "retryable_failure",
+          httpStatus: 500,
+          body: { error: "retryable_failure", reason: "event_already_processing", type: event.type },
+        };
+      }
+      claimedAt = claim.claimedAt;
+      const leaseClaimedAt = claim.claimedAt;
       const mutatingEvent = event.type as StripeMutatingEventType;
       if (mutatingEvent === "checkout.session.completed") {
         await processPlanTransition(dependencies, customer, event, now);
@@ -938,11 +1071,37 @@ export function createStripeBillingService(
         }
       }
 
-      await writeCompletionMarker(dependencies.ddb, dependencies.keysTableName, event, customer.orgId);
-      return { status: "processed", httpStatus: 200, body: { ok: true, status: "processed", type: event.type } };
+      const completionWrite = await writeCompletionMarker(
+        dependencies.ddb,
+        dependencies.keysTableName,
+        event,
+        leaseClaimedAt,
+        customer.orgId,
+      );
+      if (completionWrite === "exists") {
+        const marker = await readCompletionMarker(dependencies.ddb, dependencies.keysTableName, event.id);
+        if (marker?.status === "completed") {
+          return {
+            status: "duplicate",
+            httpStatus: 200,
+            body: { ok: true, status: "duplicate", type: event.type },
+          };
+        }
+        return {
+          status: "retryable_failure",
+          httpStatus: 500,
+          body: { error: "retryable_failure", reason: "event_processing_claim_lost", type: event.type },
+        };
+      }
+      return {
+        status: "processed",
+        httpStatus: 200,
+        body: { ok: true, status: "processed", type: event.type },
+      };
     } catch (error) {
       logger.error("Stripe webhook processing failed", {
         error: error instanceof Error ? error.message : String(error),
+        claimedAt,
         eventId: event.id,
         eventType: event.type,
       });

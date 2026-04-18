@@ -84,7 +84,8 @@ This is what allows plan migrations and product entitlement changes to be picked
 ## Runtime Behavior
 
 - Duplicate Stripe deliveries are harmless.
-- The handler writes a completion marker in `prontiq-keys` at `WEBHOOK#stripe#{eventId}` after replay-safe state writes and audit succeed.
+- The handler claims `WEBHOOK#stripe#{eventId}` in `prontiq-keys` as `status=processing` before side effects and finalizes it as `status=completed` only after replay-safe state writes and audit succeed.
+- A duplicate delivery that lands while a fresh `processing` claim exists returns 500 `retryable_failure` so Stripe retries after the active worker finishes.
 - `customer.subscription.updated` sets or clears `paymentOverdue` on all org keys.
 - `past_due` email delivery is best-effort and suppression-aware. Failure to send email does not fail the webhook.
 
@@ -113,7 +114,7 @@ Check:
 
 Common persistent failure:
 
-- Stripe Dashboard metadata drift. Example: the recurring plan price/product is missing `metadata.prontiqTier`, or a metered product is attached without `metadata.prontiqProduct`, so the webhook cannot reconstruct the target Prontiq state and Stripe keeps retrying.
+- Stripe Dashboard metadata drift. Example: the recurring plan price/product is missing `metadata.prontiqTier`, a metered product is attached without `metadata.prontiqProduct`, or the same `prontiqProduct` is attached twice. The webhook now hard-fails all of those cases instead of skipping malformed items, so Stripe keeps retrying until the catalog is corrected.
 
 ## Verification
 

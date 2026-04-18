@@ -102,9 +102,13 @@ function getCreditCost(path: string, product: string): number | null {
   }
   const billingKey = resolveBillingEndpointKey(path, product);
   if (!billingKey) {
-    return 1;
+    return null;
   }
-  return BILLING_ENDPOINTS[billingKey]?.creditCost ?? 1;
+  const definition = BILLING_ENDPOINTS[billingKey];
+  if (!definition || definition.product !== product) {
+    return null;
+  }
+  return definition.creditCost;
 }
 
 function setRateLimitHeaders(

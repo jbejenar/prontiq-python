@@ -106,6 +106,11 @@ after(async () => {
 
 interface FakeStripeState {
   customerEmail: string;
+  meteredStripeProducts?: Array<{
+    prontiqProduct?: string | null;
+    stripeProductId?: string;
+    subscriptionItemId?: string;
+  }>;
   meteredProducts?: string[];
   orgId: string;
   subscriptionId: string;
@@ -118,15 +123,19 @@ function makeStripeClient(): Stripe {
 }
 
 function makeFakeStripe(state: FakeStripeState): Stripe {
-  const meteredProducts = state.meteredProducts ?? ["address"];
-  const meteredItems = meteredProducts.map((product) => ({
-    id: `si_${product}_1`,
+  const meteredItems = (state.meteredStripeProducts ??
+    (state.meteredProducts ?? ["address"]).map((product) => ({
+      prontiqProduct: product,
+      stripeProductId: `prod_${product}_test`,
+      subscriptionItemId: `si_${product}_1`,
+    }))).map((item, index) => ({
+    id: item.subscriptionItemId ?? `si_metered_${index + 1}`,
     price: {
-      id: `price_metered_${product}`,
+      id: `price_metered_${item.prontiqProduct ?? index}`,
       metadata: {},
       product: {
-        id: `prod_${product}_test`,
-        metadata: { prontiqProduct: product },
+        id: item.stripeProductId ?? `prod_metered_${index + 1}`,
+        metadata: item.prontiqProduct == null ? {} : { prontiqProduct: item.prontiqProduct },
       },
     },
   }));
@@ -460,7 +469,7 @@ test("checkout.session.completed rejects Stripe-enabled products that have no bi
     },
   })));
   assert.equal(result.statusCode, 500);
-  assert.equal(result.body.status, "retryable_failure");
+  assert.equal(result.body.error, "retryable_failure");
 
   const envelope = await ddb.send(
     new GetCommand({ TableName: KEYS_TABLE, Key: { apiKeyHash: `ORG#${orgId}` } }),
@@ -468,6 +477,102 @@ test("checkout.session.completed rejects Stripe-enabled products that have no bi
   assert.equal(envelope.Item?.tier, "free");
   assert.equal(envelope.Item?.stripeSubscriptionId, null);
   assert.deepEqual(envelope.Item?.products, ["address"]);
+});
+
+test("checkout.session.completed rejects malformed metered Stripe items missing prontiqProduct metadata", async () => {
+  const orgId = `org_stripe_missing_meter_metadata_${SUFFIX}`;
+  await seedEnvelope({
+    orgId,
+    ownerEmail: "owner-metadata@example.com",
+    stripeCustomerId: "cus_missing_meter_metadata_1",
+  });
+
+  const handler = buildHandler({
+    customerEmail: "owner-metadata@example.com",
+    meteredStripeProducts: [{ stripeProductId: "prod_missing_metadata_1", subscriptionItemId: "si_missing_metadata_1" }],
+    orgId,
+    subscriptionId: "sub_missing_metadata_1",
+    tier: "starter",
+    subscriptionStatus: "active",
+  });
+
+  const result = decodeBody(await handler(signedEvent({
+    id: "evt_missing_meter_metadata_1",
+    object: "event",
+    created: Math.floor(Date.now() / 1000),
+    type: "checkout.session.completed",
+    data: {
+      object: {
+        id: "cs_missing_metadata_1",
+        object: "checkout.session",
+        customer: "cus_missing_meter_metadata_1",
+        subscription: "sub_missing_metadata_1",
+      },
+    },
+  })));
+  assert.equal(result.statusCode, 500);
+  assert.equal(result.body.error, "retryable_failure");
+
+  const envelope = await ddb.send(
+    new GetCommand({ TableName: KEYS_TABLE, Key: { apiKeyHash: `ORG#${orgId}` } }),
+  );
+  assert.equal(envelope.Item?.tier, "free");
+  assert.equal(envelope.Item?.stripeSubscriptionId, null);
+  assert.deepEqual(envelope.Item?.products, ["address"]);
+});
+
+test("processing completion marker returns retryable failure until the current worker finishes", async () => {
+  const orgId = `org_stripe_processing_${SUFFIX}`;
+  await seedEnvelope({
+    orgId,
+    ownerEmail: "owner-processing@example.com",
+    stripeCustomerId: "cus_processing_1",
+  });
+  await ddb.send(new PutCommand({
+    TableName: KEYS_TABLE,
+    Item: {
+      apiKeyHash: "WEBHOOK#stripe#evt_processing_marker_1",
+      claimedAt: new Date().toISOString(),
+      eventType: "checkout.session.completed",
+      status: "processing",
+      webhookOrgId: orgId,
+      ttl: Math.floor(Date.now() / 1000) + 3600,
+    },
+  }));
+
+  const handler = buildHandler({
+    customerEmail: "owner-processing@example.com",
+    orgId,
+    subscriptionId: "sub_processing_1",
+    tier: "starter",
+    subscriptionStatus: "active",
+  });
+
+  const result = decodeBody(await handler(signedEvent({
+    id: "evt_processing_marker_1",
+    object: "event",
+    created: Math.floor(Date.now() / 1000),
+    type: "checkout.session.completed",
+    data: {
+      object: {
+        id: "cs_processing_1",
+        object: "checkout.session",
+        customer: "cus_processing_1",
+        subscription: "sub_processing_1",
+      },
+    },
+  })));
+  assert.equal(result.statusCode, 500);
+  assert.equal(result.body.error, "retryable_failure");
+  assert.equal(result.body.reason, "event_already_processing");
+
+  const envelope = await ddb.send(
+    new GetCommand({ TableName: KEYS_TABLE, Key: { apiKeyHash: `ORG#${orgId}` } }),
+  );
+  assert.equal(envelope.Item?.tier, "free");
+
+  const auditRows = await listAuditRows(orgId);
+  assert.equal(auditRows.length, 0);
 });
 
 test("customer.subscription.updated past_due then active toggles paymentOverdue once and sends best-effort email once", async () => {
