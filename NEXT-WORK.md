@@ -67,10 +67,10 @@ POST /v1/account/setup  (Clerk JWT; not API key — recovery provisioning)
 ### 1. Finish auth/billing control plane
 
 - ~~P1B.05 — Clerk webhook handler + recovery endpoint~~ ✅ shipped (2026-04-18)
-- P1B.06 — Stripe webhook handler (`customer.subscription.updated` for tier change + `past_due` grace flag; `invoice.payment_succeeded` for monthly counter reset; `customer.subscription.deleted` for downgrade)
+- ~~P1B.06 — Stripe webhook handler~~ ✅ shipped (2026-04-18) — `POST /webhooks/stripe` now handles `checkout.session.completed`, `customer.subscription.updated`, `customer.subscription.deleted`, and `invoice.payment_failed` log-only with replay-safe completion markers, usage-flag resets on paid-plan transitions, and best-effort `past_due` email delivery.
+- ~~P1B.10 — billing cron~~ ✅ shipped (2026-04-18) — hourly `PqBillingCron` now reads `REGISTRY#active-keys`, walks the `newHash-redirect-index` chain, sums accumulated credits per product family/month, and emits replay-safe Stripe meter events using deterministic `pendingMeterEventIdentifier` / `pendingMeterTargetCumulativeCount` state on the current hash usage row before advancing `lastPushedCumulativeCount`.
 - ~~P1B.07 — `prontiq-audit` writer helper~~ ✅ shipped
 - P1B.08 — SES suppression / bounce handling (also unblocks the welcome email path going green from `emailSent: false`)
-- P1B.10 — billing cron
 - P1B.11 — month-close job
 
 ### 2. Finish ingestion hardening
@@ -90,20 +90,21 @@ POST /v1/account/setup  (Clerk JWT; not API key — recovery provisioning)
 
 Recommended priority:
 
-1. **P1B.06 — Stripe webhook handler.** With P1B.05 complete, billing automation is now the biggest remaining gap in P1B. Three events to handle (`customer.subscription.updated`, `invoice.payment_succeeded`, `customer.subscription.deleted`) plus the 14-day `past_due` grace flag on `prontiq-keys`. Reuses the audit + provisioning helpers from `@prontiq/control-plane`; extends `prontiq-keys` write paths but no schema change.
-2. P1B.08 — SES suppression / bounce handling. Currently the Clerk webhook + account-setup endpoint both log `emailSent: false` when SES rejects the welcome email (sandbox / unverified domain identity). Once SES is out of sandbox, this ticket adds the SES bounce/complaint subscriber that suppresses retries against bouncing addresses.
-3. P1F.02 — monitoring + alerting. Two CloudWatch alarms exist today: `PqClerkWebhookErrors`, `PqAccountErrors`. Need broader coverage (DDB throttle, Stripe API error rate, OpenSearch query latency) before P1C dashboard work goes live.
+1. **P1B.08 — SES suppression / bounce handling.** With P1B.06 now live, the billing control plane path exists end-to-end and the remaining email hardening gap is suppression/bounce ingestion rather than webhook delivery. This ticket should lift the current “best-effort only” suppression reads into a full subscriber that keeps `prontiq-ses-suppressions` current.
+2. **P1B.11 — month-close job.** The hourly billing cron is now live, including redirect-chain attribution and replay-safe pending meter markers. The next billing hardening step is the day-1 finalisation sweep that marks previous-month scopes `closed: true` so the hourly cron stops revisiting them permanently. This work should be planned against the new credits model, not the older “raw request count is the billing unit” assumption.
+3. P1F.02 — monitoring + alerting. Four CloudWatch alarms now exist on the customer-control-plane surfaces: `PqClerkWebhookErrors`, `PqStripeWebhookErrors`, `PqBillingCronErrors`, `PqAccountErrors`. Need broader coverage (DDB throttle, Stripe API error rate, OpenSearch query latency) before P1C dashboard work goes live.
 
 Reason:
 
 - P1B.05 (Clerk webhook + recovery endpoint) closed end-to-end on 2026-04-18 — auth + provisioning paths are durable and idempotent.
-- The biggest remaining gap in P1B is billing automation (Stripe webhook → cron → month-close).
+- P1B.06 and P1B.10 closed the webhook + hourly meter-push halves of billing automation on 2026-04-18, and the auth path now applies endpoint credit weights inline before writing family usage totals. The biggest remaining P1B billing gap is month-close plus the customer-facing account/billing surface that exposes those credits clearly.
 - SES suppression cleanup and broader monitoring should land before P1C dashboard work so the customer-visible flows have full alarm coverage.
 
 ### Operator follow-ups (one-time, not blocking next ticket)
 
 - **SES domain identity verification** for `prontiq.dev` in `ap-southeast-2`. Until this lands, every webhook delivery logs `emailSent: false` (provisioning durability unaffected). Steps in `docs/runbooks/clerk-webhook.md` § preconditions.
 - **SES sandbox removal** in `ap-southeast-2` via AWS support case (24h turnaround). Required before welcome emails can reach unverified addresses.
+- **Stripe metadata contract** for `dev` and `prod`: the recurring plan Price must carry `metadata.prontiqTier`, and each metered Stripe Product must carry `metadata.prontiqProduct`. `STRIPE_WEBHOOK_SECRET` / `STRIPE_SECRET_KEY` remain the only required Stripe GitHub Environment secrets.
 
 ### Backlog (not blocking auth)
 

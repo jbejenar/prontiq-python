@@ -78,7 +78,7 @@ test("free-tier migration constrains products to address only", () => {
   });
 
   assert.deepEqual(plan.keyRecord.products, ["address"]);
-  assert.equal(plan.keyRecord.quotaPerProduct, 5000);
+  assert.equal(plan.keyRecord.quotaPerProduct, 10000);
   assert.equal(plan.keyRecord.rateLimit, 10);
 });
 

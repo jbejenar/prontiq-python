@@ -5,6 +5,39 @@
 
 ---
 
+## Session 14 — 2026-04-18
+
+**Focus:** P1B.10 — hourly billing cron into Stripe meters, plus full billing-doc reconciliation after the Stripe webhook/catalog work landed.
+
+### Shipped
+
+- **Hourly billing cron (`PqBillingCron`) implemented.** New `packages/control-plane/src/billing-cron.ts` service + Lambda handler wired in `sst.config.ts` on `rate(1 hour)`. Reads `REGISTRY#active-keys`, loads the current paid key, recursively walks `newHash-redirect-index`, sums usage across the full rotation chain, and emits Stripe meter events using the live catalog contract (`event_name = prontiq_${product}_requests`, payload keys `stripe_customer_id` + `request_count`). Under the shipped credits model, the auth middleware already rates requests into family-level credits before writing `prontiq-usage`, so the cron now pushes those accumulated family credit deltas directly.
+- **Replay-safe meter push state added to `prontiq-usage`.** Current-hash usage rows can now carry `pendingMeterEventIdentifier` + `pendingMeterTargetCumulativeCount` so a Stripe-accepted meter event can be retried and finalized without double billing if the DynamoDB watermark update fails after the Stripe API call.
+- **Sandbox Stripe catalog hardened.** Billing contract now depends on Stripe metadata rather than checked-in catalog IDs: recurring Price/Product carries `metadata.prontiqTier`; metered Product carries `metadata.prontiqProduct`. Sandbox now has Starter, Growth, and Address-metered objects plus a live `prontiq_address_requests` meter.
+- **Billing weights now fail closed for unrated products.** Address endpoints are explicitly rated in `BILLING_ENDPOINTS`; if Stripe enables a future product before matching endpoint weights land in code, auth returns `500 INTERNAL_ERROR` for that product instead of silently charging a guessed default.
+- **Docs reconciled to the meter model.** Architecture/backlog/session/changelog text now points to Stripe meters + metadata contract instead of legacy `subscriptionItems.createUsageRecord()` assumptions.
+
+### Verification evidence
+
+- `pnpm --filter @prontiq/shared build`
+- `pnpm --filter @prontiq/control-plane build`
+- `pnpm --filter @prontiq/control-plane typecheck`
+- `pnpm --filter @prontiq/control-plane test:integration` (run outside sandbox so the suite could reach DynamoDB Local on `localhost:8000`)
+
+Billing-cron integration coverage now includes:
+
+- straight delta push on a paid key
+- rotation-chain correctness (`A -> C`, gate on current hash only)
+- retry-safe replay after a simulated failure between Stripe meter acceptance and DynamoDB finalize
+
+### Next session should start with
+
+1. Read NEXT-WORK.md.
+2. **P1B.08 — SES suppression / bounce handling.** The hourly billing path is now live; suppression ingestion is the remaining email-hardening gap on the control plane.
+3. **P1B.11 — month-close job.** Previous-month scopes are still only revisited by the hourly cron during the early UTC rollover window. The dedicated finalisation sweep that sets `closed: true` is the next billing-hardening ticket.
+
+---
+
 ## Session 13 — 2026-04-18
 
 **Focus:** P1B.05 PR 3 — split into PR 3a (refactor: move `resolvePrimaryEmail` to `@prontiq/control-plane`) → dev → prod, then PR 3b (`POST /v1/account/setup` recovery endpoint + `PqAccount` Lambda + JWT middleware + Mintlify reference page) → dev → prod. Closes P1B.05 ticket end-to-end.
@@ -30,8 +63,8 @@
 ### Next session should start with
 
 1. Read NEXT-WORK.md.
-2. **P1B.06 — Stripe webhook handler.** Three events to handle (`customer.subscription.updated`, `invoice.payment_succeeded`, `customer.subscription.deleted`) plus the 14-day `past_due` grace flag on `prontiq-keys`. Reuses the audit + provisioning helpers from `@prontiq/control-plane`. ARCH §5.7.3-5 has the per-event spec.
-3. **Operator follow-up that doesn't block next ticket:** SES domain identity verify for `prontiq.dev` in `ap-southeast-2` + sandbox-out request. Steps in `docs/runbooks/clerk-webhook.md`. Until done, both ingress paths log `emailSent: false` (provisioning durability unaffected).
+2. **P1B.08 — SES suppression / bounce handling.** Stripe webhook is now implemented, so the next control-plane hardening ticket is the SES subscriber that keeps `prontiq-ses-suppressions` current instead of read-only.
+3. **Operator follow-up that doesn't block next ticket:** configure Stripe Dashboard webhook subscriptions + Smart Retries/cancel-on-exhaustion policy per `docs/runbooks/stripe-webhook.md`, ensure the recurring Stripe Price carries `metadata.prontiqTier` and metered Stripe Products carry `metadata.prontiqProduct`, and verify SES domain identity for `prontiq.dev` in `ap-southeast-2` if payment/welcome emails should start going green.
 
 ---
 

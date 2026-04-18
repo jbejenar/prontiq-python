@@ -1,21 +1,92 @@
-import type { Handler } from "aws-lambda";
+import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2, Context } from "aws-lambda";
+import { createStripeBillingService } from "@prontiq/control-plane";
+import Stripe from "stripe";
 
-/**
- * Stripe webhook handler (per ARCHITECTURE.MD §5.7.2-§5.7.5).
- * Events: checkout.session.completed, customer.subscription.updated,
- * customer.subscription.deleted, invoice.payment_failed.
- * Updates prontiq-keys directly (DDB-native — no vendor sync).
- *
- * Implementation tracked by ROADMAP P1B.06.
- */
-export const handler: Handler = async (event) => {
-  // TODO(P1B.06): Verify webhook signature via Stripe SDK
-  // TODO(P1B.06): Two-step retrieve (sub ID → expand items.data.price)
-  // TODO(P1B.06): Map Stripe plan → tier (PLANS lookup)
-  // TODO(P1B.06): TransactWriteItems update across all org keys
-  // TODO(P1B.06): Past_due / active state transitions for grace period
+let cachedSecret: string | undefined;
+let cachedService: ReturnType<typeof createStripeBillingService> | undefined;
+let cachedStripe: Stripe | undefined;
 
-  console.log("Stripe webhook received", { body: event.body });
+function getRequiredEnv(name: string): string {
+  const value = process.env[name];
+  if (!value) {
+    throw new Error(`${name} is required`);
+  }
+  return value;
+}
 
-  return { statusCode: 200, body: JSON.stringify({ received: true }) };
-};
+function getWebhookSecret(): string {
+  if (!cachedSecret) {
+    cachedSecret = getRequiredEnv("STRIPE_WEBHOOK_SECRET");
+  }
+  return cachedSecret;
+}
+
+function getStripeClient(): Stripe {
+  if (!cachedStripe) {
+    cachedStripe = new Stripe(getRequiredEnv("STRIPE_SECRET_KEY"), { maxNetworkRetries: 3 });
+  }
+  return cachedStripe;
+}
+
+function getStripeBillingService(): ReturnType<typeof createStripeBillingService> {
+  if (!cachedService) {
+    cachedService = createStripeBillingService({ stripe: getStripeClient() });
+  }
+  return cachedService;
+}
+
+function getRawBody(event: APIGatewayProxyEventV2): string {
+  if (!event.body) return "";
+  if (event.isBase64Encoded) {
+    return Buffer.from(event.body, "base64").toString("utf8");
+  }
+  return event.body;
+}
+
+function reply(statusCode: number, body: Record<string, unknown>): APIGatewayProxyResultV2 {
+  return {
+    statusCode,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  };
+}
+
+export interface StripeHandlerOverrides {
+  service?: ReturnType<typeof createStripeBillingService>;
+  stripeClient?: Stripe;
+  webhookSecret?: string;
+}
+
+export function createStripeHandler(overrides: StripeHandlerOverrides = {}) {
+  return async function stripeHandler(
+    event: APIGatewayProxyEventV2,
+    _context?: Context,
+  ): Promise<APIGatewayProxyResultV2> {
+    let stripeEvent: Stripe.Event;
+    try {
+      const stripeClient = overrides.stripeClient ?? getStripeClient();
+      stripeEvent = stripeClient.webhooks.constructEvent(
+        getRawBody(event),
+        event.headers["stripe-signature"] ?? event.headers["Stripe-Signature"] ?? "",
+        overrides.webhookSecret ?? getWebhookSecret(),
+      );
+    } catch (error) {
+      if (error instanceof Stripe.errors.StripeSignatureVerificationError) {
+        console.warn("Stripe webhook signature verification failed", {
+          message: error.message,
+        });
+        return reply(400, { error: "invalid_signature" });
+      }
+      console.error("Stripe webhook failed before event dispatch", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return reply(500, { error: "internal_error" });
+    }
+
+    const service = overrides.service ?? getStripeBillingService();
+    const result = await service.handleEvent(stripeEvent);
+    return reply(result.httpStatus, result.body);
+  };
+}
+
+export const handler = createStripeHandler();

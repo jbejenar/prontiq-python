@@ -1,7 +1,12 @@
 import { ConditionalCheckFailedException, DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, GetCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { createMiddleware } from "hono/factory";
-import { ERROR_CODES, PRODUCT_REGISTRY } from "@prontiq/shared";
+import {
+  BILLING_ENDPOINTS,
+  ERROR_CODES,
+  PRODUCT_REGISTRY,
+  getBillingEndpointsForProduct,
+} from "@prontiq/shared";
 import { hashKey } from "@prontiq/shared/keys";
 import type { ApiKeyRecord, RedirectRecord, UsageCounterRecord } from "@prontiq/shared";
 
@@ -11,6 +16,7 @@ type RateLimitBucket = {
 };
 
 type UsageUpdateResult = {
+  creditCost: number;
   overage: boolean;
   quotaExceeded: boolean;
   requestCount: number;
@@ -57,6 +63,48 @@ function getResetAt(now: Date): string {
 
 function getUsageTtl(now: Date): number {
   return Math.floor(now.getTime() / 1000) + USAGE_TTL_SECONDS;
+}
+
+function resolveBillingEndpointKey(path: string, product: string): string | null {
+  const segments = path.split("/").filter(Boolean);
+  const endpointSegments = segments.slice(2);
+  if (endpointSegments.length === 0) {
+    return null;
+  }
+
+  if (product === "address") {
+    if (endpointSegments[0] === "lookup" && endpointSegments[1] === "postcode") {
+      return "address.lookup_postcode";
+    }
+    if (endpointSegments[0] === "lookup" && endpointSegments[1] === "suburb") {
+      return "address.lookup_suburb";
+    }
+    if (
+      endpointSegments[0] === "autocomplete" ||
+      endpointSegments[0] === "validate" ||
+      endpointSegments[0] === "enrich" ||
+      endpointSegments[0] === "reverse"
+    ) {
+      return `address.${endpointSegments[0]}`;
+    }
+  }
+
+  return null;
+}
+
+function productHasBillingDefinitions(product: string): boolean {
+  return getBillingEndpointsForProduct(product).length > 0;
+}
+
+function getCreditCost(path: string, product: string): number | null {
+  if (!productHasBillingDefinitions(product)) {
+    return null;
+  }
+  const billingKey = resolveBillingEndpointKey(path, product);
+  if (!billingKey) {
+    return 1;
+  }
+  return BILLING_ENDPOINTS[billingKey]?.creditCost ?? 1;
 }
 
 function setRateLimitHeaders(
@@ -160,6 +208,7 @@ async function resolveKeyRecord(rawApiKey: string, now: Date): Promise<ApiKeyRec
 
 async function incrementUsage(
   record: ApiKeyRecord,
+  creditCost: number,
   product: string,
   now: Date,
 ): Promise<UsageUpdateResult> {
@@ -168,6 +217,16 @@ async function incrementUsage(
   const usageScope = `${product}#${monthKey}`;
   const limit = record.quotaPerProduct;
 
+  if (record.tier === "free" && limit != null && creditCost > limit) {
+    return {
+      creditCost,
+      overage: false,
+      requestCount: limit,
+      quotaExceeded: true,
+      resetAt,
+    };
+  }
+
   const command = new UpdateCommand({
     TableName: getUsageTableName(),
     Key: {
@@ -175,7 +234,7 @@ async function incrementUsage(
       scope: usageScope,
     },
     UpdateExpression:
-      "SET #lastUsedAt = :now, #ttl = if_not_exists(#ttl, :ttl), #lastPushedCumulativeCount = if_not_exists(#lastPushedCumulativeCount, :zero) ADD #requestCount :one",
+      "SET #lastUsedAt = :now, #ttl = if_not_exists(#ttl, :ttl), #lastPushedCumulativeCount = if_not_exists(#lastPushedCumulativeCount, :zero) ADD #requestCount :creditCost",
     ExpressionAttributeNames: {
       "#lastPushedCumulativeCount": "lastPushedCumulativeCount",
       "#lastUsedAt": "lastUsedAt",
@@ -183,16 +242,18 @@ async function incrementUsage(
       "#ttl": "ttl",
     },
     ExpressionAttributeValues: {
+      ":creditCost": creditCost,
       ":now": now.toISOString(),
-      ":one": 1,
       ":ttl": getUsageTtl(now),
       ":zero": 0,
-      ...(record.tier === "free" && limit != null ? { ":quota": limit } : {}),
+      ...(record.tier === "free" && limit != null
+        ? { ":maxBeforeIncrement": Math.max(0, limit - creditCost) }
+        : {}),
     },
     ...(record.tier === "free" && limit != null
       ? {
           ConditionExpression:
-            "attribute_not_exists(#requestCount) OR #requestCount < :quota",
+            "attribute_not_exists(#requestCount) OR #requestCount <= :maxBeforeIncrement",
         }
       : {}),
     ReturnValues: "UPDATED_NEW",
@@ -207,6 +268,7 @@ async function incrementUsage(
     }
 
     return {
+      creditCost,
       overage: limit != null && record.tier !== "free" && requestCount > limit,
       quotaExceeded: false,
       requestCount,
@@ -215,6 +277,7 @@ async function incrementUsage(
   } catch (error) {
     if (error instanceof ConditionalCheckFailedException) {
       return {
+        creditCost,
         overage: false,
         requestCount: limit ?? 0,
         quotaExceeded: true,
@@ -309,7 +372,24 @@ export function auth() {
       );
     }
 
-    const usageResult = await incrementUsage(record, product, now);
+    const creditCost = getCreditCost(c.req.path, product);
+    if (creditCost == null) {
+      return c.json(
+        {
+          error: {
+            ...ERROR_CODES.INTERNAL_ERROR,
+            code: "INTERNAL_ERROR" as const,
+            request_id: c.get("requestId"),
+            details: {
+              product,
+              reason: "billing_endpoint_weights_missing",
+            },
+          },
+        },
+        500,
+      );
+    }
+    const usageResult = await incrementUsage(record, creditCost, product, now);
     if (usageResult.quotaExceeded && record.quotaPerProduct != null) {
       setRateLimitHeaders(
         record.quotaPerProduct,
@@ -325,6 +405,7 @@ export function auth() {
             code: "QUOTA_EXCEEDED" as const,
             request_id: c.get("requestId"),
             details: {
+              credits_required: usageResult.creditCost,
               product,
               used: record.quotaPerProduct,
               limit: record.quotaPerProduct,
