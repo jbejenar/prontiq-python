@@ -268,6 +268,26 @@ async function seedEnvelope(input: {
   }));
 }
 
+async function seedLegacyEnvelope(input: {
+  orgId: string;
+  ownerEmail: string;
+  stripeCustomerId: string;
+  tier?: Tier;
+  hasFirstKey?: boolean;
+}): Promise<void> {
+  await ddb.send(new PutCommand({
+    TableName: KEYS_TABLE,
+    Item: {
+      apiKeyHash: `ORG#${input.orgId}`,
+      stripeCustomerId: input.stripeCustomerId,
+      ownerEmail: input.ownerEmail,
+      tier: input.tier ?? "free",
+      hasFirstKey: input.hasFirstKey ?? false,
+      completedAt: "2026-04-01T00:00:00.000Z",
+    },
+  }));
+}
+
 async function listAuditRows(orgId: string): Promise<Record<string, unknown>[]> {
   const result = await ddb.send(
     new QueryCommand({
@@ -725,6 +745,48 @@ test("customer.subscription.updated with zero keys still applies plan changes fr
   assert.deepEqual(envelope.Item?.subscriptionItems, { address: "si_address_1" });
 });
 
+test("customer.subscription.updated normalizes legacy org envelopes before reconciling billing state", async () => {
+  const orgId = `org_stripe_legacy_envelope_${SUFFIX}`;
+  await seedLegacyEnvelope({
+    orgId,
+    ownerEmail: "owner-legacy@example.com",
+    stripeCustomerId: "cus_legacy_1",
+    tier: "starter",
+  });
+
+  const handler = buildHandler({
+    customerEmail: "owner-legacy@example.com",
+    orgId,
+    subscriptionId: "sub_legacy_1",
+    tier: "starter",
+    subscriptionStatus: "past_due",
+  });
+
+  const result = decodeBody(await handler(signedEvent({
+    id: "evt_legacy_envelope_1",
+    object: "event",
+    created: Math.floor(Date.now() / 1000),
+    type: "customer.subscription.updated",
+    data: {
+      object: {
+        id: "sub_legacy_1",
+        object: "subscription",
+        customer: "cus_legacy_1",
+        status: "past_due",
+      },
+    },
+  })));
+  assert.equal(result.statusCode, 200);
+
+  const envelope = await ddb.send(
+    new GetCommand({ TableName: KEYS_TABLE, Key: { apiKeyHash: `ORG#${orgId}` } }),
+  );
+  assert.equal(envelope.Item?.paymentOverdue, true);
+  assert.equal(envelope.Item?.stripeSubscriptionId, "sub_legacy_1");
+  assert.deepEqual(envelope.Item?.products, ["address"]);
+  assert.deepEqual(envelope.Item?.subscriptionItems, { address: "si_address_1" });
+});
+
 test("customer.subscription.updated reconciles same-tier metered item replacement", async () => {
   const orgId = `org_stripe_same_tier_item_${SUFFIX}`;
   const apiKeyHash = `hash_same_tier_item_${SUFFIX}`;
@@ -870,6 +932,74 @@ test("customer.subscription.updated reconciles same-tier product-set changes", a
   } finally {
     delete BILLING_ENDPOINTS["abn.lookup"];
   }
+});
+
+test("customer.subscription.updated writes one audit row when billing drift and payment status change together", async () => {
+  const orgId = `org_stripe_combined_update_${SUFFIX}`;
+  const apiKeyHash = `hash_combined_update_${SUFFIX}`;
+  await seedEnvelope({
+    orgId,
+    ownerEmail: "owner-combined@example.com",
+    stripeCustomerId: "cus_combined_1",
+    tier: "starter",
+    products: ["address"],
+    paymentOverdue: false,
+    stripeSubscriptionId: "sub_combined_1",
+    subscriptionItems: { address: "si_address_old_1" },
+    hasFirstKey: true,
+  });
+  await seedKey({
+    apiKeyHash,
+    keyPrefix: "pq_live_combined",
+    ownerEmail: "owner-combined@example.com",
+    orgId,
+    tier: "starter",
+    products: ["address"],
+    quotaPerProduct: 10_000,
+    rateLimit: 50,
+    active: true,
+    paymentOverdue: false,
+    stripeCustomerId: "cus_combined_1",
+    stripeSubscriptionId: "sub_combined_1",
+    subscriptionItems: { address: "si_address_old_1" },
+    createdAt: "2026-04-01T00:00:00.000Z",
+    lastUsedAt: null,
+  });
+
+  const handler = buildHandler({
+    customerEmail: "owner-combined@example.com",
+    meteredStripeProducts: [{ prontiqProduct: "address", subscriptionItemId: "si_address_new_1" }],
+    orgId,
+    subscriptionId: "sub_combined_1",
+    tier: "starter",
+    subscriptionStatus: "past_due",
+  });
+
+  const result = decodeBody(await handler(signedEvent({
+    id: "evt_combined_update_1",
+    object: "event",
+    created: Math.floor(Date.now() / 1000),
+    type: "customer.subscription.updated",
+    data: {
+      object: {
+        id: "sub_combined_1",
+        object: "subscription",
+        customer: "cus_combined_1",
+        status: "past_due",
+      },
+    },
+  })));
+  assert.equal(result.statusCode, 200);
+
+  const key = await ddb.send(new GetCommand({ TableName: KEYS_TABLE, Key: { apiKeyHash } }));
+  assert.equal(key.Item?.paymentOverdue, true);
+  assert.deepEqual(key.Item?.subscriptionItems, { address: "si_address_new_1" });
+
+  const auditRows = await listAuditRows(orgId);
+  assert.equal(auditRows.length, 1);
+  assert.equal(auditRows[0]?.action, "DOWNGRADE");
+  assert.equal((auditRows[0]?.metadata as Record<string, unknown>)?.paymentOverdue, true);
+  assert.equal((auditRows[0]?.metadata as Record<string, unknown>)?.billingStateReconciled, true);
 });
 
 test("customer.subscription.deleted downgrades keys and envelope to free and removes registry membership", async () => {

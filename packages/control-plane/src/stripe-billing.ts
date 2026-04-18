@@ -74,6 +74,14 @@ interface BillingStateSnapshot {
   tier: Tier;
 }
 
+interface NormalizedOrgEnvelopeRecord extends OrgEnvelopeRecord {
+  paymentOverdue: boolean;
+  products: string[];
+  stripeSubscriptionId: string | null;
+  subscriptionItems: ApiKeySubscriptionItems;
+  tier: Tier;
+}
+
 const COMPLETION_MARKER_PREFIX = "WEBHOOK#stripe#";
 const COMPLETION_MARKER_TTL_SECONDS = 7 * 24 * 60 * 60;
 const PROCESSING_LEASE_SECONDS = 5 * 60;
@@ -450,7 +458,7 @@ async function loadOrgEnvelope(
   ddb: DynamoDBDocumentClient,
   keysTableName: string,
   orgId: string,
-): Promise<OrgEnvelopeRecord> {
+): Promise<NormalizedOrgEnvelopeRecord> {
   const result = await ddb.send(
     new GetCommand({
       TableName: keysTableName,
@@ -461,7 +469,16 @@ async function loadOrgEnvelope(
   if (!item) {
     throw new Error(`ORG envelope ${getOrgEnvelopeKey(orgId)} is missing`);
   }
-  return item;
+  const tier = isKnownTier(item.tier) ? item.tier : "free";
+  const defaultPlan = PLANS[tier];
+  return {
+    ...item,
+    paymentOverdue: item.paymentOverdue ?? false,
+    products: Array.isArray(item.products) && item.products.length > 0 ? item.products : defaultPlan.products,
+    stripeSubscriptionId: item.stripeSubscriptionId ?? null,
+    subscriptionItems: item.subscriptionItems ?? {},
+    tier,
+  };
 }
 
 async function updateOrgEnvelopeBillingState(
@@ -867,7 +884,8 @@ async function processPlanTransition(
   event: Stripe.Event,
   now: Date,
   tierStateOverride?: TierResolution,
-): Promise<void> {
+  shouldWriteAudit = true,
+): Promise<"UPGRADE" | "DOWNGRADE"> {
   const tierState = tierStateOverride ?? await resolveTierStateForEvent(dependencies.stripe, event);
   const envelope = await loadOrgEnvelope(dependencies.ddb, dependencies.keysTableName, customer.orgId);
   await updateOrgEnvelopeBillingState(dependencies.ddb, dependencies.keysTableName, customer.orgId, {
@@ -906,6 +924,9 @@ async function processPlanTransition(
     : oldTier === "growth" && tierState.tier === "starter"
       ? "DOWNGRADE"
       : "UPGRADE";
+  if (shouldWriteAudit === false) {
+    return action;
+  }
   await writeAudit({
     ddb: dependencies.ddb,
     tableName: dependencies.auditTableName,
@@ -922,13 +943,15 @@ async function processPlanTransition(
     now: getAuditTimestamp(event),
     eventId: event.id,
   });
+  return action;
 }
 
 async function processPastDue(
   dependencies: StripeBillingDependencies,
   customer: CustomerContext,
   event: Stripe.Event,
-): Promise<void> {
+  shouldWriteAudit = true,
+): Promise<boolean> {
   const envelope = await loadOrgEnvelope(dependencies.ddb, dependencies.keysTableName, customer.orgId);
   const keys = await loadOrgKeys(dependencies.ddb, dependencies.keysTableName, customer.orgId);
   const transitioned = !envelope.paymentOverdue || keys.some((key) => !key.paymentOverdue);
@@ -945,6 +968,9 @@ async function processPastDue(
   if (transitioned) {
     await sendPastDueEmailSafely(dependencies, customer.email, customer.orgId);
   }
+  if (shouldWriteAudit === false) {
+    return transitioned;
+  }
   await writeAudit({
     ddb: dependencies.ddb,
     tableName: dependencies.auditTableName,
@@ -959,17 +985,19 @@ async function processPastDue(
     now: getAuditTimestamp(event),
     eventId: event.id,
   });
+  return transitioned;
 }
 
 async function processRecoveryToActive(
   dependencies: StripeBillingDependencies,
   customer: CustomerContext,
   event: Stripe.Event,
-): Promise<void> {
+  shouldWriteAudit = true,
+): Promise<boolean> {
   const envelope = await loadOrgEnvelope(dependencies.ddb, dependencies.keysTableName, customer.orgId);
   const keys = await loadOrgKeys(dependencies.ddb, dependencies.keysTableName, customer.orgId);
   if (!envelope.paymentOverdue && !keys.some((key) => key.paymentOverdue)) {
-    return;
+    return false;
   }
   await updateOrgEnvelopeBillingState(dependencies.ddb, dependencies.keysTableName, customer.orgId, {
     paymentOverdue: false,
@@ -980,6 +1008,9 @@ async function processRecoveryToActive(
   });
   for (const key of keys) {
     await setPaymentOverdueState(dependencies.ddb, dependencies.keysTableName, key, false);
+  }
+  if (shouldWriteAudit === false) {
+    return true;
   }
   await writeAudit({
     ddb: dependencies.ddb,
@@ -995,6 +1026,7 @@ async function processRecoveryToActive(
     now: getAuditTimestamp(event),
     eventId: event.id,
   });
+  return true;
 }
 
 async function processSubscriptionDeleted(
@@ -1114,13 +1146,52 @@ export function createStripeBillingService(
         );
         const keys = await loadOrgKeys(dependencies.ddb, dependencies.keysTableName, customer.orgId);
         const tierState = await resolveTierStateForEvent(dependencies.stripe, event);
-        if (hasBillingStateDrift(envelope, keys, tierState)) {
-          await processPlanTransition(dependencies, customer, event, now, tierState);
+        const billingStateDrifted = hasBillingStateDrift(envelope, keys, tierState);
+        let auditAction: "UPGRADE" | "DOWNGRADE" | null = null;
+        const auditMetadata: Record<string, unknown> = {
+          eventType: event.type,
+          stripeCustomerId: customer.customerId,
+          stripeSubscriptionId: tierState.subscriptionId,
+        };
+        if (billingStateDrifted) {
+          auditAction = await processPlanTransition(dependencies, customer, event, now, tierState, false);
+          auditMetadata.billingStateReconciled = true;
+          auditMetadata.newTier = tierState.tier;
+          auditMetadata.oldTier = envelope.tier;
+          auditMetadata.products = tierState.products;
+          auditMetadata.subscriptionItems = tierState.subscriptionItems;
         }
         if (subscription.status === "past_due") {
-          await processPastDue(dependencies, customer, event);
+          const transitioned = await processPastDue(dependencies, customer, event, false);
+          if (transitioned || billingStateDrifted) {
+            auditAction = "DOWNGRADE";
+            auditMetadata.paymentOverdue = true;
+            auditMetadata.paymentOverdueTransition = transitioned ? "set" : "unchanged";
+          }
         } else if (subscription.status === "active") {
-          await processRecoveryToActive(dependencies, customer, event);
+          const recovered = await processRecoveryToActive(dependencies, customer, event, false);
+          if (recovered || billingStateDrifted) {
+            auditAction = recovered ? "UPGRADE" : (auditAction ?? "UPGRADE");
+            if (recovered) {
+              auditMetadata.paymentOverdue = false;
+              auditMetadata.paymentOverdueTransition = "cleared";
+            }
+          }
+        } else if (billingStateDrifted) {
+          auditAction = auditAction ?? "UPGRADE";
+        }
+
+        if (auditAction) {
+          await writeAudit({
+            ddb: dependencies.ddb,
+            tableName: dependencies.auditTableName,
+            orgId: customer.orgId,
+            action: auditAction,
+            actorId: BILLING_ACTOR_ID,
+            metadata: auditMetadata,
+            now: getAuditTimestamp(event),
+            eventId: event.id,
+          });
         }
       }
 
