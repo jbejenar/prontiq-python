@@ -309,6 +309,18 @@ export function createAccountRoutes(overrides: AccountRouteOverrides = {}) {
           500,
         );
     }
+
+    return c.json(
+      {
+        error: {
+          code: "INTERNAL_ERROR",
+          message: "Internal server error",
+          status: 500,
+          request_id: requestId,
+        },
+      },
+      500,
+    );
   });
 
   return accountRoutes;

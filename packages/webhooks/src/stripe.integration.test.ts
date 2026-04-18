@@ -14,7 +14,7 @@ import {
 } from "@aws-sdk/lib-dynamodb";
 import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from "aws-lambda";
 import { createStripeBillingService, type BillingEmailSender } from "@prontiq/control-plane";
-import type { ApiKeyRecord, ApiKeySubscriptionItems, Tier, UsageCounterRecord } from "@prontiq/shared";
+import { BILLING_ENDPOINTS, type ApiKeyRecord, type ApiKeySubscriptionItems, type Tier, type UsageCounterRecord } from "@prontiq/shared";
 import Stripe from "stripe";
 import { createStripeHandler } from "./stripe.js";
 
@@ -723,6 +723,153 @@ test("customer.subscription.updated with zero keys still applies plan changes fr
   assert.equal(envelope.Item?.tier, "growth");
   assert.equal(envelope.Item?.stripeSubscriptionId, "sub_zero_keys_plan_change_1");
   assert.deepEqual(envelope.Item?.subscriptionItems, { address: "si_address_1" });
+});
+
+test("customer.subscription.updated reconciles same-tier metered item replacement", async () => {
+  const orgId = `org_stripe_same_tier_item_${SUFFIX}`;
+  const apiKeyHash = `hash_same_tier_item_${SUFFIX}`;
+  await seedEnvelope({
+    orgId,
+    ownerEmail: "owner-same-tier-item@example.com",
+    stripeCustomerId: "cus_same_tier_item_1",
+    tier: "starter",
+    products: ["address"],
+    stripeSubscriptionId: "sub_same_tier_item_1",
+    subscriptionItems: { address: "si_address_old_1" },
+    hasFirstKey: true,
+  });
+  await seedKey({
+    apiKeyHash,
+    keyPrefix: "pq_live_same_tier_item",
+    ownerEmail: "owner-same-tier-item@example.com",
+    orgId,
+    tier: "starter",
+    products: ["address"],
+    quotaPerProduct: 10_000,
+    rateLimit: 50,
+    active: true,
+    paymentOverdue: false,
+    stripeCustomerId: "cus_same_tier_item_1",
+    stripeSubscriptionId: "sub_same_tier_item_1",
+    subscriptionItems: { address: "si_address_old_1" },
+    createdAt: "2026-04-01T00:00:00.000Z",
+    lastUsedAt: null,
+  });
+
+  const handler = buildHandler({
+    customerEmail: "owner-same-tier-item@example.com",
+    meteredStripeProducts: [{ prontiqProduct: "address", subscriptionItemId: "si_address_new_1" }],
+    orgId,
+    subscriptionId: "sub_same_tier_item_1",
+    tier: "starter",
+    subscriptionStatus: "active",
+  });
+
+  const result = decodeBody(await handler(signedEvent({
+    id: "evt_same_tier_item_1",
+    object: "event",
+    created: Math.floor(Date.now() / 1000),
+    type: "customer.subscription.updated",
+    data: {
+      object: {
+        id: "sub_same_tier_item_1",
+        object: "subscription",
+        customer: "cus_same_tier_item_1",
+        status: "active",
+      },
+    },
+  })));
+  assert.equal(result.statusCode, 200);
+
+  const envelope = await ddb.send(
+    new GetCommand({ TableName: KEYS_TABLE, Key: { apiKeyHash: `ORG#${orgId}` } }),
+  );
+  assert.deepEqual(envelope.Item?.subscriptionItems, { address: "si_address_new_1" });
+
+  const key = await ddb.send(new GetCommand({ TableName: KEYS_TABLE, Key: { apiKeyHash } }));
+  assert.deepEqual(key.Item?.subscriptionItems, { address: "si_address_new_1" });
+});
+
+test("customer.subscription.updated reconciles same-tier product-set changes", async () => {
+  const orgId = `org_stripe_same_tier_products_${SUFFIX}`;
+  const apiKeyHash = `hash_same_tier_products_${SUFFIX}`;
+  BILLING_ENDPOINTS["abn.lookup"] = {
+    creditCost: 2,
+    displayName: "ABN Lookup",
+    familyDisplayName: "ABN API",
+    meterEventName: "prontiq_abn_requests",
+    product: "abn",
+  };
+
+  try {
+    await seedEnvelope({
+      orgId,
+      ownerEmail: "owner-same-tier-products@example.com",
+      stripeCustomerId: "cus_same_tier_products_1",
+      tier: "starter",
+      products: ["address"],
+      stripeSubscriptionId: "sub_same_tier_products_1",
+      subscriptionItems: { address: "si_address_old_1" },
+      hasFirstKey: true,
+    });
+    await seedKey({
+      apiKeyHash,
+      keyPrefix: "pq_live_same_tier_products",
+      ownerEmail: "owner-same_tier_products@example.com",
+      orgId,
+      tier: "starter",
+      products: ["address"],
+      quotaPerProduct: 10_000,
+      rateLimit: 50,
+      active: true,
+      paymentOverdue: false,
+      stripeCustomerId: "cus_same_tier_products_1",
+      stripeSubscriptionId: "sub_same_tier_products_1",
+      subscriptionItems: { address: "si_address_old_1" },
+      createdAt: "2026-04-01T00:00:00.000Z",
+      lastUsedAt: null,
+    });
+
+    const handler = buildHandler({
+      customerEmail: "owner-same-tier-products@example.com",
+      meteredStripeProducts: [
+        { prontiqProduct: "address", subscriptionItemId: "si_address_new_1" },
+        { prontiqProduct: "abn", subscriptionItemId: "si_abn_new_1" },
+      ],
+      orgId,
+      subscriptionId: "sub_same_tier_products_1",
+      tier: "starter",
+      subscriptionStatus: "active",
+    });
+
+    const result = decodeBody(await handler(signedEvent({
+      id: "evt_same_tier_products_1",
+      object: "event",
+      created: Math.floor(Date.now() / 1000),
+      type: "customer.subscription.updated",
+      data: {
+        object: {
+          id: "sub_same_tier_products_1",
+          object: "subscription",
+          customer: "cus_same_tier_products_1",
+          status: "active",
+        },
+      },
+    })));
+    assert.equal(result.statusCode, 200);
+
+    const envelope = await ddb.send(
+      new GetCommand({ TableName: KEYS_TABLE, Key: { apiKeyHash: `ORG#${orgId}` } }),
+    );
+    assert.deepEqual(envelope.Item?.products, ["abn", "address"]);
+    assert.deepEqual(envelope.Item?.subscriptionItems, { abn: "si_abn_new_1", address: "si_address_new_1" });
+
+    const key = await ddb.send(new GetCommand({ TableName: KEYS_TABLE, Key: { apiKeyHash } }));
+    assert.deepEqual(key.Item?.products, ["abn", "address"]);
+    assert.deepEqual(key.Item?.subscriptionItems, { abn: "si_abn_new_1", address: "si_address_new_1" });
+  } finally {
+    delete BILLING_ENDPOINTS["abn.lookup"];
+  }
 });
 
 test("customer.subscription.deleted downgrades keys and envelope to free and removes registry membership", async () => {

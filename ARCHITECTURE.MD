@@ -1430,7 +1430,7 @@ Stripe Dashboard:
 |---|---|
 | **Developer signs up** | No Stripe subscription. Free tier is app-managed in DynamoDB. Key works immediately. |
 | **Developer clicks "Upgrade to Growth"** | Stripe Checkout creates a Subscription with recurring plan item + metered product items. `checkout.session.completed` webhook → update DynamoDB (§5.7). |
-| **Developer changes plan (Starter → Growth)** | Stripe handles proration. `customer.subscription.updated` webhook updates tier limits. |
+| **Developer changes plan (Starter → Growth or same-tier product mix)** | Stripe handles proration. `customer.subscription.updated` webhook reconciles the full billing snapshot in DynamoDB. |
 | **Developer adds payment method** | Stripe customer portal. No webhook needed. |
 | **Developer views invoices** | Stripe customer portal link in the Billing tab. |
 | **Developer cancels** | `cancel_at_period_end: true`. Access continues until period end. `customer.subscription.deleted` fires at period end → downgrade to free. |
@@ -1731,12 +1731,12 @@ The `/v1/account/keys/create` endpoint (P1C.03):
 
 > **Why validate before persisting?** A misconfigured Stripe subscription (for example a recurring plan Price/Product missing `metadata.prontiqTier`, or a metered Product missing `metadata.prontiqProduct`) would let the billing cron or entitlement state drift silently from what the customer bought. Validating + failing the webhook surfaces the misconfiguration immediately. Stripe will retry, and on persistent failure the operator gets paged — far better than silent under-billing.
 
-#### 5.7.3 Stripe: `customer.subscription.updated` (plan change / past_due / recovered)
+#### 5.7.3 Stripe: `customer.subscription.updated` (billing-state reconcile / past_due / recovered)
 
 ```
 1. Verify stripe-signature
 2. Retrieve Stripe customer → read metadata.orgId
-3. If plan/price changed (items differ from DynamoDB):
+3. If the Stripe subscription snapshot differs from DynamoDB (tier, products, subscriptionItems, or derived limits):
    a. Determine new tier from recurring Price/Product `metadata.prontiqTier`
    b. Query prontiq-keys by orgId → ALL keys
    c. Update each key: tier, products, quotaPerProduct, rateLimit, subscriptionItems
@@ -1754,7 +1754,7 @@ The `/v1/account/keys/create` endpoint (P1C.03):
 6. Return 200
 ```
 
-> Both initial upgrade (§5.7.2) and subsequent plan changes converge on the same DynamoDB update logic. `subscription.updated` also handles payment-status transitions (`active ↔ past_due`) — one event type, two state transitions.
+> Both initial upgrade (§5.7.2) and subsequent subscription changes converge on the same DynamoDB update logic. `subscription.updated` is not tier-only: it reconciles any Stripe-side drift in `products`, `subscriptionItems`, or derived limits even when the tier string does not change. The same event type also handles payment-status transitions (`active ↔ past_due`) — one event type, two state transitions.
 
 #### 5.7.4 Stripe: `customer.subscription.deleted` (cancel / end of grace)
 

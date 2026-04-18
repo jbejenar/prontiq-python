@@ -87,6 +87,7 @@ This is what allows plan migrations and product entitlement changes to be picked
 - The handler claims `WEBHOOK#stripe#{eventId}` in `prontiq-keys` as `status=processing` before side effects and finalizes it as `status=completed` only after replay-safe state writes and audit succeed.
 - A duplicate delivery that lands while a fresh `processing` claim exists returns 500 `retryable_failure` so Stripe retries after the active worker finishes.
 - `customer.subscription.updated` sets or clears `paymentOverdue` on all org keys.
+- `customer.subscription.updated` also reconciles the full Stripe billing snapshot even when the tier string stays the same. Product-set or `subscriptionItems` drift now converges from Stripe on every update event.
 - `past_due` email delivery is best-effort and suppression-aware. Failure to send email does not fail the webhook.
 
 ## Failure Triage

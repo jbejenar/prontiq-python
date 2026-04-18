@@ -286,6 +286,8 @@ export function createClerkHandler(overrides: HandlerOverrides = {}) {
         });
         return reply(500, { error: "fatal_failure" });
     }
+
+    return reply(500, { error: "internal_error" });
   };
 }
 

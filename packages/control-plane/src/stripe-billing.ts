@@ -65,6 +65,15 @@ interface TierResolution {
   tier: Tier;
 }
 
+interface BillingStateSnapshot {
+  products: string[];
+  quotaPerProduct: number | null;
+  rateLimit: number | null;
+  stripeSubscriptionId: string | null;
+  subscriptionItems: ApiKeySubscriptionItems;
+  tier: Tier;
+}
+
 const COMPLETION_MARKER_PREFIX = "WEBHOOK#stripe#";
 const COMPLETION_MARKER_TTL_SECONDS = 7 * 24 * 60 * 60;
 const PROCESSING_LEASE_SECONDS = 5 * 60;
@@ -430,7 +439,7 @@ async function resolveTierStateForEvent(
   if (enabledProducts.size === 0) {
     throw new Error(`Subscription ${subscriptionId} has no metered Prontiq products enabled`);
   }
-  return { products: Array.from(enabledProducts), subscriptionId, subscriptionItems, tier };
+  return { products: Array.from(enabledProducts).sort(), subscriptionId, subscriptionItems, tier };
 }
 
 function getOrgEnvelopeKey(orgId: string): string {
@@ -808,13 +817,58 @@ function getAuditTimestamp(event: Stripe.Event): Date {
   return new Date(event.created * 1000);
 }
 
+function getTargetBillingState(tierState: TierResolution): BillingStateSnapshot {
+  const plan = PLANS[tierState.tier];
+  return {
+    products: [...tierState.products].sort(),
+    quotaPerProduct: plan.quotaPerProduct,
+    rateLimit: plan.rateLimit,
+    stripeSubscriptionId: tierState.subscriptionId,
+    subscriptionItems: tierState.subscriptionItems,
+    tier: tierState.tier,
+  };
+}
+
+function normaliseSubscriptionItems(items: ApiKeySubscriptionItems): [string, string][] {
+  return Object.entries(items).sort(([a], [b]) => a.localeCompare(b));
+}
+
+function hasBillingStateDrift(
+  envelope: OrgEnvelopeRecord,
+  keys: ApiKeyRecord[],
+  tierState: TierResolution,
+): boolean {
+  const target = getTargetBillingState(tierState);
+  const envelopeProducts = [...envelope.products].sort();
+  if (envelope.tier !== target.tier) return true;
+  if (envelope.stripeSubscriptionId !== target.stripeSubscriptionId) return true;
+  if (JSON.stringify(envelopeProducts) !== JSON.stringify(target.products)) return true;
+  if (
+    JSON.stringify(normaliseSubscriptionItems(envelope.subscriptionItems)) !==
+      JSON.stringify(normaliseSubscriptionItems(target.subscriptionItems))
+  ) {
+    return true;
+  }
+
+  return keys.some((key) =>
+    key.tier !== target.tier ||
+    key.quotaPerProduct !== target.quotaPerProduct ||
+    key.rateLimit !== target.rateLimit ||
+    key.stripeSubscriptionId !== target.stripeSubscriptionId ||
+    JSON.stringify([...key.products].sort()) !== JSON.stringify(target.products) ||
+    JSON.stringify(normaliseSubscriptionItems(key.subscriptionItems)) !==
+      JSON.stringify(normaliseSubscriptionItems(target.subscriptionItems))
+  );
+}
+
 async function processPlanTransition(
   dependencies: StripeBillingDependencies,
   customer: CustomerContext,
   event: Stripe.Event,
   now: Date,
+  tierStateOverride?: TierResolution,
 ): Promise<void> {
-  const tierState = await resolveTierStateForEvent(dependencies.stripe, event);
+  const tierState = tierStateOverride ?? await resolveTierStateForEvent(dependencies.stripe, event);
   const envelope = await loadOrgEnvelope(dependencies.ddb, dependencies.keysTableName, customer.orgId);
   await updateOrgEnvelopeBillingState(dependencies.ddb, dependencies.keysTableName, customer.orgId, {
     paymentOverdue: false,
@@ -1059,10 +1113,9 @@ export function createStripeBillingService(
           customer.orgId,
         );
         const keys = await loadOrgKeys(dependencies.ddb, dependencies.keysTableName, customer.orgId);
-        const currentTier = keys[0]?.tier ?? envelope.tier;
         const tierState = await resolveTierStateForEvent(dependencies.stripe, event);
-        if (currentTier !== undefined && currentTier !== tierState.tier) {
-          await processPlanTransition(dependencies, customer, event, now);
+        if (hasBillingStateDrift(envelope, keys, tierState)) {
+          await processPlanTransition(dependencies, customer, event, now, tierState);
         }
         if (subscription.status === "past_due") {
           await processPastDue(dependencies, customer, event);

@@ -1,8 +1,16 @@
 {
   "extends": "../../tsconfig.json",
   "compilerOptions": {
+    "baseUrl": ".",
+    "ignoreDeprecations": "6.0",
     "outDir": "dist",
-    "rootDir": "src"
+    "rootDir": "src",
+    "paths": {
+      "@prontiq/control-plane": ["../control-plane/dist/index.d.ts"],
+      "@prontiq/control-plane/*": ["../control-plane/dist/*"],
+      "@prontiq/shared": ["../shared/dist/index.d.ts"],
+      "@prontiq/shared/*": ["../shared/dist/*"]
+    }
   },
   "include": ["src"],
   "references": [{ "path": "../shared" }]
