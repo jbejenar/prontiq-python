@@ -1545,11 +1545,18 @@ Every hour:
         (Conditional on the same pending identifier/target still being
          present so a stale worker cannot overwrite newer state.)
 
-  3. If a retired hash has no outstanding/pending current-month or
-     previous-month billable scopes after the sweep, remove it from
-     `REGISTRY#retired-billing-keys`.
+  3. Retirement eligibility is checked against both the current month
+     and the previous month on every run, even outside the early-UTC
+     previous-month processing window. This is stricter than the hourly
+     processing set on purpose: a retired hash must remain discoverable
+     until both months are fully drained or explicitly closed by
+     month-close.
 
-  4. Stripe aggregates meter events per metered Price and invoices at month end.
+  4. If a retired hash has no outstanding/pending current-month or
+     previous-month billable scopes after that full retirement check,
+     remove it from `REGISTRY#retired-billing-keys`.
+
+  5. Stripe aggregates meter events per metered Price and invoices at month end.
 ```
 
 **Worked example — rotation correctness** (this is the test case that pinned the previous design's bug):

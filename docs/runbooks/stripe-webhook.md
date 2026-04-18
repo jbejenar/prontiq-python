@@ -70,7 +70,7 @@ If additional API families go live, create the same pattern again:
 Do not enable a new product in Stripe until the app-side billing weights exist. The auth middleware now fails closed for enabled products that do not yet have explicit endpoint credit weights.
 The billing cron uses the same shared definitions to resolve Stripe meter event names, so new products must have both explicit weights and a single consistent family meter mapping before they can be enabled safely.
 The billing cron also meters the union of current entitlements plus any outstanding/pending current-month or previous-month usage scopes it finds in `prontiq-usage`, so removing a family from Stripe does not drop the final unpaid delta that accrued before the removal.
-Full downgrade/cancellation is now two-phase: the webhook removes hashes from `REGISTRY#active-keys` but moves them into `REGISTRY#retired-billing-keys`, and the hourly billing cron keeps sweeping those retired hashes until the final current/previous-month delta is flushed before retiring them completely.
+Full downgrade/cancellation is now two-phase: the webhook removes hashes from `REGISTRY#active-keys` but moves them into `REGISTRY#retired-billing-keys`, and the hourly billing cron keeps sweeping those retired hashes until the final current/previous-month delta is flushed before retiring them completely. Retirement checks always inspect both current- and previous-month billable scopes, even outside the early-UTC previous-month processing window, so a lingering prior-month delta cannot make the hash disappear early.
 
 ## Stripe Metadata Contract
 

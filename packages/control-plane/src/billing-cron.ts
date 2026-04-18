@@ -93,6 +93,10 @@ function getBillingMonthKeys(now: Date): string[] {
   return [current];
 }
 
+function getRetirementBlockingMonthKeys(now: Date): string[] {
+  return [getMonthKey(now), getPreviousMonthKey(now)];
+}
+
 function getScope(product: string, monthKey: string): string {
   return `${product}#${monthKey}`;
 }
@@ -583,6 +587,7 @@ export function createBillingCronService(
       }
     }
     const monthKeys = getBillingMonthKeys(now);
+    const retirementBlockingMonthKeys = getRetirementBlockingMonthKeys(now);
 
     for (const [apiKeyHash, registryStatus] of registryStatuses) {
       const key = await loadKey(dependencies.ddb, dependencies.keysTableName, apiKeyHash);
@@ -668,7 +673,7 @@ export function createBillingCronService(
 
       if (
         registryStatus === "retired" &&
-        !hasOutstandingBillableUsage(apiKeyHash, monthKeys, usageRowsByHash, chain)
+        !hasOutstandingBillableUsage(apiKeyHash, retirementBlockingMonthKeys, usageRowsByHash, chain)
       ) {
         await updateRegistryMembership(
           dependencies.ddb,

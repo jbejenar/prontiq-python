@@ -555,3 +555,50 @@ test("billing cron meters retired hashes until their final delta is drained, the
     assert.deepEqual(Array.from((retiredAfterDrain.Item?.activeHashes as Set<string>) ?? []), []);
   });
 });
+
+test("billing cron keeps retired hashes discoverable when only the previous month still has unpaid delta outside the grace window", async () => {
+  await withTemporaryBillingEndpoint("abn.lookup", {
+    creditCost: 2,
+    displayName: "ABN Lookup",
+    familyDisplayName: "ABN API",
+    meterEventName: "prontiq_abn_requests",
+    product: "abn",
+  }, async () => {
+    const now = new Date("2026-05-02T08:00:00.000Z");
+    const hash = "h".repeat(64);
+    await seedKey(makeKey({
+      apiKeyHash: hash,
+      products: ["address"],
+      tier: "free",
+      subscriptionItems: {},
+    }));
+    await seedRetiredRegistry([hash]);
+    await seedUsage(makeUsage({
+      apiKeyHash: hash,
+      lastPushedCumulativeCount: 0,
+      requestCount: 5,
+      scope: "abn#2026-04",
+    }));
+
+    const { calls, stripe } = makeStripeRecorder();
+    const service = createBillingCronService({
+      ddb,
+      keysTableName: KEYS_TABLE,
+      logger: console,
+      stripe,
+      usageTableName: USAGE_TABLE,
+    });
+
+    const summary = await service.handleTick(now);
+    assert.equal(summary.meterEventsSent, 0);
+    assert.equal(calls.length, 0);
+
+    const retiredRegistry = await ddb.send(
+      new GetCommand({
+        TableName: KEYS_TABLE,
+        Key: { apiKeyHash: "REGISTRY#retired-billing-keys" },
+      }),
+    );
+    assert.deepEqual(Array.from((retiredRegistry.Item?.activeHashes as Set<string>) ?? []), [hash]);
+  });
+});
