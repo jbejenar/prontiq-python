@@ -735,7 +735,14 @@ export default $config({
         PRONTIQ_ACCOUNT_URL:
           process.env.PRONTIQ_ACCOUNT_URL ?? "https://prontiq.dev/account",
         PRONTIQ_DOCS_URL: process.env.PRONTIQ_DOCS_URL ?? "https://docs.prontiq.dev",
-        AWS_REGION,
+        // AWS_REGION is intentionally NOT set here — it's a Lambda
+        // reserved key that the runtime auto-populates with the
+        // function's deploy region. Setting it explicitly causes
+        // CreateFunction to reject the request with
+        // InvalidParameterValueException. The hand-rolled SES SigV4
+        // signing in provisioning.ts reads process.env.AWS_REGION via
+        // getOptionalEnv("AWS_REGION", "ap-southeast-2") — the runtime
+        // value is what it gets.
       },
     });
 
