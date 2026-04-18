@@ -16,9 +16,10 @@
  *   - `CLERK_SECRET_KEY` — same secret the webhook + account Lambdas
  *     use. For dev, use the dev tenant's `sk_test_...`. For prod,
  *     use the prod tenant's `sk_live_...`.
- *   - `CLERK_TEST_USER_ID` — the Clerk user_id to test with. Find it
- *     in Clerk Dashboard → Users → click a user → copy the ID
- *     (`user_...`). The user MUST be an org admin in the target org.
+ *   - `CLERK_TEST_USER_ID` — the Clerk test user identifier. Prefer the
+ *     Clerk user_id (`user_...`), but a primary email address is also
+ *     accepted and resolved to a user id via the Backend API. The
+ *     resolved user MUST be an org admin in the target org.
  *
  * ## Optional env
  *
@@ -190,11 +191,51 @@ interface ResolvedSession {
   origin: "pinned_by_session_id" | "matched_target_org" | "single_active" | "created_fresh";
 }
 
+interface ResolvedSmokeUser {
+  source: "email" | "user_id";
+  userId: string;
+}
+
 class SessionResolutionError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "SessionResolutionError";
   }
+}
+
+async function resolveSmokeUser(
+  clerk: ReturnType<typeof createClerkClient>,
+  identifier: string,
+  timeoutMs: number,
+): Promise<ResolvedSmokeUser> {
+  if (identifier.startsWith("user_")) {
+    return { source: "user_id", userId: identifier };
+  }
+
+  const list = await withTimeout(
+    clerk.users.getUserList({
+      emailAddress: [identifier],
+      limit: 2,
+    }),
+    timeoutMs,
+    `clerk.users.getUserList(${identifier})`,
+  );
+
+  if (list.data.length === 1) {
+    const user = list.data[0];
+    if (!user) {
+      throw new SessionResolutionError("Internal: Clerk returned undefined user.");
+    }
+    return { source: "email", userId: user.id };
+  }
+  if (list.data.length === 0) {
+    throw new SessionResolutionError(
+      `CLERK_TEST_USER_ID=${identifier} did not match any Clerk user. Provide a Clerk user_id (user_...) or a primary email address that exists in this tenant.`,
+    );
+  }
+  throw new SessionResolutionError(
+    `CLERK_TEST_USER_ID=${identifier} matched multiple Clerk users. Use the explicit Clerk user_id (user_...) instead.`,
+  );
 }
 
 async function resolveSession(
@@ -471,7 +512,7 @@ function printResult(result: SmokeResult): void {
 
 export async function run(): Promise<number> {
   const secretKey = getRequiredEnv("CLERK_SECRET_KEY");
-  const userId = getRequiredEnv("CLERK_TEST_USER_ID");
+  const userIdentifier = getRequiredEnv("CLERK_TEST_USER_ID");
   const targetOrgId = getOptionalEnvOrNull("CLERK_TEST_ORG_ID");
   const pinnedSessionId = getOptionalEnvOrNull("CLERK_TEST_SESSION_ID");
   const apiUrl = resolveApiBaseUrl();
@@ -480,7 +521,7 @@ export async function run(): Promise<number> {
 
   console.log("=== Account-setup smoke ===");
   console.log(`API:     ${apiUrl}`);
-  console.log(`User:    ${userId}`);
+  console.log(`User:    ${userIdentifier}`);
   console.log(`Org:     ${targetOrgId ?? "(unpinned — must be exactly one active session with org)"}`);
   if (pinnedSessionId) console.log(`Session: ${pinnedSessionId} (pinned)`);
   console.log(`Tenant:  ${secretKey.startsWith("sk_live_") ? "PROD (sk_live_)" : "DEV (sk_test_)"}`);
@@ -489,11 +530,25 @@ export async function run(): Promise<number> {
   console.log();
 
   const clerk = createClerkClient({ secretKey });
+  let resolvedUser: ResolvedSmokeUser;
+  try {
+    resolvedUser = await resolveSmokeUser(clerk, userIdentifier, timeoutMs);
+  } catch (error) {
+    if (error instanceof SessionResolutionError) {
+      console.error(`\n      ${error.message}`);
+      return 2;
+    }
+    console.error("      Unexpected error while resolving test user:", error);
+    return 2;
+  }
+  if (resolvedUser.source === "email") {
+    console.log(`Resolved Clerk user: ${resolvedUser.userId} (from email)`);
+  }
 
   console.log("[1/3] Resolving target session...");
   let resolved: ResolvedSession;
   try {
-    resolved = await resolveSession(clerk, userId, targetOrgId, pinnedSessionId, timeoutMs);
+    resolved = await resolveSession(clerk, resolvedUser.userId, targetOrgId, pinnedSessionId, timeoutMs);
   } catch (error) {
     if (error instanceof SessionResolutionError) {
       console.error(`\n      ${error.message}`);
