@@ -91,7 +91,6 @@ jobs:
           timeout --signal=SIGTERM --kill-after=30s 10m pnpm deploy:prod || EXIT=$?
           echo "deploy exited with code: ${EXIT:-0}"
           exit "${EXIT:-0}"
-
   # Post-deploy verification — same deployed-environment smoke intent as
   # dev. This hits the real public `/v1/account/setup` route with a real
   # Clerk-backed JWT so prod deploy-only auth/config drift still fails

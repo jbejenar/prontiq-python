@@ -289,7 +289,6 @@ jobs:
           docker build --platform linux/amd64 -t "$ECR_REPO:${{ github.sha }}" -t "$ECR_REPO:latest" -f packages/ingestion/Dockerfile .
           docker push "$ECR_REPO:${{ github.sha }}"
           docker push "$ECR_REPO:latest"
-
   # Post-deploy verification: end-to-end happy-path smoke against the
   # just-deployed dev /v1/account/setup. This uses a real Clerk-backed
   # JWT against the public API URL, so it catches deployment-only route,
