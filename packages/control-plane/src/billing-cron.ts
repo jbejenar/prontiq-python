@@ -315,10 +315,7 @@ function hasOutstandingBillableUsage(
   usageRowsByHash: Map<string, Map<string, UsageCounterRecord>>,
   chain: string[],
 ): boolean {
-  const currentUsageRows = usageRowsByHash.get(currentHash);
-  if (!currentUsageRows) {
-    return false;
-  }
+  const currentUsageRows = usageRowsByHash.get(currentHash) ?? new Map<string, UsageCounterRecord>();
 
   const candidateProducts = new Set<string>();
   for (const monthKey of monthKeys) {
