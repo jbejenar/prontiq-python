@@ -107,13 +107,29 @@ export interface ApiKeyRecord {
 export interface UsageCounterRecord {
   apiKeyHash: string;
   scope: string;
+  /**
+   * Current shipped semantics: family-level credits consumed for `{product}#{yearMonth}`.
+   * Legacy name retained to avoid a breaking table/schema migration.
+   */
   requestCount: number;
   ttl: number;
   lastUsedAt?: string;
   lastPushedCumulativeCount: number;
+  pendingMeterEventIdentifier?: string;
+  pendingMeterTargetCumulativeCount?: number;
   warningEmailSent?: boolean;
   limitEmailSent?: boolean;
   closed?: boolean;
+}
+
+export interface StripeWebhookCompletionRecord {
+  apiKeyHash: string;
+  claimedAt: string;
+  completedAt?: string;
+  eventType: string;
+  status: "processing" | "completed";
+  webhookOrgId: string | null;
+  ttl: number;
 }
 
 export interface RedirectRecord {
@@ -129,7 +145,11 @@ export interface OrgEnvelopeRecord {
   apiKeyHash: string;
   stripeCustomerId: string;
   ownerEmail: string;
-  tier: "free";
+  tier: Tier;
+  products: string[];
+  paymentOverdue: boolean;
+  stripeSubscriptionId: string | null;
+  subscriptionItems: ApiKeySubscriptionItems;
   hasFirstKey: boolean;
   completedAt: string;
 }

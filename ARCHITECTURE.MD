@@ -22,7 +22,7 @@ Free open dataset → independent pipeline → S3 (NDJSON + manifest.json)
     → auth / billing / docs / SDKs
 ```
 
-One Prontiq subscription. One API key. One SDK. One invoice. Per-product usage line items. The developer who came for address validation discovers ABN verification and LEI lookup. That's the lock-in. That's the moat.
+One Prontiq subscription. One API key. One SDK. One invoice. Family-level credit lines that stay simple for customers even when endpoint costs differ internally. The developer who came for address validation discovers ABN verification and LEI lookup. That's the lock-in. That's the moat.
 
 Nobody else bundles Australian address validation with ABN verification with LEI lookup under one subscription with typed SDKs and a free tier. The data is free. The compute is cheap. The moat is the platform that makes consuming it trivially easy, beautifully documented, and cheaper than the incumbents.
 
@@ -126,7 +126,7 @@ Nobody else bundles Australian address validation with ABN verification with LEI
 │   ┌──────────────────────────────┐  ┌──────────────────────────────┐       │
 │   │   DynamoDB (API keys)        │  │          Stripe              │       │
 │   │   SHA-256 hash verification  │  │  Metered per-product billing │       │
-│   │   Hot-path gen + verify      │  │  One sub, usage line items   │       │
+│   │   Hot-path gen + verify      │  │  One sub, credit-based lines │       │
 │   │   (~80 LOC, no vendor)       │  │  Embedded pricing table      │       │
 │   └──────────────────────────────┘  └──────────────────────────────┘       │
 └──────────────────────────────┬──────────────────────────────────────────────┘
@@ -168,7 +168,7 @@ Nobody else bundles Australian address validation with ABN verification with LEI
 | **Ingestion**             | EventBridge → Step Functions                 | AWS free tier                                             | —                       | S3 manifest trigger → parallel bulk index → health check → alias swap.                                                                                                    |
 | **Auth (portal)**         | Clerk                                        | **50,000 MAUs free**                                      | $20/mo (Pro)            | Sign-up, login, OAuth, orgs, teams. Pre-built Next.js components. Won't hit paid for years.                                                                               |
 | **API keys**              | DynamoDB (+ DAX from Phase 3)                | AWS free tier                                             | —                       | DynamoDB-native: generate, SHA-256 hash, verify. Raw key never stored. ~80 LOC (see §7). No vendor in the hot path. DAX when sub-ms matters at scale.                     |
-| **Billing**               | Stripe (metered)                             | **Processing fees only**                                  | 2.9% + 30¢/txn          | One subscription, per-product usage line items. Embedded pricing table + customer portal. $0 until revenue.                                                               |
+| **Billing**               | Stripe (metered)                             | **Processing fees only**                                  | 2.9% + 30¢/txn          | One subscription, family-level credit line items. Embedded pricing table + customer portal. $0 until revenue.                                                             |
 | **Docs**                  | Mintlify                                     | **Free Hobby plan** (1 editor, custom domain, playground) | ~$250-300/mo (Pro)      | Beautiful docs from OpenAPI spec. Free tier covers a solo founder. AI assistant and team collaboration only on paid.                                                      |
 | **SDKs**                  | Speakeasy                                    | **1 SDK, up to 50 API methods, free forever**             | Contact for pricing     | Auto-generated typed SDKs. 50 methods covers entire address + ABN + LEI surface.                                                                                          |
 | **Account page**          | Next.js (`/account`) + Clerk `<UserProfile />` | Deployed to Lambda via SST ($0)                           | —                       | No custom dashboard. Clerk's profile UI with custom tabs (Usage, Billing, API Keys) wired to DynamoDB-backed `/v1/account/*` endpoints. See §5.9.                          |
@@ -956,7 +956,7 @@ Rate limiting operates at three levels:
 
 2. **Burst rate limiting (per-key, per-second, application-level).** In-memory token bucket per `apiKeyHash` in Hono middleware. Prevents a single key from overwhelming OpenSearch in one second. See §5.4.1 below.
 
-3. **Monthly quota enforcement (per-key, per-product, application-level).** The DynamoDB key record includes `quotaPerProduct`; usage counts live in the `prontiq-usage` table (per-month row per product). Checked in the auth middleware. Free tier → hard `429 QUOTA_EXCEEDED`. Paid tier → request proceeds with `X-RateLimit-Over: true` header; Stripe bills overage at month end.
+3. **Monthly quota enforcement (per-key, per-product family, application-level).** The DynamoDB key record includes `quotaPerProduct`; usage counts live in the `prontiq-usage` table (per-month row per product family). Checked in the auth middleware. Each request is rated into credits via `BILLING_ENDPOINTS` before the family row is atomically incremented. Free tier → hard `429 QUOTA_EXCEEDED`. Paid tier → request proceeds with `X-RateLimit-Over: true` header; Stripe bills overage at month end.
 
 #### 5.4.1 Burst Rate Limiting
 
@@ -1021,7 +1021,7 @@ Four tables plus one registry item. All on-demand (pay-per-request). The first t
 
 | Table | Purpose |
 |---|---|
-| `prontiq-keys` | API key metadata + billing registry + org-envelope record |
+| `prontiq-keys` | API key metadata + billing registry + org-envelope record + Stripe webhook completion markers |
 | `prontiq-usage` | Usage counters + email flags + billing push state + REDIRECT records |
 | `prontiq-audit` | Append-only lifecycle audit log |
 | `prontiq-ses-suppressions` | Email bounce/complaint suppression |
@@ -1040,20 +1040,23 @@ PK:   apiKeyHash           string    SHA-256 of the raw key
       orgId                string    Clerk organisation ID
       tier                 string    "free" | "starter" | "growth" | "enterprise"
       products             list      Enabled products: ["address", "abn", "lei"]
-      quotaPerProduct      number    Monthly request limit per product
+      quotaPerProduct      number    Monthly credit limit per product family
       rateLimit            number    Requests per second (burst limit, used by §5.4.1)
       active               boolean   false = revoked, all requests rejected
       paymentOverdue       boolean   Set true by past_due webhook; cleared on recovery / downgrade / deletion
       stripeCustomerId     string    "cus_abc123"
       stripeSubscriptionId string    "sub_xyz789" (set on upgrade, cleared on downgrade)
-      subscriptionItems    map       { "address": "si_abc", "abn": "si_def" } — Stripe sub item IDs per product
+      subscriptionItems    map       Snapshot of Stripe subscription item IDs by product
+                                     from the last successful webhook reconciliation.
+                                     Useful for support/debugging; meter-based billing
+                                     no longer depends on these IDs directly.
       createdAt            string    ISO 8601
       lastUsedAt           string    ISO 8601
 
 GSI:  orgId-index          PK: orgId  (list all keys in an org)
 ```
 
-> **Why `subscriptionItems`?** The billing cron (§5.6.2) calls `stripe.subscriptionItems.createUsageRecord()` which requires a per-product subscription item ID. Without this map, the cron cannot push usage to Stripe. Billing breaks without it.
+> **Why keep `subscriptionItems`?** It gives support and future tooling a direct snapshot of the Stripe subscription composition the webhook last observed. The billing cron (§5.6.2) now uses Stripe meters rather than `subscriptionItems.createUsageRecord()`, so this field is no longer the primary billing linkage.
 
 ##### Table: `prontiq-usage`
 
@@ -1063,7 +1066,7 @@ Per-key, per-product monthly counters. Atomic increment on every request.
 PK:   apiKeyHash           string    Same hash as prontiq-keys
 SK:   scope                string    "{product}#{yearMonth}" e.g. "address#2026-04"
 
-      requestCount         number    Atomically incremented via UpdateItem ADD
+      requestCount         number    Atomically incremented credit total (legacy field name retained)
       warningEmailSent     boolean   True once the 80% threshold email sent (atomic conditional)
       limitEmailSent       boolean   True once the 100% threshold email sent (atomic conditional)
       lastPushedCumulativeCount  number  Cumulative count last pushed to Stripe for this scope.
@@ -1071,6 +1074,13 @@ SK:   scope                string    "{product}#{yearMonth}" e.g. "address#2026-
                                           On rotated-out hashes (those reachable via REDIRECT records),
                                           this field is dead state and is ignored by the cron. The
                                           rename from `lastPushedCount` makes this invariant explicit.
+      pendingMeterEventIdentifier   string  Deterministic Stripe meter-event identifier reserved
+                                            on the CURRENT hash before calling Stripe. Cleared
+                                            after the DDB watermark finalize succeeds.
+      pendingMeterTargetCumulativeCount number  The target cumulative count paired with
+                                                `pendingMeterEventIdentifier`. Lets retries
+                                                re-send the exact same Stripe meter event if the
+                                                API call succeeded but the DDB finalize write failed.
       closed               boolean   True once month-close Lambda finalised this scope
       ttl                  number    Unix timestamp — auto-expire after 90 days
 ```
@@ -1102,27 +1112,57 @@ PK:   email                string    The suppressed email address
       ttl                  number    90 days for bounces, no TTL for complaints (permanent)
 ```
 
-##### Billing Registry Item (stored in `prontiq-keys`)
+##### Billing Registry Items (stored in `prontiq-keys`)
 
-A single item indexes all billable keys for the hourly Stripe cron.
+Two reserved items index billable keys for the hourly Stripe cron.
 
 ```
 PK:   apiKeyHash           "REGISTRY#active-keys"    (reserved, not a real key hash)
 
       activeHashes         string set                  All BILLABLE apiKeyHash values
+
+PK:   apiKeyHash           "REGISTRY#retired-billing-keys"   (reserved, not a real key hash)
+
+      activeHashes         string set                  Formerly billable apiKeyHash values
+                                                     still waiting for their final
+                                                     current/previous-month Stripe
+                                                     meter delta to be flushed
 ```
 
-Only paid-tier keys. Free keys are active in `prontiq-keys` but absent from the registry.
+`REGISTRY#active-keys` contains currently billable paid-tier keys. `REGISTRY#retired-billing-keys`
+contains hashes that were downgraded/cancelled out of paid billing and still have outstanding
+or pending meter deltas that must be flushed before billing discovery can stop. A hash may
+temporarily exist in **both** registries: live entitlement processing resumes immediately via
+the active registry, while the retired registry keeps historical current/previous-month billing
+discovery alive until the chain-aware drain check says the hash is fully settled. Free keys are
+active in `prontiq-keys` but absent from both registries once drained.
 
 | Event | Registry Action |
 |---|---|
-| **UPGRADE** (free → paid) | ADD hash to set |
+| **UPGRADE** (free → paid) | ADD hash to `REGISTRY#active-keys`; if the hash is still present in `REGISTRY#retired-billing-keys`, leave it there until the hourly cron confirms historical billable scopes are fully drained |
 | **DOWNGRADE** (paid → paid, e.g. Growth → Starter) | Keep in registry (still billable) — only the `tier` / `quotaPerProduct` / `subscriptionItems` change |
-| **DOWNGRADE to free** / **CANCEL** (`customer.subscription.deleted`) | DELETE hash |
+| **DOWNGRADE to free** / **CANCEL** (`customer.subscription.deleted`) | DELETE hash from `REGISTRY#active-keys`, ADD hash to `REGISTRY#retired-billing-keys` until the hourly cron drains any remaining current/previous-month billable deltas, then DELETE from retired registry |
 | **ROTATE** (if billable) | DELETE old hash + ADD new hash |
 | **REVOKE** (if billable) | DELETE hash |
 
-> **Sharding ceiling:** DynamoDB item-size limit is 400 KiB (409,600 bytes). A 64-char SHA-256 hex hash is ~64 bytes plus string-set overhead. Theoretical maximum is ~6,400 hashes; practical ceiling is ~6,000 billable keys per registry item once attribute-name overhead and set metadata are accounted for. At that scale, shard into `REGISTRY#active-keys#{0..N}` keyed by the first N bits of the hash (trigger: Phase 5).
+> **Sharding ceiling:** DynamoDB item-size limit is 400 KiB (409,600 bytes). A 64-char SHA-256 hex hash is ~64 bytes plus string-set overhead. Theoretical maximum is ~6,400 hashes; practical ceiling is ~6,000 billable keys per registry item once attribute-name overhead and set metadata are accounted for. At that scale, shard both `REGISTRY#active-keys#{0..N}` and `REGISTRY#retired-billing-keys#{0..N}` keyed by the first N bits of the hash (trigger: Phase 5).
+
+##### Stripe Webhook Completion Marker (stored in `prontiq-keys`)
+
+Replay-safe dedupe/claim record for Stripe webhook processing. The handler
+claims the record as `processing` before side effects, finishes replay-safe
+state writes, then finalizes the same record as `completed`.
+
+```
+PK:   apiKeyHash           "WEBHOOK#stripe#{eventId}"   (reserved — not a real key hash)
+
+      claimedAt            string                       ISO 8601 — current worker lease timestamp
+      status               "processing" | "completed"  Event claim state
+      eventType            string                       Stripe event type
+      webhookOrgId         string | null                Org ID resolved from customer metadata
+      completedAt          string?                      ISO 8601 — when replay-safe state convergence finished
+      ttl                  number                       Unix timestamp — 7 days
+```
 
 ##### Provisioning Lock Item (stored in `prontiq-keys`)
 
@@ -1135,6 +1175,11 @@ PK:   apiKeyHash           "ORG#{orgId}"             (reserved — not a real ke
                                                      Idempotency-Key: "clerk-provision-{orgId}"
       ownerEmail           string                    From Clerk user.created event
       tier                 string                    "free" until first upgrade webhook
+      products             list                      Current enabled API products for the org.
+                                                     Starts as ["address"] on free and is updated
+                                                     dynamically from Stripe metadata so a later
+                                                     first-key flow does not infer products from
+                                                     tier alone.
       hasFirstKey          boolean                   false until the user creates their first key
                                                      via /v1/account/keys/create. Used by the account
                                                      page to show "Create your first key" CTA vs
@@ -1276,68 +1321,94 @@ Request arrives with X-Api-Key header
 
 ### 5.6 Billing
 
-Stripe metered billing. One subscription per organisation. Per-product usage line items. Payment failure has a 14-day grace period.
+Stripe metered billing. One subscription per organisation. Family-level credit line items. Payment failure has a 14-day grace period.
 
 #### 5.6.1 Plan Definitions
 
-**Stripe is the source of truth for pricing.** Plans are declared in two places that must stay in sync: Stripe Dashboard (what gets charged) and `packages/shared/src/constants.ts` (what the middleware enforces).
+**Stripe is the source of truth for commercial configuration.** The recurring Stripe Price declares the Prontiq tier via metadata, and metered Stripe Products declare enabled Prontiq products via metadata. The public commercial unit is now **credits**, not raw requests. `packages/shared/src/constants.ts` holds the runtime guardrails for each tier plus the endpoint-weight table used to explain how credits are consumed.
 
 `packages/shared/src/constants.ts`:
 
 ```typescript
 export const PLANS = {
   free: {
-    stripePriceId: null,                // no subscription
-    quotaPerProduct: 5_000,
+    includedCreditsPerMonth: 10_000,
+    quotaPerProduct: 10_000,
     rateLimit: 10,                      // req/sec
     products: ['address'],
     maxKeys: 2,
-    overagePerThousand: null,           // hard 429, no overage
+    overagePerThousandCredits: null,    // hard 429, no overage
   },
   starter: {
-    stripePriceId: 'price_starter_xxx',
+    includedCreditsPerMonth: 10_000,
     quotaPerProduct: 10_000,
     rateLimit: 50,
     products: ['address', 'abn', 'lei', 'cve', 'patents'],
     maxKeys: 5,
-    overagePerThousand: 1_50,
+    overagePerThousandCredits: 1_50,
   },
   growth: {
-    stripePriceId: 'price_growth_xxx',
+    includedCreditsPerMonth: 50_000,
     quotaPerProduct: 50_000,
     rateLimit: 100,
     products: ['address', 'abn', 'lei', 'cve', 'patents'],
     maxKeys: 20,
-    overagePerThousand: 1_00,
+    overagePerThousandCredits: 1_00,
   },
   enterprise: {
-    stripePriceId: null,
+    includedCreditsPerMonth: null,
     quotaPerProduct: null,
     rateLimit: null,
     products: ['address', 'abn', 'lei', 'cve', 'patents'],
     maxKeys: Infinity,
-    overagePerThousand: null,
+    overagePerThousandCredits: null,
   },
+} as const;
+
+export const BILLING_ENDPOINTS = {
+  "address.autocomplete": { product: "address", creditCost: 1 },
+  "address.validate": { product: "address", creditCost: 1 },
+  "address.lookup_postcode": { product: "address", creditCost: 1 },
+  "address.lookup_suburb": { product: "address", creditCost: 1 },
+  "address.reverse": { product: "address", creditCost: 2 },
+  "address.enrich": { product: "address", creditCost: 3 },
 } as const;
 ```
 
-**Pricing table:**
+**Pricing table (customer-facing):**
 
-| Tier | Base Price | Included per Product | Overage (per 1K) | Products | Rate Limit | Max Keys |
+| Tier | Base Price | Included Credits | Overage (per 1K credits) | Products | Rate Limit | Max Keys |
 |---|---|---|---|---|---|---|
-| **Free** | $0 | 5,000/month | — (hard 429) | Address only | 10 req/sec | 2 |
+| **Free** | $0 | 10,000/month | — (hard 429) | Address only | 10 req/sec | 2 |
 | **Starter** | $29/month | 10,000/month | $1.50 | All | 50 req/sec | 5 |
 | **Growth** | $99/month | 50,000/month | $1.00 | All + SLA | 100 req/sec | 20 |
 | **Enterprise** | Custom | Custom | Custom | All + dedicated support | Custom | Unlimited |
 
-**Example invoice (Growth plan, heavy ABN usage):**
+**Credits menu example (customer-facing):**
+
+| Endpoint | Credits |
+|---|---|
+| Address Autocomplete | 1 |
+| Address Validate | 1 |
+| Address Postcode Lookup | 1 |
+| Address Suburb Lookup | 1 |
+| Address Reverse | 2 |
+| Address Enrich | 3 |
+
+Customers see these as the published credit costs for the API menu. The shipped auth middleware applies these weights inline and stores the resulting family-level credit totals in DynamoDB; the billing cron then forwards those accumulated credits to the family-level Stripe meter.
+
+**Fail-closed rule:** a product must not be enabled commercially until it has explicit endpoint credit weights in `BILLING_ENDPOINTS`. If Stripe enables a product with no corresponding billing weights yet, the auth middleware returns `500 INTERNAL_ERROR` for that product rather than silently billing it at a guessed rate.
+
+The same fail-closed rule applies to Stripe metering: the billing cron derives each product family's Stripe meter event name from the shared billing definitions rather than synthesizing it independently. A product with no declared meter mapping is not billable.
+
+**Example invoice (Growth plan, heavy Address usage):**
 
 ```
 Prontiq Growth Plan                         $99.00
-├── Address API — 47,200 / 50,000           included
-├── ABN Verification — 82,800 / 50,000      $32.80 (32,800 overage × $1.00/1K)
-├── LEI Lookup — 3,400 / 50,000             included
-└── CVE Search — 0 / 50,000                 included
+├── Address API — 47,200 / 50,000 credits   included
+├── ABN Verification — 82,800 / 50,000 credits  $32.80 (32,800 overage credits × $1.00/1K)
+├── LEI Lookup — 3,400 / 50,000 credits     included
+└── CVE Search — 0 / 50,000 credits         included
                                             ------
 Total                                       $131.80
 ```
@@ -1351,46 +1422,64 @@ Stripe Dashboard:
     ├── Prontiq Starter Plan  → recurring Price: $29/month
     └── Prontiq Growth Plan   → recurring Price: $99/month
 
-  API Products (metered overage — tiered Prices, first N at $0):
-    ├── Prontiq Address API   → metered Price: tiered ($1.50/1K Starter, $1.00/1K Growth)
-    ├── Prontiq ABN API       → metered Price: tiered
-    ├── Prontiq LEI API       → metered Price: tiered
+  API Products (family-level meters billed in credits):
+    ├── Prontiq Address API   → metered Price against Address credits
+    ├── Prontiq ABN API       → metered Price against ABN credits
+    ├── Prontiq LEI API       → metered Price against LEI credits
     └── ... (one per API product)
 
   Pricing Table (embedded in account page Billing tab via <stripe-pricing-table>)
+    - Paid plans only (Starter / Growth)
+    - Free is rendered by Prontiq, not created as a Stripe subscription product
 
   Subscription (one per org): one plan item + one metered item per enabled product.
 ```
 
-**Overage calculation:** the billing cron (§5.6.2) pushes raw request counts to Stripe hourly. Each metered Price is configured with `tiers` — the first N thousand requests at $0, the rest at the overage rate. Stripe does the math. Changing included quotas is a Stripe Dashboard update, not a code deployment.
+**Overage calculation:** the billing cron (§5.6.2) ultimately pushes **credits**, not raw request counts, to Stripe hourly via family-level Stripe meters. The auth middleware already applies the published endpoint credit weights and accumulates the resulting family total (for example all Address endpoints -> Address credits) in DynamoDB. Changing commercial pricing or endpoint credit weights is a product/catalog decision, not a Stripe catalog rewrite.
 
 **Subscription lifecycle:**
 
 | Event | What Happens |
 |---|---|
-| **Developer signs up** | No subscription. Free tier. Key works immediately. |
+| **Developer signs up** | No Stripe subscription. Free tier is app-managed in DynamoDB. Key works immediately. |
 | **Developer clicks "Upgrade to Growth"** | Stripe Checkout creates a Subscription with recurring plan item + metered product items. `checkout.session.completed` webhook → update DynamoDB (§5.7). |
-| **Developer changes plan (Starter → Growth)** | Stripe handles proration. `customer.subscription.updated` webhook updates tier limits. |
+| **Developer changes plan (Starter → Growth or same-tier product mix)** | Stripe handles proration. `customer.subscription.updated` webhook reconciles the full billing snapshot in DynamoDB. |
 | **Developer adds payment method** | Stripe customer portal. No webhook needed. |
 | **Developer views invoices** | Stripe customer portal link in the Billing tab. |
 | **Developer cancels** | `cancel_at_period_end: true`. Access continues until period end. `customer.subscription.deleted` fires at period end → downgrade to free. |
 | **Card declines on renewal** | Grace period (§5.6.3). Service continues ~14 days. |
 
-**Customer portal:** linked from the Billing tab. Manages payment methods, plan changes, invoice history, cancellation. Themed with Prontiq branding (§5.10). Configured in Stripe Dashboard → Settings → Customer Portal.
+**Customer portal:** linked from the Billing tab. Manages payment methods, plan changes, invoice history, cancellation. Themed with Prontiq branding (§5.10). Configured in Stripe Dashboard → Settings → Customer Portal. The Billing tab can show a Prontiq-rendered Free card alongside the embedded Stripe pricing table for paid upgrades.
 
-**How the plan connects to the middleware:** the upgrade webhook (§5.7) reads `PLANS[tier]` from `constants.ts` and writes `quotaPerProduct`, `rateLimit`, `products`, `maxKeys` to all org keys in `prontiq-keys`. The middleware reads these values from DynamoDB on every request — it never reads `constants.ts` at runtime. Plan changes take effect on the next request after the webhook processes.
+**How the plan connects to the middleware:** the upgrade webhook (§5.7) reads `PLANS[tier]` from `constants.ts` and writes `quotaPerProduct`, `rateLimit`, `products`, `maxKeys` to all org keys in `prontiq-keys`. The middleware still enforces family-level entitlement and quota state from DynamoDB on every request, and now applies endpoint credit weights inline before incrementing the family usage row. Plan changes take effect on the next request after the webhook processes.
 
 #### 5.6.2 Hourly Billing Cron
 
-Scheduled Lambda (EventBridge cron, hourly). Targeted reads, not a table scan. **Push state is single-rooted**: only the current hash in a rotation chain holds `lastPushedCumulativeCount`. Old hashes' counters are read for `requestCount` only — their `lastPushedCumulativeCount` is dead state and ignored.
+Scheduled Lambda (EventBridge cron, hourly). Targeted reads, not a table scan. **Push state is single-rooted**: only the current hash in a rotation chain holds `lastPushedCumulativeCount`. Old hashes' counters are read for usage attribution only — their `lastPushedCumulativeCount` is dead state and ignored. **Replay safety is explicit on the current-hash usage row**: before calling Stripe, the cron reserves `pendingMeterEventIdentifier` + `pendingMeterTargetCumulativeCount`; after Stripe accepts the event, the cron finalizes by advancing `lastPushedCumulativeCount` and clearing the pending marker.
+
+**Authoritative billing model:** customer-facing billing is in credits. The cron's job is:
+
+1. gather the current family-level credit totals from DynamoDB
+2. compare them with the last successfully pushed cumulative counts
+3. compute the resulting family-level credit delta
+4. emit that credit delta into Stripe
+
+**Implementation note (current state):** the shipped implementation keeps one `{product}#{yearMonth}` row per family and stores consumed credits in that row's `requestCount` field. The legacy field name remains for schema compatibility; semantically it is now "credits used this month for the product family."
 
 ```
 Every hour:
-  1. Read REGISTRY#active-keys from prontiq-keys
-     (single item with string set of all BILLABLE apiKeyHashes)
+  1. Read `REGISTRY#active-keys` and `REGISTRY#retired-billing-keys`
+     from prontiq-keys.
+     `active` = currently billable hashes.
+     `retired` = hashes recently downgraded/cancelled out of paid billing
+     but still waiting for their final current/previous-month credit delta
+     to be pushed.
+     `active=false` still blocks request authentication (§5.5.3), but it
+     does NOT block retired-billing finalisation here as long as the hash
+     still has Stripe customer linkage and outstanding billable history.
 
-  2. For each apiKeyHash (= "current hash"):
-     a. BatchGetItem prontiq-keys for subscriptionItems map
+  2. For each apiKeyHash (= "current hash") in the union of active + retired:
+     a. BatchGetItem prontiq-keys for stripeCustomerId + enabled products
 
      b. **Discover full attribution chain via recursive GSI traversal**
         (see §5.5.1 REDIRECT schema's newHash-redirect-index):
@@ -1405,17 +1494,23 @@ Every hour:
            Two rotations: chain = [C, B, A] (2 queries).
            TTL on REDIRECT records (90d) bounds chain depth in practice.)
 
-     c. BatchGetItem prontiq-usage for {hash, "{product}#{yearMonth}"}
-        across chain × {currentMonth, previousMonth}.
-        Sum requestCount per product across the entire chain.
+     c. Query prontiq-usage for every hash in the redirect chain.
+        Candidate billing families are the union of:
+          - the current entitlement set on the active key, and
+          - any current/previous-month usage scopes in the chain that still
+            have credits, a pushed watermark, or a pending meter marker.
+        This is what keeps the final delta billable after same-tier product
+        removals or downgrades: removing a family from `key.products` does
+        not immediately hide its outstanding current-month or previous-month
+        usage from the hourly sweep.
 
-     d. For each product:
-          sumRequestCount = sum(usage[hash][product#month].requestCount
-                                for hash in chain)
-          currentLastPushed = usage[currentHash][product#month]
+     d. For each API family:
+          sumCredits = sum(usage[hash][product#month].requestCount
+                           for hash in chain)
+          currentLastPushed = usage[currentHash][familyMeter#month]
                                 .lastPushedCumulativeCount
                                 ?? 0
-          delta = sumRequestCount - currentLastPushed
+          delta = sumCredits - currentLastPushed
         **Note:** sumLastPushedCumulativeCount is NOT computed across the
         chain. Only the CURRENT hash's pushed count is the gate. This is
         what prevents the rotation double-counting bug — old hashes'
@@ -1428,23 +1523,46 @@ Every hour:
          edit. Negative-delta alarm fires after 3 consecutive
          occurrences.)
 
-     f. stripe.subscriptionItems.createUsageRecord(
-          subscriptionItems[product],
-          { quantity: sumRequestCount, action: "set" }
+     f. Reserve the replay-safe pending push on the CURRENT hash row:
+          SET pendingMeterEventIdentifier = "meter-{currentHash}-{scope}-{sumCredits}",
+              pendingMeterTargetCumulativeCount = sumCredits
+        (Conditional on the current row having no conflicting pending
+         push and the observed `lastPushedCumulativeCount` still matching
+         what this cron run read.)
+
+     g. stripe.billing.meterEvents.create(
+          {
+            event_name: "prontiq_{product}_requests",
+            identifier: pendingMeterEventIdentifier,
+            payload: {
+              stripe_customer_id: stripeCustomerId,
+              request_count: delta
+            }
+          }
         )
-        (We push the CUMULATIVE count, not the delta. Stripe's `action:
-         "set"` overwrites the period total. Idempotent under cron retry:
-         re-pushing the same cumulative is a no-op.)
-        (Idempotency-Key: "cron-{currentHash}-{product}-{yearMonth}-{floor(now/3600)}"
-         so multiple writes within one hour are coalesced.)
+        (The payload value is now "credits used since the last successful
+         sync" for that API family. Stripe meters aggregate credits over
+         the billing period. The deterministic identifier is reused on
+         retry if Stripe accepted the event but the DDB finalize step failed.)
 
-     g. UpdateItem on the CURRENT hash's prontiq-usage row only:
-          SET lastPushedCumulativeCount = sumRequestCount
-        (Conditional on current value < new value to avoid clock-skew
-         regression: if a concurrent cron run already wrote a higher
-         cumulative, don't roll it back.)
+     h. Finalize the CURRENT hash's prontiq-usage row only:
+          SET lastPushedCumulativeCount = pendingMeterTargetCumulativeCount
+          REMOVE pendingMeterEventIdentifier, pendingMeterTargetCumulativeCount
+        (Conditional on the same pending identifier/target still being
+         present so a stale worker cannot overwrite newer state.)
 
-  3. Stripe stores cumulative per metered Price, invoices at month end.
+  3. Retirement eligibility is checked against both the current month
+     and the previous month on every run, even outside the early-UTC
+     previous-month processing window. This is stricter than the hourly
+     processing set on purpose: a retired hash must remain discoverable
+     until both months are fully drained or explicitly closed by
+     month-close.
+
+  4. If a retired hash has no outstanding/pending current-month or
+     previous-month billable scopes after that full retirement check,
+     remove it from `REGISTRY#retired-billing-keys`.
+
+  5. Stripe aggregates meter events per metered Price and invoices at month end.
 ```
 
 **Worked example — rotation correctness** (this is the test case that pinned the previous design's bug):
@@ -1467,11 +1585,11 @@ The previous design at T5 would have computed `sumLastPushed = 150 + 100 = 250 �
 
 **Why query the GSI at all:** without it, the cron would have to scan `prontiq-usage` looking for `SK="REDIRECT"` records (doesn't scale) or maintain a per-org rotation history (more state, more bugs). The sparse GSI on `newHash` gives exactly the access pattern needed.
 
-**Why `action: "set"` with cumulative:** writes are naturally idempotent. A dropped cron run doesn't lose data — the next run pushes the same or higher cumulative. Using `action: "increment"` with delta would require strict at-most-once semantics on every push, which means more retry/dedupe machinery for the same outcome.
+**Why delta meter events instead of `action: "set"` usage records:** Stripe meters aggregate event values over the billing period; they do not replace the prior total. The cron therefore computes the delta from `lastPushedCumulativeCount`, but it still keeps replay safety by reserving a deterministic pending event identifier on the current-hash row before it calls Stripe.
 
-**Month-boundary handling:** for the first 6 hours of each month, the cron processes both current-month and previous-month scopes. A dedicated **month-close Lambda** runs at 00:30 UTC on day 1: final sweep on previous-month scope, sets `closed: true`. Once closed, the hourly cron skips that scope permanently.
+**Month-boundary handling:** for the first 6 hours of each month, the cron processes both current-month and previous-month scopes. Because scope discovery is usage-driven rather than entitlement-only, a family removed at the month boundary still gets its final previous-month delta pushed before month-close. A dedicated **month-close Lambda** (P1B.11) will run at 00:30 UTC on day 1: final sweep on previous-month scope, sets `closed: true`. Once closed, the hourly cron skips that scope permanently.
 
-**Idempotency:** `lastPushedCumulativeCount` updates only after a successful Stripe write. DLQ (SQS) catches Stripe failures; SNS alert after 3 consecutive failures or any negative delta observation.
+**Idempotency / failure model:** the pending marker is the guardrail. If Stripe accepts the event and the DDB finalize write fails, the next cron run reuses the same `pendingMeterEventIdentifier` + `pendingMeterTargetCumulativeCount`, re-sends the exact same meter event (Stripe dedupes on identifier), and then finalizes the watermark. CloudWatch alarm `PqBillingCronErrors` pages on failed runs; month-close remains a separate hardening step.
 
 **Cost at scale:**
 
@@ -1488,7 +1606,7 @@ When a paid developer's card fails on renewal, their production app must not bre
 | Stripe Event | What Happens | Timing |
 |---|---|---|
 | `invoice.payment_failed` | Log only. Stripe retries via Smart Retries. | Day 0-7 |
-| `customer.subscription.updated` with `status: 'past_due'` | All retries exhausted. Email developer: "Your payment failed. Update your card at [billing link]. Service continues for 7 more days." Set `paymentOverdue: true` on all org keys. Middleware adds `X-Payment-Overdue: true` to responses. Account page shows a banner. | Day ~7 |
+| `customer.subscription.updated` with `status: 'past_due'` | All retries exhausted. Email developer: "Your payment failed. Update your card at [billing link]." Clarify that the overall Stripe retry/cancellation policy gives ~14 days from first failure, and that entering `past_due` means ~7 days remain before cancellation. Set `paymentOverdue: true` on all org keys. Middleware adds `X-Payment-Overdue: true` to responses. Account page shows a banner. | Day ~7 |
 | `customer.subscription.deleted` (at end of grace) | Downgrade all org keys to free. Clear `paymentOverdue`, `stripeSubscriptionId`, `subscriptionItems`. Remove from registry. | Day ~14 |
 
 **Total grace: ~14 days from first failure.** `customer.subscription.updated` handles both directions: `past_due` sets the flag and sends the email; `active` (after successful retry) clears the flag.
@@ -1532,7 +1650,7 @@ One extra Stripe API call per webhook invocation. Webhooks fire rarely (signup, 
 4. TransactWriteItems (DDB):
    a. ConditionalPut prontiq-keys/ORG#{orgId} where attribute_not_exists(apiKeyHash)
       Item: { stripeCustomerId, ownerEmail, tier="free",
-              completedAt, hasFirstKey: false }
+              products=["address"], completedAt, hasFirstKey: false }
       // ORG#{orgId} is the org-envelope record. No raw API key
       // material lives here — only Stripe linkage and provisioning state.
    b. ConditionalPut prontiq-audit/{orgId}/{timestamp#eventId}
@@ -1583,7 +1701,7 @@ The `/v1/account/keys/create` endpoint (P1C.03):
 - The first-key flow is just a normal `/v1/account/keys/create` call — no special "first-time" code path. Treats "first key" as the same operation as "Nth key".
 - SES failure is no longer load-bearing. The user can sign in regardless and create their key from the UI.
 - Stripe customer creation remains idempotent in the webhook so retries are safe.
-- ORG#{orgId} item replaces the previous PROVISION#{orgId}: no more `provisionedKeyHash` field (no key exists yet), just `stripeCustomerId` + `hasFirstKey` flag.
+- ORG#{orgId} item replaces the previous PROVISION#{orgId}: no more `provisionedKeyHash` field (no key exists yet), just `stripeCustomerId` + a cached entitlement snapshot (`tier`, `products`) + `hasFirstKey`.
 
 **Manual recovery path** (the rare case where the Clerk webhook never fires at all): the `/account` page detects no `ORG#{orgId}` record and shows a "Set up your account" CTA. Clicking it calls `POST /v1/account/setup` (Clerk-authenticated) which runs steps 2–5 above against the user's session-derived `orgId`. Same code path as the webhook, just triggered by the user instead of Clerk. The user then creates their first key normally via `/v1/account/keys/create`.
 
@@ -1599,28 +1717,31 @@ The `/v1/account/keys/create` endpoint (P1C.03):
    inline — only the subscription ID):
 
    a. Read `event.data.object.subscription` → subscriptionId.
-   b. `stripe.subscriptions.retrieve(subscriptionId, { expand: ['items.data.price'] })`
+   b. `stripe.subscriptions.retrieve(subscriptionId, { expand: ['items.data.price', 'items.data.price.product'] })`
       → returns Subscription with `items.data[]` populated, each entry
       having `id` (the `si_...` we need) and `price.product`
-      (the Stripe Product ID we map to a Prontiq product).
+      (the expanded Stripe Product object we inspect for metadata).
    c. Build subscriptionItems map:
         for each item in subscription.items.data:
-          if item.price.id === PLANS[tier].stripePriceId:
-            // recurring plan price; not metered, skip
+          if item.price.metadata.prontiqTier exists OR
+             item.price.product.metadata.prontiqTier exists:
+            // recurring plan price; tier source of truth
             continue
-          product = STRIPE_PRODUCT_TO_PRONTIQ[item.price.product]
-            // e.g., "prod_address_metered" → "address"
+          product = item.price.product.metadata.prontiqProduct
+            // e.g., "address"
           subscriptionItems[product] = item.id  // "si_..."
-   d. **Validate** that every product enabled by the new tier has a
-      subscription item: for each p in PLANS[tier].products, assert
-      p in subscriptionItems. If any are missing → return 500 with a
-      CloudWatch ERROR log. Stripe will retry the webhook; on persistent
-      failure, alert via SNS so an operator can fix the misconfigured
-      subscription before billing breaks.
+   d. Determine tier from the recurring plan Price metadata:
+        tier = recurringItem.price.metadata.prontiqTier
+            || recurringItem.price.product.metadata.prontiqTier
+      **Validate** that the tier is one of the known Prontiq tiers and
+      that at least one metered product is enabled. If metadata is
+      missing/invalid → return 500 with a CloudWatch ERROR log. Stripe
+      will retry the webhook; on persistent failure, alert via SNS so an
+      operator can fix the misconfigured subscription before billing breaks.
 
 4. Query prontiq-keys by orgId (GSI) → ALL keys for this org
 
-5. Determine tier from the recurring Price ID via PLANS lookup.
+5. Determine tier from the recurring Price or Product `metadata.prontiqTier`.
 
 6. TransactWriteItems (DDB): for each org key,
    - UpdateItem prontiq-keys/{apiKeyHash}: set tier, products,
@@ -1630,22 +1751,30 @@ The `/v1/account/keys/create` endpoint (P1C.03):
     chunk into multiple transactions.)
 
 7. Reset warningEmailSent + limitEmailSent on all prontiq-usage items
-   for the current scope (so threshold emails fire fresh against new quota).
+   for the current scope **only when the usage row already exists**
+   (no sparse-row backfill just to clear flags; existing counters only).
 
 8. Write UPGRADE to prontiq-audit (one entry per orgId+timestamp).
 
-9. Return 200.
+9. Finalize the claimed webhook marker in prontiq-keys:
+     PK = WEBHOOK#stripe#{eventId}
+     status = completed
+   Duplicate delivery returns 200 only once the marker is completed;
+   a fresh duplicate that sees `status=processing` returns 500 so
+   Stripe retries after the active worker finishes.
+
+10. Return 200.
 ```
 
-> **Why validate before persisting?** A partially-mapped `subscriptionItems` (e.g., starter tier with `address` but missing `abn` because Stripe's product list got out of sync with PLANS) would let the billing cron silently skip pushing usage for the missing product, and the developer is billed nothing for it. Validating + failing the webhook surfaces the misconfiguration immediately. Stripe will retry, and on persistent failure the operator gets paged — far better than silent under-billing.
+> **Why validate before persisting?** A misconfigured Stripe subscription (for example a recurring plan Price/Product missing `metadata.prontiqTier`, or a metered Product missing `metadata.prontiqProduct`) would let the billing cron or entitlement state drift silently from what the customer bought. Validating + failing the webhook surfaces the misconfiguration immediately. Stripe will retry, and on persistent failure the operator gets paged — far better than silent under-billing.
 
-#### 5.7.3 Stripe: `customer.subscription.updated` (plan change / past_due / recovered)
+#### 5.7.3 Stripe: `customer.subscription.updated` (billing-state reconcile / past_due / recovered)
 
 ```
 1. Verify stripe-signature
 2. Retrieve Stripe customer → read metadata.orgId
-3. If plan/price changed (items differ from DynamoDB):
-   a. Determine new tier from recurring Price ID → PLANS lookup
+3. If the Stripe subscription snapshot differs from DynamoDB (tier, products, subscriptionItems, or derived limits):
+   a. Determine new tier from recurring Price/Product `metadata.prontiqTier`
    b. Query prontiq-keys by orgId → ALL keys
    c. Update each key: tier, products, quotaPerProduct, rateLimit, subscriptionItems
    d. Registry: UPGRADE → ADD hash(es); DOWNGRADE → keep in registry (still paid, limits adjusted)
@@ -1654,15 +1783,15 @@ The `/v1/account/keys/create` endpoint (P1C.03):
 4. If status === 'past_due':
    a. Query prontiq-keys by orgId → ALL keys
    b. Set paymentOverdue: true on each key
-   c. Send payment failure email via SES
+   c. Send payment failure email via SES (best-effort; suppression-aware)
 5. If status === 'active' AND any org key has paymentOverdue:
    a. Query prontiq-keys by orgId → ALL keys
    b. Clear paymentOverdue on each
-   c. Optional: send payment-recovered confirmation email
+   c. No email in P1B.06
 6. Return 200
 ```
 
-> Both initial upgrade (§5.7.2) and subsequent plan changes converge on the same DynamoDB update logic. `subscription.updated` also handles payment-status transitions (`active ↔ past_due`) — one event type, two state transitions.
+> Both initial upgrade (§5.7.2) and subsequent subscription changes converge on the same DynamoDB update logic. `subscription.updated` is not tier-only: it reconciles any Stripe-side drift in `products`, `subscriptionItems`, or derived limits even when the tier string does not change. The same event type also handles payment-status transitions (`active ↔ past_due`) — one event type, two state transitions.
 
 #### 5.7.4 Stripe: `customer.subscription.deleted` (cancel / end of grace)
 
@@ -1670,11 +1799,14 @@ The `/v1/account/keys/create` endpoint (P1C.03):
 1. Verify stripe-signature
 2. Retrieve Stripe customer → read metadata.orgId
 3. Query prontiq-keys by orgId → ALL keys
-4. Update each key: tier → "free", products → free list, quotaPerProduct → 5000
+4. Update each key: tier → "free", products → free list, quotaPerProduct → 10000
 5. Clear stripeSubscriptionId, subscriptionItems, paymentOverdue on each key
-6. DELETE each apiKeyHash from REGISTRY#active-keys
-7. Write DOWNGRADE to prontiq-audit
-8. Return 200
+6. DELETE each apiKeyHash from `REGISTRY#active-keys`
+7. ADD each apiKeyHash to `REGISTRY#retired-billing-keys`
+   (keeps the hash discoverable for the hourly billing cron until the
+    final current/previous-month meter deltas are flushed)
+8. Write DOWNGRADE to prontiq-audit
+9. Return 200
 ```
 
 Stripe is configured with `cancel_at_period_end: true` on user-initiated cancellation. The webhook fires at period end, not at cancellation time.
@@ -2390,7 +2522,7 @@ On account deletion, purge: `prontiq-keys` (all org keys + `ORG#{orgId}` envelop
 
 **Month-boundary clock skew.** Usage scope computed at request time (step 2, §5.5.3), passed to async write. Never recomputed. A request at 23:59:59 on April 30 always counts as April.
 
-**First month generosity.** Signup April 15 → 5,000 requests for remaining 15 days. Deliberate. Counter resets May 1 regardless.
+**First month generosity.** Signup April 15 → 10,000 credits for the remaining 15 days. Deliberate. Counter resets May 1 regardless.
 
 ### 12.2 Webhook Reliability
 
@@ -2398,7 +2530,7 @@ On account deletion, purge: `prontiq-keys` (all org keys + `ORG#{orgId}` envelop
 
 **Idempotency.**
 - **Clerk provisioning** (`user.created`): writes the `ORG#{orgId}` envelope record after creating the Stripe customer (§5.7.1). A retry that hits an existing `ORG#{orgId}` returns 200 immediately. Stripe customer creation uses `Idempotency-Key: clerk-provision-{orgId}` so retries reuse the same `cus_...`. **The webhook does NOT mint API keys** — those are user-driven via `/v1/account/keys/create` after sign-in, which puts the raw key in a user-visible HTTP response (the only safe place for hash-only-stored secrets).
-- **Stripe webhooks**: dedupe on `event.id` via conditional `UpdateItem` to a per-event idempotency item. Stripe redelivers events; the dedupe item keeps repeated processing harmless.
+- **Stripe webhooks**: dedupe on `event.id` via a claim/finalize reserved item in `prontiq-keys` (`WEBHOOK#stripe#{eventId}`). The handler claims the item as `processing`, applies replay-safe target-state writes, then finalizes it as `completed`. Stripe duplicates that arrive while a fresh `processing` claim exists return 500 so Stripe retries later; completed markers return 200 no-op.
 
 **Clerk webhook failure → manual recovery.** Two independent failure cases, both fully recoverable from the user side:
 

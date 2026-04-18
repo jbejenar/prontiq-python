@@ -1,5 +1,13 @@
 import type { ProductConfig, Tier } from "./types.js";
 
+export interface BillingEndpointDefinition {
+  creditCost: number;
+  displayName: string;
+  familyDisplayName: string;
+  meterEventName: string;
+  product: string;
+}
+
 export const PRODUCT_REGISTRY: Record<string, ProductConfig> = {
   address: {
     alias: "addresses",
@@ -51,48 +59,114 @@ export const PRODUCT_REGISTRY: Record<string, ProductConfig> = {
 } as const;
 
 export interface PlanDefinition {
-  stripePriceId: string | null;
+  includedCreditsPerMonth: number | null;
   quotaPerProduct: number | null;
   rateLimit: number | null;
   products: string[];
   maxKeys: number;
-  overagePerThousand: number | null;
+  overagePerThousandCredits: number | null;
 }
 
 export const PLANS: Record<Tier, PlanDefinition> = {
   free: {
-    stripePriceId: null,
-    quotaPerProduct: 5_000,
+    includedCreditsPerMonth: 10_000,
+    quotaPerProduct: 10_000,
     rateLimit: 10,
     products: ["address"],
     maxKeys: 2,
-    overagePerThousand: null,
+    overagePerThousandCredits: null,
   },
   starter: {
-    stripePriceId: null,
+    includedCreditsPerMonth: 10_000,
     quotaPerProduct: 10_000,
     rateLimit: 50,
     products: ["address", "abn", "lei", "cve", "patents"],
     maxKeys: 5,
-    overagePerThousand: 150,
+    overagePerThousandCredits: 150,
   },
   growth: {
-    stripePriceId: null,
+    includedCreditsPerMonth: 50_000,
     quotaPerProduct: 50_000,
     rateLimit: 100,
     products: ["address", "abn", "lei", "cve", "patents"],
     maxKeys: 20,
-    overagePerThousand: 100,
+    overagePerThousandCredits: 100,
   },
   enterprise: {
-    stripePriceId: null,
+    includedCreditsPerMonth: null,
     quotaPerProduct: null,
     rateLimit: null,
     products: ["address", "abn", "lei", "cve", "patents"],
     maxKeys: Number.MAX_SAFE_INTEGER,
-    overagePerThousand: null,
+    overagePerThousandCredits: null,
   },
 };
+
+export const BILLING_ENDPOINTS: Record<string, BillingEndpointDefinition> = {
+  "address.autocomplete": {
+    creditCost: 1,
+    displayName: "Address Autocomplete",
+    familyDisplayName: "Address API",
+    meterEventName: "prontiq_address_requests",
+    product: "address",
+  },
+  "address.enrich": {
+    creditCost: 3,
+    displayName: "Address Enrich",
+    familyDisplayName: "Address API",
+    meterEventName: "prontiq_address_requests",
+    product: "address",
+  },
+  "address.lookup_postcode": {
+    creditCost: 1,
+    displayName: "Address Postcode Lookup",
+    familyDisplayName: "Address API",
+    meterEventName: "prontiq_address_requests",
+    product: "address",
+  },
+  "address.lookup_suburb": {
+    creditCost: 1,
+    displayName: "Address Suburb Lookup",
+    familyDisplayName: "Address API",
+    meterEventName: "prontiq_address_requests",
+    product: "address",
+  },
+  "address.reverse": {
+    creditCost: 2,
+    displayName: "Address Reverse",
+    familyDisplayName: "Address API",
+    meterEventName: "prontiq_address_requests",
+    product: "address",
+  },
+  "address.validate": {
+    creditCost: 1,
+    displayName: "Address Validate",
+    familyDisplayName: "Address API",
+    meterEventName: "prontiq_address_requests",
+    product: "address",
+  },
+} as const;
+
+export function getBillingEndpointsForProduct(product: string): BillingEndpointDefinition[] {
+  return Object.values(BILLING_ENDPOINTS).filter((definition) => definition.product === product);
+}
+
+export function getMeterEventNameForProduct(product: string): string | null {
+  const endpoints = getBillingEndpointsForProduct(product);
+  if (endpoints.length === 0) {
+    return null;
+  }
+
+  const meterEventNames = new Set(endpoints.map((definition) => definition.meterEventName));
+  if (meterEventNames.size !== 1) {
+    throw new Error(`Product ${product} has inconsistent meterEventName values in BILLING_ENDPOINTS`);
+  }
+
+  return endpoints[0]?.meterEventName ?? null;
+}
+
+export const BILLING_GRACE_PERIOD_TOTAL_DAYS = 14;
+export const BILLING_GRACE_PERIOD_PAST_DUE_DAYS_REMAINING = 7;
 
 export const ERROR_CODES = {
   INVALID_API_KEY: { status: 401, message: "Invalid API key" },

@@ -8,6 +8,7 @@ export type {
   ApiKeySubscriptionItems,
   ApiKeyRecord,
   UsageCounterRecord,
+  StripeWebhookCompletionRecord,
   RedirectRecord,
   OrgEnvelopeRecord,
   AuditRecord,
@@ -17,8 +18,28 @@ export type {
   ErrorCode,
 } from "./types.js";
 
-export { PRODUCT_REGISTRY, PLANS, ERROR_CODES } from "./constants.js";
-export type { PlanDefinition } from "./constants.js";
+export {
+  BILLING_GRACE_PERIOD_PAST_DUE_DAYS_REMAINING,
+  BILLING_GRACE_PERIOD_TOTAL_DAYS,
+  PRODUCT_REGISTRY,
+  PLANS,
+  BILLING_ENDPOINTS,
+  ERROR_CODES,
+  getBillingEndpointsForProduct,
+  getMeterEventNameForProduct,
+} from "./constants.js";
+export type { BillingEndpointDefinition, PlanDefinition } from "./constants.js";
+
+export {
+  generateKey,
+  hashKey,
+  KEY_HASH_LENGTH,
+  KEY_PREFIX,
+  KEY_PREFIX_SAMPLE_LENGTH,
+  KEY_RAW_LENGTH,
+  KEY_SUFFIX_BYTES,
+} from "./keys.js";
+export type { GeneratedKey } from "./keys.js";
 
 export {
   manifestV1Schema,

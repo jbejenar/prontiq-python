@@ -5,7 +5,7 @@ import { DynamoDBDocumentClient, PutCommand } from "@aws-sdk/lib-dynamodb";
 import { Hono } from "hono";
 import { auth, __resetRateLimiterForTesting, __setDdbForTesting } from "./auth.js";
 import type { ApiKeyRecord, RedirectRecord, UsageCounterRecord } from "@prontiq/shared";
-import { hashKey } from "@prontiq/shared/keys";
+import { hashKey } from "@prontiq/shared";
 
 const DDB_URL = process.env.DYNAMODB_TEST_URL ?? "http://localhost:8000";
 const TEST_SUFFIX = Date.now().toString();
@@ -24,7 +24,9 @@ const docClient = DynamoDBDocumentClient.from(client);
 
 const app = new Hono();
 app.use("/v1/*", auth());
-app.get("/v1/address/ping", (c) => c.json({ ok: true }));
+app.get("/v1/address/autocomplete", (c) => c.json({ ok: true }));
+app.get("/v1/address/enrich", (c) => c.json({ ok: true }));
+app.get("/v1/address/reverse", (c) => c.json({ ok: true }));
 app.get("/v1/abn/ping", (c) => c.json({ ok: true }));
 
 function makeKeyRecord(overrides: Partial<ApiKeyRecord> = {}): ApiKeyRecord {
@@ -190,7 +192,7 @@ beforeEach(async () => {
 });
 
 test("missing API key returns MISSING_API_KEY", async () => {
-  const response = await request("/v1/address/ping");
+  const response = await request("/v1/address/autocomplete");
   const body = (await response.json()) as { error: { code: string } };
 
   assert.equal(response.status, 401);
@@ -201,15 +203,15 @@ test("valid free-tier key allows requests up to quota then rejects the next one"
   const rawKey = "pq_test_valid_key_123";
   await seedKey(rawKey, { quotaPerProduct: 2, rateLimit: 10, tier: "free" });
 
-  const first = await request("/v1/address/ping", rawKey);
+  const first = await request("/v1/address/autocomplete", rawKey);
   assert.equal(first.status, 200);
   assert.equal(first.headers.get("X-RateLimit-Remaining"), "1");
 
-  const second = await request("/v1/address/ping", rawKey);
+  const second = await request("/v1/address/autocomplete", rawKey);
   assert.equal(second.status, 200);
   assert.equal(second.headers.get("X-RateLimit-Remaining"), "0");
 
-  const third = await request("/v1/address/ping", rawKey);
+  const third = await request("/v1/address/autocomplete", rawKey);
   const body = (await third.json()) as { error: { code: string } };
   assert.equal(third.status, 429);
   assert.equal(body.error.code, "QUOTA_EXCEEDED");
@@ -224,23 +226,57 @@ test("growth-tier key can exceed quota and gets the overage header", async () =>
     tier: "growth",
   });
 
-  const first = await request("/v1/address/ping", rawKey);
+  const first = await request("/v1/address/autocomplete", rawKey);
   assert.equal(first.status, 200);
   assert.equal(first.headers.get("X-RateLimit-Over"), null);
 
-  const second = await request("/v1/address/ping", rawKey);
+  const second = await request("/v1/address/autocomplete", rawKey);
   assert.equal(second.status, 200);
   assert.equal(second.headers.get("X-RateLimit-Over"), "true");
+});
+
+test("weighted address endpoint consumes multiple credits from the family quota", async () => {
+  const rawKey = "pq_test_enrich_key_123";
+  await seedKey(rawKey, { quotaPerProduct: 3, rateLimit: 10, tier: "free" });
+
+  const first = await request("/v1/address/enrich", rawKey);
+  assert.equal(first.status, 200);
+  assert.equal(first.headers.get("X-RateLimit-Remaining"), "0");
+
+  const second = await request("/v1/address/autocomplete", rawKey);
+  const body = (await second.json()) as {
+    error: { code: string; details?: { credits_required?: number } };
+  };
+  assert.equal(second.status, 429);
+  assert.equal(body.error.code, "QUOTA_EXCEEDED");
+  assert.equal(body.error.details?.credits_required, 1);
+});
+
+test("reverse endpoint rejects a free-tier request that would overflow remaining credits", async () => {
+  const rawKey = "pq_test_reverse_key_123";
+  await seedKey(rawKey, { quotaPerProduct: 2, rateLimit: 10, tier: "free" });
+
+  const first = await request("/v1/address/autocomplete", rawKey);
+  assert.equal(first.status, 200);
+  assert.equal(first.headers.get("X-RateLimit-Remaining"), "1");
+
+  const second = await request("/v1/address/reverse", rawKey);
+  const body = (await second.json()) as {
+    error: { code: string; details?: { credits_required?: number } };
+  };
+  assert.equal(second.status, 429);
+  assert.equal(body.error.code, "QUOTA_EXCEEDED");
+  assert.equal(body.error.details?.credits_required, 2);
 });
 
 test("burst limiter returns RATE_LIMITED with Retry-After", async () => {
   const rawKey = "pq_test_rate_key_123";
   await seedKey(rawKey, { quotaPerProduct: 10, rateLimit: 1, tier: "starter" });
 
-  const first = await request("/v1/address/ping", rawKey);
+  const first = await request("/v1/address/autocomplete", rawKey);
   assert.equal(first.status, 200);
 
-  const second = await request("/v1/address/ping", rawKey);
+  const second = await request("/v1/address/autocomplete", rawKey);
   const body = (await second.json()) as { error: { code: string } };
   assert.equal(second.status, 429);
   assert.equal(body.error.code, "RATE_LIMITED");
@@ -257,6 +293,34 @@ test("product gating rejects disallowed products", async () => {
   assert.equal(body.error.code, "PRODUCT_NOT_ALLOWED");
 });
 
+test("enabled products without billing weights fail closed", async () => {
+  const rawKey = "pq_test_abn_unrated_key_123";
+  await seedKey(rawKey, { products: ["address", "abn"], tier: "starter", quotaPerProduct: 10, rateLimit: 10 });
+
+  const response = await request("/v1/abn/ping", rawKey);
+  const body = (await response.json()) as {
+    error: { code: string; details?: { product?: string; reason?: string } };
+  };
+  assert.equal(response.status, 500);
+  assert.equal(body.error.code, "INTERNAL_ERROR");
+  assert.equal(body.error.details?.product, "abn");
+  assert.equal(body.error.details?.reason, "billing_endpoint_weights_missing");
+});
+
+test("unknown route inside a rated product fails closed", async () => {
+  const rawKey = "pq_test_unknown_address_route_123";
+  await seedKey(rawKey, { products: ["address"], tier: "starter", quotaPerProduct: 10, rateLimit: 10 });
+
+  const response = await request("/v1/address/ping", rawKey);
+  const body = (await response.json()) as {
+    error: { code: string; details?: { product?: string; reason?: string } };
+  };
+  assert.equal(response.status, 500);
+  assert.equal(body.error.code, "INTERNAL_ERROR");
+  assert.equal(body.error.details?.product, "address");
+  assert.equal(body.error.details?.reason, "billing_endpoint_weights_missing");
+});
+
 test("payment overdue key authenticates and emits the response header", async () => {
   const rawKey = "pq_test_overdue_key_123";
   await seedKey(rawKey, {
@@ -266,7 +330,7 @@ test("payment overdue key authenticates and emits the response header", async ()
     tier: "starter",
   });
 
-  const response = await request("/v1/address/ping", rawKey);
+  const response = await request("/v1/address/autocomplete", rawKey);
   assert.equal(response.status, 200);
   assert.equal(response.headers.get("X-Payment-Overdue"), "true");
 });
@@ -282,7 +346,7 @@ test("redirect fallback authenticates with the new active key", async () => {
 
   await seedRedirect(oldRawKey, newRecord.apiKeyHash);
 
-  const response = await request("/v1/address/ping", oldRawKey);
+  const response = await request("/v1/address/autocomplete", oldRawKey);
   assert.equal(response.status, 200);
 });
 
@@ -298,7 +362,7 @@ test("redirect to inactive key is rejected", async () => {
 
   await seedRedirect(oldRawKey, newRecord.apiKeyHash);
 
-  const response = await request("/v1/address/ping", oldRawKey);
+  const response = await request("/v1/address/autocomplete", oldRawKey);
   const body = (await response.json()) as { error: { code: string } };
   assert.equal(response.status, 401);
   assert.equal(body.error.code, "INVALID_API_KEY");
@@ -315,7 +379,7 @@ test("expired redirect is rejected", async () => {
 
   await seedExpiredRedirect(oldRawKey, newRecord.apiKeyHash);
 
-  const response = await request("/v1/address/ping", oldRawKey);
+  const response = await request("/v1/address/autocomplete", oldRawKey);
   const body = (await response.json()) as { error: { code: string } };
   assert.equal(response.status, 401);
   assert.equal(body.error.code, "INVALID_API_KEY");
@@ -325,7 +389,7 @@ test("redirect to missing target is rejected", async () => {
   const oldRawKey = "pq_test_missing_target_old_123";
   await seedRedirect(oldRawKey, hashKey("pq_test_missing_target_new_123"));
 
-  const response = await request("/v1/address/ping", oldRawKey);
+  const response = await request("/v1/address/autocomplete", oldRawKey);
   const body = (await response.json()) as { error: { code: string } };
   assert.equal(response.status, 401);
   assert.equal(body.error.code, "INVALID_API_KEY");
@@ -335,7 +399,7 @@ test("self-loop redirect is rejected", async () => {
   const rawKey = "pq_test_redirect_loop_123";
   await seedRedirect(rawKey, hashKey(rawKey));
 
-  const response = await request("/v1/address/ping", rawKey);
+  const response = await request("/v1/address/autocomplete", rawKey);
   const body = (await response.json()) as { error: { code: string } };
   assert.equal(response.status, 401);
   assert.equal(body.error.code, "INVALID_API_KEY");
@@ -353,7 +417,24 @@ test("existing usage rows are incremented in place", async () => {
     lastPushedCumulativeCount: 4,
   });
 
-  const response = await request("/v1/address/ping", rawKey);
+  const response = await request("/v1/address/autocomplete", rawKey);
   assert.equal(response.status, 200);
   assert.equal(response.headers.get("X-RateLimit-Remaining"), "0");
+});
+
+test("existing usage rows are incremented by endpoint credit cost", async () => {
+  const rawKey = "pq_test_usage_weighted_key_123";
+  const record = await seedKey(rawKey, { quotaPerProduct: 10, rateLimit: 10, tier: "starter" });
+  await seedUsage({
+    apiKeyHash: record.apiKeyHash,
+    scope: `address#${CURRENT_MONTH}`,
+    requestCount: 4,
+    ttl: NOW_SECONDS + 90 * 24 * 60 * 60,
+    lastUsedAt: "2026-04-01T00:00:00.000Z",
+    lastPushedCumulativeCount: 4,
+  });
+
+  const response = await request("/v1/address/enrich", rawKey);
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("X-RateLimit-Remaining"), "3");
 });

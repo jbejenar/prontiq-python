@@ -106,7 +106,11 @@ const completeEnvelope = (orgId: string, customerId = "cus_existing") => ({
   apiKeyHash: `ORG#${orgId}`,
   stripeCustomerId: customerId,
   ownerEmail: "owner@example.com",
+  paymentOverdue: false,
+  stripeSubscriptionId: null,
+  subscriptionItems: {},
   tier: "free",
+  products: ["address"],
   hasFirstKey: false,
   completedAt: "2026-04-17T00:00:00.000Z",
 });

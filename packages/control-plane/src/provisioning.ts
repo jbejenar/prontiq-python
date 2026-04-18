@@ -5,6 +5,7 @@ import {
   GetCommand,
   TransactWriteCommand,
 } from "@aws-sdk/lib-dynamodb";
+import { PLANS } from "@prontiq/shared";
 import Stripe from "stripe";
 import type { OrgEnvelopeRecord } from "@prontiq/shared";
 import { buildAuditTransactItem } from "./audit.js";
@@ -154,7 +155,14 @@ function isCompleteOrgEnvelope(
     candidate.stripeCustomerId.length > 0 &&
     typeof candidate.ownerEmail === "string" &&
     candidate.ownerEmail.length > 0 &&
-    candidate.tier === FREE_TIER &&
+    typeof candidate.tier === "string" &&
+    Array.isArray(candidate.products) &&
+    typeof candidate.paymentOverdue === "boolean" &&
+    (candidate.stripeSubscriptionId === null ||
+      (typeof candidate.stripeSubscriptionId === "string" &&
+        candidate.stripeSubscriptionId.length > 0)) &&
+    candidate.subscriptionItems != null &&
+    typeof candidate.subscriptionItems === "object" &&
     typeof candidate.hasFirstKey === "boolean" &&
     typeof candidate.completedAt === "string" &&
     candidate.completedAt.length > 0
@@ -229,12 +237,20 @@ function buildProvisioningTransactWrite(
   now: Date,
 ): TransactWriteCommand {
   const completedAt = now.toISOString();
+  const freePlan = PLANS[FREE_TIER];
+  if (!freePlan) {
+    throw new Error(`Plan ${FREE_TIER} is not configured`);
+  }
   const envelope: OrgEnvelopeRecord = {
     apiKeyHash: getOrgEnvelopeKey(input.orgId),
     completedAt,
     hasFirstKey: false,
     ownerEmail: input.ownerEmail,
+    paymentOverdue: false,
+    products: freePlan.products,
     stripeCustomerId,
+    stripeSubscriptionId: null,
+    subscriptionItems: {},
     tier: FREE_TIER,
   };
 

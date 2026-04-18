@@ -1071,7 +1071,7 @@ Options:
 
 > **Goal:** Sign-up → DDB-native API key → hash-verified requests → rate-limited with burst limiter → usage tracked per-month → billed hourly via Stripe, with 14-day payment grace period.
 >
-> **Current state.** P1B.02, P1B.04, and P1B.04b are shipped. The DynamoDB-native key model is live in prod, the prod migration was executed on 2026-04-16, and the old `pq_live_prod_...` seed key has already been rotated and revoked. The remaining P1B work is control-plane completion: webhooks, audit writing, SES handling, billing cron, and month-close.
+> **Current state.** P1B.02, P1B.04, P1B.04b, P1B.05, P1B.06, P1B.07, and P1B.10 are shipped. The DynamoDB-native key model is live in prod, the prod migration was executed on 2026-04-16, org provisioning + Stripe billing sync are live, and hourly usage now flows into Stripe meters. The remaining P1B work is SES handling and month-close.
 >
 > **Scope boundary.** The hot-path middleware rewrite (hash-based lookup, REDIRECT fallback, new usage-table writes) ships in **P1B.04b** (cutover), NOT in P1B.02. P1B.02 is pure crypto primitives only — no DDB dependency — which is why it remains parallel-safe. P1B.04b flips schema + code atomically once P1B.02 and P1B.04 are both done.
 >
@@ -1219,11 +1219,11 @@ tech_stack:
 
 #### User Story
 
-As a builder, I need Stripe configured with subscription plans, per-product metered Prices with tiered allocations, an embedded Pricing Table, and matching `PLANS` constants so that the platform can bill developers with zero cron-side pricing logic.
+As a builder, I need Stripe configured with subscription plans, family-level credit meters, an embedded Pricing Table, and matching `PLANS` / `BILLING_ENDPOINTS` constants so that the platform can bill developers transparently with published credit costs and zero Stripe-side endpoint-specific logic.
 
 #### Problem Statement
 
-Stripe metered billing needs one subscription per organisation with per-product usage line items. Each metered Price is configured with `tiers` — first N thousand requests at $0, the rest at the overage rate (ARCHITECTURE.MD §5.6.1, "Stripe-side" option). The `PLANS` constants in `packages/shared/src/constants.ts` mirror this for the middleware — same quotas, same product scopes, same rate limits. The embedded `<stripe-pricing-table>` is configured in the Stripe Dashboard and referenced by ID in the Billing tab.
+Stripe billing needs one subscription per organisation with one recurring plan item plus one metered family item per enabled API product. Customers buy credits, not raw requests. Endpoint-level costs live in `BILLING_ENDPOINTS` (for example `address.enrich = 3 credits`), and the auth middleware applies those weights inline before Stripe receives the aggregated family-level credit totals (for example `Address API credits`). The embedded `<stripe-pricing-table>` is configured in the Stripe Dashboard and referenced by ID in the Billing tab.
 
 #### Definition of Done
 
@@ -1232,14 +1232,14 @@ Stripe metered billing needs one subscription per organisation with per-product 
 - [ ] Stripe products created: Starter ($29/mo recurring), Growth ($99/mo recurring)
   - `Verify:` Stripe dashboard Products section
   - `Evidence:` Product IDs and Price IDs documented
-- [ ] Per-product metered Prices created with tiers (address, abn, lei, cve, patents) — first N thousand at $0, overage at $1.50 (Starter) / $1.00 (Growth) per 1K
-  - `Verify:` Stripe Billing → Prices section, inspect tiers on each
-  - `Evidence:` Price IDs and tier config per product
-- [ ] `<stripe-pricing-table>` created in Dashboard showing Free / Starter / Growth
-  - `Verify:` Stripe dashboard → Pricing tables shows the table
-  - `Evidence:` Pricing table ID captured for P1C.05 embed
-- [ ] `PLANS` constants block added to `packages/shared/src/constants.ts` per ARCHITECTURE.MD §5.6.1 (free/starter/growth/enterprise shapes with `stripePriceId`, `quotaPerProduct`, `rateLimit`, `products`, `maxKeys`, `overagePerThousand`)
-  - `Verify:` `pnpm typecheck` passes; PLANS[tier].stripePriceId matches Stripe Dashboard Price IDs
+- [ ] Family-level metered Prices created (address, abn, lei, cve, patents) with credit-based billing semantics
+  - `Verify:` Stripe Billing → Prices section, inspect the family meter-backed prices
+  - `Evidence:` Price IDs and meter config per product family
+- [ ] `<stripe-pricing-table>` created in Dashboard showing paid plans (Starter / Growth), with Free rendered separately by Prontiq
+  - `Verify:` Stripe dashboard → Pricing tables shows the paid-plan table
+  - `Evidence:` Pricing table ID captured for P1C.05 embed, with Free card rendered in-app
+- [ ] `PLANS` and `BILLING_ENDPOINTS` constants added to `packages/shared/src/constants.ts` per ARCHITECTURE.MD §5.6.1 (credits per month, rate limits, product families, published endpoint credit weights)
+  - `Verify:` `pnpm typecheck` passes; the shared constants expose both plan-level credits and endpoint-level credit costs
   - `Evidence:` `packages/shared/src/constants.ts` diff
 - [ ] Webhook URL configured for `checkout.session.completed`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.payment_failed`
   - `Verify:` Stripe dashboard Webhooks section
@@ -1253,7 +1253,7 @@ Stripe metered billing needs one subscription per organisation with per-product 
 
 #### Scope
 
-**In:** Stripe products, tiered metered Prices, Pricing Table, Smart Retries + cancel policy, webhook endpoints, PLANS constants, secrets
+**In:** Stripe products, meters, tiered metered Prices, Pricing Table, Smart Retries + cancel policy, webhook endpoints, tier/product metadata contract, secrets
 
 **Out — Do Not Implement:**
 
@@ -1550,8 +1550,8 @@ Four event types: `checkout.session.completed` (initial upgrade), `customer.subs
 - [ ] `checkout.session.completed` (per ARCHITECTURE.MD §5.7.2 — two-step Stripe read required):
   1. Retrieve customer → read orgId from metadata
   2. Get `subscription` ID from event → `stripe.subscriptions.retrieve(subId, {expand: ['items.data.price']})` to get the per-product subscription items (Checkout Session events do NOT include `items` inline)
-  3. Build subscriptionItems map: for each item.data, map `item.price.product` (Stripe product) → Prontiq product slug (via `STRIPE_PRODUCT_TO_PRONTIQ` constant); skip the recurring plan price; record `item.id` (the `si_...`) per Prontiq product
-  4. **Validate**: every `PLANS[tier].products` entry must have a subscription item. Missing → return 500 with SNS alert (Stripe will retry; persistent failure pages oncall — better than silent under-billing)
+  3. Build subscriptionItems map by reading Stripe metadata dynamically: recurring Price/Product `metadata.prontiqTier` declares the plan tier; metered Stripe Product `metadata.prontiqProduct` declares the enabled API product; record `item.id` (the `si_...`) per enabled Prontiq product
+  4. **Validate**: the recurring plan tier metadata is known and at least one metered Prontiq product is enabled. Missing/invalid metadata → return 500 with SNS alert (Stripe will retry; persistent failure pages oncall — better than silent under-billing)
   5. Query `prontiq-keys` by orgId via GSI `orgId-index` with **`FilterExpression: "attribute_exists(keyPrefix) AND attribute_exists(active)"`** (sentinel guard per ARCHITECTURE.MD §5.5.1 — excludes ORG envelope and any future singleton rows). Returns ALL real API-key items for this org.
   6. TransactWriteItems: update each key (tier/products/quota/rateLimit/stripeSubscriptionId/subscriptionItems) + ADD each hash to REGISTRY#active-keys
   7. Reset warning/limit email flags on usage items; audit UPGRADE
@@ -1566,7 +1566,7 @@ Four event types: `checkout.session.completed` (initial upgrade), `customer.subs
 - [ ] `customer.subscription.updated` (active after past_due): clear `paymentOverdue: false` on all org keys
   - `Verify:` Resolve past_due with new card; subsequent requests no longer have X-Payment-Overdue header
   - `Evidence:` Integration test
-- [ ] `customer.subscription.deleted`: downgrade all keys to free (tier="free", products=["address"], quotaPerProduct=5000, rateLimit=10), clear stripeSubscriptionId/subscriptionItems/paymentOverdue, DELETE each hash from REGISTRY#active-keys, audit DOWNGRADE
+- [ ] `customer.subscription.deleted`: downgrade all keys to free (tier="free", products=["address"], quotaPerProduct=10000, rateLimit=10), clear stripeSubscriptionId/subscriptionItems/paymentOverdue, DELETE each hash from REGISTRY#active-keys, audit DOWNGRADE
   - `Verify:` Cancel subscription; at period end all org keys return to free tier limits
   - `Evidence:` Integration test
 - [ ] `invoice.payment_failed`: log event, no DDB writes
@@ -1764,17 +1764,17 @@ Known caveat: per-Lambda-instance, not global — documented and accepted for Ph
 ```yaml
 id: P1B.10
 title: Billing Cron (hourly → Stripe)
-status: pending
+status: complete
 priority: p0-critical
 epic: P1B
 persona: [ops]
 depends_on: [P1B.03, P1B.04, P1B.06]
-completed: null
+completed: 2026-04-18
 ```
 
 #### User Story
 
-As a platform operator, usage data flows from `prontiq-usage` to Stripe every hour via `subscriptionItems[product]` so that metered billing is accurate, idempotent, and no usage is lost across month boundaries.
+As a platform operator, usage data flows from `prontiq-usage` to Stripe every hour via family-level Stripe credit meters so that billing is accurate, replay-safe, and no usage is lost across month boundaries.
 
 #### Problem Statement
 
@@ -1782,36 +1782,37 @@ Hourly EventBridge-triggered Lambda. Per ARCHITECTURE.MD §5.6.2 (rewritten to f
 
 - Reads `REGISTRY#active-keys` (one item)
 - For each billable hash, recursively walks REDIRECT GSI to build the full attribution chain ([currentHash, ...predecessorHashes])
-- Sums `requestCount` across the chain per product/month
+- Sums usage across the chain, then rates that usage into credits per API family
 - Compares to `currentHash.lastPushedCumulativeCount` ONLY (old hashes' pushed state is dead — including it would double-count)
-- Pushes the cumulative count to Stripe via `createUsageRecord(itemId, { quantity: sumRequestCount, action: "set" })`
-- After success, conditionally updates `currentHash.lastPushedCumulativeCount = sumRequestCount`
+- Reserves a replay-safe pending push on the current hash row (`pendingMeterEventIdentifier`, `pendingMeterTargetCumulativeCount`)
+- Pushes the **credit delta** to Stripe via `stripe.billing.meterEvents.create(...)` with deterministic `event_name = prontiq_${product}_requests`
+- After Stripe accepts the event, finalizes by setting `currentHash.lastPushedCumulativeCount = pendingMeterTargetCumulativeCount` and clearing the pending marker
 
 #### Definition of Done
 
 ##### Functional
 
-- [ ] Scheduled Lambda runs hourly (EventBridge cron)
+- [x] Scheduled Lambda runs hourly (EventBridge cron)
   - `Verify:` EventBridge rule exists
   - `Evidence:` SST config
-- [ ] Reads `REGISTRY#active-keys` — targeted reads, not a scan
+- [x] Reads `REGISTRY#active-keys` — targeted reads, not a scan
   - `Verify:` Lambda log shows single GetItem + BatchGet
   - `Evidence:` CloudWatch log
-- [ ] For each billable key: BatchGet `prontiq-keys` for `subscriptionItems`; recursively walk `newHash-redirect-index` GSI to build the rotation chain (depth bounded by `MAX_CHAIN_DEPTH=10`); BatchGet `prontiq-usage` for `chain × {currentMonth, previousMonth}`
+- [x] For each billable key: targeted-read `prontiq-keys` for `stripeCustomerId` + enabled products; recursively walk `newHash-redirect-index` GSI to build the rotation chain (depth bounded by `MAX_CHAIN_DEPTH=10`); targeted-read `prontiq-usage` for `chain × billing scopes × {currentMonth, previousMonth}`
   - `Verify:` Integration test: rotate a key (A→B), make 50 requests against B, run cron; verify chain=[B,A] and Stripe usage record reflects 50 + A's previous-pushed cumulative
   - `Evidence:` Stripe usage record + Lambda log showing chain expansion
-- [ ] **Cumulative push state is single-rooted on the current hash.** Field is `lastPushedCumulativeCount` (renamed from `lastPushedCount` for explicit semantics). Only `currentHash.lastPushedCumulativeCount` participates in the delta gate; old-hash counters are NOT summed.
+- [x] **Cumulative push state is single-rooted on the current hash.** Field is `lastPushedCumulativeCount` (renamed from `lastPushedCount` for explicit semantics). Only `currentHash.lastPushedCumulativeCount` participates in the delta gate; old-hash counters are NOT summed.
   - `Verify:` Code review of the cron — the `currentLastPushed` variable reads from `chain[0]` only, never `chain[i] for i > 0`
   - `Evidence:` Unit test for the delta calculator
-- [ ] Calculates `delta = sumRequestCount - currentLastPushed`; skips if `delta <= 0`. Negative delta → log WARN with chain dump; alarm after 3 consecutive negatives.
+- [x] Calculates `delta = sumRequestCount - currentLastPushed`; skips if `delta <= 0`. Negative delta → log WARN with chain dump; alarm on cron failure path.
   - `Verify:` Unit test feeds chain with old-hash leftover state; assert delta is non-negative
-- [ ] Calls `stripe.subscriptionItems.createUsageRecord(subscriptionItems[product], { quantity: sumRequestCount, action: "set" })` — pushes the **cumulative** count, not the delta
-  - `Verify:` Inspect Stripe usage record after a cron run; quantity equals `sumRequestCount`
+- [x] Calls `stripe.billing.meterEvents.create({ event_name, identifier, payload })` — pushes the **delta credits** to Stripe's family-level meter stream
+  - `Verify:` Inspect Stripe meter events after a cron run; payload quantity equals the credit delta since `lastPushedCumulativeCount`
   - `Evidence:` Stripe → Billing → Meter usage
-- [ ] **Conditional UpdateItem** on `prontiq-usage` SET `lastPushedCumulativeCount = sumRequestCount` ONLY IF `attribute_not_exists(lastPushedCumulativeCount) OR lastPushedCumulativeCount < :sumRequestCount`. Prevents clock-skew regression.
-  - `Verify:` Re-running cron pushes equal cumulative (idempotent on Stripe due to `action: "set"`); no DDB write if value unchanged
-  - `Evidence:` Lambda log shows "no-op" path for unchanged scopes
-- [ ] **Rotation correctness test** (the case that broke the previous design):
+- [x] **Replay-safe pending marker** on `prontiq-usage`. The cron first reserves `pendingMeterEventIdentifier` + `pendingMeterTargetCumulativeCount` on the current hash row, then reuses that same identifier on retry if Stripe accepted the event but the DDB finalize write failed.
+  - `Verify:` Integration test simulates a failure between Stripe acceptance and finalize; retry reuses the same identifier and finishes without double billing
+  - `Evidence:` `billing-cron.integration.test.ts`
+- [x] **Rotation correctness test** (the case that broke the previous design):
   - T0: seed `pq_test_a` with requestCount=100, lastPushedCumulativeCount=100
   - T1: rotate A→B, REDIRECT(A→B), B with requestCount=0, lastPushedCumulativeCount=0
   - T2: 50 reqs against B → B.requestCount=50
@@ -1819,15 +1820,13 @@ Hourly EventBridge-triggered Lambda. Per ARCHITECTURE.MD §5.6.2 (rewritten to f
   - T4: 25 more reqs against B → B.requestCount=75
   - T5: run cron. Assert: Stripe meter set to 175 (NOT a negative delta), B.lastPushedCumulativeCount=175
   - `Evidence:` Integration test passes; demonstrates the §5.6.2 worked-example table
-- [ ] **Multi-rotation test**: A→B→C, 10 reqs against C, verify cron walks chain=[C,B,A] and pushes correct cumulative
-- [ ] DLQ (SQS) on failure; SNS alert after 3 consecutive failures OR any negative-delta observation
-  - `Verify:` Disable Stripe connection; failures land in DLQ; SNS fires after 3rd. Manually corrupt a `lastPushedCumulativeCount` to be > requestCount; observe negative-delta alarm.
-  - `Evidence:` SQS messages + SNS email
-- [ ] Month boundary: first 6 hours of each month, process both current + previous month scopes
+- [x] **Multi-rotation test**: A→B→C, 10 reqs against C, verify cron walks chain=[C,B,A] and pushes correct cumulative
+- [x] CloudWatch alarm on cron errors (`PqBillingCronErrors`)
+- [x] Month boundary: first 6 hours of each month, process both current + previous month scopes
 
 #### Scope
 
-**In:** Hourly cron, targeted reads via registry, REDIRECT handling, idempotent writes, DLQ, SNS alerting
+**In:** Hourly cron, targeted reads via registry, REDIRECT handling, replay-safe pending meter markers, family-level Stripe credit meters, CloudWatch alarming
 
 **Out — Do Not Implement:**
 
@@ -2022,9 +2021,9 @@ The landing page IS the product pitch. A live autocomplete demo (type an address
 - [ ] Live autocomplete against real API (uses demo key)
   - `Verify:` Type "9 endeavour" → suggestions appear from G-NAF data
   - `Evidence:` Real address data, not mocked
-- [ ] Pricing table below hero (Stripe embedded pricing table)
-  - `Verify:` Free / Starter / Growth plans visible with prices
-  - `Evidence:` Stripe pricing table renders correctly
+- [ ] Pricing table below hero (Prontiq Free card + Stripe embedded paid pricing table)
+  - `Verify:` Free card plus Starter / Growth plans visible with prices
+  - `Evidence:` Free is rendered by the site; Stripe pricing table renders paid plans correctly
 - [ ] "Get Started Free" button → Clerk sign-up modal
   - `Verify:` Click button → Clerk modal appears
   - `Evidence:` Sign-up flow works end-to-end
@@ -2072,14 +2071,14 @@ As a logged-in developer, I see my API key, usage summary, and quick-start code 
   - `Verify:` Chart renders with bars/lines per product
   - `Evidence:` Data from DynamoDB usage counters
 - [ ] Current plan name and quota remaining displayed
-  - `Verify:` Shows "Free Plan — 4,200 / 5,000 requests remaining"
+  - `Verify:` Shows "Free Plan — 4,200 / 10,000 credits remaining"
   - `Evidence:` Calculated from key metadata
 - [ ] Quick-start code snippets with key pre-filled (curl, TypeScript, Python)
   - `Verify:` Snippets include the user's actual API key
   - `Evidence:` Copy button works; snippet is runnable
 - [ ] Upgrade nudge banner when > 80% quota used
   - `Verify:` Seed key at 85% usage; banner appears
-  - `Evidence:` "Upgrade to Starter for 10,000 requests/month" message
+  - `Evidence:` "Upgrade to Starter for 10,000 credits/month" message
 
 #### Scope
 
@@ -2494,7 +2493,7 @@ The Getting Started guide is the highest-traffic page on any API docs site. If a
   - `Evidence:` Code examples for curl, fetch, SDK
 - [ ] Rate limits & quotas page with per-tier breakdown table
   - `Verify:` Table matches `PLANS` in `packages/shared/src/constants.ts` (per ARCHITECTURE.MD §5.6.1)
-  - `Evidence:` Free: 5K/mo, Starter: 10K/mo, Growth: 50K/mo per product; rate limit rows per tier (10/50/100 req/sec)
+  - `Evidence:` Free: 10K credits/mo, Starter: 10K credits/mo, Growth: 50K credits/mo per family; rate limit rows per tier (10/50/100 req/sec)
 - [ ] Error handling guide (all error codes per ARCHITECTURE.MD §9, retry logic, request_id tracing)
   - `Verify:` All live-today codes documented; forward-contract codes marked as "introduced in P1B.09 / P1C / etc."
   - `Evidence:` Live: `MISSING_API_KEY`, `INVALID_API_KEY`, `PRODUCT_NOT_ALLOWED`, `QUOTA_EXCEEDED`. Forward: `RATE_LIMITED`, `KEY_LIMIT_EXCEEDED`, `UNAUTHORIZED`, `ORG_REQUIRED`, `INVALID_SIGNATURE`, `VALIDATION_ERROR`, `SERVICE_UNAVAILABLE`, `INTERNAL_ERROR`
@@ -3390,7 +3389,7 @@ As a platform operator, ABN usage is metered and billed separately from address 
 
 #### Problem Statement
 
-The billing cron (P1B.10) already reports address usage to Stripe via `subscriptionItems["address"]`. Adding ABN requires a new Stripe metered Price, an `"abn"` entry in each paid key's `subscriptionItems` map (populated on upgrade by P1B.06 Stripe webhook), and no changes to the cron itself — it already iterates the full `subscriptionItems` map. The invoice shows "Address API — X requests" and "ABN Verification — Y requests" as separate line items.
+The billing cron (P1B.10) already reports address usage to Stripe via the deterministic meter event name `prontiq_address_requests`. Adding ABN requires a Stripe Meter + metered Price for the ABN product, `metadata.prontiqProduct=abn` on the ABN Stripe Product, and no cron code change — the cron already iterates the enabled `key.products` set and derives `event_name = prontiq_${product}_requests`. Under the credits model, the invoice shows "Address API — X credits" and "ABN Verification — Y credits" as separate family-level credit lines.
 
 #### Definition of Done
 
@@ -3398,11 +3397,11 @@ The billing cron (P1B.10) already reports address usage to Stripe via `subscript
 
 - [ ] ABN metered Price created in Stripe (with tiered allocations per plan, same shape as address per ARCHITECTURE.MD §5.6.1)
   - `Verify:` Stripe dashboard Products → Prontiq ABN API shows metered Price with tiers
-  - `Evidence:` Price ID documented in PLANS constants
-- [ ] P1B.06 Stripe webhook populates `subscriptionItems["abn"]` on upgrade (automatic — already iterates all products in `checkout.session.completed` per §5.7.2)
-  - `Verify:` Upgrade a test account to Starter; `aws dynamodb get-item` on prontiq-keys shows `subscriptionItems.abn: "si_..."`
+  - `Evidence:` Stripe Product + Meter config documented in the billing runbook
+- [ ] P1B.06 Stripe webhook enables ABN on upgrade from live Stripe metadata (`metadata.prontiqProduct=abn`)
+  - `Verify:` Upgrade a test account to Starter; `aws dynamodb get-item` on prontiq-keys shows `products` includes `abn`
   - `Evidence:` DDB record diff
-- [ ] Billing cron (P1B.10) reports ABN usage on next hourly run — no code change required; iterates the full subscriptionItems map
+- [ ] Billing cron (P1B.10) reports ABN usage on next hourly run — no code change required; iterates the full enabled product set and emits `prontiq_abn_requests`
   - `Verify:` Make 10 ABN requests → wait for hourly cron → Stripe usage records appear under ABN meter
   - `Evidence:` Stripe → Billing → Meter usage
 - [ ] Invoice shows ABN line item alongside address line item
@@ -3411,7 +3410,7 @@ The billing cron (P1B.10) already reports address usage to Stripe via `subscript
 
 #### Scope
 
-**In:** Stripe ABN metered Price with tiers, PLANS constants update, invoice verification (no billing-cron code change — P1B.10 already iterates subscriptionItems map)
+**In:** Stripe ABN meter + metered Price, Product metadata `prontiqProduct=abn`, invoice verification (no billing-cron code change — P1B.10 already iterates enabled products)
 
 **Out — Do Not Implement:**
 
@@ -3769,9 +3768,9 @@ As a platform operator, LEI usage is metered and billed so that the invoice show
 
 - [ ] LEI metered Price created in Stripe with tiered allocations
   - `Verify:` Stripe dashboard shows LEI metered Price with tiers
-  - `Evidence:` Price ID documented in PLANS constants
-- [ ] P1B.06 Stripe webhook populates `subscriptionItems["lei"]` on upgrade (same auto-iteration as P2.06 for ABN)
-  - `Verify:` Upgrade a test account; `aws dynamodb get-item` shows `subscriptionItems.lei: "si_..."`
+  - `Evidence:` Stripe Product + Meter config documented in the billing runbook
+- [ ] P1B.06 Stripe webhook enables LEI on upgrade from live Stripe metadata (`metadata.prontiqProduct=lei`)
+  - `Verify:` Upgrade a test account; `aws dynamodb get-item` shows `products` includes `lei`
   - `Evidence:` DDB record diff
 - [ ] Invoice shows 3 product line items (address, ABN, LEI) — no cron change required
   - `Verify:` Generate test invoice with usage across all 3 products
@@ -3779,7 +3778,7 @@ As a platform operator, LEI usage is metered and billed so that the invoice show
 
 #### Scope
 
-**In:** Stripe LEI metered Price, PLANS constants update, invoice verification (no cron code changes — P1B.10 already iterates subscriptionItems)
+**In:** Stripe LEI meter + metered Price, Product metadata `prontiqProduct=lei`, invoice verification (no cron code changes — P1B.10 already iterates enabled products)
 
 **Out — Do Not Implement:**
 
@@ -4212,7 +4211,7 @@ As a platform operator, all 5 products are metered and billed so that the invoic
 
 #### Problem Statement
 
-With 5 products live, the invoice must show 5 separate usage line items. P1B.10 billing cron already iterates the full `subscriptionItems` map — it just needs new Stripe metered Prices and corresponding `subscriptionItems` entries populated by the Stripe webhook (P1B.06) on upgrade. This is the completion of the billing system: one subscription, one invoice, per-product line items, the Twilio model.
+With 5 products live, the invoice must show 5 separate family-level credit line items. P1B.10 billing cron already iterates the enabled `key.products` set and emits deterministic Stripe meter event names (`prontiq_${product}_requests`) — it just needs the remaining Stripe Product metadata + meters/prices to exist, and the endpoint-weighted credits refinement to land in the usage path. This is the completion of the billing system: one subscription, one invoice, clear product-family credit lines, the Twilio model.
 
 #### Definition of Done
 
@@ -4220,9 +4219,9 @@ With 5 products live, the invoice must show 5 separate usage line items. P1B.10 
 
 - [ ] CVE + Patents metered Prices created in Stripe (tiered allocations per plan)
   - `Verify:` Stripe dashboard Products shows all 5 product metered Prices with tiers
-  - `Evidence:` 5 Price IDs documented in PLANS constants
-- [ ] P1B.06 Stripe webhook populates `subscriptionItems["cve"]` and `subscriptionItems["patents"]` on upgrade (auto — iterates full product set)
-  - `Verify:` Upgrade a test account; DDB record shows both entries
+  - `Evidence:` 5 Stripe meters/products documented in the billing runbook
+- [ ] P1B.06 Stripe webhook enables `cve` and `patents` via Stripe Product metadata (`metadata.prontiqProduct`)
+  - `Verify:` Upgrade a test account; DDB record `products` includes both
   - `Evidence:` DDB diff
 - [ ] Invoice shows 5 product line items
   - `Verify:` Generate test invoice with usage across all 5 products
@@ -4233,7 +4232,7 @@ With 5 products live, the invoice must show 5 separate usage line items. P1B.10 
 
 #### Scope
 
-**In:** Stripe metered Prices for CVE + Patents, PLANS constants update, invoice verification (no billing-cron code change)
+**In:** Stripe meters + metered Prices for CVE + Patents, Product metadata, invoice verification (no billing-cron code change)
 
 **Out — Do Not Implement:**
 

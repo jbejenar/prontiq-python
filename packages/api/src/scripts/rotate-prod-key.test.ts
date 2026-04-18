@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { hashKey } from "@prontiq/shared/keys";
+import { hashKey } from "@prontiq/shared";
 import type { ApiKeyRecord, UsageCounterRecord } from "@prontiq/shared";
 import { buildRotationPlan } from "./rotate-prod-key.js";
 

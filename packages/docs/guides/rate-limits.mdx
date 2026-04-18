@@ -1,25 +1,33 @@
 ---
 title: "Rate Limits & Quotas"
-description: "Monthly quotas per product, per tier."
+description: "Monthly credits, quotas, and API throttling."
 ---
 
 ## Monthly quotas
 
-Each tier includes a per-product monthly allocation. Usage is tracked per API key, per product.
+Prontiq tracks monthly quota in credits. Usage is tracked per API key, per API family, and different endpoints can consume different credit amounts.
 
-| Tier | Per Product/Month | Overage | Products |
-|------|-------------------|---------|----------|
-| **Free** | 5,000 | — | Address |
-| **Starter** | 10,000 | $1.50/1K | All |
-| **Growth** | 50,000 | $1.00/1K | All + SLA |
-| **Enterprise** | Custom | Custom | All + support |
+Current documented baseline:
+
+| Plan Surface | Credits / Month |
+|--------------|-----------------|
+| Free | 10,000 |
+
+<Info>
+  Pricing and commercial packaging are documented on the Prontiq homepage. Mintlify docs focus on how quota and credit consumption behave at the API layer.
+</Info>
 
 ## How it works
 
-- Usage is counted per API key, per product, per calendar month
+- Usage is counted per API key, per API family, per calendar month
+- Endpoint scoring is expressed in credits, for example Address Enrich consumes more credits than Address Autocomplete
 - When your quota is exceeded, requests return `429 QUOTA_EXCEEDED`
 - The response includes `resets_at` with the next month's start date
 - Quotas reset at midnight UTC on the 1st of each month
+
+## Credit scoring
+
+Per-endpoint credit costs are documented in the [Credits guide](/guides/credits).
 
 ## API Gateway throttling
 
@@ -33,5 +41,5 @@ In addition to monthly quotas, API Gateway enforces per-route rate limits to pro
 These limits apply across all API keys. If you need higher throughput, contact us for Enterprise.
 
 <Info>
-  Per-request rate limit headers (`X-RateLimit-Remaining`, `X-RateLimit-Reset`) are coming soon. For now, track your usage in the dashboard.
+  Responses already include `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`, and `X-RateLimit-Product` so customers can track remaining monthly credits in real time.
 </Info>

@@ -111,6 +111,8 @@ jobs:
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
     environment: dev
+    outputs:
+      api_url: ${{ steps.stack-outputs.outputs.api_url }}
     permissions:
       id-token: write
       contents: read
@@ -235,8 +237,10 @@ jobs:
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
           CLERK_WEBHOOK_SECRET: ${{ secrets.CLERK_WEBHOOK_SECRET }}
           PRONTIQ_ACCOUNT_URL: ${{ vars.PRONTIQ_ACCOUNT_URL }}
+          PRONTIQ_BILLING_URL: ${{ vars.PRONTIQ_BILLING_URL }}
           PRONTIQ_DOCS_URL: ${{ vars.PRONTIQ_DOCS_URL }}
           STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+          STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
           # Some SST hangs trace back to $USER being unset (see sst#5539).
           # GH runners set USER but defensively pin it.
           USER: "runner"
@@ -277,6 +281,14 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
+      - name: Capture deployed dev API URL
+        id: stack-outputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          API_URL=$(node --input-type=module -e "import { readFileSync } from 'node:fs'; const outputs = JSON.parse(readFileSync('.sst/outputs.json', 'utf8')); if (typeof outputs.api !== 'string' || outputs.api.length === 0) throw new Error('Missing api output in .sst/outputs.json'); console.log(outputs.api);")
+          echo "api_url=$API_URL" >> "$GITHUB_OUTPUT"
+
       # Build and push Fargate image AFTER deploy so ECR repo exists
       - name: Login to Amazon ECR
         uses: aws-actions/amazon-ecr-login@v2
@@ -287,3 +299,32 @@ jobs:
           docker build --platform linux/amd64 -t "$ECR_REPO:${{ github.sha }}" -t "$ECR_REPO:latest" -f packages/ingestion/Dockerfile .
           docker push "$ECR_REPO:${{ github.sha }}"
           docker push "$ECR_REPO:latest"
+  # Post-deploy verification: end-to-end happy-path smoke against the
+  # just-deployed dev /v1/account/setup. This uses a real Clerk-backed
+  # JWT against the public API URL, so it catches deployment-only route,
+  # auth-template, claim, and stage-env regressions that local tests
+  # cannot see.
+  smoke-account-setup-dev:
+    needs: [deploy-dev]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment: dev
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: ".nvmrc"
+          cache: "pnpm"
+      - run: pnpm install --frozen-lockfile
+
+      - name: Smoke POST /v1/account/setup against deployed dev
+        env:
+          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
+          CLERK_TEST_ORG_ID: ${{ vars.CLERK_TEST_ORG_ID }}
+          CLERK_TEST_SESSION_ID: ${{ vars.CLERK_TEST_SESSION_ID }}
+          CLERK_TEST_USER_ID: ${{ vars.CLERK_TEST_USER_ID }}
+          PRONTIQ_API: ${{ needs.deploy-dev.outputs.api_url }}
+        run: pnpm --filter @prontiq/api smoke:account-setup

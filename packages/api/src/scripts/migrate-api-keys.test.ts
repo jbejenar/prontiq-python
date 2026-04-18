@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { hashKey } from "@prontiq/shared/keys";
+import { hashKey } from "@prontiq/shared";
 import {
   buildMigrationPlan,
   isLegacySeedKey,
@@ -78,7 +78,7 @@ test("free-tier migration constrains products to address only", () => {
   });
 
   assert.deepEqual(plan.keyRecord.products, ["address"]);
-  assert.equal(plan.keyRecord.quotaPerProduct, 5000);
+  assert.equal(plan.keyRecord.quotaPerProduct, 10000);
   assert.equal(plan.keyRecord.rateLimit, 10);
 });
 
