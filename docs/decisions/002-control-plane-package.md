@@ -130,6 +130,14 @@ A `REQUIRED_WEBHOOK_SECRETS` fail-fast guard at the top of `sst.config.ts` enfor
 
 Operator-facing rule (also in `docs/runbooks/clerk-webhook.md` § preconditions and `AGENTS.md` § Do NOT): **never use `sst secret set` for these values**. The single source of truth is the GitHub Environment.
 
+### 6. Verified-primary-email resolution lives in `@prontiq/control-plane`, not the webhook handler
+
+`resolvePrimaryEmail(client, userId)` and its `EmailLookupResult` discriminated union were originally declared in `packages/webhooks/src/clerk.ts` because the webhook was the first consumer. P1B.05 PR 3 adds a second consumer — the `POST /v1/account/setup` recovery endpoint in `@prontiq/api` — which must enforce the *same* verified-primary-email invariant before calling `provisionOrg`. Inlining a second copy in `@prontiq/api` would make the policy a per-call-site convention rather than a contract, and any future tightening (e.g. blocking known-disposable email domains) would need to be applied twice.
+
+The helper now lives in `packages/control-plane/src/clerk.ts` alongside `provisioning` and `audit`. Both Lambdas import it from `@prontiq/control-plane`. The Bug 4 invariant (`verification.status === "verified"` is the only safe path; `null` / `unverified` / `failed` / `expired` / `transferable` are all rejected; no fallback to a non-primary verified email) is enforced exactly once. The package's existing `@clerk/backend` dependency surface (which the helper requires for the `ClerkClient` type) is now declared explicitly in `packages/control-plane/package.json` rather than inherited transitively from `@prontiq/webhooks` — pnpm hoisting is not a contract.
+
+The hardening contract: `resolvePrimaryEmail` is the **single boundary** where Clerk SDK exceptions are translated into a typed result. Both the webhook handler and the `/setup` endpoint switch on `EmailLookupResult.kind` and never see a raw `@clerk/backend` exception. Per ARCHITECTURE.MD §5.7.1, the same operator-facing failure modes (`primary_email_unverified`, `user_has_no_primary_email`, `clerk_api_lookup_failed`) surface from both paths with the same wording.
+
 ## Alternatives Considered
 
 1. **Put `provisionOrg` and `writeAudit` in `@prontiq/shared`.** Rejected: pollutes the dep-light shared package with the AWS SDK + Stripe.

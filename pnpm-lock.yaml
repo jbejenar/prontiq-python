@@ -77,6 +77,9 @@ importers:
       '@aws-sdk/lib-dynamodb':
         specifier: ^3.1030.0
         version: 3.1030.0(@aws-sdk/client-dynamodb@3.1030.0)
+      '@clerk/backend':
+        specifier: ^3.2.12
+        version: 3.2.12
       '@prontiq/shared':
         specifier: workspace:*
         version: link:../shared

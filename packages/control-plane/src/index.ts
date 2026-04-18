@@ -17,3 +17,6 @@ export type {
   WriteAuditInput,
   WriteAuditResult,
 } from "./audit.js";
+
+export { resolvePrimaryEmail } from "./clerk.js";
+export type { EmailLookupResult, ClerkClient } from "./clerk.js";
