@@ -31,6 +31,30 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      - name: Validate required prod deploy secrets
+        env:
+          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
+          CLERK_WEBHOOK_SECRET: ${{ secrets.CLERK_WEBHOOK_SECRET }}
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+          STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=()
+          for name in CLERK_WEBHOOK_SECRET CLERK_SECRET_KEY STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET; do
+            value="${!name:-}"
+            trimmed="${value#"${value%%[![:space:]]*}"}"
+            trimmed="${trimmed%"${trimmed##*[![:space:]]}"}"
+            if [[ -z "$trimmed" ]]; then
+              missing+=("$name")
+            fi
+          done
+          if (( ${#missing[@]} > 0 )); then
+            echo "::error::Missing or whitespace-only GitHub Environment secrets for stage prod: ${missing[*]}"
+            echo "::error::Set them at Settings → Environments → prod → Environment secrets, then re-run the deploy workflow."
+            exit 1
+          fi
+
       - run: pnpm build
 
       - uses: aws-actions/configure-aws-credentials@v6
