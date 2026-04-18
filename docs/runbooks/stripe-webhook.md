@@ -39,6 +39,7 @@ Configure Billing so the grace-period model in `ARCHITECTURE.MD §5.6.3` is actu
 2. Subscription cancellation policy cancels once retries are exhausted.
 
 Without both, `past_due` can persist indefinitely and the 14-day total grace window is false.
+Customer email copy should reflect the same contract: ~14 days total from the first failed renewal, and ~7 days remaining once the subscription has actually entered `past_due`.
 
 ## Sandbox Catalog Snapshot
 

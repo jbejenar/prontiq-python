@@ -10,7 +10,7 @@ import {
   type PutCommandInput,
 } from "@aws-sdk/lib-dynamodb";
 import { PLANS, type ApiKeyRecord, type RedirectRecord, type Tier, type UsageCounterRecord } from "@prontiq/shared";
-import { hashKey } from "@prontiq/shared/keys";
+import { hashKey } from "@prontiq/shared";
 
 type LegacyUsageByMonth = Record<string, number>;
 type LegacyUsageByProduct = Record<string, LegacyUsageByMonth>;

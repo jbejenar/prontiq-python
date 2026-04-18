@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { hashKey } from "@prontiq/shared/keys";
+import { hashKey } from "@prontiq/shared";
 import {
   buildMigrationPlan,
   isLegacySeedKey,

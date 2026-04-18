@@ -237,13 +237,17 @@ function buildProvisioningTransactWrite(
   now: Date,
 ): TransactWriteCommand {
   const completedAt = now.toISOString();
+  const freePlan = PLANS[FREE_TIER];
+  if (!freePlan) {
+    throw new Error(`Plan ${FREE_TIER} is not configured`);
+  }
   const envelope: OrgEnvelopeRecord = {
     apiKeyHash: getOrgEnvelopeKey(input.orgId),
     completedAt,
     hasFirstKey: false,
     ownerEmail: input.ownerEmail,
     paymentOverdue: false,
-    products: PLANS[FREE_TIER].products,
+    products: freePlan.products,
     stripeCustomerId,
     stripeSubscriptionId: null,
     subscriptionItems: {},

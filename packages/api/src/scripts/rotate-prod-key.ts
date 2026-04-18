@@ -10,7 +10,7 @@ import {
 } from "@aws-sdk/lib-dynamodb";
 import { fileURLToPath } from "node:url";
 import type { ApiKeyRecord, UsageCounterRecord } from "@prontiq/shared";
-import { generateKey, hashKey } from "@prontiq/shared/keys";
+import { generateKey, hashKey } from "@prontiq/shared";
 import type { LegacyApiKeyRecord } from "./migrate-api-keys.js";
 import { isLegacySeedKey } from "./migrate-api-keys.js";
 

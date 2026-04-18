@@ -165,6 +165,9 @@ export function getMeterEventNameForProduct(product: string): string | null {
   return endpoints[0]?.meterEventName ?? null;
 }
 
+export const BILLING_GRACE_PERIOD_TOTAL_DAYS = 14;
+export const BILLING_GRACE_PERIOD_PAST_DUE_DAYS_REMAINING = 7;
+
 export const ERROR_CODES = {
   INVALID_API_KEY: { status: 401, message: "Invalid API key" },
   MISSING_API_KEY: { status: 401, message: "Missing X-Api-Key header" },

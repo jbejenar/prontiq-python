@@ -5,7 +5,7 @@ import { DynamoDBDocumentClient, PutCommand } from "@aws-sdk/lib-dynamodb";
 import { Hono } from "hono";
 import { auth, __resetRateLimiterForTesting, __setDdbForTesting } from "./auth.js";
 import type { ApiKeyRecord, RedirectRecord, UsageCounterRecord } from "@prontiq/shared";
-import { hashKey } from "@prontiq/shared/keys";
+import { hashKey } from "@prontiq/shared";
 
 const DDB_URL = process.env.DYNAMODB_TEST_URL ?? "http://localhost:8000";
 const TEST_SUFFIX = Date.now().toString();

@@ -1603,7 +1603,7 @@ When a paid developer's card fails on renewal, their production app must not bre
 | Stripe Event | What Happens | Timing |
 |---|---|---|
 | `invoice.payment_failed` | Log only. Stripe retries via Smart Retries. | Day 0-7 |
-| `customer.subscription.updated` with `status: 'past_due'` | All retries exhausted. Email developer: "Your payment failed. Update your card at [billing link]. Service continues for 7 more days." Set `paymentOverdue: true` on all org keys. Middleware adds `X-Payment-Overdue: true` to responses. Account page shows a banner. | Day ~7 |
+| `customer.subscription.updated` with `status: 'past_due'` | All retries exhausted. Email developer: "Your payment failed. Update your card at [billing link]." Clarify that the overall Stripe retry/cancellation policy gives ~14 days from first failure, and that entering `past_due` means ~7 days remain before cancellation. Set `paymentOverdue: true` on all org keys. Middleware adds `X-Payment-Overdue: true` to responses. Account page shows a banner. | Day ~7 |
 | `customer.subscription.deleted` (at end of grace) | Downgrade all org keys to free. Clear `paymentOverdue`, `stripeSubscriptionId`, `subscriptionItems`. Remove from registry. | Day ~14 |
 
 **Total grace: ~14 days from first failure.** `customer.subscription.updated` handles both directions: `past_due` sets the flag and sends the email; `active` (after successful retry) clears the flag.

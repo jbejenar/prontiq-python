@@ -7,7 +7,7 @@ import {
   PRODUCT_REGISTRY,
   getBillingEndpointsForProduct,
 } from "@prontiq/shared";
-import { hashKey } from "@prontiq/shared/keys";
+import { hashKey } from "@prontiq/shared";
 import type { ApiKeyRecord, RedirectRecord, UsageCounterRecord } from "@prontiq/shared";
 
 type RateLimitBucket = {

@@ -8,6 +8,8 @@ import {
   UpdateCommand,
 } from "@aws-sdk/lib-dynamodb";
 import {
+  BILLING_GRACE_PERIOD_PAST_DUE_DAYS_REMAINING,
+  BILLING_GRACE_PERIOD_TOTAL_DAYS,
   PLANS,
   PRODUCT_REGISTRY,
   getBillingEndpointsForProduct,
@@ -94,6 +96,26 @@ const EMAIL_SUPPRESSION_SOFT_BOUNCE_THRESHOLD = 3;
 
 let cachedDdb: DynamoDBDocumentClient | undefined;
 let cachedStripe: Stripe | undefined;
+
+export function buildPastDueEmailBody(billingUrl: string): string {
+  return [
+    "Your payment failed.",
+    "",
+    `Update your card at ${billingUrl}`,
+    "",
+    `Stripe's retry and cancellation policy gives you up to ${BILLING_GRACE_PERIOD_TOTAL_DAYS} days from the first failed renewal.`,
+    `This account is now in past_due, so service continues for ${BILLING_GRACE_PERIOD_PAST_DUE_DAYS_REMAINING} more days while Stripe retries your renewal.`,
+    "",
+  ].join("\n");
+}
+
+function getPlanForTier(tier: Tier) {
+  const plan = PLANS[tier];
+  if (!plan) {
+    throw new Error(`Plan ${tier} is not configured`);
+  }
+  return plan;
+}
 
 function getRequiredEnv(name: string): string {
   const value = process.env[name];
@@ -471,7 +493,7 @@ async function loadOrgEnvelope(
     throw new Error(`ORG envelope ${getOrgEnvelopeKey(orgId)} is missing`);
   }
   const tier = isKnownTier(item.tier) ? item.tier : "free";
-  const defaultPlan = PLANS[tier];
+  const defaultPlan = getPlanForTier(tier);
   return {
     ...item,
     paymentOverdue: item.paymentOverdue ?? false,
@@ -558,7 +580,7 @@ async function updateKeyPlanState(
     tier: Tier;
   },
 ): Promise<void> {
-  const plan = PLANS[state.tier];
+  const plan = getPlanForTier(state.tier);
   await ddb.send(
     new UpdateCommand({
       TableName: keysTableName,
@@ -780,10 +802,7 @@ function getDefaultPaymentFailureEmailSender(logger: Logger): BillingEmailSender
   return async (input) => {
     try {
       return await sendSignedSesEmail({
-        bodyText:
-          `Your payment failed.\n\n` +
-          `Update your card at ${input.billingUrl}\n\n` +
-          `Service continues for 7 more days while Stripe retries your renewal.\n`,
+        bodyText: buildPastDueEmailBody(input.billingUrl),
         fromEmail: input.fromEmail,
         region: input.region,
         subject: "Your Prontiq payment failed",
@@ -837,7 +856,7 @@ function getAuditTimestamp(event: Stripe.Event): Date {
 }
 
 function getTargetBillingState(tierState: TierResolution): BillingStateSnapshot {
-  const plan = PLANS[tierState.tier];
+  const plan = getPlanForTier(tierState.tier);
   return {
     products: [...tierState.products].sort(),
     quotaPerProduct: plan.quotaPerProduct,
@@ -849,7 +868,9 @@ function getTargetBillingState(tierState: TierResolution): BillingStateSnapshot 
 }
 
 function normaliseSubscriptionItems(items: ApiKeySubscriptionItems): [string, string][] {
-  return Object.entries(items).sort(([a], [b]) => a.localeCompare(b));
+  return Object.entries(items)
+    .map(([product, subscriptionItemId]) => [product, subscriptionItemId] as [string, string])
+    .sort(([a], [b]) => a.localeCompare(b));
 }
 
 function hasBillingStateDrift(
@@ -1046,7 +1067,7 @@ async function processSubscriptionDeleted(
 ): Promise<void> {
   await updateOrgEnvelopeBillingState(dependencies.ddb, dependencies.keysTableName, customer.orgId, {
     paymentOverdue: false,
-    products: PLANS.free.products,
+    products: getPlanForTier("free").products,
     stripeSubscriptionId: null,
     subscriptionItems: {},
     tier: "free",
@@ -1055,7 +1076,7 @@ async function processSubscriptionDeleted(
   for (const key of keys) {
     await updateKeyPlanState(dependencies.ddb, dependencies.keysTableName, key, {
       paymentOverdue: false,
-      products: PLANS.free.products,
+      products: getPlanForTier("free").products,
       stripeSubscriptionId: null,
       subscriptionItems: {},
       tier: "free",

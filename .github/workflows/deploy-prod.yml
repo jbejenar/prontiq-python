@@ -91,3 +91,31 @@ jobs:
           timeout --signal=SIGTERM --kill-after=30s 10m pnpm deploy:prod || EXIT=$?
           echo "deploy exited with code: ${EXIT:-0}"
           exit "${EXIT:-0}"
+
+  # Post-deploy verification — same deployed-environment smoke intent as
+  # dev. This hits the real public `/v1/account/setup` route with a real
+  # Clerk-backed JWT so prod deploy-only auth/config drift still fails
+  # loudly after deployment.
+  smoke-account-setup-prod:
+    needs: [deploy]
+    runs-on: ubuntu-latest
+    environment: prod
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: ".nvmrc"
+          cache: "pnpm"
+      - run: pnpm install --frozen-lockfile
+
+      - name: Smoke POST /v1/account/setup against deployed prod
+        env:
+          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
+          CLERK_TEST_ORG_ID: ${{ vars.CLERK_TEST_ORG_ID }}
+          CLERK_TEST_SESSION_ID: ${{ vars.CLERK_TEST_SESSION_ID }}
+          CLERK_TEST_USER_ID: ${{ vars.CLERK_TEST_USER_ID }}
+          PRONTIQ_API: https://api.prontiq.dev
+        run: pnpm --filter @prontiq/api smoke:account-setup:prod
