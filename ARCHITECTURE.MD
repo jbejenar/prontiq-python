@@ -1474,9 +1474,15 @@ Every hour:
            Two rotations: chain = [C, B, A] (2 queries).
            TTL on REDIRECT records (90d) bounds chain depth in practice.)
 
-     c. BatchGetItem prontiq-usage for {hash, "{product}#{yearMonth}"}
-        across chain Ã— {currentMonth, previousMonth}.
-        Each row already stores accumulated credits for the product family.
+     c. Query prontiq-usage for every hash in the redirect chain.
+        Candidate billing families are the union of:
+          - the current entitlement set on the active key, and
+          - any current/previous-month usage scopes in the chain that still
+            have credits, a pushed watermark, or a pending meter marker.
+        This is what keeps the final delta billable after same-tier product
+        removals or downgrades: removing a family from `key.products` does
+        not immediately hide its outstanding current-month or previous-month
+        usage from the hourly sweep.
 
      d. For each API family:
           sumCredits = sum(usage[hash][product#month].requestCount
@@ -1550,7 +1556,7 @@ The previous design at T5 would have computed `sumLastPushed = 150 + 100 = 250 â
 
 **Why delta meter events instead of `action: "set"` usage records:** Stripe meters aggregate event values over the billing period; they do not replace the prior total. The cron therefore computes the delta from `lastPushedCumulativeCount`, but it still keeps replay safety by reserving a deterministic pending event identifier on the current-hash row before it calls Stripe.
 
-**Month-boundary handling:** for the first 6 hours of each month, the cron processes both current-month and previous-month scopes. A dedicated **month-close Lambda** (P1B.11) will run at 00:30 UTC on day 1: final sweep on previous-month scope, sets `closed: true`. Once closed, the hourly cron skips that scope permanently.
+**Month-boundary handling:** for the first 6 hours of each month, the cron processes both current-month and previous-month scopes. Because scope discovery is usage-driven rather than entitlement-only, a family removed at the month boundary still gets its final previous-month delta pushed before month-close. A dedicated **month-close Lambda** (P1B.11) will run at 00:30 UTC on day 1: final sweep on previous-month scope, sets `closed: true`. Once closed, the hourly cron skips that scope permanently.
 
 **Idempotency / failure model:** the pending marker is the guardrail. If Stripe accepts the event and the DDB finalize write fails, the next cron run reuses the same `pendingMeterEventIdentifier` + `pendingMeterTargetCumulativeCount`, re-sends the exact same meter event (Stripe dedupes on identifier), and then finalizes the watermark. CloudWatch alarm `PqBillingCronErrors` pages on failed runs; month-close remains a separate hardening step.
 

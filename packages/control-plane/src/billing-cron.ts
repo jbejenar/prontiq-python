@@ -156,6 +156,23 @@ async function loadUsageRow(
   return response.Item as UsageCounterRecord | undefined;
 }
 
+async function loadUsageRowsForHash(
+  ddb: DynamoDBDocumentClient,
+  usageTableName: string,
+  apiKeyHash: string,
+): Promise<UsageCounterRecord[]> {
+  const response = await ddb.send(
+    new QueryCommand({
+      TableName: usageTableName,
+      KeyConditionExpression: "apiKeyHash = :apiKeyHash",
+      ExpressionAttributeValues: {
+        ":apiKeyHash": apiKeyHash,
+      },
+    }),
+  );
+  return (response.Items as UsageCounterRecord[] | undefined) ?? [];
+}
+
 async function discoverAttributionChain(
   ddb: DynamoDBDocumentClient,
   usageTableName: string,
@@ -196,14 +213,13 @@ async function discoverAttributionChain(
 }
 
 async function sumRequestCountForScope(
-  ddb: DynamoDBDocumentClient,
-  usageTableName: string,
+  usageRowsByHash: Map<string, Map<string, UsageCounterRecord>>,
   chain: string[],
   scope: string,
 ): Promise<number> {
   let sum = 0;
   for (const apiKeyHash of chain) {
-    const usage = await loadUsageRow(ddb, usageTableName, apiKeyHash, scope);
+    const usage = usageRowsByHash.get(apiKeyHash)?.get(scope);
     if (usage?.closed && apiKeyHash !== chain[0]) {
       // Closed predecessor rows still contribute to billing attribution.
     }
@@ -212,6 +228,54 @@ async function sumRequestCountForScope(
     }
   }
   return sum;
+}
+
+function parseProductScope(scope: string): { monthKey: string; product: string } | null {
+  if (scope === REDIRECT_SCOPE) {
+    return null;
+  }
+  const separatorIndex = scope.lastIndexOf("#");
+  if (separatorIndex <= 0 || separatorIndex === scope.length - 1) {
+    return null;
+  }
+  return {
+    monthKey: scope.slice(separatorIndex + 1),
+    product: scope.slice(0, separatorIndex),
+  };
+}
+
+function buildUsageScopeIndex(rows: UsageCounterRecord[]): Map<string, UsageCounterRecord> {
+  return new Map(rows.map((row) => [row.scope, row]));
+}
+
+function discoverProductsForMonth(
+  currentProducts: string[],
+  usageRowsByHash: Map<string, Map<string, UsageCounterRecord>>,
+  chain: string[],
+  monthKey: string,
+): string[] {
+  const discovered = new Set(currentProducts);
+  for (const apiKeyHash of chain) {
+    const rows = usageRowsByHash.get(apiKeyHash);
+    if (!rows) {
+      continue;
+    }
+    for (const usage of rows.values()) {
+      const parsedScope = parseProductScope(usage.scope);
+      if (!parsedScope || parsedScope.monthKey !== monthKey) {
+        continue;
+      }
+      if (
+        usage.requestCount > 0 ||
+        (usage.lastPushedCumulativeCount ?? 0) > 0 ||
+        typeof usage.pendingMeterTargetCumulativeCount === "number" ||
+        typeof usage.pendingMeterEventIdentifier === "string"
+      ) {
+        discovered.add(parsedScope.product);
+      }
+    }
+  }
+  return Array.from(discovered).sort();
 }
 
 async function clearPendingMeterPush(
@@ -432,28 +496,34 @@ export function createBillingCronService(
 
     for (const apiKeyHash of activeApiKeyHashes) {
       const key = await loadKey(dependencies.ddb, dependencies.keysTableName, apiKeyHash);
-      if (!key || !key.active || !key.stripeCustomerId || key.products.length === 0) {
+      if (!key || !key.active || !key.stripeCustomerId) {
         summary.scopesSkipped += 1;
         continue;
       }
 
       summary.keysProcessed += 1;
       const chain = await discoverAttributionChain(dependencies.ddb, dependencies.usageTableName, apiKeyHash);
+      const usageRowsByHash = new Map<string, Map<string, UsageCounterRecord>>();
+      for (const hash of chain) {
+        const rows = await loadUsageRowsForHash(dependencies.ddb, dependencies.usageTableName, hash);
+        usageRowsByHash.set(hash, buildUsageScopeIndex(rows));
+      }
 
       for (const monthKey of monthKeys) {
-        for (const product of key.products) {
+        const productsToProcess = discoverProductsForMonth(key.products, usageRowsByHash, chain, monthKey);
+        if (productsToProcess.length === 0) {
+          summary.scopesSkipped += 1;
+          continue;
+        }
+
+        for (const product of productsToProcess) {
           const meterEventName = getMeterEventNameForProduct(product);
           if (!meterEventName) {
             throw new Error(`No Stripe meter event mapping configured for product ${product}`);
           }
           const scope = getScope(product, monthKey);
-          const sumRequestCount = await sumRequestCountForScope(
-            dependencies.ddb,
-            dependencies.usageTableName,
-            chain,
-            scope,
-          );
-          const currentUsage = await loadUsageRow(dependencies.ddb, dependencies.usageTableName, apiKeyHash, scope);
+          const sumRequestCount = await sumRequestCountForScope(usageRowsByHash, chain, scope);
+          const currentUsage = usageRowsByHash.get(apiKeyHash)?.get(scope);
           const currentLastPushed = currentUsage?.lastPushedCumulativeCount ?? 0;
           if (sumRequestCount < currentLastPushed) {
             summary.negativeDeltas += 1;

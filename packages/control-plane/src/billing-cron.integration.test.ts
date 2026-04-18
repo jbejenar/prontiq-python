@@ -13,7 +13,7 @@ import {
   UpdateCommand,
 } from "@aws-sdk/lib-dynamodb";
 import { createBillingCronService } from "./billing-cron.js";
-import type { ApiKeyRecord, UsageCounterRecord } from "@prontiq/shared";
+import { BILLING_ENDPOINTS, type ApiKeyRecord, type UsageCounterRecord } from "@prontiq/shared";
 import Stripe from "stripe";
 
 const DDB_URL = process.env.DYNAMODB_TEST_URL ?? "http://localhost:8000";
@@ -169,6 +169,24 @@ function makeStripeRecorder(): {
       },
     } as unknown as Stripe,
   };
+}
+
+async function withTemporaryBillingEndpoint(
+  key: string,
+  definition: typeof BILLING_ENDPOINTS[string],
+  callback: () => Promise<void>,
+): Promise<void> {
+  const existing = BILLING_ENDPOINTS[key];
+  BILLING_ENDPOINTS[key] = definition;
+  try {
+    await callback();
+  } finally {
+    if (existing) {
+      BILLING_ENDPOINTS[key] = existing;
+    } else {
+      delete BILLING_ENDPOINTS[key];
+    }
+  }
 }
 
 test("billing cron pushes address delta and advances lastPushedCumulativeCount", async () => {
@@ -357,4 +375,112 @@ test("billing cron reuses the same pending meter event identifier after finalize
   );
   assert.equal(usage.Item?.lastPushedCumulativeCount, 40);
   assert.equal(usage.Item?.pendingMeterEventIdentifier, undefined);
+});
+
+test("billing cron still meters removed products with outstanding current-month usage", async () => {
+  await withTemporaryBillingEndpoint("abn.lookup", {
+    creditCost: 2,
+    displayName: "ABN Lookup",
+    familyDisplayName: "ABN API",
+    meterEventName: "prontiq_abn_requests",
+    product: "abn",
+  }, async () => {
+    const now = new Date("2026-04-18T07:00:00.000Z");
+    const hash = "e".repeat(64);
+    await seedKey(makeKey({
+      apiKeyHash: hash,
+      products: ["address"],
+      subscriptionItems: { address: "si_address_123" },
+    }));
+    await seedRegistry([hash]);
+    await seedUsage(makeUsage({
+      apiKeyHash: hash,
+      lastPushedCumulativeCount: 3,
+      requestCount: 7,
+      scope: "abn#2026-04",
+    }));
+
+    const { calls, stripe } = makeStripeRecorder();
+    const summary = await createBillingCronService({
+      ddb,
+      keysTableName: KEYS_TABLE,
+      logger: console,
+      stripe,
+      usageTableName: USAGE_TABLE,
+    }).handleTick(now);
+
+    assert.equal(summary.meterEventsSent, 1);
+    assert.equal(calls.length, 1);
+    assert.deepEqual(calls[0], {
+      event_name: "prontiq_abn_requests",
+      identifier: `meter-${hash}-abn-2026-04-7`,
+      payload: {
+        request_count: "4",
+        stripe_customer_id: "cus_test_123",
+      },
+      timestamp: Math.floor(now.getTime() / 1000),
+    });
+
+    const usage = await ddb.send(
+      new GetCommand({
+        TableName: USAGE_TABLE,
+        Key: { apiKeyHash: hash, scope: "abn#2026-04" },
+      }),
+    );
+    assert.equal(usage.Item?.lastPushedCumulativeCount, 7);
+  });
+});
+
+test("billing cron still meters removed products during previous-month grace sweep", async () => {
+  await withTemporaryBillingEndpoint("abn.lookup", {
+    creditCost: 2,
+    displayName: "ABN Lookup",
+    familyDisplayName: "ABN API",
+    meterEventName: "prontiq_abn_requests",
+    product: "abn",
+  }, async () => {
+    const now = new Date("2026-05-01T04:00:00.000Z");
+    const hash = "f".repeat(64);
+    await seedKey(makeKey({
+      apiKeyHash: hash,
+      products: ["address"],
+      subscriptionItems: { address: "si_address_123" },
+    }));
+    await seedRegistry([hash]);
+    await seedUsage(makeUsage({
+      apiKeyHash: hash,
+      lastPushedCumulativeCount: 10,
+      requestCount: 14,
+      scope: "abn#2026-04",
+    }));
+
+    const { calls, stripe } = makeStripeRecorder();
+    const summary = await createBillingCronService({
+      ddb,
+      keysTableName: KEYS_TABLE,
+      logger: console,
+      stripe,
+      usageTableName: USAGE_TABLE,
+    }).handleTick(now);
+
+    assert.equal(summary.meterEventsSent, 1);
+    assert.equal(calls.length, 1);
+    assert.deepEqual(calls[0], {
+      event_name: "prontiq_abn_requests",
+      identifier: `meter-${hash}-abn-2026-04-14`,
+      payload: {
+        request_count: "4",
+        stripe_customer_id: "cus_test_123",
+      },
+      timestamp: Math.floor(now.getTime() / 1000),
+    });
+
+    const usage = await ddb.send(
+      new GetCommand({
+        TableName: USAGE_TABLE,
+        Key: { apiKeyHash: hash, scope: "abn#2026-04" },
+      }),
+    );
+    assert.equal(usage.Item?.lastPushedCumulativeCount, 14);
+  });
 });
