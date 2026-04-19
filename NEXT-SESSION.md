@@ -1,5 +1,40 @@
 # NEXT-SESSION.md — Session Execution Log
 
+## Session 17 — 2026-04-19
+
+**Focus:** P1B.08 rollout verification and SES production-readiness follow-up.
+
+### Completed
+
+- **SES sender identity verified.** `prontiq.dev` in `ap-southeast-2` now reports `VerifiedForSendingStatus=true` and DKIM `SUCCESS`.
+- **DNS records completed in Vercel.** `_amazonses` TXT and all three DKIM CNAMEs are live; SES verification no longer depends on manual DNS follow-up.
+- **Live simulator verification completed in both stages.**
+  - direct SES simulator sends accepted in `dev` and `prod`
+  - bounce simulator wrote `hard_bounce` suppressions
+  - complaint simulator wrote `complaint` suppressions
+  - both `PqSesFeedback` Lambdas processed live SNS feedback successfully
+- **Post-merge quota-email defects fixed and deployed.**
+  - switched the send path to the SESv2 client
+  - added explicit SES failure logging
+  - corrected worker IAM to include stage-specific SES configuration-set ARNs
+  - fixed SST config so Pulumi interpolation stays inside `run()`
+- **Positive-send path proven live.**
+  - `dev`: `PqQuotaEmailWorker` finalized `warningEmailSent=true`
+  - `prod`: `PqQuotaEmailWorker` finalized `limitEmailSent=true`
+  - temporary verification rows were cleaned up after the check
+
+### Current truth
+
+- P1B.08 is fully shipped and operationally verified.
+- SES is still in sandbox, so arbitrary-recipient delivery remains blocked until AWS production access is enabled.
+- Stripe prod webhook still awaits the first real production billing delivery for its final live confirmation point.
+
+### Follow-up
+
+1. Request / confirm SES production access for `prontiq.dev` in `ap-southeast-2`.
+2. Keep `docs/runbooks/ses-suppression.md` as the source of truth for SES operations.
+3. Move to P1B.11 month-close once the SES production-access request is in flight or approved.
+
 > Per-session summary of what happened. Newest session first.
 > Purpose: continuity across session breaks without reading git log.
 

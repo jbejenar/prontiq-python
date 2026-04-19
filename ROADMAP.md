@@ -1071,7 +1071,7 @@ Options:
 
 > **Goal:** Sign-up → DDB-native API key → hash-verified requests → rate-limited with burst limiter → usage tracked per-month → billed hourly via Stripe, with 14-day payment grace period.
 >
-> **Current state.** P1B.02, P1B.04, P1B.04b, P1B.05, P1B.06, P1B.07, and P1B.10 are shipped. The DynamoDB-native key model is live in prod, the prod migration was executed on 2026-04-16, org provisioning + Stripe billing sync are live, and hourly usage now flows into Stripe meters. The remaining P1B work is SES handling and month-close.
+> **Current state.** P1B.02, P1B.04, P1B.04b, P1B.05, P1B.06, P1B.07, P1B.08, and P1B.10 are shipped. The DynamoDB-native key model is live in prod, the prod migration was executed on 2026-04-16, org provisioning + Stripe billing sync are live, hourly usage now flows into Stripe meters, and SES feedback / quota-email delivery is live in dev + prod. The remaining P1B work is month-close.
 >
 > **Scope boundary.** The hot-path middleware rewrite (hash-based lookup, REDIRECT fallback, new usage-table writes) ships in **P1B.04b** (cutover), NOT in P1B.02. P1B.02 is pure crypto primitives only — no DDB dependency — which is why it remains parallel-safe. P1B.04b flips schema + code atomically once P1B.02 and P1B.04 are both done.
 >
@@ -1494,7 +1494,7 @@ This ticket covers only the webhook side. P1C.03 covers the user-driven key crea
   - `Evidence:` Test passes. Manual chaos verification deferred to post-deploy on dev (operator runbook §"Healthy redelivery").
 - [x] Welcome email sent via SES (subject "Welcome to Prontiq.", body includes a sign-in link to `/account` + docs link). **Does NOT contain an API key** — the user creates one from `/account` after sign-in. SES failure does not block provisioning durability.
   - `Verify:` `packages/control-plane/src/provisioning.ts:sendSignedSesEmail` constructs the body with subject "Welcome to Prontiq." + signInUrl + docsUrl, no key material. Bug 6 boundary guard ensures any sender failure → `emailSent: false` rather than thrown.
-  - `Evidence:` Live SES verification deferred to post-deploy (operator runbook §"Preconditions" covers domain identity + sandbox removal).
+  - `Evidence:` Live SES simulator verification completed on 2026-04-19 in both `dev` and `prod` after the shared SES identity / suppression work shipped. `prontiq.dev` is verified with DKIM active, and the operator source of truth is now `docs/runbooks/ses-suppression.md`. SES remains in sandbox, so arbitrary-recipient delivery still depends on AWS production access.
 
 ##### Recovery Endpoint
 

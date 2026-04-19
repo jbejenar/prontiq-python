@@ -3,7 +3,7 @@
 > Extracted from ROADMAP.md. This is what agents should work on NOW.
 > Last updated: 2026-04-19 (Session 16)
 
-## Current Phase: P1B.08 complete; final P1B billing hardening remains
+## Current Phase: Final P1B billing hardening remains
 
 ### What's Live
 
@@ -24,6 +24,7 @@
 - The P1B.04/P1B.04b cutover shipped on 2026-04-16 and has been exercised in prod.
 - **P1B.05 complete (2026-04-18).** Clerk webhook handler (`POST /webhooks/clerk`) AND `POST /v1/account/setup` recovery endpoint both live in dev + prod. Webhook dev verified end-to-end with real Svix traffic on 2026-04-18: `org_3CTU4Oh1XTqVdEGcyTBGqRWujCm` provisioned (Stripe customer `cus_UM5zw8xl8HgS9n`, ORG envelope, audit row, all atomic via `TransactWriteItems`); 4 subsequent Svix retries returned `already_exists` with zero side effects. Account-setup endpoint runs the same `createProvisioningService().provisionOrg(...)` code path as the webhook, so a delayed/missed webhook is recoverable from the dashboard. Three Lambdas now serve `PqApi`: address-API `$default` (hot path), `PqClerkWebhook` (Svix-signed), `PqAccount` (Clerk-JWT-authenticated `/v1/account/*`).
 - **P1B.06 + P1B.10 complete (2026-04-18; rollout verified 2026-04-19).** Stripe webhook + hourly billing cron are live in dev + prod. Dev Stripe webhook verification has been exercised end to end on real sandbox deliveries across tier reconciliation, `past_due`, recovery, cancellation, and `invoice.payment_failed` log-only. Prod is deployed, the Stripe destination is configured correctly, and the first real production billing event is now the final live confirmation point.
+- **P1B.08 complete (2026-04-19; rollout verified 2026-04-19).** SES feedback ingestion, suppression-aware welcome / `past_due` / quota emails, and 80% / 100% quota notifications are live in dev + prod. `prontiq.dev` is verified in SES with DKIM active, simulator-based positive-send plus bounce / complaint flows were exercised in both stages, and the post-merge config-set IAM/send-path fixes are deployed. SES is still in sandbox, so simulator validation is complete but normal-recipient delivery remains blocked until AWS production access is enabled.
 - **`@prontiq/control-plane` package** (recovered from prior design + hardened) provides `createProvisioningService()`, `writeAudit()` / `buildAuditTransactItem()`, AND `resolvePrimaryEmail()`. Both ingress paths (Clerk webhook + `/v1/account/setup`) consume the same provisioning service AND the same verified-primary-email helper — invariants enforced once at the package boundary.
 - The legacy raw-key table is retained only for rollback/soak; the old `pq_live_prod_...` seed key has been rotated and revoked.
 - Future prod seed-key rotation now has an operator command:
@@ -105,7 +106,7 @@ Reason:
 
 ### Operator follow-ups (one-time, not blocking next ticket)
 
-- **SES production-access posture** for `prontiq.dev` in `ap-southeast-2`. Verify domain/DKIM and keep the account out of sandbox so welcome, quota, and billing emails can reach normal recipients. Operate via `docs/runbooks/ses-suppression.md`.
+- **SES production-access posture** for `prontiq.dev` in `ap-southeast-2`. Domain verification and DKIM are complete; the remaining operator action is AWS SES sandbox exit so welcome, quota, and billing emails can reach normal recipients. Operate via `docs/runbooks/ses-suppression.md`.
 - **Stripe metadata contract** for `dev` and `prod`: the recurring plan Price must carry `metadata.prontiqTier`, and each metered Stripe Product must carry `metadata.prontiqProduct`. `STRIPE_WEBHOOK_SECRET` / `STRIPE_SECRET_KEY` remain the only required Stripe GitHub Environment secrets.
 
 ### Backlog (not blocking auth)

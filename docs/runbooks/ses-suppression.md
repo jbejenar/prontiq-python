@@ -40,6 +40,14 @@ Configuration-set naming:
 - `prod`: `prontiq-transactional`
 - non-prod: `prontiq-transactional-<stage>`
 
+Current rollout state as of 2026-04-19:
+
+- `prontiq.dev` is verified in SES in `ap-southeast-2`
+- DKIM status is `SUCCESS`
+- SES simulator positive-send, bounce, and complaint flows have been exercised in both `dev` and `prod`
+- both `PqQuotaEmailWorker` roles now include the SES configuration-set ARN in `ses:SendEmail` / `ses:SendRawEmail` permissions
+- the AWS SES account is still in sandbox, so simulator validation is complete but normal-recipient delivery is still blocked until production access is enabled
+
 ## DNS Records
 
 Because DNS is hosted in Vercel, SST creates the SES identity with `dns: false` and does not write DNS automatically.
@@ -111,6 +119,7 @@ Important behavior:
 2. Confirm bounce and complaint events publish to the SES feedback SNS topic.
 3. Confirm `PqSesFeedback` has recent successful invocations.
 4. Confirm `PqQuotaEmailWorker` is invoked by the API Lambda when thresholds are crossed.
+5. Confirm the SES account is out of sandbox before treating normal-recipient delivery as production-ready.
 
 ### DynamoDB checks
 
@@ -128,12 +137,24 @@ Use SES simulator addresses in non-prod to validate feedback handling:
 
 - hard bounce simulator
 - complaint simulator
+- success simulator
 
 After sending, confirm:
 
 - SNS delivery occurred
 - `PqSesFeedback` ran successfully
 - the suppression row matches the expected reason/TTL
+- for positive-send quota tests, `warningEmailSent` / `limitEmailSent` finalizes on the usage row
+
+### Verified live checks (2026-04-19)
+
+The following were exercised live after deploy:
+
+- direct SES simulator sends accepted in `dev` and `prod`
+- bounce simulator wrote `hard_bounce` rows in `prontiq-ses-suppressions-dev` and `prontiq-ses-suppressions`
+- complaint simulator wrote `complaint` rows in both stages
+- `PqQuotaEmailWorker` finalized a positive-send warning email in `dev`
+- `PqQuotaEmailWorker` finalized a positive-send limit email in `prod`
 
 ## Failure Triage
 
