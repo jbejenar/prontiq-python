@@ -51,6 +51,16 @@ If you are on Free with **10,000 credits/month**:
 - Endpoint docs link back to this page for the scoring model
 - Response headers show remaining quota in credits
 - Usage is tracked in credits, not raw HTTP request count
+- Prontiq can send quota emails at 80% and 100% usage for the active month
+
+## Quota emails
+
+Prontiq can notify account owners when usage crosses key monthly thresholds:
+
+- **80% of included credits**: warning email
+- **100% of included credits**: limit / overage email
+
+These emails are sent at the API-family level and are based on consumed credits, not raw request count.
 
 <Info>
   Credits should be transparent and predictable. If one endpoint consumes more credits than another, that should be visible here and in the associated product documentation.

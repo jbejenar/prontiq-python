@@ -1,4 +1,3 @@
-import { createHash, createHmac } from "node:crypto";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import {
   DynamoDBDocumentClient,
@@ -9,6 +8,7 @@ import { PLANS } from "@prontiq/shared";
 import Stripe from "stripe";
 import type { OrgEnvelopeRecord } from "@prontiq/shared";
 import { buildAuditTransactItem } from "./audit.js";
+import { isSuppressedEmail, sendSignedSesEmail } from "./email.js";
 
 // Three classes of error vocabulary surface from a DynamoDB call:
 //
@@ -64,7 +64,7 @@ const BACKOFF_MS = 150;
 const FREE_TIER = "free" as const;
 const STRIPE_NETWORK_RETRIES = 3;
 
-type Logger = Pick<Console, "error" | "warn">;
+type Logger = Pick<Console, "error" | "warn" | "info">;
 type Sleep = (ms: number) => Promise<void>;
 
 export type ProvisioningStatus =
@@ -389,85 +389,17 @@ async function sleepDefault(ms: number): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function sendSignedSesEmail(input: EmailInput): Promise<boolean> {
-  const accessKeyId = process.env.AWS_ACCESS_KEY_ID;
-  const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY;
-  if (!accessKeyId || !secretAccessKey) {
-    return false;
-  }
-  const sessionToken = process.env.AWS_SESSION_TOKEN;
-  const now = new Date();
-  const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, "");
-  const dateStamp = amzDate.slice(0, 8);
-  const service = "ses";
-  const host = `email.${input.region}.amazonaws.com`;
-  const path = "/v2/email/outbound-emails";
-  const endpoint = `https://${host}${path}`;
-  const body = JSON.stringify({
-    Content: {
-      Simple: {
-        Body: {
-          Text: {
-            Data: `Welcome to Prontiq.\n\nYour account is ready. Sign in to create your first API key:\n${input.signInUrl}\n\nDocs: ${input.docsUrl}\n`,
-          },
-        },
-        Subject: { Data: "Welcome to Prontiq." },
-      },
-    },
-    Destination: { ToAddresses: [input.toEmail] },
-    FromEmailAddress: input.fromEmail,
-  });
-  const payloadHash = createHash("sha256").update(body).digest("hex");
-  const canonicalHeaders = [
-    `content-type:application/json`,
-    `host:${host}`,
-    `x-amz-date:${amzDate}`,
-    ...(sessionToken ? [`x-amz-security-token:${sessionToken}`] : []),
-  ].join("\n");
-  const signedHeaders = [
-    "content-type",
-    "host",
-    "x-amz-date",
-    ...(sessionToken ? ["x-amz-security-token"] : []),
-  ].join(";");
-  const canonicalRequest = [
-    "POST",
-    path,
-    "",
-    `${canonicalHeaders}\n`,
-    signedHeaders,
-    payloadHash,
-  ].join("\n");
-  const credentialScope = `${dateStamp}/${input.region}/${service}/aws4_request`;
-  const stringToSign = [
-    "AWS4-HMAC-SHA256",
-    amzDate,
-    credentialScope,
-    createHash("sha256").update(canonicalRequest).digest("hex"),
-  ].join("\n");
-  const dateKey = createHmac("sha256", `AWS4${secretAccessKey}`).update(dateStamp).digest();
-  const regionKey = createHmac("sha256", dateKey).update(input.region).digest();
-  const serviceKey = createHmac("sha256", regionKey).update(service).digest();
-  const signingKey = createHmac("sha256", serviceKey).update("aws4_request").digest();
-  const signature = createHmac("sha256", signingKey).update(stringToSign).digest("hex");
-  const response = await fetch(endpoint, {
-    method: "POST",
-    headers: {
-      Authorization: `AWS4-HMAC-SHA256 Credential=${accessKeyId}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`,
-      "Content-Type": "application/json",
-      Host: host,
-      "X-Amz-Date": amzDate,
-      ...(sessionToken ? { "X-Amz-Security-Token": sessionToken } : {}),
-    },
-    body,
-  });
-  return response.ok;
-}
-
 function getDefaultEmailSender(logger: Logger): EmailSender {
   return async (input) => {
     try {
-      return await sendSignedSesEmail(input);
+      return await sendSignedSesEmail({
+        bodyText: `Welcome to Prontiq.\n\nYour account is ready. Sign in to create your first API key:\n${input.signInUrl}\n\nDocs: ${input.docsUrl}\n`,
+        configurationSetName: process.env.SES_CONFIGURATION_SET_NAME,
+        fromEmail: input.fromEmail,
+        region: input.region,
+        subject: "Welcome to Prontiq.",
+        toEmail: input.toEmail,
+      });
     } catch (error) {
       logger.warn("Welcome email send failed", {
         error: error instanceof Error ? error.message : String(error),
@@ -487,6 +419,7 @@ function getDefaultEmailSender(logger: Logger): EmailSender {
 // Skips when WELCOME_EMAIL_FROM is unset (returns false without
 // invoking the sender), preserving the prior contract.
 async function sendWelcomeEmailSafely(
+  ddb: DynamoDBDocumentClient,
   send: EmailSender,
   logger: Logger,
   input: ProvisioningInput,
@@ -496,6 +429,16 @@ async function sendWelcomeEmailSafely(
     return false;
   }
   try {
+    const suppressionsTableName = process.env.SUPPRESSIONS_TABLE_NAME;
+    if (typeof suppressionsTableName === "string" && suppressionsTableName.length > 0) {
+      if (await isSuppressedEmail(ddb, suppressionsTableName, input.ownerEmail)) {
+        logger.info("Skipping welcome email due to SES suppression", {
+          orgId: input.orgId,
+          toEmail: input.ownerEmail,
+        });
+        return false;
+      }
+    }
     return await send({
       docsUrl: getOptionalEnv("PRONTIQ_DOCS_URL", "https://docs.prontiq.dev"),
       fromEmail: emailFrom,
@@ -626,6 +569,7 @@ export function createProvisioningService(
             // preflight `already_exists` path — but the initial
             // response would be wrong. Belt-and-braces.
             const emailSent = await sendWelcomeEmailSafely(
+              dependencies.ddb,
               dependencies.sendWelcomeEmail,
               dependencies.logger,
               input,

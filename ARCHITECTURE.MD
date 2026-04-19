@@ -989,7 +989,7 @@ X-Payment-Overdue: true                   (subscription past_due — grace perio
 
 **Usage tracking:**
 
-Usage increment is an awaited `UpdateItem` with `ADD` on the DynamoDB key record's monthly counter. This is ~3ms (within the 50ms budget) and provides at-most-once semantics — if the DynamoDB write fails, the usage is undercounted (acceptable) rather than the request failing. The response is already sent before the usage write completes via `ctx.executionCtx.waitUntil()` in the Hono handler, making it non-blocking from the client's perspective while still being durable.
+Usage increment is an awaited `UpdateItem` with `ADD` on the DynamoDB key record's monthly counter. This is ~3ms (within the 50ms budget) and provides at-most-once semantics — if the DynamoDB write fails, the usage is undercounted (acceptable) rather than the request failing. Threshold email work is decoupled from the hot path: the API Lambda computes post-increment threshold crossings and asynchronously invokes `PqQuotaEmailWorker`, so the client response is never blocked on SES delivery.
 
 **Request ID:**
 
@@ -1067,8 +1067,10 @@ PK:   apiKeyHash           string    Same hash as prontiq-keys
 SK:   scope                string    "{product}#{yearMonth}" e.g. "address#2026-04"
 
       requestCount         number    Atomically incremented credit total (legacy field name retained)
-      warningEmailSent     boolean   True once the 80% threshold email sent (atomic conditional)
-      limitEmailSent       boolean   True once the 100% threshold email sent (atomic conditional)
+      warningEmailSent     boolean   True once the 80% threshold email sent
+      limitEmailSent       boolean   True once the 100% threshold email sent
+      warningEmailPendingAt string?  Worker lease for the 80% email
+      limitEmailPendingAt   string?  Worker lease for the 100% email
       lastPushedCumulativeCount  number  Cumulative count last pushed to Stripe for this scope.
                                           **Only meaningful on the CURRENT hash in a rotation chain.**
                                           On rotated-out hashes (those reachable via REDIRECT records),
@@ -1108,8 +1110,10 @@ Email addresses that have bounced or complained. Checked before every SES send.
 PK:   email                string    The suppressed email address
 
       reason               string    "hard_bounce" | "soft_bounce" | "complaint"
-      bounceCount          number    Soft bounce suppresses after 3
-      ttl                  number    90 days for bounces, no TTL for complaints (permanent)
+      bounceCount          number    Soft-bounce counter inside the active 30-day window
+      softBounceWindowStartedAt string  ISO 8601 start of the current soft-bounce window
+      lastEventAt          string    ISO 8601 timestamp of the most recent SES feedback event
+      ttl                  number    90 days for bounce suppressions, no TTL for complaints
 ```
 
 ##### Billing Registry Items (stored in `prontiq-keys`)
@@ -1294,10 +1298,13 @@ Request arrives with X-Api-Key header
 │  5. EXECUTE     OpenSearch query (or circuit breaker → 503, §12.4)    ~10-30ms
 │  6. RESPOND     JSON + rate limit headers (Remaining = quota - count) ← DONE
 │
-│  7. EMAIL       Threshold check (atomic conditional UpdateItem on     ~0-2ms
-│                 prontiq-usage to set warningEmailSent / limitEmailSent
-│                 — exactly-once email per scope per cycle).
-│                 SES send via waitUntil — best-effort, not awaited.
+│  7. EMAIL       Threshold check after the atomic usage increment.     ~1-3ms
+│                 API Lambda asynchronously invokes a dedicated quota-
+│                 email worker with {orgId, apiKeyHash, product, scope,
+│                 threshold}. Worker claims warning/limit send ownership
+│                 via pending timestamp fields on prontiq-usage, checks
+│                 prontiq-ses-suppressions, then sends via SES
+│                 configuration set — best-effort, never on the hot path.
 │  8. LOG         CloudWatch EMF (structured stdout, zero network)      ~0ms
 ```
 
@@ -1662,7 +1669,7 @@ One extra Stripe API call per webhook invocation. Webhooks fire rarely (signup, 
    On TransactionCanceled (concurrent provisioning):
      Re-read ORG#{orgId} → return 200. The competing call already won.
 
-5. Send welcome email via SES — best-effort. Subject: "Welcome to Prontiq."
+5. Send welcome email via SES — best-effort and suppression-aware. Subject: "Welcome to Prontiq."
    Body: "Your account is ready. Sign in at https://prontiq.dev/account
    to create your first API key." Includes docs link.
    A failed email does NOT block sign-in. The user can sign in and the
@@ -1864,7 +1871,7 @@ Stripe is configured with `cancel_at_period_end: true` on user-initiated cancell
    Usage ticks up in real-time on /account (pulled from prontiq-usage).
    DynamoDB middleware enforces quota (monthly, atomic) + burst
    (per-second) per product. At 80% of quota: upgrade nudge on /account
-   + SES threshold email.
+   + async SES threshold email via `PqQuotaEmailWorker`.
 
 7. UPGRADE
    Clicks "Upgrade" → Stripe embedded pricing table
@@ -2564,7 +2571,7 @@ Circuit breaker: CLOSED (normal) → OPEN (> 50% failures in 60s → return 503 
 
 ### 12.5 SES Bounce & Complaint Handling
 
-AWS suspends SES at > 5% bounce rate or > 0.1% complaint rate. A Lambda subscriber maintains `prontiq-ses-suppressions`. Before every SES send, check the suppression list. Hard bounces suppress immediately. Soft bounces after 3 within 30 days. Complaints permanent.
+AWS suspends SES at > 5% bounce rate or > 0.1% complaint rate. A dedicated SES configuration set publishes `BOUNCE` and `COMPLAINT` events to SNS, and `PqSesFeedback` maintains `prontiq-ses-suppressions`. Before every SES send, check the suppression list. Hard bounces suppress immediately. Soft bounces suppress after the third bounce inside a 30-day rolling window. Complaints are permanent. All current SES sends use the same suppression-aware helper: welcome email, `past_due` billing email, and the 80% / 100% quota emails. Quota notifications are sent to the org-envelope owner email, not to individual API-key owners.
 
 Prerequisite: SES production-access exit from the AWS sandbox (verified sending domain, DKIM+SPF+DMARC, production-access request approved by AWS — typically 24-48h review).
 

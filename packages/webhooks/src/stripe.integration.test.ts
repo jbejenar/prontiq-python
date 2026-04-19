@@ -348,7 +348,9 @@ test("checkout.session.completed upgrades all org keys, resets existing usage fl
     scope: `address#${new Date().toISOString().slice(0, 7)}`,
     requestCount: 42,
     warningEmailSent: true,
+    warningEmailPendingAt: "2026-04-18T00:00:00.000Z",
     limitEmailSent: true,
+    limitEmailPendingAt: "2026-04-18T00:00:00.000Z",
     lastPushedCumulativeCount: 0,
     ttl: Math.floor(Date.now() / 1000) + 3600,
   });
@@ -399,6 +401,8 @@ test("checkout.session.completed upgrades all org keys, resets existing usage fl
   );
   assert.equal(usage.Item?.warningEmailSent, false);
   assert.equal(usage.Item?.limitEmailSent, false);
+  assert.equal(usage.Item?.warningEmailPendingAt, undefined);
+  assert.equal(usage.Item?.limitEmailPendingAt, undefined);
 
   const registry = await ddb.send(new GetCommand({ TableName: KEYS_TABLE, Key: { apiKeyHash: "REGISTRY#active-keys" } }));
   assert.deepEqual(Array.from((registry.Item?.activeHashes as Set<string>) ?? []), [apiKeyHash]);

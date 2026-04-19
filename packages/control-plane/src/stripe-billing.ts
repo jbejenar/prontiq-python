@@ -1,4 +1,3 @@
-import { createHash, createHmac } from "node:crypto";
 import { ConditionalCheckFailedException, DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import {
   DynamoDBDocumentClient,
@@ -21,6 +20,7 @@ import {
 } from "@prontiq/shared";
 import Stripe from "stripe";
 import { writeAudit } from "./audit.js";
+import { isSuppressedEmail, sendSignedSesEmail } from "./email.js";
 
 type Logger = Pick<Console, "error" | "warn" | "info">;
 
@@ -92,8 +92,6 @@ const RETIRED_BILLING_REGISTRY_KEY = "REGISTRY#retired-billing-keys";
 const REGISTRY_ACTIVE_HASHES = "activeHashes";
 const ORG_ID_INDEX = "orgId-index";
 const BILLING_ACTOR_ID = "stripe-webhook";
-const EMAIL_SUPPRESSION_SOFT_BOUNCE_THRESHOLD = 3;
-
 let cachedDdb: DynamoDBDocumentClient | undefined;
 let cachedStripe: Stripe | undefined;
 
@@ -684,10 +682,15 @@ async function resetUsageFlagsForCurrentMonth(
               scope,
             },
             ConditionExpression: "attribute_exists(apiKeyHash) AND attribute_exists(#scope)",
-            UpdateExpression: "SET #warningEmailSent = :false, #limitEmailSent = :false",
+            UpdateExpression: [
+              "SET #warningEmailSent = :false, #limitEmailSent = :false",
+              "REMOVE #warningEmailPendingAt, #limitEmailPendingAt",
+            ].join(" "),
             ExpressionAttributeNames: {
               "#limitEmailSent": "limitEmailSent",
+              "#limitEmailPendingAt": "limitEmailPendingAt",
               "#scope": "scope",
+              "#warningEmailPendingAt": "warningEmailPendingAt",
               "#warningEmailSent": "warningEmailSent",
             },
             ExpressionAttributeValues: {
@@ -705,104 +708,12 @@ async function resetUsageFlagsForCurrentMonth(
   }
 }
 
-async function isSuppressed(
-  ddb: DynamoDBDocumentClient,
-  suppressionsTableName: string,
-  email: string,
-): Promise<boolean> {
-  const result = await ddb.send(
-    new GetCommand({
-      TableName: suppressionsTableName,
-      Key: { email },
-    }),
-  );
-  const item = result.Item as { reason?: string; bounceCount?: number } | undefined;
-  if (!item) return false;
-  if (item.reason === "complaint" || item.reason === "hard_bounce") {
-    return true;
-  }
-  return item.reason === "soft_bounce" && (item.bounceCount ?? 0) >= EMAIL_SUPPRESSION_SOFT_BOUNCE_THRESHOLD;
-}
-
-async function sendSignedSesEmail(input: {
-  bodyText: string;
-  fromEmail: string;
-  region: string;
-  subject: string;
-  toEmail: string;
-}): Promise<boolean> {
-  const accessKeyId = process.env.AWS_ACCESS_KEY_ID;
-  const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY;
-  if (!accessKeyId || !secretAccessKey) {
-    return false;
-  }
-  const sessionToken = process.env.AWS_SESSION_TOKEN;
-  const now = new Date();
-  const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, "");
-  const dateStamp = amzDate.slice(0, 8);
-  const service = "ses";
-  const host = `email.${input.region}.amazonaws.com`;
-  const path = "/v2/email/outbound-emails";
-  const endpoint = `https://${host}${path}`;
-  const body = JSON.stringify({
-    Content: {
-      Simple: {
-        Body: {
-          Text: {
-            Data: input.bodyText,
-          },
-        },
-        Subject: { Data: input.subject },
-      },
-    },
-    Destination: { ToAddresses: [input.toEmail] },
-    FromEmailAddress: input.fromEmail,
-  });
-  const payloadHash = createHash("sha256").update(body).digest("hex");
-  const canonicalHeaders = [
-    "content-type:application/json",
-    `host:${host}`,
-    `x-amz-date:${amzDate}`,
-    ...(sessionToken ? [`x-amz-security-token:${sessionToken}`] : []),
-  ].join("\n");
-  const signedHeaders = [
-    "content-type",
-    "host",
-    "x-amz-date",
-    ...(sessionToken ? ["x-amz-security-token"] : []),
-  ].join(";");
-  const canonicalRequest = ["POST", path, "", `${canonicalHeaders}\n`, signedHeaders, payloadHash].join("\n");
-  const credentialScope = `${dateStamp}/${input.region}/${service}/aws4_request`;
-  const stringToSign = [
-    "AWS4-HMAC-SHA256",
-    amzDate,
-    credentialScope,
-    createHash("sha256").update(canonicalRequest).digest("hex"),
-  ].join("\n");
-  const dateKey = createHmac("sha256", `AWS4${secretAccessKey}`).update(dateStamp).digest();
-  const regionKey = createHmac("sha256", dateKey).update(input.region).digest();
-  const serviceKey = createHmac("sha256", regionKey).update(service).digest();
-  const signingKey = createHmac("sha256", serviceKey).update("aws4_request").digest();
-  const signature = createHmac("sha256", signingKey).update(stringToSign).digest("hex");
-  const response = await fetch(endpoint, {
-    method: "POST",
-    headers: {
-      Authorization: `AWS4-HMAC-SHA256 Credential=${accessKeyId}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`,
-      "Content-Type": "application/json",
-      Host: host,
-      "X-Amz-Date": amzDate,
-      ...(sessionToken ? { "X-Amz-Security-Token": sessionToken } : {}),
-    },
-    body,
-  });
-  return response.ok;
-}
-
 function getDefaultPaymentFailureEmailSender(logger: Logger): BillingEmailSender {
   return async (input) => {
     try {
       return await sendSignedSesEmail({
         bodyText: buildPastDueEmailBody(input.billingUrl),
+        configurationSetName: process.env.SES_CONFIGURATION_SET_NAME,
         fromEmail: input.fromEmail,
         region: input.region,
         subject: "Your Prontiq payment failed",
@@ -828,7 +739,7 @@ async function sendPastDueEmailSafely(
     return false;
   }
   try {
-    if (await isSuppressed(dependencies.ddb, dependencies.suppressionsTableName, ownerEmail)) {
+    if (await isSuppressedEmail(dependencies.ddb, dependencies.suppressionsTableName, ownerEmail)) {
       dependencies.logger.info("Skipping past_due email due to SES suppression", {
         orgId,
         toEmail: ownerEmail,

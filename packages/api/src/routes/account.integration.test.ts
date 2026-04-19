@@ -152,7 +152,7 @@ function makeStripeStub(idCounter: { value: number }): StripeStubControl {
 }
 
 const noopEmail: EmailSender = async () => true;
-const noopLogger = { error: () => {}, warn: () => {} };
+const noopLogger = { error: () => {}, info: () => {}, warn: () => {} };
 
 interface BuildAppOpts {
   orgId: string;

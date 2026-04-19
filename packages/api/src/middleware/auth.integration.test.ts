@@ -3,8 +3,14 @@ import assert from "node:assert/strict";
 import { DynamoDBClient, CreateTableCommand, DeleteTableCommand, DescribeTableCommand } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, PutCommand } from "@aws-sdk/lib-dynamodb";
 import { Hono } from "hono";
-import { auth, __resetRateLimiterForTesting, __setDdbForTesting } from "./auth.js";
-import type { ApiKeyRecord, RedirectRecord, UsageCounterRecord } from "@prontiq/shared";
+import type { ExecutionContext } from "hono";
+import {
+  auth,
+  __resetRateLimiterForTesting,
+  __setDdbForTesting,
+  __setQuotaEmailEnqueuerForTesting,
+} from "./auth.js";
+import type { ApiKeyRecord, QuotaEmailTask, RedirectRecord, UsageCounterRecord } from "@prontiq/shared";
 import { hashKey } from "@prontiq/shared";
 
 const DDB_URL = process.env.DYNAMODB_TEST_URL ?? "http://localhost:8000";
@@ -159,6 +165,14 @@ async function seedUsage(record: UsageCounterRecord): Promise<void> {
 }
 
 async function request(path: string, apiKey?: string): Promise<Response> {
+  return requestWithExecutionContext(path, undefined, apiKey);
+}
+
+async function requestWithExecutionContext(
+  path: string,
+  executionCtx?: ExecutionContext,
+  apiKey?: string,
+): Promise<Response> {
   const headers = new Headers();
   if (apiKey) {
     headers.set("X-Api-Key", apiKey);
@@ -169,6 +183,9 @@ async function request(path: string, apiKey?: string): Promise<Response> {
       headers,
       method: "GET",
     }),
+    undefined,
+    undefined,
+    executionCtx,
   );
 }
 
@@ -189,6 +206,7 @@ after(async () => {
 
 beforeEach(async () => {
   __resetRateLimiterForTesting();
+  __setQuotaEmailEnqueuerForTesting(undefined);
 });
 
 test("missing API key returns MISSING_API_KEY", async () => {
@@ -437,4 +455,149 @@ test("existing usage rows are incremented by endpoint credit cost", async () => 
   const response = await request("/v1/address/enrich", rawKey);
   assert.equal(response.status, 200);
   assert.equal(response.headers.get("X-RateLimit-Remaining"), "3");
+});
+
+test("80% threshold enqueues a warning quota email task", async () => {
+  const enqueued: QuotaEmailTask[] = [];
+  __setQuotaEmailEnqueuerForTesting(async (task) => {
+    enqueued.push(task);
+  });
+
+  const rawKey = "pq_test_warning_threshold_key_123";
+  const record = await seedKey(rawKey, { quotaPerProduct: 5, rateLimit: 10, tier: "starter" });
+  await seedUsage({
+    apiKeyHash: record.apiKeyHash,
+    scope: `address#${CURRENT_MONTH}`,
+    requestCount: 3,
+    ttl: NOW_SECONDS + 90 * 24 * 60 * 60,
+    lastUsedAt: "2026-04-01T00:00:00.000Z",
+    lastPushedCumulativeCount: 3,
+  });
+
+  const response = await request("/v1/address/autocomplete", rawKey);
+  assert.equal(response.status, 200);
+  assert.deepEqual(enqueued, [
+    {
+      apiKeyHash: record.apiKeyHash,
+      orgId: record.orgId,
+      product: "address",
+      scope: `address#${CURRENT_MONTH}`,
+      threshold: "warning",
+    },
+  ]);
+});
+
+test("100% threshold enqueues both warning and limit quota email tasks when crossed in one request", async () => {
+  const enqueued: QuotaEmailTask[] = [];
+  __setQuotaEmailEnqueuerForTesting(async (task) => {
+    enqueued.push(task);
+  });
+
+  const rawKey = "pq_test_limit_threshold_key_123";
+  const record = await seedKey(rawKey, { quotaPerProduct: 3, rateLimit: 10, tier: "starter" });
+
+  const response = await request("/v1/address/enrich", rawKey);
+  assert.equal(response.status, 200);
+  assert.deepEqual(enqueued, [
+    {
+      apiKeyHash: record.apiKeyHash,
+      orgId: record.orgId,
+      product: "address",
+      scope: `address#${CURRENT_MONTH}`,
+      threshold: "warning",
+    },
+    {
+      apiKeyHash: record.apiKeyHash,
+      orgId: record.orgId,
+      product: "address",
+      scope: `address#${CURRENT_MONTH}`,
+      threshold: "limit",
+    },
+  ]);
+});
+
+test("warning threshold does not enqueue again after the warning email is already sent", async () => {
+  const enqueued: QuotaEmailTask[] = [];
+  __setQuotaEmailEnqueuerForTesting(async (task) => {
+    enqueued.push(task);
+  });
+
+  const rawKey = "pq_test_warning_already_sent_key_123";
+  const record = await seedKey(rawKey, { quotaPerProduct: 5, rateLimit: 10, tier: "starter" });
+  await seedUsage({
+    apiKeyHash: record.apiKeyHash,
+    scope: `address#${CURRENT_MONTH}`,
+    requestCount: 3,
+    ttl: NOW_SECONDS + 90 * 24 * 60 * 60,
+    warningEmailSent: true,
+    lastUsedAt: "2026-04-01T00:00:00.000Z",
+    lastPushedCumulativeCount: 3,
+  });
+
+  const response = await request("/v1/address/autocomplete", rawKey);
+  assert.equal(response.status, 200);
+  assert.deepEqual(enqueued, []);
+});
+
+test("fresh pending warning lease suppresses duplicate quota worker enqueue", async () => {
+  const enqueued: QuotaEmailTask[] = [];
+  __setQuotaEmailEnqueuerForTesting(async (task) => {
+    enqueued.push(task);
+  });
+
+  const rawKey = "pq_test_warning_pending_key_123";
+  const record = await seedKey(rawKey, { quotaPerProduct: 5, rateLimit: 10, tier: "starter" });
+  await seedUsage({
+    apiKeyHash: record.apiKeyHash,
+    scope: `address#${CURRENT_MONTH}`,
+    requestCount: 3,
+    ttl: NOW_SECONDS + 90 * 24 * 60 * 60,
+    warningEmailPendingAt: new Date().toISOString(),
+    lastUsedAt: "2026-04-01T00:00:00.000Z",
+    lastPushedCumulativeCount: 3,
+  });
+
+  const response = await request("/v1/address/autocomplete", rawKey);
+  assert.equal(response.status, 200);
+  assert.deepEqual(enqueued, []);
+});
+
+test("threshold crossing response does not await quota worker enqueue", async () => {
+  let resolveEnqueue: (() => void) | undefined;
+  const enqueued: QuotaEmailTask[] = [];
+  __setQuotaEmailEnqueuerForTesting(
+    (task) =>
+      new Promise<void>((resolve) => {
+        enqueued.push(task);
+        resolveEnqueue = resolve;
+      }),
+  );
+
+  const backgroundPromises: Promise<unknown>[] = [];
+  const executionCtx: ExecutionContext = {
+    passThroughOnException() {},
+    props: undefined,
+    waitUntil(promise: Promise<unknown>) {
+      backgroundPromises.push(promise);
+    },
+  };
+
+  const rawKey = "pq_test_background_enqueue_key_123";
+  const record = await seedKey(rawKey, { quotaPerProduct: 5, rateLimit: 10, tier: "starter" });
+  await seedUsage({
+    apiKeyHash: record.apiKeyHash,
+    scope: `address#${CURRENT_MONTH}`,
+    requestCount: 3,
+    ttl: NOW_SECONDS + 90 * 24 * 60 * 60,
+    lastUsedAt: "2026-04-01T00:00:00.000Z",
+    lastPushedCumulativeCount: 3,
+  });
+
+  const response = await requestWithExecutionContext("/v1/address/autocomplete", executionCtx, rawKey);
+  assert.equal(response.status, 200);
+  assert.equal(enqueued.length, 1);
+  assert.equal(backgroundPromises.length, 1);
+
+  resolveEnqueue?.();
+  await Promise.all(backgroundPromises);
 });

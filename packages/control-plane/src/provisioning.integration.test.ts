@@ -23,7 +23,7 @@ import {
   DeleteTableCommand,
   DescribeTableCommand,
 } from "@aws-sdk/client-dynamodb";
-import { DynamoDBDocumentClient, GetCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
+import { DynamoDBDocumentClient, GetCommand, PutCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
 import type Stripe from "stripe";
 import { createProvisioningService, type EmailSender } from "./provisioning.js";
 
@@ -31,6 +31,7 @@ const DDB_URL = process.env.DYNAMODB_TEST_URL ?? "http://localhost:8000";
 const SUFFIX = Date.now().toString();
 const KEYS_TABLE = `prontiq-keys-test-${SUFFIX}`;
 const AUDIT_TABLE = `prontiq-audit-test-${SUFFIX}`;
+const SUPPRESSIONS_TABLE = `prontiq-suppressions-test-${SUFFIX}`;
 
 const ddbRaw = new DynamoDBClient({
   endpoint: DDB_URL,
@@ -72,7 +73,16 @@ before(async () => {
       BillingMode: "PAY_PER_REQUEST",
     }),
   );
-  for (const tableName of [KEYS_TABLE, AUDIT_TABLE]) {
+  await ddbRaw.send(
+    new CreateTableCommand({
+      TableName: SUPPRESSIONS_TABLE,
+      AttributeDefinitions: [{ AttributeName: "email", AttributeType: "S" }],
+      KeySchema: [{ AttributeName: "email", KeyType: "HASH" }],
+      BillingMode: "PAY_PER_REQUEST",
+    }),
+  );
+  process.env.SUPPRESSIONS_TABLE_NAME = SUPPRESSIONS_TABLE;
+  for (const tableName of [KEYS_TABLE, AUDIT_TABLE, SUPPRESSIONS_TABLE]) {
     for (let i = 0; i < 20; i++) {
       const { Table } = await ddbRaw.send(new DescribeTableCommand({ TableName: tableName }));
       if (Table?.TableStatus === "ACTIVE") break;
@@ -82,8 +92,10 @@ before(async () => {
 });
 
 after(async () => {
+  delete process.env.SUPPRESSIONS_TABLE_NAME;
   await ddbRaw.send(new DeleteTableCommand({ TableName: KEYS_TABLE }));
   await ddbRaw.send(new DeleteTableCommand({ TableName: AUDIT_TABLE }));
+  await ddbRaw.send(new DeleteTableCommand({ TableName: SUPPRESSIONS_TABLE }));
 });
 
 function makeStripeStub(idCounter: { value: number }): {
@@ -109,7 +121,7 @@ function makeStripeStub(idCounter: { value: number }): {
 }
 
 const noopEmail: EmailSender = async () => true;
-const noopLogger = { error: () => {}, warn: () => {} };
+const noopLogger = { error: () => {}, info: () => {}, warn: () => {} };
 
 test("happy path: provisions envelope + audit row, then replay is no-op", async () => {
   const orgId = `org_int_${SUFFIX}_a`;
@@ -172,4 +184,45 @@ test("happy path: provisions envelope + audit row, then replay is no-op", async 
     }),
   );
   assert.equal(auditAfterReplay.Count, 1, "no new audit rows on replay");
+});
+
+test("suppressed owner email skips the welcome email without blocking provisioning", async () => {
+  const orgId = `org_int_${SUFFIX}_suppressed`;
+  const counter = { value: 0 };
+  const { stripe } = makeStripeStub(counter);
+  let senderCalled = false;
+  const service = createProvisioningService({
+    ddb,
+    keysTableName: KEYS_TABLE,
+    auditTableName: AUDIT_TABLE,
+    stripe,
+    sendWelcomeEmail: async () => {
+      senderCalled = true;
+      return true;
+    },
+    logger: noopLogger,
+    sleep: async () => {},
+  });
+
+  await ddb.send(
+    new PutCommand({
+      TableName: SUPPRESSIONS_TABLE,
+      Item: {
+        email: "suppressed@example.com",
+        reason: "complaint",
+        lastEventAt: "2026-04-19T00:00:00.000Z",
+      },
+    }),
+  );
+
+  const result = await service.provisionOrg({
+    orgId,
+    ownerEmail: "suppressed@example.com",
+    actorId: "user_test",
+    source: "integration-test",
+  });
+
+  assert.equal(result.status, "created");
+  assert.equal(result.emailSent, false);
+  assert.equal(senderCalled, false);
 });

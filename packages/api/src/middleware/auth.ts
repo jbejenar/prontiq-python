@@ -1,14 +1,18 @@
 import { ConditionalCheckFailedException, DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { InvokeCommand, LambdaClient } from "@aws-sdk/client-lambda";
 import { DynamoDBDocumentClient, GetCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
+import type { Context } from "hono";
 import { createMiddleware } from "hono/factory";
 import {
   BILLING_ENDPOINTS,
   ERROR_CODES,
   PRODUCT_REGISTRY,
+  QUOTA_EMAIL_PENDING_LEASE_MINUTES,
+  QUOTA_WARNING_THRESHOLD_FRACTION,
   getBillingEndpointsForProduct,
 } from "@prontiq/shared";
 import { hashKey } from "@prontiq/shared";
-import type { ApiKeyRecord, RedirectRecord, UsageCounterRecord } from "@prontiq/shared";
+import type { ApiKeyRecord, QuotaEmailTask, RedirectRecord, UsageCounterRecord } from "@prontiq/shared";
 
 type RateLimitBucket = {
   lastRefillAtMs: number;
@@ -17,13 +21,19 @@ type RateLimitBucket = {
 
 type UsageUpdateResult = {
   creditCost: number;
+  limitEmailPendingAt?: string;
+  limitEmailSent?: boolean;
   overage: boolean;
   quotaExceeded: boolean;
   requestCount: number;
   resetAt: string;
+  warningEmailPendingAt?: string;
+  warningEmailSent?: boolean;
 };
 
 let ddb: DynamoDBDocumentClient | undefined;
+let lambda: LambdaClient | undefined;
+let quotaEmailEnqueuerOverride: ((task: QuotaEmailTask) => Promise<void>) | undefined;
 
 const rateLimitBuckets = new Map<string, RateLimitBucket>();
 const REDIRECT_SCOPE = "REDIRECT";
@@ -44,12 +54,23 @@ function getDdb(): DynamoDBDocumentClient {
   return ddb;
 }
 
+function getLambda(): LambdaClient {
+  if (!lambda) {
+    lambda = new LambdaClient({});
+  }
+  return lambda;
+}
+
 function getKeysTableName(): string {
   return process.env.KEYS_TABLE_NAME ?? "prontiq-keys";
 }
 
 function getUsageTableName(): string {
   return process.env.USAGE_TABLE_NAME ?? "prontiq-usage";
+}
+
+function getQuotaEmailWorkerFunctionName(): string | null {
+  return process.env.QUOTA_EMAIL_WORKER_FUNCTION_NAME ?? null;
 }
 
 function getMonthKey(now: Date): string {
@@ -109,6 +130,123 @@ function getCreditCost(path: string, product: string): number | null {
     return null;
   }
   return definition.creditCost;
+}
+
+function getWarningThreshold(limit: number): number {
+  return Math.ceil(limit * QUOTA_WARNING_THRESHOLD_FRACTION);
+}
+
+function isFreshPendingLease(pendingAt: string | undefined, now: Date): boolean {
+  if (!pendingAt) {
+    return false;
+  }
+  const pendingDate = new Date(pendingAt);
+  if (Number.isNaN(pendingDate.getTime())) {
+    return false;
+  }
+  const cutoff = now.getTime() - QUOTA_EMAIL_PENDING_LEASE_MINUTES * 60 * 1000;
+  return pendingDate.getTime() >= cutoff;
+}
+
+function getQuotaEmailTasks(
+  record: ApiKeyRecord,
+  product: string,
+  scope: string,
+  usageResult: UsageUpdateResult,
+  now: Date,
+): QuotaEmailTask[] {
+  const limit = record.quotaPerProduct;
+  if (limit == null) {
+    return [];
+  }
+
+  const tasks: QuotaEmailTask[] = [];
+  if (
+    usageResult.requestCount >= getWarningThreshold(limit) &&
+    usageResult.warningEmailSent !== true &&
+    !isFreshPendingLease(usageResult.warningEmailPendingAt, now)
+  ) {
+    tasks.push({
+      apiKeyHash: record.apiKeyHash,
+      orgId: record.orgId,
+      product,
+      scope,
+      threshold: "warning",
+    });
+  }
+  if (
+    usageResult.requestCount >= limit &&
+    usageResult.limitEmailSent !== true &&
+    !isFreshPendingLease(usageResult.limitEmailPendingAt, now)
+  ) {
+    tasks.push({
+      apiKeyHash: record.apiKeyHash,
+      orgId: record.orgId,
+      product,
+      scope,
+      threshold: "limit",
+    });
+  }
+  return tasks;
+}
+
+async function enqueueQuotaEmailTask(task: QuotaEmailTask): Promise<void> {
+  if (quotaEmailEnqueuerOverride) {
+    await quotaEmailEnqueuerOverride(task);
+    return;
+  }
+  const functionName = getQuotaEmailWorkerFunctionName();
+  if (!functionName) {
+    return;
+  }
+  await getLambda().send(
+    new InvokeCommand({
+      FunctionName: functionName,
+      InvocationType: "Event",
+      Payload: Buffer.from(JSON.stringify(task)),
+    }),
+  );
+}
+
+function getExecutionCtxWaitUntil(c: Context): ((promise: Promise<unknown>) => void) | null {
+  try {
+    return c.executionCtx.waitUntil.bind(c.executionCtx);
+  } catch {
+    return null;
+  }
+}
+
+function enqueueQuotaEmailTasksInBackground(
+  c: Context,
+  record: ApiKeyRecord,
+  product: string,
+  scope: string,
+  quotaEmailTasks: QuotaEmailTask[],
+): void {
+  const enqueuePromise = Promise.allSettled(
+    quotaEmailTasks.map((task) => enqueueQuotaEmailTask(task)),
+  ).then((enqueueResults) => {
+    for (const [index, result] of enqueueResults.entries()) {
+      if (result.status === "rejected") {
+        console.warn("Quota email enqueue failed", {
+          apiKeyHash: record.apiKeyHash,
+          error: result.reason instanceof Error ? result.reason.message : String(result.reason),
+          orgId: record.orgId,
+          product,
+          scope,
+          threshold: quotaEmailTasks[index]?.threshold,
+        });
+      }
+    }
+  });
+
+  const waitUntil = getExecutionCtxWaitUntil(c);
+  if (waitUntil) {
+    waitUntil(enqueuePromise);
+    return;
+  }
+
+  void enqueuePromise;
 }
 
 function setRateLimitHeaders(
@@ -260,7 +398,7 @@ async function incrementUsage(
             "attribute_not_exists(#requestCount) OR #requestCount <= :maxBeforeIncrement",
         }
       : {}),
-    ReturnValues: "UPDATED_NEW",
+    ReturnValues: "ALL_NEW",
   });
 
   try {
@@ -273,10 +411,14 @@ async function incrementUsage(
 
     return {
       creditCost,
+      limitEmailPendingAt: attributes?.limitEmailPendingAt,
+      limitEmailSent: attributes?.limitEmailSent,
       overage: limit != null && record.tier !== "free" && requestCount > limit,
       quotaExceeded: false,
       requestCount,
       resetAt,
+      warningEmailPendingAt: attributes?.warningEmailPendingAt,
+      warningEmailSent: attributes?.warningEmailSent,
     };
   } catch (error) {
     if (error instanceof ConditionalCheckFailedException) {
@@ -294,6 +436,12 @@ async function incrementUsage(
 
 export function __setDdbForTesting(client: DynamoDBDocumentClient | undefined): void {
   ddb = client;
+}
+
+export function __setQuotaEmailEnqueuerForTesting(
+  enqueuer: ((task: QuotaEmailTask) => Promise<void>) | undefined,
+): void {
+  quotaEmailEnqueuerOverride = enqueuer;
 }
 
 export function __resetRateLimiterForTesting(): void {
@@ -394,6 +542,7 @@ export function auth() {
       );
     }
     const usageResult = await incrementUsage(record, creditCost, product, now);
+    const usageScope = `${product}#${getMonthKey(now)}`;
     if (usageResult.quotaExceeded && record.quotaPerProduct != null) {
       setRateLimitHeaders(
         record.quotaPerProduct,
@@ -436,6 +585,11 @@ export function auth() {
 
     if (usageResult.overage) {
       c.header("X-RateLimit-Over", "true");
+    }
+
+    const quotaEmailTasks = getQuotaEmailTasks(record, product, usageScope, usageResult, now);
+    if (quotaEmailTasks.length > 0) {
+      enqueueQuotaEmailTasksInBackground(c, record, product, usageScope, quotaEmailTasks);
     }
 
     await next();

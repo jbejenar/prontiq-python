@@ -119,7 +119,26 @@ export interface UsageCounterRecord {
   pendingMeterTargetCumulativeCount?: number;
   warningEmailSent?: boolean;
   limitEmailSent?: boolean;
+  warningEmailPendingAt?: string;
+  limitEmailPendingAt?: string;
   closed?: boolean;
+}
+
+export interface SesSuppressionRecord {
+  email: string;
+  reason: "hard_bounce" | "soft_bounce" | "complaint";
+  bounceCount?: number;
+  softBounceWindowStartedAt?: string;
+  lastEventAt: string;
+  ttl?: number;
+}
+
+export interface QuotaEmailTask {
+  apiKeyHash: string;
+  orgId: string;
+  product: string;
+  scope: string;
+  threshold: "warning" | "limit";
 }
 
 export interface StripeWebhookCompletionRecord {

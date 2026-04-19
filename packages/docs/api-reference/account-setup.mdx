@@ -86,7 +86,7 @@ curl -X POST "https://api.prontiq.dev/v1/account/setup" \
 }
 ```
 
-A new Stripe customer was created, the envelope was written to DynamoDB, the audit row was committed in the same transaction, and a welcome email was best-effort sent. `emailSent: false` here means the envelope IS durable but SES suppressed the welcome email (e.g. because the SES domain identity isn't verified yet — operator follow-up).
+A new Stripe customer was created, the envelope was written to DynamoDB, the audit row was committed in the same transaction, and a welcome email was best-effort sent. `emailSent: false` here means the envelope is durable but the welcome email was skipped or failed non-fatally, for example because the address is currently suppressed after an SES bounce / complaint event or SES temporarily rejected the send.
 
 ### 200 — Idempotent replay
 

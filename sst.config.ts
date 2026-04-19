@@ -110,6 +110,91 @@ export default $config({
       transform: { table: { name: suppressionsName } },
     });
 
+    const sesSenderDomain = "prontiq.dev";
+    const sesConfigurationSetName = isProd
+      ? "prontiq-transactional"
+      : `prontiq-transactional-${$app.stage}`;
+    const sesFeedbackTopic = new aws.sns.Topic("PqSesFeedbackTopic");
+    if (isProd) {
+      new aws.sesv2.EmailIdentity("PqTransactionalEmailIdentity", {
+        emailIdentity: sesSenderDomain,
+      });
+    }
+    const sesConfigurationSet = new aws.sesv2.ConfigurationSet("PqSesConfigurationSet", {
+      configurationSetName: sesConfigurationSetName,
+      sendingOptions: {
+        sendingEnabled: true,
+      },
+    });
+    new aws.sesv2.ConfigurationSetEventDestination("PqSesFeedbackDestination", {
+      configurationSetName: sesConfigurationSet.configurationSetName,
+      eventDestinationName: "ses-feedback-sns",
+      eventDestination: {
+        enabled: true,
+        matchingEventTypes: ["BOUNCE", "COMPLAINT"],
+        snsDestination: {
+          topicArn: sesFeedbackTopic.arn,
+        },
+      },
+    });
+
+    function sharedEmailEnv() {
+      return {
+        KEYS_TABLE_NAME: authKeysTable.name,
+        USAGE_TABLE_NAME: authUsageTable.name,
+        SUPPRESSIONS_TABLE_NAME: suppressionsTable.name,
+        WELCOME_EMAIL_FROM:
+          process.env.WELCOME_EMAIL_FROM ?? "noreply@prontiq.dev",
+        PRONTIQ_BILLING_URL:
+          process.env.PRONTIQ_BILLING_URL ?? process.env.PRONTIQ_ACCOUNT_URL ?? "https://prontiq.dev/account",
+        PRONTIQ_DOCS_URL: process.env.PRONTIQ_DOCS_URL ?? "https://docs.prontiq.dev",
+        SES_CONFIGURATION_SET_NAME: sesConfigurationSet.configurationSetName,
+      };
+    }
+
+    const sesFeedbackFn = new sst.aws.Function("PqSesFeedback", {
+      handler: "packages/control-plane/src/ses-feedback.handler",
+      architecture: "arm64",
+      runtime: "nodejs24.x",
+      memory: "512 MB",
+      timeout: "30 seconds",
+      link: [suppressionsTable],
+      environment: {
+        SUPPRESSIONS_TABLE_NAME: suppressionsTable.name,
+      },
+    });
+
+    new aws.sns.TopicSubscription("PqSesFeedbackSubscription", {
+      topic: sesFeedbackTopic.arn,
+      protocol: "lambda",
+      endpoint: sesFeedbackFn.arn,
+    });
+
+    new aws.lambda.Permission("PqSesFeedbackSnsPermission", {
+      action: "lambda:InvokeFunction",
+      function: sesFeedbackFn.name,
+      principal: "sns.amazonaws.com",
+      sourceArn: sesFeedbackTopic.arn,
+    });
+
+    const quotaEmailWorkerFn = new sst.aws.Function("PqQuotaEmailWorker", {
+      handler: "packages/control-plane/src/quota-email.handler",
+      architecture: "arm64",
+      runtime: "nodejs24.x",
+      memory: "512 MB",
+      timeout: "30 seconds",
+      link: [authKeysTable, authUsageTable, suppressionsTable],
+      permissions: [
+        {
+          actions: ["ses:SendEmail", "ses:SendRawEmail"],
+          resources: [
+            `arn:aws:ses:${AWS_REGION}:${AWS_ACCOUNT_ID}:identity/prontiq.dev`,
+          ],
+        },
+      ],
+      environment: sharedEmailEnv(),
+    });
+
     // -- Required secrets (P1B.05) --
     //
     // Sourced from GitHub Environment secrets (Settings → Environments →
@@ -249,10 +334,15 @@ export default $config({
           actions: ["es:ESHttpGet", "es:ESHttpPost", "es:ESHttpHead"],
           resources: [`${OPENSEARCH_DOMAIN_ARN}/*`],
         },
+        {
+          actions: ["lambda:InvokeFunction"],
+          resources: [quotaEmailWorkerFn.arn],
+        },
       ],
       environment: {
         OPENSEARCH_ENDPOINT: process.env.OPENSEARCH_ENDPOINT ?? OPENSEARCH_ENDPOINT_DEFAULT,
         KEYS_TABLE_NAME: authKeysTable.name,
+        QUOTA_EMAIL_WORKER_FUNCTION_NAME: quotaEmailWorkerFn.name,
         USAGE_TABLE_NAME: authUsageTable.name,
       },
     });
@@ -785,17 +875,10 @@ export default $config({
         // `clerkAdminOnly()` middleware (gates on the JWT `org_role`
         // claim). Same env var → same role set → no divergence.
         CLERK_ADMIN_ROLES: process.env.CLERK_ADMIN_ROLES ?? "",
-        KEYS_TABLE_NAME: authKeysTable.name,
-        USAGE_TABLE_NAME: authUsageTable.name,
         AUDIT_TABLE_NAME: auditTable.name,
-        SUPPRESSIONS_TABLE_NAME: suppressionsTable.name,
-        WELCOME_EMAIL_FROM:
-          process.env.WELCOME_EMAIL_FROM ?? "noreply@prontiq.dev",
+        ...sharedEmailEnv(),
         PRONTIQ_ACCOUNT_URL:
           process.env.PRONTIQ_ACCOUNT_URL ?? "https://prontiq.dev/account",
-        PRONTIQ_BILLING_URL:
-          process.env.PRONTIQ_BILLING_URL ?? process.env.PRONTIQ_ACCOUNT_URL ?? "https://prontiq.dev/account",
-        PRONTIQ_DOCS_URL: process.env.PRONTIQ_DOCS_URL ?? "https://docs.prontiq.dev",
       };
     }
 
@@ -909,6 +992,44 @@ export default $config({
         ApiId: api.nodes.api.id,
         Stage: "$default",
         Route: "POST /webhooks/stripe",
+      },
+    });
+
+    new aws.cloudwatch.MetricAlarm("PqSesFeedbackErrors", {
+      comparisonOperator: "GreaterThanThreshold",
+      evaluationPeriods: 1,
+      datapointsToAlarm: 1,
+      metricName: "Errors",
+      namespace: "AWS/Lambda",
+      period: 900,
+      statistic: "Sum",
+      threshold: 0,
+      treatMissingData: "notBreaching",
+      alarmDescription:
+        "SES feedback subscriber Lambda recorded an error in the last 15 minutes. Check CloudWatch Logs before suppression drift damages SES reputation.",
+      alarmActions: [ingestAlerts.arn],
+      okActions: [ingestAlerts.arn],
+      dimensions: {
+        FunctionName: sesFeedbackFn.name,
+      },
+    });
+
+    new aws.cloudwatch.MetricAlarm("PqQuotaEmailWorkerErrors", {
+      comparisonOperator: "GreaterThanThreshold",
+      evaluationPeriods: 1,
+      datapointsToAlarm: 1,
+      metricName: "Errors",
+      namespace: "AWS/Lambda",
+      period: 900,
+      statistic: "Sum",
+      threshold: 0,
+      treatMissingData: "notBreaching",
+      alarmDescription:
+        "Quota email worker Lambda recorded an error in the last 15 minutes. Check CloudWatch Logs for stuck threshold emails or SES send failures.",
+      alarmActions: [ingestAlerts.arn],
+      okActions: [ingestAlerts.arn],
+      dimensions: {
+        FunctionName: quotaEmailWorkerFn.name,
       },
     });
 

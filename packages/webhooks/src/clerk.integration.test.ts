@@ -197,7 +197,7 @@ test("end-to-end: signed admin membership writes envelope + audit row, replay is
     auditTableName: AUDIT_TABLE,
     stripe: makeStripeStub(counter),
     sendWelcomeEmail: noopEmail,
-    logger: { error: () => {}, warn: () => {} },
+    logger: { error: () => {}, info: () => {}, warn: () => {} },
     sleep: async () => {},
   });
   const clerkClient = makeClerkStub("admin@example.com");
@@ -259,7 +259,7 @@ test("end-to-end: invalid signature → 401, no DDB writes, no Stripe call", asy
     auditTableName: AUDIT_TABLE,
     stripe: makeStripeStub(counter),
     sendWelcomeEmail: noopEmail,
-    logger: { error: () => {}, warn: () => {} },
+    logger: { error: () => {}, info: () => {}, warn: () => {} },
     sleep: async () => {},
   });
   const handler = createClerkHandler({
@@ -290,7 +290,7 @@ test("end-to-end: non-admin membership (org:member) → 200 zero side-effects", 
     auditTableName: AUDIT_TABLE,
     stripe: makeStripeStub(counter),
     sendWelcomeEmail: noopEmail,
-    logger: { error: () => {}, warn: () => {} },
+    logger: { error: () => {}, info: () => {}, warn: () => {} },
     sleep: async () => {},
   });
   const handler = createClerkHandler({

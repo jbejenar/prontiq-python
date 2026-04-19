@@ -5,6 +5,47 @@
 
 ---
 
+## Session 16 — 2026-04-19
+
+**Focus:** P1B.08 — SES feedback loop, suppression-aware sends, and quota-threshold emails.
+
+### Shipped
+
+- **SES feedback loop implemented.** `PqSesFeedback` now consumes SNS-wrapped SES `BOUNCE` and `COMPLAINT` events from a stage-specific SES configuration set and writes `prontiq-ses-suppressions`.
+- **Suppression-aware sends unified.** Welcome email, Stripe `past_due` email, and quota emails now route through the same suppression-aware SES helper in `@prontiq/control-plane`.
+- **80% / 100% quota emails shipped.** API usage increments now enqueue async work to `PqQuotaEmailWorker`, which sends org-level threshold emails to `ORG#{orgId}.ownerEmail` using short worker leases on the usage row.
+- **Usage-row state extended.** `warningEmailPendingAt` and `limitEmailPendingAt` now back the worker lease model, and Stripe paid-plan transitions clear both sent and pending markers when usage flags are reset.
+- **New operator docs added.** `docs/runbooks/ses-suppression.md` now captures the SES setup, simulator verification path, suppression semantics, and manual unsuppression process.
+
+### Verification evidence
+
+- `pnpm --filter @prontiq/shared build`
+- `pnpm --filter @prontiq/control-plane build`
+- `pnpm --filter @prontiq/control-plane typecheck`
+- `pnpm --filter @prontiq/control-plane test`
+- `pnpm --filter @prontiq/control-plane test:integration`
+- `pnpm --filter @prontiq/api typecheck`
+- `pnpm --filter @prontiq/api test`
+- `pnpm --filter @prontiq/webhooks test:integration`
+
+Integration coverage now includes:
+
+- hard bounce suppression
+- third soft bounce suppression
+- complaint precedence
+- welcome-email suppression skip
+- quota-warning exact-once behavior
+- quota-email suppression skip
+- quota worker retry after send failure
+- Stripe paid-plan reset clearing sent + pending email markers
+
+### Next session should start with
+
+1. Read NEXT-WORK.md.
+2. **P1B.11 — month-close job.**
+3. Use `docs/runbooks/ses-suppression.md` as the operator source of truth for SES bounce / complaint handling.
+
+---
 ## Session 15 — 2026-04-19
 
 **Focus:** Post-rollout Stripe verification in dev and prod after the billing webhook + hourly meter push shipped.
@@ -34,7 +75,7 @@
 ### Next session should start with
 
 1. Read NEXT-WORK.md.
-2. **P1B.08 — SES suppression / bounce handling.**
+2. **P1B.11 — month-close job.**
 3. Use `docs/runbooks/stripe-webhook.md` as the operator source of truth when the first real prod billing delivery lands.
 
 ---

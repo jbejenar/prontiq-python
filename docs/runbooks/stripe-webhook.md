@@ -39,6 +39,8 @@ For `dev` and `prod`, set these before deploy:
 
 The SST deploy guard now fails if either required Stripe secret is missing or whitespace-only.
 
+SES delivery behavior for billing emails is covered by `docs/runbooks/ses-suppression.md`. `past_due` notifications now use the same suppression-aware SES helper and configuration-set path as welcome and quota emails.
+
 ## Stripe Dashboard Setup
 
 Prontiq's Free tier is **not** a Stripe subscription product. Free is app-managed in DynamoDB and shown in the UI by Prontiq itself. Stripe should carry paid recurring plans plus family-level metered API products only.

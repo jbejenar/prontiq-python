@@ -34,3 +34,13 @@ export type {
   BillingCronDependencies,
   BillingCronSummary,
 } from "./billing-cron.js";
+
+export { createQuotaEmailService } from "./quota-email.js";
+export type {
+  QuotaEmailDependencies,
+  QuotaEmailInput,
+  QuotaEmailSender,
+} from "./quota-email.js";
+
+export { createSesFeedbackService } from "./ses-feedback.js";
+export type { SesFeedbackDependencies } from "./ses-feedback.js";

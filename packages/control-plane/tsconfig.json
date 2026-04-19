@@ -1,10 +1,15 @@
 {
   "extends": "../../tsconfig.json",
   "compilerOptions": {
+    "baseUrl": ".",
     "composite": true,
     "ignoreDeprecations": "6.0",
     "outDir": "dist",
     "rootDir": "src",
+    "paths": {
+      "@prontiq/shared": ["../shared/dist/index.d.ts"],
+      "@prontiq/shared/*": ["../shared/dist/*"]
+    },
     "types": ["node"]
   },
   "include": ["src"],

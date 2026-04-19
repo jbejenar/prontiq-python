@@ -1642,58 +1642,46 @@ CREATE/ROTATE/REVOKE/UPGRADE/DOWNGRADE events need identical row shapes for late
 ```yaml
 id: P1B.08
 title: prontiq-ses-suppressions + Bounce Handler
-status: pending
+status: complete
 priority: p1-high
 epic: P1B
 persona: [ops]
 depends_on: [P1B.04]
-completed: null
+completed: 2026-04-19
 ```
 
-#### User Story
+#### Shipped Behavior
 
-As a platform operator, I need SES bounce and complaint events to populate `prontiq-ses-suppressions` so that repeated sends to bad addresses don't wreck our SES reputation.
+- SES now uses one shared `prontiq.dev` domain identity in `ap-southeast-2`, with stage-specific configuration sets (`prontiq-transactional` / `prontiq-transactional-<stage>`) publishing bounce and complaint events to each stage’s SNS topic.
+- `PqSesFeedback` subscribes to that SNS topic and writes `prontiq-ses-suppressions`.
+- Suppression rules:
+  - hard bounce → immediate suppression, 90-day TTL
+  - soft bounce → suppress on the third bounce inside a 30-day window, 90-day TTL
+  - complaint → permanent suppression, no TTL
+- All current SES send paths are suppression-aware:
+  - welcome email
+  - quota warning / limit emails
+  - Stripe `past_due` email
+- Quota-threshold emails are now implemented for the credits model:
+  - 80% warning
+  - 100% limit / overage
+  - sent asynchronously by `PqQuotaEmailWorker`
+  - exactly-once per `{product}#{month}` scope via `warningEmailSent` / `limitEmailSent` plus short pending leases
 
-#### Problem Statement
+#### Verification Evidence
 
-AWS suspends SES accounts at >5% bounce rate or >0.1% complaint rate. We need a feedback loop: SES publishes bounce/complaint events to SNS → Lambda subscriber writes to `prontiq-ses-suppressions` → every SES send checks the suppression list first. See ARCHITECTURE.MD §12.5.
-
-#### Definition of Done
-
-##### Pre-requisite
-
-- [ ] SES production-access request submitted and approved (typically 24-48h AWS review)
-  - `Verify:` AWS SES console shows account out of sandbox
-  - `Evidence:` AWS approval email
-- [ ] Sending domain verified with DKIM + SPF + DMARC configured
-  - `Verify:` SES domain identity shows all three green
-  - `Evidence:` DNS records + SES status
-
-##### Functional
-
-- [ ] SES configured to publish bounces and complaints to SNS topic
-  - `Verify:` SNS topic receives test-bounce message
-  - `Evidence:` SST config + SES configuration set
-- [ ] Lambda subscriber writes to `prontiq-ses-suppressions`
-  - `Verify:` Trigger bounce with simulator address; row appears in DDB within 30s
-  - `Evidence:` DDB scan
-- [ ] Hard bounce: `reason="hard_bounce"`, no TTL variance (90d default)
-- [ ] Soft bounce: increment `bounceCount`; suppress only after 3 within 30 days
-  - `Verify:` Simulate 3 soft bounces; 3rd creates suppression entry
-  - `Evidence:` DDB scan showing `bounceCount: 3`
-- [ ] Complaint: `reason="complaint"`, `ttl` unset (permanent)
-- [ ] All SES send paths (welcome email, threshold email, payment-failure email) check `prontiq-ses-suppressions` before sending
-  - `Verify:` Suppressed address does NOT receive send; log shows "suppressed, skipping"
-  - `Evidence:` Integration test
-
-#### Scope
-
-**In:** SES prod-access exit, SNS topic, subscriber Lambda, suppression-check middleware
-
-**Out — Do Not Implement:**
-
-- Un-suppression UI → manual DDB edit for now
-- Email template system → per-call HTML string for Phase 1
+- `packages/control-plane/src/ses-feedback.integration.test.ts`
+  - hard bounce suppression
+  - third soft bounce suppression
+  - complaint overriding prior soft-bounce state
+- `packages/control-plane/src/quota-email.integration.test.ts`
+  - warning email exactly-once
+  - suppression skip finalises without retry loop
+  - failed sender releases lease for retry
+- `packages/control-plane/src/provisioning.integration.test.ts`
+  - suppressed welcome email skips without blocking durable provisioning
+- `packages/webhooks/src/stripe.integration.test.ts`
+  - Stripe plan-change reset clears warning/limit email sent state and pending lease state
 
 ---
 

@@ -115,7 +115,7 @@ const completeEnvelope = (orgId: string, customerId = "cus_existing") => ({
   completedAt: "2026-04-17T00:00:00.000Z",
 });
 
-const noopLogger = { error: () => {}, warn: () => {} };
+const noopLogger = { error: () => {}, info: () => {}, warn: () => {} };
 const noopSleep = async () => {};
 const noopEmail: EmailSender = async () => true;
 
