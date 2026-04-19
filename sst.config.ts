@@ -1,5 +1,7 @@
 /// <reference path="./.sst/platform/config.d.ts" />
 
+import * as pulumi from "@pulumi/pulumi";
+
 /**
  * Naming convention:
  * SST generates AWS names as: {app}-{stage}-{componentName}{ResourceType}-{hash}
@@ -157,7 +159,7 @@ export default $config({
       return [
         `arn:aws:ses:${AWS_REGION}:${AWS_ACCOUNT_ID}:identity/prontiq.dev`,
         `arn:aws:ses:${AWS_REGION}:${AWS_ACCOUNT_ID}:identity/${fromEmail}`,
-        `arn:aws:ses:${AWS_REGION}:${AWS_ACCOUNT_ID}:configuration-set/${sesConfigurationSet.configurationSetName}`,
+        pulumi.interpolate`arn:aws:ses:${AWS_REGION}:${AWS_ACCOUNT_ID}:configuration-set/${sesConfigurationSet.configurationSetName}`,
       ];
     }
 
