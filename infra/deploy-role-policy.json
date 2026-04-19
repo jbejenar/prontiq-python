@@ -126,11 +126,14 @@
     {
       "Action": [
         "es:ESHttp*",
-        "es:DescribeElasticsearchDomain",
-        "es:DescribeDomain"
+        "es:Describe*",
+        "es:ListTags"
       ],
       "Effect": "Allow",
-      "Resource": "arn:aws:es:ap-southeast-2:493712557159:domain/flat-white/*",
+      "Resource": [
+        "arn:aws:es:ap-southeast-2:493712557159:domain/flat-white",
+        "arn:aws:es:ap-southeast-2:493712557159:domain/flat-white/*"
+      ],
       "Sid": "OpenSearch"
     },
     {

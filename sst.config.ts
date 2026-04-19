@@ -353,6 +353,10 @@ export default $config({
           resources: [`${OPENSEARCH_DOMAIN_ARN}/*`],
         },
         {
+          actions: ["xray:PutTraceSegments", "xray:PutTelemetryRecords"],
+          resources: ["*"],
+        },
+        {
           actions: ["lambda:InvokeFunction"],
           resources: [quotaEmailWorkerFn.arn],
         },
