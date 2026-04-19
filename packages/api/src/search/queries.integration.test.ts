@@ -30,8 +30,57 @@ const ADDRESS_ALIAS = PRODUCT_REGISTRY["address"]!.alias;
 const TEST_INDEX = `${ADDRESS_ALIAS}-test-${Date.now()}`;
 
 const client = new Client({ node: OPENSEARCH_URL });
+type AliasOptions = Record<string, unknown>;
+type AliasSnapshotEntry = { index: string; options: AliasOptions };
+
+let originalAliasSnapshot: AliasSnapshotEntry[] = [];
+let testIndexCreated = false;
+let aliasIsolated = false;
+
+function unwrapResponseBody<T extends object>(response: T | { body: T }): T {
+  return "body" in response ? response.body : response;
+}
+
+async function snapshotAliasState(alias: string): Promise<AliasSnapshotEntry[]> {
+  try {
+    const existingAlias = unwrapResponseBody(await client.indices.getAlias({ name: alias })) as Record<
+      string,
+      { aliases?: Record<string, AliasOptions> }
+    >;
+    return Object.entries(existingAlias).map(([index, config]) => ({
+      index,
+      options: config.aliases?.[alias] ?? {},
+    }));
+  } catch (error) {
+    const statusCode = (error as { statusCode?: number }).statusCode;
+    if (statusCode !== 404) {
+      throw error;
+    }
+    return [];
+  }
+}
+
+function buildAliasIsolationActions(alias: string, snapshot: AliasSnapshotEntry[], isolatedIndex: string) {
+  return [
+    ...snapshot.map(({ index }) => ({
+      remove: { index, alias },
+    })),
+    { add: { index: isolatedIndex, alias } },
+  ];
+}
+
+function buildAliasRestoreActions(alias: string, snapshot: AliasSnapshotEntry[], isolatedIndex: string) {
+  return [
+    { remove: { index: isolatedIndex, alias } },
+    ...snapshot.map(({ index, options }) => ({
+      add: { index, alias, ...options },
+    })),
+  ];
+}
 
 before(async () => {
+  originalAliasSnapshot = await snapshotAliasState(ADDRESS_ALIAS);
+
   // Create test index with required mappings
   await client.indices.create({
     index: TEST_INDEX,
@@ -40,9 +89,16 @@ before(async () => {
       mappings: fixtureMappings,
     },
   });
+  testIndexCreated = true;
 
-  // Alias so queries.ts (which uses the product-registry alias) hits our test index
-  await client.indices.putAlias({ index: TEST_INDEX, name: ADDRESS_ALIAS });
+  // Alias so queries.ts (which uses the product-registry alias) hits only our
+  // test index, even if a local OpenSearch already has live fixture aliases.
+  await client.indices.updateAliases({
+    body: {
+      actions: buildAliasIsolationActions(ADDRESS_ALIAS, originalAliasSnapshot, TEST_INDEX),
+    },
+  });
+  aliasIsolated = true;
 
   // Bulk index fixture data
   const body = fixtureAddresses.flatMap((doc) => {
@@ -57,7 +113,19 @@ before(async () => {
 
 after(async () => {
   __setClientForTesting(undefined);
-  await client.indices.delete({ index: TEST_INDEX, ignore_unavailable: true });
+  try {
+    if (aliasIsolated) {
+      await client.indices.updateAliases({
+        body: {
+          actions: buildAliasRestoreActions(ADDRESS_ALIAS, originalAliasSnapshot, TEST_INDEX),
+        },
+      });
+    }
+  } finally {
+    if (testIndexCreated) {
+      await client.indices.delete({ index: TEST_INDEX, ignore_unavailable: true });
+    }
+  }
   await client.close();
 });
 
@@ -339,4 +407,80 @@ test("lookupSuburb: nonexistent suburb returns clean empty response", async () =
   assert.equal(result.suburb, "ZZZXXXNONEXISTENT");
   assert.deepEqual(result.postcodes, []);
   assert.equal(result.address_count, 0);
+});
+
+test("alias fixture restore preserves existing alias options", async () => {
+  const alias = `addresses-roundtrip-${Date.now()}`;
+  const originalIndex = `${alias}-original`;
+  const isolatedIndex = `${alias}-isolated`;
+  let cleanupError: unknown;
+
+  await client.indices.create({ index: originalIndex });
+  await client.indices.create({ index: isolatedIndex });
+
+  try {
+    await client.indices.updateAliases({
+      body: {
+        actions: [
+          {
+            add: {
+              index: originalIndex,
+              alias,
+              is_write_index: true,
+              is_hidden: false,
+              search_routing: "search-route",
+              index_routing: "write-route",
+              filter: { term: { state: "VIC" } },
+            },
+          },
+        ],
+      },
+    });
+
+    const beforeSnapshot = await snapshotAliasState(alias);
+    assert.deepEqual(beforeSnapshot, [
+      {
+        index: originalIndex,
+        options: {
+          filter: { term: { state: "VIC" } },
+          index_routing: "write-route",
+          is_hidden: false,
+          is_write_index: true,
+          search_routing: "search-route",
+        },
+      },
+    ]);
+
+    await client.indices.updateAliases({
+      body: {
+        actions: buildAliasIsolationActions(alias, beforeSnapshot, isolatedIndex),
+      },
+    });
+
+    await client.indices.updateAliases({
+      body: {
+        actions: buildAliasRestoreActions(alias, beforeSnapshot, isolatedIndex),
+      },
+    });
+
+    const afterSnapshot = await snapshotAliasState(alias);
+    assert.deepEqual(afterSnapshot, beforeSnapshot);
+  } finally {
+    let deleteAliasError: unknown;
+    try {
+      await client.indices.deleteAlias({ index: "_all", name: alias });
+    } catch (error) {
+      const statusCode = (error as { statusCode?: number }).statusCode;
+      if (statusCode !== 404) {
+        deleteAliasError = error;
+      }
+    }
+    await client.indices.delete({ index: originalIndex, ignore_unavailable: true });
+    await client.indices.delete({ index: isolatedIndex, ignore_unavailable: true });
+    cleanupError = deleteAliasError;
+  }
+
+  if (cleanupError) {
+    throw cleanupError;
+  }
 });
