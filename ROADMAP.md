@@ -23,7 +23,7 @@
 | --------- | -------------------------- | ------- | ---------- | ----------- |
 | **P0**    | Infrastructure Foundation  | 6       | 6/6 ✅     | Week 1      |
 | **P1A**   | API Core (Address)         | 13      | 9/13       | Weeks 2-3   |
-| **P1B**   | Auth & Billing             | 13      | 5/13       | Weeks 3-4   |
+| **P1B**   | Auth & Billing             | 13      | 7/13       | Weeks 3-4   |
 | **P1C**   | Dashboard                  | 7       | 0/7        | Weeks 4-5   |
 | **P1D**   | Docs & SDK                 | 5       | 2/5        | Week 5      |
 | **P1E**   | Ingestion (Phase 1)        | 6       | 4/6        | Week 6      |
@@ -32,7 +32,7 @@
 | **P3**    | GLEIF/LEI + Full Dashboard | 7       | 0/7        | Weeks 11-13 |
 | **P4**    | Shopify + WooCommerce      | 5       | 0/5        | Weeks 14-17 |
 | **P5**    | CVE/NVD + Patents          | 4       | 0/4        | Weeks 18-21 |
-| **Total** |                            | **76**  | **27/76**  |             |
+| **Total** |                            | **76**  | **29/76**  |             |
 
 ---
 
@@ -1524,59 +1524,58 @@ This ticket covers only the webhook side. P1C.03 covers the user-driven key crea
 ```yaml
 id: P1B.06
 title: Stripe Webhook Handler (4 events + grace)
-status: pending
+status: complete
 priority: p0-critical
 epic: P1B
 persona: [api-consumer]
 depends_on: [P1B.03, P1B.04]
-completed: null
+completed: 2026-04-18
 ```
 
-#### User Story
+#### Shipped State
 
-As a developer changing plans, my API keys reflect the new tier/quota on the next request. As a developer whose card fails, I get a 14-day grace period before losing service. As a platform operator, Stripe subscription state drives DynamoDB state deterministically.
+`POST /webhooks/stripe` is live in dev and prod.
 
-#### Problem Statement
+Implemented event contract:
 
-Four event types: `checkout.session.completed` (initial upgrade), `customer.subscription.updated` (plan change + past_due + recovered), `customer.subscription.deleted` (cancel / end of grace), `invoice.payment_failed` (log only). All require signature verification, `stripe.customers.retrieve(customerId)` to read `metadata.orgId`, and batched updates across all keys for the org. See ARCHITECTURE.MD §5.7.2–§5.7.5.
+- `checkout.session.completed`
+- `customer.subscription.updated`
+- `customer.subscription.deleted`
+- `invoice.payment_failed` (log-only)
 
-#### Definition of Done
+Shipped behavior:
 
-##### Functional
+- Verifies `stripe-signature` via `stripe.webhooks.constructEvent()`
+- Resolves `orgId` from Stripe customer metadata
+- Rebuilds billing state from live Stripe metadata:
+  - recurring Price/Product `metadata.prontiqTier`
+  - metered Product `metadata.prontiqProduct`
+- Reconciles the full same-tier billing snapshot on every `customer.subscription.updated`
+- Uses replay-safe webhook claim/finalize markers in `prontiq-keys`
+- Rejects malformed or duplicate metered product mappings instead of silently skipping them
+- Handles zero-key orgs by updating the `ORG#{orgId}` envelope as the authoritative billing snapshot
+- Applies `paymentOverdue` transitions on `past_due` / recovery
+- Logs `invoice.payment_failed` without mutating DynamoDB
 
-- [ ] Signature verified via `stripe.webhooks.constructEvent()` — unsigned → 400
-  - `Verify:` Unsigned POST returns 400
-  - `Evidence:` Handler log
-- [ ] `checkout.session.completed` (per ARCHITECTURE.MD §5.7.2 — two-step Stripe read required):
-  1. Retrieve customer → read orgId from metadata
-  2. Get `subscription` ID from event → `stripe.subscriptions.retrieve(subId, {expand: ['items.data.price']})` to get the per-product subscription items (Checkout Session events do NOT include `items` inline)
-  3. Build subscriptionItems map by reading Stripe metadata dynamically: recurring Price/Product `metadata.prontiqTier` declares the plan tier; metered Stripe Product `metadata.prontiqProduct` declares the enabled API product; record `item.id` (the `si_...`) per enabled Prontiq product
-  4. **Validate**: the recurring plan tier metadata is known and at least one metered Prontiq product is enabled. Missing/invalid metadata → return 500 with SNS alert (Stripe will retry; persistent failure pages oncall — better than silent under-billing)
-  5. Query `prontiq-keys` by orgId via GSI `orgId-index` with **`FilterExpression: "attribute_exists(keyPrefix) AND attribute_exists(active)"`** (sentinel guard per ARCHITECTURE.MD §5.5.1 — excludes ORG envelope and any future singleton rows). Returns ALL real API-key items for this org.
-  6. TransactWriteItems: update each key (tier/products/quota/rateLimit/stripeSubscriptionId/subscriptionItems) + ADD each hash to REGISTRY#active-keys
-  7. Reset warning/limit email flags on usage items; audit UPGRADE
-  - `Verify:` Test card upgrade Free→Growth; (a) `subscriptionItems` map populated for every Growth product (`address`, `abn`, `lei`, `cve`, `patents`); (b) deliberately delete the ABN metered Price in Stripe Dashboard before the test → webhook returns 500, SNS alert fires; (c) `/v1/address/enrich` works (Starter-only product) on next request
-  - `Evidence:` Integration test covering happy path + missing-product validation failure
-- [ ] `customer.subscription.updated` (plan change, paid→paid): update each key (tier, products, quota, rateLimit, subscriptionItems), reset email flags; **keep hash in REGISTRY#active-keys** (still billable — §5.5.1 event table); audit UPGRADE or DOWNGRADE per tier delta
-  - `Verify:` Starter→Growth via Stripe customer portal; keys reflect change; `aws dynamodb get-item --table prontiq-keys --key '{"apiKeyHash":{"S":"REGISTRY#active-keys"}}'` shows hash still in activeHashes set
-  - `Evidence:` Integration test covering both Starter→Growth and Growth→Starter
-- [ ] `customer.subscription.updated` (past_due): set `paymentOverdue: true` on all org keys + send SES payment failure email
-  - `Verify:` Simulate past_due via Stripe CLI; X-Payment-Overdue: true header appears on next request; email sent (check SES logs)
-  - `Evidence:` Integration test + CloudWatch log
-- [ ] `customer.subscription.updated` (active after past_due): clear `paymentOverdue: false` on all org keys
-  - `Verify:` Resolve past_due with new card; subsequent requests no longer have X-Payment-Overdue header
-  - `Evidence:` Integration test
-- [ ] `customer.subscription.deleted`: downgrade all keys to free (tier="free", products=["address"], quotaPerProduct=10000, rateLimit=10), clear stripeSubscriptionId/subscriptionItems/paymentOverdue, DELETE each hash from REGISTRY#active-keys, audit DOWNGRADE
-  - `Verify:` Cancel subscription; at period end all org keys return to free tier limits
-  - `Evidence:` Integration test
-- [ ] `invoice.payment_failed`: log event, no DDB writes
-  - `Verify:` Simulate payment failure; log entry present; no DDB change
-  - `Evidence:` CloudWatch log
-- [ ] Idempotent across events: replaying the same event ID is a no-op
+Verification evidence:
+
+- Unit + integration coverage in `packages/webhooks`
+- Real Stripe sandbox deliveries exercised in `dev` on 2026-04-19 for:
+  - tier reconciliation
+  - `past_due`
+  - recovery back to `active`
+  - cancellation / downgrade
+  - `invoice.payment_failed` log-only
+- Production deploy completed successfully on 2026-04-19 (workflow run `24617074850`)
+
+Operator source of truth:
+
+- `docs/runbooks/stripe-webhook.md`
+- `ARCHITECTURE.MD` §5.7.2–§5.7.5
 
 #### Scope
 
-**In:** 4 Stripe event handlers, orgId resolution, batched org-key updates, registry mutations, email on past_due, audit writes
+**In:** 4 Stripe event handlers, orgId resolution, batched org-key updates, registry mutations, best-effort `past_due` email, audit writes, replay-safe idempotency
 
 **Out — Do Not Implement:**
 

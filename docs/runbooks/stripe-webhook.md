@@ -9,6 +9,23 @@ Implemented in P1B.06:
 - handles `customer.subscription.deleted`
 - logs `invoice.payment_failed`
 
+## Current Endpoints
+
+| Stage | URL | Status |
+|---|---|---|
+| `dev` | `https://59jym47ia1.execute-api.ap-southeast-2.amazonaws.com/webhooks/stripe` | deployed and exercised on real Stripe sandbox deliveries |
+| `prod` | `https://api.prontiq.dev/webhooks/stripe` | deployed and Stripe destination configured |
+
+Current production Stripe destination:
+
+- Destination ID: `we_1TNj1SGU4RM7bEKoX6oSjygi`
+- URL: `https://api.prontiq.dev/webhooks/stripe`
+- Enabled events:
+  - `checkout.session.completed`
+  - `customer.subscription.updated`
+  - `customer.subscription.deleted`
+  - `invoice.payment_failed`
+
 ## Required GitHub Environment Secrets / Vars
 
 For `dev` and `prod`, set these before deploy:
@@ -130,3 +147,18 @@ After deploy:
 3. Confirm DynamoDB reflects the expected tier/subscription state on the org’s keys.
 4. Confirm one audit row for the Stripe event.
 5. Confirm duplicate replay of the same event is a no-op.
+
+### Latest rollout evidence
+
+- `dev` was exercised end to end on 2026-04-19 with real Stripe sandbox deliveries for:
+  - `customer.subscription.updated` tier reconciliation
+  - `customer.subscription.updated` `past_due`
+  - `customer.subscription.updated` recovery back to `active`
+  - `customer.subscription.deleted`
+  - `invoice.payment_failed` log-only
+- `prod` deployed successfully on 2026-04-19 via GitHub Actions run `24617074850`.
+- `prod` Stripe destination was verified on 2026-04-19:
+  - destination exists
+  - signing secret present
+  - subscribed billing events correct
+- At the time of this note, no real production billing event has yet landed. Treat the first real production billing delivery as the final live confirmation point.

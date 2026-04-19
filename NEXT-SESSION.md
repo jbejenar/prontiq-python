@@ -5,6 +5,40 @@
 
 ---
 
+## Session 15 — 2026-04-19
+
+**Focus:** Post-rollout Stripe verification in dev and prod after the billing webhook + hourly meter push shipped.
+
+### Verified live in dev
+
+- Real Stripe sandbox deliveries hit `https://59jym47ia1.execute-api.ap-southeast-2.amazonaws.com/webhooks/stripe`.
+- Exercised end to end:
+  - `customer.subscription.updated` tier reconciliation
+  - `customer.subscription.updated` `past_due`
+  - `customer.subscription.updated` recovery
+  - `customer.subscription.deleted`
+  - `invoice.payment_failed` log-only
+- Verified with real DynamoDB state changes and audit rows in `prontiq-keys-dev` / `prontiq-audit-dev`.
+- Temporary sandbox subscriptions were cleaned up and the two test org envelopes were returned to free state after verification.
+
+### Verified in prod
+
+- Production deploy completed successfully via workflow run `24617074850`.
+- Production Stripe destination verified:
+  - URL `https://api.prontiq.dev/webhooks/stripe`
+  - destination `we_1TNj1SGU4RM7bEKoX6oSjygi`
+  - subscribed events exactly match the implemented handler contract
+- A non-billing live event resend (`customer.created`) proved Stripe can target the destination, but it is not part of the subscribed billing event set and is not treated as webhook proof.
+- The first real production billing delivery remains the final live confirmation point.
+
+### Next session should start with
+
+1. Read NEXT-WORK.md.
+2. **P1B.08 — SES suppression / bounce handling.**
+3. Use `docs/runbooks/stripe-webhook.md` as the operator source of truth when the first real prod billing delivery lands.
+
+---
+
 ## Session 14 — 2026-04-18
 
 **Focus:** P1B.10 — hourly billing cron into Stripe meters, plus full billing-doc reconciliation after the Stripe webhook/catalog work landed.

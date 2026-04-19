@@ -1,9 +1,9 @@
 # NEXT-WORK.md — Active Sprint
 
 > Extracted from ROADMAP.md. This is what agents should work on NOW.
-> Last updated: 2026-04-18 (Session 13)
+> Last updated: 2026-04-19 (Session 15)
 
-## Current Phase: P1B.05 complete; selecting next P1B ticket
+## Current Phase: P1B.10 complete; selecting next P1B hardening ticket
 
 ### What's Live
 
@@ -12,6 +12,7 @@
 | API | `https://api.prontiq.dev` | ✅ 6 endpoints, 15M docs, custom domain |
 | Docs | `https://docs.prontiq.dev` | ✅ Mintlify Luma theme, OpenAPI playground |
 | Clerk webhook | `https://api.prontiq.dev/webhooks/clerk` | ✅ verifies Svix sig, provisions ORG envelope on `organizationMembership.created` (admin role) |
+| Stripe webhook | `https://api.prontiq.dev/webhooks/stripe` | ✅ deployed; prod destination configured, dev exercised on real Stripe sandbox deliveries |
 | Account setup | `POST https://api.prontiq.dev/v1/account/setup` | ✅ Clerk-JWT recovery endpoint; same `provisionOrg` code path as the webhook; idempotent |
 | TypeScript SDK | `sdks/typescript/` (`@prontiq/sdk` v0.1.0) | ✅ Auto-generated; npm publish pending NPM_TOKEN secret |
 | OpenAPI spec | `/openapi.json` (committed in `packages/docs/`) | ✅ Generated from Zod, CI verifies freshness |
@@ -22,6 +23,7 @@
 - Hash-based API key auth (`prontiq-keys` + `prontiq-usage`) is live in production.
 - The P1B.04/P1B.04b cutover shipped on 2026-04-16 and has been exercised in prod.
 - **P1B.05 complete (2026-04-18).** Clerk webhook handler (`POST /webhooks/clerk`) AND `POST /v1/account/setup` recovery endpoint both live in dev + prod. Webhook dev verified end-to-end with real Svix traffic on 2026-04-18: `org_3CTU4Oh1XTqVdEGcyTBGqRWujCm` provisioned (Stripe customer `cus_UM5zw8xl8HgS9n`, ORG envelope, audit row, all atomic via `TransactWriteItems`); 4 subsequent Svix retries returned `already_exists` with zero side effects. Account-setup endpoint runs the same `createProvisioningService().provisionOrg(...)` code path as the webhook, so a delayed/missed webhook is recoverable from the dashboard. Three Lambdas now serve `PqApi`: address-API `$default` (hot path), `PqClerkWebhook` (Svix-signed), `PqAccount` (Clerk-JWT-authenticated `/v1/account/*`).
+- **P1B.06 + P1B.10 complete (2026-04-18; rollout verified 2026-04-19).** Stripe webhook + hourly billing cron are live in dev + prod. Dev Stripe webhook verification has been exercised end to end on real sandbox deliveries across tier reconciliation, `past_due`, recovery, cancellation, and `invoice.payment_failed` log-only. Prod is deployed, the Stripe destination is configured correctly, and the first real production billing event is now the final live confirmation point.
 - **`@prontiq/control-plane` package** (recovered from prior design + hardened) provides `createProvisioningService()`, `writeAudit()` / `buildAuditTransactItem()`, AND `resolvePrimaryEmail()`. Both ingress paths (Clerk webhook + `/v1/account/setup`) consume the same provisioning service AND the same verified-primary-email helper — invariants enforced once at the package boundary.
 - The legacy raw-key table is retained only for rollback/soak; the old `pq_live_prod_...` seed key has been rotated and revoked.
 - Future prod seed-key rotation now has an operator command:
@@ -69,6 +71,7 @@ POST /v1/account/setup  (Clerk JWT; not API key — recovery provisioning)
 - ~~P1B.05 — Clerk webhook handler + recovery endpoint~~ ✅ shipped (2026-04-18)
 - ~~P1B.06 — Stripe webhook handler~~ ✅ shipped (2026-04-18) — `POST /webhooks/stripe` now handles `checkout.session.completed`, `customer.subscription.updated`, `customer.subscription.deleted`, and `invoice.payment_failed` log-only with replay-safe claim/finalize webhook markers, strict metered-item validation, full same-tier subscription reconciliation, usage-flag resets on paid-plan transitions, and best-effort `past_due` email delivery.
 - ~~P1B.10 — billing cron~~ ✅ shipped (2026-04-18) — hourly `PqBillingCron` now reads `REGISTRY#active-keys` plus `REGISTRY#retired-billing-keys`, walks the `newHash-redirect-index` chain, sums accumulated credits per product family/month, and emits replay-safe Stripe meter events using deterministic `pendingMeterEventIdentifier` / `pendingMeterTargetCumulativeCount` state on the current hash usage row before advancing `lastPushedCumulativeCount`. Scope discovery now uses current entitlements plus outstanding/pending usage rows, and full downgrade/cancellation keeps hashes in the retired registry until their final billable deltas are drained instead of under-billing. Retirement eligibility always checks both current and previous month so a lingering prior-month delta cannot make a retired hash disappear outside the day-1 grace window, and revoked keys (`active=false`) still flush final retired-billing deltas because request auth activity is intentionally separate from billing finalisation.
+- **P1B.06 / P1B.10 rollout status (2026-04-19):** dev Stripe webhook verification is complete on real sandbox deliveries across tier reconciliation, `past_due`, recovery, cancellation, and `invoice.payment_failed`. Prod is deployed and the Stripe destination is configured correctly, but the first real production billing delivery is still the final live confirmation point.
 - ~~P1B.07 — `prontiq-audit` writer helper~~ ✅ shipped
 - P1B.08 — SES suppression / bounce handling (also unblocks the welcome email path going green from `emailSent: false`)
 - P1B.11 — month-close job
