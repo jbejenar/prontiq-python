@@ -152,6 +152,14 @@ export default $config({
       };
     }
 
+    function sharedEmailIdentityResources() {
+      const fromEmail = process.env.WELCOME_EMAIL_FROM ?? "noreply@prontiq.dev";
+      return [
+        `arn:aws:ses:${AWS_REGION}:${AWS_ACCOUNT_ID}:identity/prontiq.dev`,
+        `arn:aws:ses:${AWS_REGION}:${AWS_ACCOUNT_ID}:identity/${fromEmail}`,
+      ];
+    }
+
     const sesFeedbackFn = new sst.aws.Function("PqSesFeedback", {
       handler: "packages/control-plane/src/ses-feedback.handler",
       architecture: "arm64",
@@ -187,9 +195,7 @@ export default $config({
       permissions: [
         {
           actions: ["ses:SendEmail", "ses:SendRawEmail"],
-          resources: [
-            `arn:aws:ses:${AWS_REGION}:${AWS_ACCOUNT_ID}:identity/prontiq.dev`,
-          ],
+          resources: sharedEmailIdentityResources(),
         },
       ],
       environment: sharedEmailEnv(),
@@ -897,9 +903,7 @@ export default $config({
       permissions: [
         {
           actions: ["ses:SendEmail", "ses:SendRawEmail"],
-          resources: [
-            `arn:aws:ses:${AWS_REGION}:${AWS_ACCOUNT_ID}:identity/prontiq.dev`,
-          ],
+          resources: sharedEmailIdentityResources(),
         },
       ],
       environment: {
@@ -923,9 +927,7 @@ export default $config({
       permissions: [
         {
           actions: ["ses:SendEmail", "ses:SendRawEmail"],
-          resources: [
-            `arn:aws:ses:${AWS_REGION}:${AWS_ACCOUNT_ID}:identity/prontiq.dev`,
-          ],
+          resources: sharedEmailIdentityResources(),
         },
       ],
       environment: {
@@ -1101,9 +1103,7 @@ export default $config({
       permissions: [
         {
           actions: ["ses:SendEmail", "ses:SendRawEmail"],
-          resources: [
-            `arn:aws:ses:${AWS_REGION}:${AWS_ACCOUNT_ID}:identity/prontiq.dev`,
-          ],
+          resources: sharedEmailIdentityResources(),
         },
       ],
       environment: controlPlaneEnv(),

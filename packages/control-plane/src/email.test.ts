@@ -1,6 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { getActiveSuppressionRecord, isSuppressedEmail } from "./email.js";
+import {
+  getActiveSuppressionRecord,
+  isSuppressedEmail,
+  sendSignedSesEmailWithClient,
+} from "./email.js";
 import type { SesSuppressionRecord } from "@prontiq/shared";
 
 function makeDdb(record?: SesSuppressionRecord) {
@@ -79,4 +83,26 @@ test("getActiveSuppressionRecord preserves permanent complaints", () => {
     lastEventAt: "2026-01-01T00:00:00.000Z",
     reason: "complaint",
   });
+});
+
+test("sendSignedSesEmailWithClient succeeds without relying on env credentials", async () => {
+  let sendCount = 0;
+  const ok = await sendSignedSesEmailWithClient(
+    {
+      bodyText: "hello",
+      configurationSetName: "prontiq-transactional-dev",
+      fromEmail: "noreply@prontiq.dev",
+      region: "ap-southeast-2",
+      subject: "subject",
+      toEmail: "success@simulator.amazonses.com",
+    },
+    {
+      async send() {
+        sendCount += 1;
+      },
+    },
+  );
+
+  assert.equal(ok, true);
+  assert.equal(sendCount, 1);
 });

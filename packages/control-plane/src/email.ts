@@ -1,4 +1,4 @@
-import { createHash, createHmac } from "node:crypto";
+import { SESv2Client, SendEmailCommand } from "@aws-sdk/client-sesv2";
 import { GetCommand } from "@aws-sdk/lib-dynamodb";
 import type { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 import {
@@ -16,6 +16,12 @@ export interface SignedSesEmailInput {
   subject: string;
   toEmail: string;
 }
+
+interface SesEmailClientLike {
+  send(command: SendEmailCommand): Promise<unknown>;
+}
+
+const sesClients = new Map<string, SESv2Client>();
 
 export function normalizeEmailForSuppression(email: string): string {
   return email.trim().toLowerCase();
@@ -64,70 +70,43 @@ export async function isSuppressedEmail(
 }
 
 export async function sendSignedSesEmail(input: SignedSesEmailInput): Promise<boolean> {
-  const accessKeyId = process.env.AWS_ACCESS_KEY_ID;
-  const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY;
-  if (!accessKeyId || !secretAccessKey) {
-    return false;
+  return sendSignedSesEmailWithClient(input, getSesClient(input.region));
+}
+
+function getSesClient(region: string): SESv2Client {
+  const cached = sesClients.get(region);
+  if (cached) {
+    return cached;
   }
-  const sessionToken = process.env.AWS_SESSION_TOKEN;
-  const now = new Date();
-  const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, "");
-  const dateStamp = amzDate.slice(0, 8);
-  const service = "ses";
-  const host = `email.${input.region}.amazonaws.com`;
-  const path = "/v2/email/outbound-emails";
-  const endpoint = `https://${host}${path}`;
-  const body = JSON.stringify({
-    ConfigurationSetName: input.configurationSetName,
-    Content: {
-      Simple: {
-        Body: {
-          Text: {
-            Data: input.bodyText,
+  const client = new SESv2Client({ region });
+  sesClients.set(region, client);
+  return client;
+}
+
+export async function sendSignedSesEmailWithClient(
+  input: SignedSesEmailInput,
+  client: SesEmailClientLike,
+): Promise<boolean> {
+  try {
+    await client.send(
+      new SendEmailCommand({
+        ConfigurationSetName: input.configurationSetName,
+        Content: {
+          Simple: {
+            Body: {
+              Text: {
+                Data: input.bodyText,
+              },
+            },
+            Subject: { Data: input.subject },
           },
         },
-        Subject: { Data: input.subject },
-      },
-    },
-    Destination: { ToAddresses: [input.toEmail] },
-    FromEmailAddress: input.fromEmail,
-  });
-  const payloadHash = createHash("sha256").update(body).digest("hex");
-  const canonicalHeaders = [
-    "content-type:application/json",
-    `host:${host}`,
-    `x-amz-date:${amzDate}`,
-    ...(sessionToken ? [`x-amz-security-token:${sessionToken}`] : []),
-  ].join("\n");
-  const signedHeaders = [
-    "content-type",
-    "host",
-    "x-amz-date",
-    ...(sessionToken ? ["x-amz-security-token"] : []),
-  ].join(";");
-  const canonicalRequest = ["POST", path, "", `${canonicalHeaders}\n`, signedHeaders, payloadHash].join("\n");
-  const credentialScope = `${dateStamp}/${input.region}/${service}/aws4_request`;
-  const stringToSign = [
-    "AWS4-HMAC-SHA256",
-    amzDate,
-    credentialScope,
-    createHash("sha256").update(canonicalRequest).digest("hex"),
-  ].join("\n");
-  const dateKey = createHmac("sha256", `AWS4${secretAccessKey}`).update(dateStamp).digest();
-  const regionKey = createHmac("sha256", dateKey).update(input.region).digest();
-  const serviceKey = createHmac("sha256", regionKey).update(service).digest();
-  const signingKey = createHmac("sha256", serviceKey).update("aws4_request").digest();
-  const signature = createHmac("sha256", signingKey).update(stringToSign).digest("hex");
-  const response = await fetch(endpoint, {
-    method: "POST",
-    headers: {
-      Authorization: `AWS4-HMAC-SHA256 Credential=${accessKeyId}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`,
-      "Content-Type": "application/json",
-      Host: host,
-      "X-Amz-Date": amzDate,
-      ...(sessionToken ? { "X-Amz-Security-Token": sessionToken } : {}),
-    },
-    body,
-  });
-  return response.ok;
+        Destination: { ToAddresses: [input.toEmail] },
+        FromEmailAddress: input.fromEmail,
+      }),
+    );
+    return true;
+  } catch {
+    return false;
+  }
 }
