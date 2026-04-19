@@ -20,6 +20,16 @@ jobs:
       group: sst-deploy-prod
       cancel-in-progress: false
     steps:
+      - name: Require main branch for prod deploy
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_REF}" != "refs/heads/main" ]]; then
+            echo "::error::Deploy to Production must be dispatched from refs/heads/main. Current ref: ${GITHUB_REF}"
+            echo "::error::Re-run this workflow from the main branch after merge."
+            exit 1
+          fi
+
       - uses: actions/checkout@v6
 
       - uses: pnpm/action-setup@v6
