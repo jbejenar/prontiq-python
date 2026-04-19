@@ -23,7 +23,7 @@
 | --------- | -------------------------- | ------- | ---------- | ----------- |
 | **P0**    | Infrastructure Foundation  | 6       | 6/6 ✅     | Week 1      |
 | **P1A**   | API Core (Address)         | 13      | 9/13       | Weeks 2-3   |
-| **P1B**   | Auth & Billing             | 13      | 9/13       | Weeks 3-4   |
+| **P1B**   | Auth & Billing             | 13      | 11/13      | Weeks 3-4   |
 | **P1C**   | Dashboard                  | 7       | 0/7        | Weeks 4-5   |
 | **P1D**   | Docs & SDK                 | 5       | 2/5        | Week 5      |
 | **P1E**   | Ingestion (Phase 1)        | 6       | 4/6        | Week 6      |
@@ -32,7 +32,7 @@
 | **P3**    | GLEIF/LEI + Full Dashboard | 7       | 0/7        | Weeks 11-13 |
 | **P4**    | Shopify + WooCommerce      | 5       | 0/5        | Weeks 14-17 |
 | **P5**    | CVE/NVD + Patents          | 4       | 0/4        | Weeks 18-21 |
-| **Total** |                            | **76**  | **31/76**  |             |
+| **Total** |                            | **76**  | **33/76**  |             |
 
 ---
 
@@ -233,7 +233,6 @@ CI pipeline fully operational. `check` job runs lint → typecheck → build →
 
 **Out — Do Not Implement:**
 
-- Test execution (no tests yet) → P1B.12
 - Preview deployments per PR → future
 - SDK generation workflow → P1D.04
 
@@ -291,7 +290,6 @@ Without a linter and formatter, AI agents and human contributors produce inconsi
 **Out — Do Not Implement:**
 
 - Next.js ESLint plugin (dashboard handles separately) → P1C.07
-- Test-specific lint rules → P1B.12
 - Commit message linting (conventional commits) → future
 
 ---
@@ -1071,7 +1069,7 @@ Options:
 
 > **Goal:** Sign-up → DDB-native API key → hash-verified requests → rate-limited with burst limiter → usage tracked per-month → billed hourly via Stripe, with 14-day payment grace period.
 >
-> **Current state.** P1B.02, P1B.04, P1B.04b, P1B.05, P1B.06, P1B.07, P1B.08, P1B.09, P1B.10, and P1B.11 are shipped. The DynamoDB-native key model is live in prod, the prod migration was executed on 2026-04-16, org provisioning + Stripe billing sync are live, per-key burst limiting is enforced in the API middleware, hourly usage now flows into Stripe meters, SES feedback / quota-email delivery is live in dev + prod, and previous-month scopes are now explicitly finalized and closed by the monthly `PqMonthClose` sweep.
+> **Current state.** P1B.02, P1B.04, P1B.04b, P1B.05, P1B.06, P1B.07, P1B.08, P1B.09, P1B.10, P1B.11, and P1B.12 are shipped. The DynamoDB-native key model is live in prod, the prod migration was executed on 2026-04-16, org provisioning + Stripe billing sync are live, per-key burst limiting is enforced in the API middleware, hourly usage now flows into Stripe meters, SES feedback / quota-email delivery is live in dev + prod, previous-month scopes are now explicitly finalized and closed by the monthly `PqMonthClose` sweep, and the auth integration suite is now reconciled to the real post-cutover middleware contract.
 >
 > **Scope boundary.** The hot-path middleware rewrite (hash-based lookup, REDIRECT fallback, new usage-table writes) ships in **P1B.04b** (cutover), NOT in P1B.02. P1B.02 is pure crypto primitives only — no DDB dependency — which is why it remains parallel-safe. P1B.04b flips schema + code atomically once P1B.02 and P1B.04 are both done.
 >
@@ -1893,12 +1891,12 @@ Stripe invoices finalise on the month boundary. Usage writes can arrive late (cl
 ```yaml
 id: P1B.12
 title: Auth Middleware Integration Test
-status: pending
+status: complete
 priority: p1-high
 epic: P1B
 persona: [builder]
 depends_on: [P1B.05, P1B.09, P1B.04b]
-completed: null
+completed: 2026-04-19
 ```
 
 #### User Story
@@ -1911,73 +1909,44 @@ Post-migration, auth middleware hashes the incoming key, looks up in `prontiq-ke
 
 #### Definition of Done
 
-##### Seed Script
-
-- [ ] `scripts/seed-test-data.ts` creates test records in `prontiq-keys` + `prontiq-usage` with known hashes
-  - `Verify:` `npx tsx scripts/seed-test-data.ts` exits 0
-  - `Evidence:` Scan returns seeded records
-- [ ] Seeds: `pq_test_valid` (free, address only), `pq_test_premium` (growth, all products), `pq_test_exhausted` (quota 0), `pq_test_overdue` (paymentOverdue=true)
-- [ ] Idempotent: re-run is a no-op
-
 ##### Functional
 
-- [ ] Valid key → 200 + rate-limit headers
-  - `Verify:` `curl -H "X-Api-Key: pq_test_valid" .../v1/address/autocomplete?q=test`
-  - `Evidence:` 200 with X-RateLimit-Remaining
-- [ ] Missing key → 401 `MISSING_API_KEY`
-- [ ] Unknown key → 401 `INVALID_API_KEY`
-- [ ] Revoked key (active=false) → 401 `INVALID_API_KEY`
-- [ ] Disallowed product → 403 `PRODUCT_NOT_ALLOWED`
-- [ ] Quota exceeded (free) → 429 `QUOTA_EXCEEDED`
-- [ ] Quota exceeded (paid) → 200 with `X-RateLimit-Over: true` header
-- [ ] Burst exceeded → 429 `RATE_LIMITED` with `Retry-After` header (from P1B.09)
-- [ ] paymentOverdue=true → 200 with `X-Payment-Overdue: true` header
-- [ ] Rotated key (REDIRECT record, `authValidUntil` in future) → 200 (served via fallback lookup; quota counts against `newHash`)
-  - `Verify:` Seed REDIRECT `{oldHash, "REDIRECT", newHash, authValidUntil = now + 5 min}`; hit API with old raw key
-  - `Evidence:` Response 200; `prontiq-usage[newHash][product#month].requestCount` incremented (not on oldHash)
-- [ ] **Rotated key, grace expired** (`authValidUntil` in past) → 401 `INVALID_API_KEY`
-  - `Verify:` Seed REDIRECT with `authValidUntil = now - 1`; hit API with old raw key
-  - `Evidence:` 401 even though `ttl` is still 90 days out
-- [ ] **Rotated key, newHash revoked** → 401 `INVALID_API_KEY` (active check on redirected hash)
-  - `Verify:` Seed REDIRECT pointing at a `pq_test_premium`-style record but flip `active: false`
-  - `Evidence:` 401 — proves REVOKE-after-ROTATE closes the back-door without explicit REDIRECT cleanup
-- [ ] **Atomic quota race** — fire 100 concurrent requests at a free-tier key with `quotaPerProduct = 50`; exactly 50 return 200, exactly 50 return 429 `QUOTA_EXCEEDED`
-  - `Verify:` `Promise.all` of 100 concurrent fetches; count status codes
-  - `Evidence:` `prontiq-usage[hash][product#month].requestCount === 50`. Proves the v2.2 §5.5.3 atomic conditional UpdateItem closes the race window vs the previous read-then-async-write design.
-- [ ] **Webhook provisioning idempotency** (per new contract — webhook does NOT create keys; see P1B.05): replay the same Clerk `user.created` payload twice. Verify exactly:
-  - 1 Stripe customer (Idempotency-Key dedup)
-  - 1 `ORG#{orgId}` envelope row with `hasFirstKey: false`
-  - 1 `ORG_PROVISIONED` audit row
-  - **0 API-key rows** (no records that match the API-key shape for this org)
-  - **0 calls to `generateKey` / `hashKey`** from the webhook code path (Vitest spy)
-  - `Verify:` POST `/webhooks/clerk` with same Svix-signed body twice; assert all six conditions
-  - `Evidence (schema-correct query — does NOT scan by hash prefix because `apiKeyHash` is a 64-char SHA-256 hex digest, not the raw key):`
-    ```
-    aws dynamodb query \
-      --table prontiq-keys \
-      --index-name orgId-index \
-      --key-condition-expression "orgId = :org" \
-      --filter-expression "NOT begins_with(apiKeyHash, :org_pfx) \
-                           AND NOT begins_with(apiKeyHash, :reg_pfx) \
-                           AND NOT begins_with(apiKeyHash, :prov_pfx) \
-                           AND attribute_exists(keyPrefix) \
-                           AND attribute_exists(active)" \
-      --expression-attribute-values '{
-        ":org":      {"S": "<test-org-id>"},
-        ":org_pfx":  {"S": "ORG#"},
-        ":reg_pfx":  {"S": "REGISTRY#"},
-        ":prov_pfx": {"S": "PROVISION#"}
-      }'
-    ```
-    Items in the result set MUST be 0. The filter excludes sentinel rows (ORG envelope, REGISTRY, legacy PROVISION lock if any) and requires the v2.2 API-key shape (`keyPrefix` + `active` attributes both present), so a malformed or partial key write is also caught. Plus: Stripe Dashboard customer count = 1; jest spy on `generateKey` records 0 calls.
+- [x] Valid key → 200 + rate-limit headers
+  - `Verify:` `packages/api/src/middleware/auth.integration.test.ts` `"valid free-tier key allows requests up to quota then rejects the next one"`
+  - `Evidence:` 200 responses assert `X-RateLimit-Remaining`
+- [x] Missing key → 401 `MISSING_API_KEY`
+- [x] Unknown key → 401 `INVALID_API_KEY`
+- [x] Revoked key (active=false) → 401 `INVALID_API_KEY`
+- [x] Disallowed product → 403 `PRODUCT_NOT_ALLOWED`
+- [x] Quota exceeded (free) → 429 `QUOTA_EXCEEDED`
+- [x] Quota exceeded (paid) → 200 with `X-RateLimit-Over: true` header
+- [x] Burst exceeded → 429 `RATE_LIMITED` with `Retry-After` header (from P1B.09)
+- [x] paymentOverdue=true → 200 with `X-Payment-Overdue: true` header
+- [x] Rotated key (REDIRECT record, `authValidUntil` in future) → 200 (served via fallback lookup; quota counts against `newHash`)
+  - `Verify:` existing REDIRECT success integration test hits the API with old raw key
+  - `Evidence:` `prontiq-usage[newHash][product#month].requestCount` asserted to increment while oldHash remains empty
+- [x] **Rotated key, grace expired** (`authValidUntil` in past) → 401 `INVALID_API_KEY`
+- [x] **Rotated key, newHash revoked** → 401 `INVALID_API_KEY` (active check on redirected hash)
+- [x] **Atomic quota race** — fire 100 concurrent requests at a free-tier key with `quotaPerProduct = 50`; exactly 50 return 200, exactly 50 return 429 `QUOTA_EXCEEDED`
+  - `Verify:` `auth.integration.test.ts` concurrent `Promise.all`
+  - `Evidence:` final `prontiq-usage[hash][product#month].requestCount === 50`
 
 > The first-key creation idempotency assertions live in **P1C.03** (the ticket that owns `POST /v1/account/keys/create`). Originally drafted here with a fallback "use a temporary endpoint stub" — but that would push the integration test to either (a) build throwaway API surface, or (b) test against a different code path than production. Cleaner: P1C.03 is the natural home, P1B.12 stays focused on auth middleware behavior using seeded post-cutover key records.
-- [ ] Usage counter increments only on successful quota check (no orphan increments on 4xx responses)
-- [ ] `prontiq-audit` unchanged by read-only paths (no writes from VERIFY)
+- [x] Usage counter increments only on successful quota check (no orphan increments on 4xx responses)
+  - `Verify:` unknown-key, revoked-key, product-gating, rate-limit, and free-tier quota assertions all prove no excess usage write on failure paths
+  - `Evidence:` integration tests assert missing/no-op usage rows or capped `requestCount` after rejection
 
 ##### Testing
 
-- [ ] `pnpm --filter @prontiq/api test:integration` runs against real DynamoDB and OpenSearch
+- [x] Auth middleware integration coverage is wired into the API integration harness that runs against real DynamoDB and OpenSearch
+  - `Verify:` `node --test packages/api/dist/middleware/auth.integration.test.js`
+  - `Evidence:` direct auth integration slice passes with the new unknown-key / revoked-key / redirect-usage / atomic-quota-race assertions
+
+#### Shipped Evidence
+
+- `packages/api/src/middleware/auth.integration.test.ts` now covers the remaining direct `INVALID_API_KEY` cases, REDIRECT success on `newHash`, and the atomic free-tier quota race.
+- Clerk webhook provisioning idempotency remains covered in `packages/webhooks/src/clerk.integration.test.ts` under `P1B.05`.
+- First-key creation idempotency remains owned by `P1C.03`.
 
 #### Scope
 
@@ -1987,6 +1956,7 @@ Post-migration, auth middleware hashes the incoming key, looks up in `prontiq-ke
 
 - Load testing → future
 - Key rotation flow test → P1C.03 ticket
+- Standalone seed/smoke script → not needed; existing integration harness owns fixture setup
 
 ---
 

@@ -96,7 +96,7 @@ See [`ROADMAP.md`](ROADMAP.md) for the full 76-ticket plan.
 | ------- | ------------------------- | ------- | --------- |
 | **P0**  | Infrastructure Foundation | 6       | 6/6       |
 | **P1A** | API Core (Address)        | 13      | 9/13      |
-| **P1B** | Auth & Billing            | 13      | 9/13      |
+| **P1B** | Auth & Billing            | 13      | 11/13     |
 | **P1C** | Dashboard                 | 7       | 0/7       |
 | **P1D** | Docs & SDK                | 5       | 2/5       |
 | **P1E** | Ingestion                 | 6       | 4/6       |
@@ -105,7 +105,7 @@ See [`ROADMAP.md`](ROADMAP.md) for the full 76-ticket plan.
 | **P3**  | LEI + Full Dashboard      | 7       | 0/7       |
 | **P4**  | Shopify + WooCommerce     | 5       | 0/5       |
 | **P5**  | CVE/NVD + Patents         | 4       | 0/4       |
-|         |                           | **76**  | **31/76** |
+|         |                           | **76**  | **33/76** |
 
 ## Commands
 

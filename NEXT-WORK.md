@@ -1,7 +1,7 @@
 # NEXT-WORK.md — Active Sprint
 
 > Extracted from ROADMAP.md. This is what agents should work on NOW.
-> Last updated: 2026-04-19 (Session 19)
+> Last updated: 2026-04-19 (Session 20)
 
 ## Current Phase: Post-P1B billing hardening
 
@@ -27,6 +27,7 @@
 - **P1B.08 complete (2026-04-19; rollout verified 2026-04-19).** SES feedback ingestion, suppression-aware welcome / `past_due` / quota emails, and 80% / 100% quota notifications are live in dev + prod. `prontiq.dev` is verified in SES with DKIM active, simulator-based positive-send plus bounce / complaint flows were exercised in both stages, and the post-merge config-set IAM/send-path fixes are deployed. SES is still in sandbox, so simulator validation is complete but normal-recipient delivery remains blocked until AWS production access is enabled.
 - **P1B.11 complete (2026-04-19).** `PqMonthClose` is live in dev + prod on `cron(30 0 1 * ? *)`. It reuses the same replay-safe pending meter identifier model as `PqBillingCron`, finalizes previous-month deltas exactly once, and marks the current-hash previous-month scope `closed=true` so the hourly cron stops revisiting it permanently. Dev integration and manual service verification proved: remaining previous-month delta push, zero-delta close, predecessor-only chain finalization, rerun idempotency, and hourly-cron skip on closed prior-month scopes.
 - **P1B.09 complete (2026-04-19).** Per-key burst limiting is now explicitly extracted into `packages/api/src/middleware/rate-limit.ts`, remains enforced in the live auth path, and is covered by both unit and integration tests for burst exhaustion, refill, key isolation, and no orphan usage increments on `RATE_LIMITED`.
+- **P1B.12 complete (2026-04-19).** The auth middleware integration suite is now reconciled to the real post-cutover surface: direct unknown/revoked key failures, REDIRECT success writing usage on `newHash`, no orphan usage on pre-increment failures, and the atomic free-tier quota race are all covered in `packages/api/src/middleware/auth.integration.test.ts`. The roadmap ticket no longer claims webhook idempotency, first-key creation, or a standalone seed script.
 - **`@prontiq/control-plane` package** (recovered from prior design + hardened) provides `createProvisioningService()`, `writeAudit()` / `buildAuditTransactItem()`, AND `resolvePrimaryEmail()`. Both ingress paths (Clerk webhook + `/v1/account/setup`) consume the same provisioning service AND the same verified-primary-email helper — invariants enforced once at the package boundary.
 - The legacy raw-key table is retained only for rollback/soak; the old `pq_live_prod_...` seed key has been rotated and revoked.
 - Future prod seed-key rotation now has an operator command:
@@ -96,15 +97,15 @@ POST /v1/account/setup  (Clerk JWT; not API key — recovery provisioning)
 
 Recommended priority:
 
-1. P1B.12 — auth middleware integration-test reconciliation. Most of the auth chain is already covered, but the roadmap ticket needs to be closed against the real post-P1B.09 surface instead of left as a stale future item.
-2. P1F.02 — monitoring + alerting. Control-plane coverage now includes `PqClerkWebhookErrors`, `PqStripeWebhookErrors`, `PqBillingCronErrors`, `PqMonthCloseErrors`, `PqAccountErrors`, `PqSesFeedbackErrors`, and `PqQuotaEmailWorkerErrors`. Need broader DDB/Stripe/OpenSearch visibility before P1C dashboard work goes live.
-3. P1C account surface rebuild. The billing/backend primitives are now materially complete enough that customer-facing account/billing UX can resume after auth-test reconciliation and observability hardening.
+1. P1F.02 — monitoring + alerting. Control-plane coverage now includes `PqClerkWebhookErrors`, `PqStripeWebhookErrors`, `PqBillingCronErrors`, `PqMonthCloseErrors`, `PqAccountErrors`, `PqSesFeedbackErrors`, and `PqQuotaEmailWorkerErrors`. Need broader DDB/Stripe/OpenSearch visibility before P1C dashboard work goes live.
+2. P1C account surface rebuild. The billing/backend primitives are now materially complete enough that customer-facing account/billing UX can resume after observability hardening.
+3. P1A.09 — API Gateway caching, if latency/cost work is preferred ahead of dashboard rebuild.
 
 Reason:
 
-- P1B.09 is now shipped: the per-key burst limiter is explicitly extracted and verified, so P1B.12 is the remaining auth test-cleanup ticket.
-- P1B.08 and P1B.11 are already shipped, so the remaining auth/billing work is test reconciliation plus observability hardening.
-- After that, the highest-value next work is the rebuilt customer-facing account surface.
+- P1B auth/billing execution is effectively complete; the remaining high-value work is observability hardening before the customer-facing account surface lands.
+- P1C remains the next product-facing milestone once monitoring is in place.
+- API Gateway caching remains a pragmatic performance/cost option if platform work is preferred over dashboard work.
 
 ### Operator follow-ups (one-time, not blocking next ticket)
 

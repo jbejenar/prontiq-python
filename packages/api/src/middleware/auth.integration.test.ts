@@ -227,9 +227,34 @@ test("missing API key returns MISSING_API_KEY", async () => {
   assert.equal(body.error.code, "MISSING_API_KEY");
 });
 
+test("unknown API key returns INVALID_API_KEY", async () => {
+  const response = await request("/v1/address/autocomplete", "pq_test_unknown_key_123");
+  const body = (await response.json()) as { error: { code: string } };
+
+  assert.equal(response.status, 401);
+  assert.equal(body.error.code, "INVALID_API_KEY");
+
+  const usage = await getUsage(hashKey("pq_test_unknown_key_123"), `address#${CURRENT_MONTH}`);
+  assert.equal(usage, undefined);
+});
+
+test("revoked key returns INVALID_API_KEY", async () => {
+  const rawKey = "pq_test_revoked_key_123";
+  const record = await seedKey(rawKey, { active: false, quotaPerProduct: 10, rateLimit: 10, tier: "starter" });
+
+  const response = await request("/v1/address/autocomplete", rawKey);
+  const body = (await response.json()) as { error: { code: string } };
+
+  assert.equal(response.status, 401);
+  assert.equal(body.error.code, "INVALID_API_KEY");
+
+  const usage = await getUsage(record.apiKeyHash, `address#${CURRENT_MONTH}`);
+  assert.equal(usage, undefined);
+});
+
 test("valid free-tier key allows requests up to quota then rejects the next one", async () => {
   const rawKey = "pq_test_valid_key_123";
-  await seedKey(rawKey, { quotaPerProduct: 2, rateLimit: 10, tier: "free" });
+  const record = await seedKey(rawKey, { quotaPerProduct: 2, rateLimit: 10, tier: "free" });
 
   const first = await request("/v1/address/autocomplete", rawKey);
   assert.equal(first.status, 200);
@@ -243,6 +268,9 @@ test("valid free-tier key allows requests up to quota then rejects the next one"
   const body = (await third.json()) as { error: { code: string } };
   assert.equal(third.status, 429);
   assert.equal(body.error.code, "QUOTA_EXCEEDED");
+
+  const usage = await getUsage(record.apiKeyHash, `address#${CURRENT_MONTH}`);
+  assert.equal(usage?.requestCount, 2);
 });
 
 test("growth-tier key can exceed quota and gets the overage header", async () => {
@@ -360,12 +388,20 @@ test("RATE_LIMITED responses do not increment usage", async () => {
 
 test("product gating rejects disallowed products", async () => {
   const rawKey = "pq_test_product_key_123";
-  await seedKey(rawKey, { products: ["address"], tier: "starter", quotaPerProduct: 10, rateLimit: 10 });
+  const record = await seedKey(rawKey, {
+    products: ["address"],
+    tier: "starter",
+    quotaPerProduct: 10,
+    rateLimit: 10,
+  });
 
   const response = await request("/v1/abn/ping", rawKey);
   const body = (await response.json()) as { error: { code: string } };
   assert.equal(response.status, 403);
   assert.equal(body.error.code, "PRODUCT_NOT_ALLOWED");
+
+  const usage = await getUsage(record.apiKeyHash, `abn#${CURRENT_MONTH}`);
+  assert.equal(usage, undefined);
 });
 
 test("enabled products without billing weights fail closed", async () => {
@@ -423,6 +459,12 @@ test("redirect fallback authenticates with the new active key", async () => {
 
   const response = await request("/v1/address/autocomplete", oldRawKey);
   assert.equal(response.status, 200);
+
+  const usageOnNewHash = await getUsage(newRecord.apiKeyHash, `address#${CURRENT_MONTH}`);
+  assert.equal(usageOnNewHash?.requestCount, 1);
+
+  const usageOnOldHash = await getUsage(hashKey(oldRawKey), `address#${CURRENT_MONTH}`);
+  assert.equal(usageOnOldHash, undefined);
 });
 
 test("redirect to inactive key is rejected", async () => {
@@ -657,4 +699,31 @@ test("threshold crossing response does not await quota worker enqueue", async ()
 
   resolveEnqueue?.();
   await Promise.all(backgroundPromises);
+});
+
+test("free-tier quota update is atomic under concurrent requests", async () => {
+  const rawKey = "pq_test_atomic_quota_race_key_123";
+  const record = await seedKey(rawKey, {
+    quotaPerProduct: 50,
+    rateLimit: null,
+    tier: "free",
+  });
+
+  const responses = await Promise.all(
+    Array.from({ length: 100 }, () => request("/v1/address/autocomplete", rawKey)),
+  );
+
+  const successCount = responses.filter((response) => response.status === 200).length;
+  const quotaExceededCount = responses.filter((response) => response.status === 429).length;
+
+  assert.equal(successCount, 50);
+  assert.equal(quotaExceededCount, 50);
+
+  for (const response of responses.filter((candidate) => candidate.status === 429)) {
+    const body = (await response.json()) as { error: { code: string } };
+    assert.equal(body.error.code, "QUOTA_EXCEEDED");
+  }
+
+  const usage = await getUsage(record.apiKeyHash, `address#${CURRENT_MONTH}`);
+  assert.equal(usage?.requestCount, 50);
 });

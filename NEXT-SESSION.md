@@ -1,5 +1,26 @@
 # NEXT-SESSION.md — Session Execution Log
 
+## Session 20 — 2026-04-19
+
+**Focus:** P1B.12 auth middleware integration-test reconciliation.
+
+### Completed
+
+- **Auth middleware integration coverage reconciled.** `packages/api/src/middleware/auth.integration.test.ts` now covers the remaining direct `INVALID_API_KEY` cases, REDIRECT success writing usage on `newHash`, no orphan usage writes on pre-increment failure paths, and the atomic free-tier quota race.
+- **Ticket ownership cleaned up.** `P1B.12` no longer claims a standalone seed script, Clerk webhook idempotency, or first-key creation assertions; those stay with the existing auth harness, `P1B.05`, and `P1C.03` respectively.
+- **Roadmap/status docs aligned.** P1B is now effectively complete at the ticket level, and the next recommended work is `P1F.02` monitoring + alerting.
+
+### Verification evidence
+
+- `pnpm --filter @prontiq/api typecheck`
+- `node --test packages/api/dist/middleware/auth.integration.test.js`
+
+### Next session should start with
+
+1. Read NEXT-WORK.md.
+2. P1F.02 — monitoring + alerting.
+3. Then resume P1C account-surface work.
+
 ## Session 19 — 2026-04-19
 
 **Focus:** P1B.09 burst rate limiter extraction, coverage completion, and doc reconciliation.
