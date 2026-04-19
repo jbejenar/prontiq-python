@@ -1,7 +1,5 @@
 /// <reference path="./.sst/platform/config.d.ts" />
 
-import { calculateOpenSearchLowFreeStorageThresholdMiB } from "./packages/shared/src/observability.js";
-
 /**
  * Naming convention:
  * SST generates AWS names as: {app}-{stage}-{componentName}{ResourceType}-{hash}
@@ -42,6 +40,9 @@ export default $config({
   },
   async run() {
     const pulumi = await import("@pulumi/pulumi");
+    const { calculateOpenSearchLowFreeStorageThresholdMiB } = await import(
+      "./packages/shared/src/observability.js"
+    );
 
     // ═══════════════════════════════════════════════════════════════════════
     // EXISTING INFRASTRUCTURE
