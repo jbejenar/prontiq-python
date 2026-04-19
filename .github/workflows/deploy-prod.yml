@@ -10,6 +10,8 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     environment: prod
+    env:
+      NEXT_PUBLIC_API_URL: https://api.prontiq.dev
     permissions:
       id-token: write
       contents: read

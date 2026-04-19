@@ -1,0 +1,27 @@
+{
+  "name": "console",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node ../../scripts/run-frontend-task.mjs console build",
+    "dev": "node ../../scripts/start-frontend-dev.mjs console",
+    "lint": "eslint app lib",
+    "typecheck": "node ../../scripts/run-frontend-task.mjs console typecheck"
+  },
+  "dependencies": {
+    "@prontiq/sdk": "workspace:*",
+    "@prontiq/tokens": "workspace:*",
+    "@t3-oss/env-nextjs": "^0.13.8",
+    "next": "^15.5.6",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "@types/react": "^19.2.2",
+    "@types/react-dom": "^19.2.2",
+    "chokidar-cli": "^3.0.0"
+  }
+}

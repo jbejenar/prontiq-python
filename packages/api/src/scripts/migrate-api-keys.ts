@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { resolve } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { fileURLToPath } from "node:url";
 import {
@@ -325,7 +326,7 @@ async function main(): Promise<void> {
   }
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
   void main();
 }
 

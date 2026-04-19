@@ -4,9 +4,11 @@
  * Per-package TypeScript build helper.
  *
  * Modes:
- *   build → remove this package's own dist/ + tsbuildinfo, then
- *           run `tsc --build` for this package.
- *   clean → remove this package's own dist/ + tsbuildinfo and exit.
+ *   build     → remove this package's own dist/ + tsbuildinfo, then
+ *               run `tsc --build` for this package.
+ *   clean     → remove this package's own dist/ + tsbuildinfo and exit.
+ *   typecheck → ensure referenced composite projects are built, then
+ *               run `tsc --noEmit` for this package.
  *
  * Two intentional design choices, both load-bearing:
  *
@@ -38,14 +40,27 @@
  * `turbo clean && turbo build` — that orchestrates clean+build with
  * proper task-level serialization, instead of having every per-package
  * build try to police its dependencies' lifecycle.
+ *
+ * `typecheck` intentionally does NOT delete this package's outputs.
+ * Composite project references require referenced projects' emitted
+ * declarations to exist before `tsc --noEmit` will validate a package
+ * from a clean checkout. The contract is therefore:
+ *   1. `tsc --build` first, so referenced projects are emitted
+ *   2. `tsc --noEmit`, so this package still gets a pure typecheck pass
+ *
+ * This keeps package-local `typecheck` self-sufficient without requiring
+ * callers to know which upstream packages must be built first.
  */
 
 import { rm } from "node:fs/promises";
 import { spawn } from "node:child_process";
-import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { dirname, resolve } from "node:path";
 
 const mode = process.argv[2] ?? "build";
 const packageDir = process.cwd();
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const tscCli = resolve(repoRoot, "node_modules", "typescript", "bin", "tsc");
 const targets = ["dist", "tsconfig.tsbuildinfo"];
 
 async function removeOwnTargets() {
@@ -61,8 +76,7 @@ async function removeOwnTargets() {
 
 function runTsc(args) {
   return new Promise((resolvePromise, rejectPromise) => {
-    const pnpmExecutable = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
-    const child = spawn(pnpmExecutable, ["exec", "tsc", ...args], {
+    const child = spawn(process.execPath, [tscCli, ...args], {
       cwd: packageDir,
       stdio: "inherit",
     });
@@ -84,14 +98,21 @@ function runTsc(args) {
   });
 }
 
-await removeOwnTargets();
-
 if (mode === "clean") {
+  await removeOwnTargets();
   process.exit(0);
 }
 
-if (mode !== "build") {
-  throw new Error(`Unsupported mode: ${mode}`);
+if (mode === "build") {
+  await removeOwnTargets();
+  await runTsc(["--build"]);
+  process.exit(0);
 }
 
-await runTsc(["--build"]);
+if (mode === "typecheck") {
+  await runTsc(["--build"]);
+  await runTsc(["--noEmit"]);
+  process.exit(0);
+}
+
+throw new Error(`Unsupported mode: ${mode}`);

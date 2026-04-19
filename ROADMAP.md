@@ -13,7 +13,7 @@
 
 **Stack:** SST v4 + Pulumi · Hono + @hono/zod-openapi · OpenSearch 2.19 · DynamoDB (DDB-native keys, hash-based) · Clerk · Stripe · Next.js 15 · Mintlify · Speakeasy
 
-**Repo:** pnpm monorepo with Turborepo. 9 workspace packages live today; the ratified frontend shape expands that with `apps/landing`, `apps/console`, and `packages/tokens`. TypeScript strict. ESM only.
+**Repo:** pnpm monorepo with Turborepo. Frontend foundations are now scaffolded in-repo via `apps/landing`, `apps/console`, `packages/tokens`, and workspace-wired `sdks/typescript`. TypeScript strict. ESM only.
 
 ---
 
@@ -22,9 +22,9 @@
 | Phase     | Epic                       | Tickets | Done       | Target      |
 | --------- | -------------------------- | ------- | ---------- | ----------- |
 | **P0**    | Infrastructure Foundation  | 6       | 6/6 ✅     | Week 1      |
-| **P1A**   | API Core (Address)         | 13      | 9/13       | Weeks 2-3   |
+| **P1A**   | API Core (Address)         | 13      | 10/13      | Weeks 2-3   |
 | **P1B**   | Auth & Billing             | 13      | 11/13      | Weeks 3-4   |
-| **P1C**   | Frontend Surfaces          | 8       | 0/8        | Weeks 4-6   |
+| **P1C**   | Frontend Surfaces          | 8       | 1/8        | Weeks 4-6   |
 | **P1D**   | Docs & SDK                 | 5       | 2/5        | Week 5      |
 | **P1E**   | Ingestion (Phase 1)        | 6       | 4/6        | Week 6      |
 | **P1F**   | Distribution               | 2       | 2/2        | Week 6      |
@@ -32,7 +32,7 @@
 | **P3**    | GLEIF/LEI + Full Dashboard | 7       | 0/7        | Weeks 11-13 |
 | **P4**    | Shopify + WooCommerce      | 5       | 0/5        | Weeks 14-17 |
 | **P5**    | CVE/NVD + Patents          | 4       | 0/4        | Weeks 18-21 |
-| **Total** |                            | **77**  | **34/77**  |             |
+| **Total** |                            | **77**  | **36/77**  |             |
 
 ---
 
@@ -741,12 +741,12 @@ As an API consumer, `GET /v1/address/lookup/suburb?suburb=coffin+bay` returns po
 ```yaml
 id: P1A.08
 title: Error Response Consistency
-status: pending
+status: complete
 priority: p1-high
 epic: P1A
 persona: [api-consumer]
 depends_on: [P1A.01]
-completed: null
+completed: 2026-04-19
 ```
 
 #### User Story
@@ -1973,12 +1973,12 @@ Post-migration, auth middleware hashes the incoming key, looks up in `prontiq-ke
 ```yaml
 id: P1C.00
 title: Frontend Foundations
-status: pending
+status: complete
 priority: p0-critical
 epic: P1C
 persona: [builder]
 depends_on: [P0.02]
-completed: null
+completed: 2026-04-19
 tech_stack:
   framework: Next.js 15
   package_manager: pnpm workspace
@@ -1998,22 +1998,22 @@ The console visual direction should follow `docs/prototypes/console-dashboard-v1
 
 ##### Functional
 
-- [ ] Workspace wiring includes `apps/*`
+- [x] Workspace wiring includes `apps/*`
   - `Verify:` `pnpm -r list --depth -1` shows landing and console workspaces
   - `Evidence:` `pnpm-workspace.yaml`
-- [ ] `apps/landing` scaffolded as the future `prontiq.dev`
+- [x] `apps/landing` scaffolded as the future `prontiq.dev`
   - `Verify:` `pnpm --filter landing build`
   - `Evidence:` Next.js app directory exists
-- [ ] `apps/console` scaffolded as the future `console.prontiq.dev`
+- [x] `apps/console` scaffolded as the future `console.prontiq.dev`
   - `Verify:` `pnpm --filter console build`
   - `Evidence:` Next.js app directory exists
-- [ ] `packages/tokens` scaffolded with emitted artifacts contract
+- [x] `packages/tokens` scaffolded with emitted artifacts contract
   - `Verify:` `pnpm --filter @prontiq/tokens build`
   - `Evidence:` package emits CSS + Tailwind preset placeholders
-- [ ] Shared frontend env validation pattern established
+- [x] Shared frontend env validation pattern established
   - `Verify:` invalid env fails build in one app
   - `Evidence:` app-local `lib/env.ts`
-- [ ] Existing `sdks/typescript` is the documented frontend SDK source
+- [x] Existing `sdks/typescript` is the documented frontend SDK source
   - `Verify:` console imports `@prontiq/sdk` without a parallel SDK package
   - `Evidence:` no `packages/sdk` introduced
 

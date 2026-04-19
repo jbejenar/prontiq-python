@@ -1,9 +1,9 @@
 # NEXT-WORK.md — Active Sprint
 
 > Extracted from ROADMAP.md. This is what agents should work on NOW.
-> Last updated: 2026-04-19 (Session 22)
+> Last updated: 2026-04-19 (Session 24)
 
-## Current Phase: P1C frontend ratification -> foundations
+## Current Phase: P1C foundations -> component base
 
 ### What's Live
 
@@ -89,18 +89,18 @@ POST /v1/account/setup  (Clerk JWT; not API key — recovery provisioning)
 ### 3. Ratified frontend rebuild
 
 - P1C remains effectively a fresh build; the older `packages/web` / `/account` model is retired and should not be treated as partially live.
-- Frontend architecture is now ratified around future `apps/landing`, future `apps/console`, and future `packages/tokens`.
+- `P1C.00` is now implemented: `apps/landing`, `apps/console`, `packages/tokens`, shared content contracts, and workspace wiring are scaffolded in-repo.
+- Frontend architecture is now ratified around scaffolded `apps/landing`, scaffolded `apps/console`, and scaffolded `packages/tokens`.
 
 ## Recommended Next Work
 
 Recommended priority:
 
-1. P1C.00 — frontend foundations (`apps/landing`, `apps/console`, `packages/tokens`, workspace/env scaffolding).
-2. P1C.07 — shadcn/ui + Tailwind v3.4 setup on top of those foundations.
-3. P1C account/landing surface rebuild after `P1C.00` and `P1C.07`.
-4. P1E.05 / P1E.06 ingestion hardening if platform work is preferred over frontend work.
+1. P1C.07 — shadcn/ui + Tailwind v3.4 setup on top of the scaffolded foundations.
+2. P1C account/landing surface rebuild after `P1C.07`.
+3. P1E.05 / P1E.06 ingestion hardening if platform work is preferred over frontend work.
 
-Before starting `P1C.00`, read:
+Before starting `P1C.07`, read:
 
 - `docs/FRONTEND-STRATEGY.md`
 - `docs/prototypes/console-dashboard-v1.html`
@@ -112,7 +112,7 @@ Reason:
 
 - P1B auth/billing execution is effectively complete.
 - P1F observability hardening is now closed.
-- The next milestone is the ratified two-app frontend build.
+- The next milestone is the component/tooling base on top of the scaffolded two-app frontend.
 - API Gateway caching remains a pragmatic performance/cost option if platform work is preferred over dashboard work.
 
 ### Operator follow-ups (one-time, not blocking next ticket)

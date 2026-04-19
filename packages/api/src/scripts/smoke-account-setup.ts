@@ -595,7 +595,7 @@ export async function run(): Promise<number> {
   return result.kind === "json" ? 1 : 2;
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   run()
     .then((code) => process.exit(code))
     .catch((error) => {

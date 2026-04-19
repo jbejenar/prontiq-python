@@ -1,0 +1,30 @@
+{
+  "name": "@prontiq/tokens",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./preset": {
+      "import": "./dist/tailwind-preset.js"
+    },
+    "./tokens.css": "./dist/tokens.css",
+    "./mint-theme.json": "./dist/mint-theme.json",
+    "./ses-vars.json": "./dist/ses-vars.json"
+  },
+  "scripts": {
+    "build": "node ../../scripts/ts-package-build.mjs clean && tsc -p tsconfig.json && node dist/build-cli.js",
+    "typecheck": "tsc --noEmit",
+    "test": "pnpm -w build --filter @prontiq/tokens... && node --test dist/**/*.test.js",
+    "lint": "eslint src/",
+    "clean": "node ../../scripts/ts-package-build.mjs clean"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0"
+  }
+}

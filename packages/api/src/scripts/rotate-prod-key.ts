@@ -8,6 +8,7 @@ import {
   ScanCommand,
   UpdateCommand,
 } from "@aws-sdk/lib-dynamodb";
+import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ApiKeyRecord, UsageCounterRecord } from "@prontiq/shared";
 import { generateKey, hashKey } from "@prontiq/shared";
@@ -368,6 +369,6 @@ async function main(): Promise<void> {
   );
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
   void main();
 }

@@ -7,8 +7,8 @@
     "outDir": "dist",
     "rootDir": "src",
     "paths": {
-      "@prontiq/shared": ["../shared/dist/index.d.ts"],
-      "@prontiq/shared/*": ["../shared/dist/*"]
+      "@prontiq/shared": ["../shared/src/index.ts"],
+      "@prontiq/shared/*": ["../shared/src/*"]
     },
     "types": ["node"]
   },

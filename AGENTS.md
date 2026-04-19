@@ -15,6 +15,11 @@ pnpm --filter @prontiq/api build
 pnpm --filter @prontiq/shared typecheck
 ```
 
+The scaffolded frontend apps default `NEXT_PUBLIC_API_URL` to
+`https://api.prontiq.dev` for local build/typecheck/dev when the variable is
+unset. Override it explicitly only when pointing `apps/landing` or
+`apps/console` at a different API host.
+
 ## Architecture
 
 **Unified data API platform** for Australian and global open data. See `ARCHITECTURE.MD` for the full design.
@@ -25,7 +30,7 @@ pnpm --filter @prontiq/shared typecheck
 
 **Stack (live):** burst rate limiting (P1B.09), Stripe webhook (P1B.06), SES bounce/complaint feedback + quota emails (P1B.08), hourly billing cron (P1B.10), and month-close finalisation (P1B.11) are implemented. The architecture source of truth now treats **credits** as the customer-facing billing unit and endpoint weights as the internal rating model.
 
-**Stack (planned — remaining P1C and later):** `/account` dashboard (P1C) plus the later product epics.
+**Stack (planned — remaining P1C and later):** frontend shell/component work (P1C.07+) plus the later product epics. `P1C.00` foundations are now scaffolded in-repo.
 
 ## Monorepo Structure
 
@@ -37,10 +42,16 @@ packages/
   ingestion/      -> @prontiq/ingestion       Step Functions + Lambda bulk indexing
   webhooks/       -> @prontiq/webhooks        Clerk webhook handler + Stripe billing webhook
   docs/           -> @prontiq/docs            Mintlify documentation
+  tokens/         -> @prontiq/tokens          Frontend token scaffold + emitted artifact contract
   plugins/
     shopify/      -> Checkout UI Extension
     woocommerce/  -> WP plugin
     web-component/ -> <prontiq-address> widget
+apps/
+  landing/        -> landing                  Next.js scaffold for prontiq.dev
+  console/        -> console                  Next.js scaffold for console.prontiq.dev
+sdks/
+  typescript/     -> @prontiq/sdk            Speakeasy-generated TypeScript SDK
 ```
 
 **Dependency graph:**
@@ -58,7 +69,7 @@ packages/
 
 ## Testing Patterns
 
-- **Framework:** `node:test` (Node's built-in runner; no Vitest in this repo). Tests run after a per-package build via `pnpm -w build --filter @prontiq/<pkg>... && node --test dist/<file>.test.js`. See any package's `package.json` `test` script for the canonical invocation.
+- **Framework:** `node:test` is the default for backend, infrastructure, and utility packages. Frontend apps (`apps/landing`, `apps/console`) will use Vitest + Testing Library once UI/component tests are introduced; `P1C.00` does not wire that stack yet. Existing package tests run after a per-package build via `pnpm -w build --filter @prontiq/<pkg>... && node --test dist/<file>.test.js`. See any package's `package.json` `test` script for the canonical invocation.
 - **Test files:** Co-located as `*.test.ts` next to source files. Integration tests use the `*.integration.test.ts` suffix and run separately via the `test:integration` script.
 - **Mocking:** Dependency injection at the service boundary. `createProvisioningService({ ddb, stripe, sleep, logger, sendWelcomeEmail })`, `createClerkHandler({ service, webhookSecret, clerkClient, adminRoles })` — every dependency is overridable for tests. Never mock SDK clients directly.
 - **Integration tests** hit real DynamoDB Local (`amazon/dynamodb-local:2.5.2`) and real OpenSearch via the `integration-test` job's service containers in CI. Locally: `docker run -p 8000:8000 amazon/dynamodb-local:2.5.2` then `pnpm --filter @prontiq/<pkg> test:integration`.

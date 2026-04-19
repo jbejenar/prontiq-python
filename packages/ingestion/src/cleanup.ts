@@ -8,7 +8,12 @@ import { PRODUCT_REGISTRY, createLogger } from "@prontiq/shared";
 const logger = createLogger("ingestion-cleanup");
 
 export const handler: Handler = async () => {
-  for (const [product, config] of Object.entries(PRODUCT_REGISTRY)) {
+  for (const product of Object.keys(PRODUCT_REGISTRY)) {
+    const config = PRODUCT_REGISTRY[product];
+    if (!config) {
+      continue;
+    }
+
     // TODO: List all indices matching {product}-*
     // TODO: Identify which index the alias currently points to
     // TODO: Delete indices older than config.retention_hours

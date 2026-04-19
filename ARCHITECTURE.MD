@@ -1967,9 +1967,9 @@ Only users with the Clerk role `admin` can create, rotate, or revoke keys. The `
 
 ### 5.10 Brand
 
-**Source of truth:** future `packages/tokens` package.
+**Source of truth:** `packages/tokens` package.
 
-The planned token source is `packages/tokens/src/tokens.ts`. It will emit:
+The token source is `packages/tokens/src/tokens.ts`. It emits the scaffolded contract that later P1C work will fully author:
 
 - CSS variables for both Next.js apps
 - Tailwind preset for app styling
@@ -2047,7 +2047,7 @@ const { entity } = await prontiq.lei.lookup({ lei: "549300MLUDYVRQOOXS22" });
 
 ## 6. Monorepo Structure
 
-Live layout today plus planned frontend additions. The future frontend shape is `apps/landing`, `apps/console`, and `packages/tokens` — not `packages/web` and not a single `/account` page.
+Live layout today plus scaffolded frontend foundations. The frontend shape is `apps/landing`, `apps/console`, and `packages/tokens` — not `packages/web` and not a single `/account` page.
 
 ```
 prontiq-platform/
@@ -2109,12 +2109,12 @@ prontiq-platform/
 │   │   │   ├── stripe.ts               # 4 events (§5.7) — stub; P1B.06
 │   │   │   └── index.ts                # Router
 │   │   └── package.json
-│   ├── tokens/                         # Planned (P1C) — design tokens + emitted theming artifacts
+│   ├── tokens/                         # Scaffolded (P1C.00) — design tokens + emitted theming artifacts
 │   └── plugins/                        # Phase 4 distribution
 │       ├── shopify/                    # Checkout UI Extension
 │       ├── woocommerce/                # WP plugin
 │       └── web-component/              # <prontiq-address> widget
-├── apps/                               # Planned (P1C)
+├── apps/                               # Scaffolded (P1C.00)
 │   ├── landing/                        # Next.js 15 — prontiq.dev
 │   └── console/                        # Next.js 15 — console.prontiq.dev
 ├── scripts/                            # sync-brand-to-mintlify.ts, seed-test-data.ts, purge-org.ts, ts-package-build.mjs
@@ -2126,7 +2126,7 @@ prontiq-platform/
 └── tsconfig.json
 ```
 
-Seven package workspaces are live today (`api`, `control-plane`, `docs`, `ingestion`, `plugins`, `shared`, `webhooks`). The next frontend expansion adds two apps (`landing`, `console`) plus `packages/tokens`. `control-plane` was added in P1B.05 PR 1/3 to keep `provisionOrg` callable from both `webhooks` (server-to-server) and `api` (user-driven recovery via `/v1/account/setup`, P1B.05 PR 3/3) without an awkward `api → webhooks` dep direction.
+The frontend foundations are now scaffolded in-repo: `apps/landing`, `apps/console`, `packages/tokens`, and workspace-wired `sdks/typescript`. `control-plane` was added in P1B.05 PR 1/3 to keep `provisionOrg` callable from both `webhooks` (server-to-server) and `api` (user-driven recovery via `/v1/account/setup`, P1B.05 PR 3/3) without an awkward `api → webhooks` dep direction.
 
 ---
 

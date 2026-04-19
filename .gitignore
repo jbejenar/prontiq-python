@@ -12,6 +12,5 @@ dist/
 coverage/
 .vercel/
 sst-env.d.ts
-next-env.d.ts
 *.tsbuildinfo
 .claude/

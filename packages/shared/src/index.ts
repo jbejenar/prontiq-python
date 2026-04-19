@@ -19,6 +19,13 @@ export type {
   ApiErrorResponse,
   ErrorCode,
 } from "./types.js";
+export type {
+  Post,
+  CaseStudyMetric,
+  CaseStudy,
+  SiteSettings,
+  ContentSource,
+} from "./content.js";
 
 export {
   BILLING_GRACE_PERIOD_PAST_DUE_DAYS_REMAINING,
@@ -63,6 +70,13 @@ export {
   postcodeLookupSchema,
   suburbLookupSchema,
 } from "./validation.js";
+
+export {
+  postSchema,
+  caseStudyMetricSchema,
+  caseStudySchema,
+  siteSettingsSchema,
+} from "./content.js";
 
 export { createLogger } from "./logging.js";
 export type { AppLogger } from "./logging.js";

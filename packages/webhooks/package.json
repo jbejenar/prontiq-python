@@ -7,7 +7,7 @@
   "types": "./dist/index.d.ts",
   "scripts": {
     "build": "node ../../scripts/ts-package-build.mjs build",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "node ../../scripts/ts-package-build.mjs typecheck",
     "test": "pnpm -w build --filter @prontiq/webhooks... && node --test dist/clerk.test.js dist/stripe.test.js",
     "test:integration": "pnpm -w build --filter @prontiq/webhooks... && node --test dist/clerk.integration.test.js dist/stripe.integration.test.js",
     "lint": "eslint src/",

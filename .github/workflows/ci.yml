@@ -12,6 +12,8 @@ permissions:
 jobs:
   check:
     runs-on: ubuntu-latest
+    env:
+      NEXT_PUBLIC_API_URL: https://api.prontiq.dev
     steps:
       - uses: actions/checkout@v6
 
@@ -43,6 +45,8 @@ jobs:
   integration-test:
     needs: check
     runs-on: ubuntu-latest
+    env:
+      NEXT_PUBLIC_API_URL: https://api.prontiq.dev
     services:
       opensearch:
         image: opensearchproject/opensearch:2.19.0
@@ -111,6 +115,8 @@ jobs:
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
     environment: dev
+    env:
+      NEXT_PUBLIC_API_URL: https://api.prontiq.dev
     permissions:
       id-token: write
       contents: read

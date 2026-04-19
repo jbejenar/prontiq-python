@@ -1,5 +1,34 @@
 # NEXT-SESSION.md — Session Execution Log
 
+## Session 24 — 2026-04-19
+
+**Focus:** P1C.00 frontend foundations.
+
+### Completed
+
+- **Two frontend apps are now scaffolded in-repo.** `apps/landing` and `apps/console` now exist as minimal Next.js 15 App Router workspaces, with tracked `next-env.d.ts`, app-local env validation, and the correct route/app shape for later P1C work.
+- **Shared frontend seams are now real.** `packages/shared/src/content.ts` now defines the ratified `ContentSource` interface and the `Post` / `CaseStudy` / `SiteSettings` schemas used by the future landing content system.
+- **Token package contract is scaffolded.** `packages/tokens` now exists as `@prontiq/tokens` and emits placeholder `tokens.css`, `tailwind-preset.js`, `mint-theme.json`, and `ses-vars.json` artifacts.
+- **Workspace wiring now matches the frontend strategy.** `pnpm-workspace.yaml` now includes `apps/*` and `sdks/typescript`, so the frontend apps consume the existing `@prontiq/sdk` package directly instead of inventing a parallel SDK package.
+- **Frontend test policy is now explicit.** Backend/infrastructure packages remain on `node:test`; frontend apps will use Vitest + Testing Library once UI tests are introduced in later P1C work.
+
+### Verification evidence
+
+- `pnpm -r list --depth -1`
+- `pnpm --filter @prontiq/tokens build`
+- `pnpm --filter landing build`
+- `pnpm --filter console build`
+- `pnpm lint`
+- `pnpm typecheck`
+- `pnpm build`
+- `pnpm test`
+
+### Next session should start with
+
+1. Read `docs/prototypes/console-dashboard-v1.html`.
+2. Implement `P1C.07 — shadcn/ui + Tailwind v3.4 setup`.
+3. Then move into the first real landing/console surface ticket.
+
 ## Session 23 — 2026-04-19
 
 **Focus:** Frontend architecture ratification.

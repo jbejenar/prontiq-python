@@ -3,7 +3,8 @@
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
-      "outputs": ["dist/**", ".next/**"]
+      "outputs": ["dist/**", "esm/**", ".next/**"],
+      "env": ["PRONTIQ_TURBO_MANAGED"]
     },
     "dev": {
       "cache": false,
@@ -11,10 +12,12 @@
     },
     "lint": {},
     "typecheck": {
-      "dependsOn": ["^build"]
+      "dependsOn": ["^build"],
+      "env": ["PRONTIQ_TURBO_MANAGED"]
     },
     "test": {
-      "dependsOn": ["build"]
+      "dependsOn": ["build"],
+      "env": ["PRONTIQ_TURBO_MANAGED"]
     },
     "test:integration": {
       "dependsOn": ["build"],

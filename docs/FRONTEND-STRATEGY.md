@@ -141,7 +141,7 @@ Notes:
 
 - keep `sdks/typescript`; do not invent a new `packages/sdk`
 - update workspace wiring to include `apps/*`
-- `packages/tokens` is planned, not yet present
+- `packages/tokens` is now scaffolded in-repo
 
 ## Console Architecture
 
@@ -196,7 +196,7 @@ The hero should eventually be a live product demo, but that depends on a backend
 
 ## Design Token Contract
 
-`packages/tokens/src/tokens.ts` is the future authoring source.
+`packages/tokens/src/tokens.ts` is the scaffolded authoring source.
 
 It should emit:
 
@@ -213,8 +213,11 @@ Frontend testing stack:
 
 - TypeScript strict mode
 - ESLint
-- Vitest + Testing Library for unit/component tests
+- `node:test` for backend/infrastructure and utility packages
+- Vitest + Testing Library for frontend app unit/component tests
 - Playwright for critical end-to-end flows
+
+`P1C.00` records the frontend test-stack split but does not wire app-level Vitest yet.
 
 Critical initial E2E flows:
 
@@ -280,13 +283,15 @@ The next frontend tickets should be:
 - token/docs/email sync contract
 - preserve the visual direction established in `docs/prototypes/console-dashboard-v1.html`
 
+Status: implemented. The next frontend ticket is `P1C.07`.
+
 ## Cross References
 
 - Architecture: `ARCHITECTURE.MD`
 - Execution plan: `ROADMAP.md`
-- Shared content contract: future `packages/shared/src/content.ts`
+- Shared content contract: `packages/shared/src/content.ts`
 - SDK source: `sdks/typescript`
-- Brand source: future `packages/tokens/src/tokens.ts`
+- Brand source: `packages/tokens/src/tokens.ts`
 
 ## Changelog
 
