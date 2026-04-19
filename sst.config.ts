@@ -1,7 +1,5 @@
 /// <reference path="./.sst/platform/config.d.ts" />
 
-import * as pulumi from "@pulumi/pulumi";
-
 /**
  * Naming convention:
  * SST generates AWS names as: {app}-{stage}-{componentName}{ResourceType}-{hash}
@@ -40,6 +38,8 @@ export default $config({
     };
   },
   async run() {
+    const pulumi = await import("@pulumi/pulumi");
+
     // ═══════════════════════════════════════════════════════════════════════
     // EXISTING INFRASTRUCTURE
     // ═══════════════════════════════════════════════════════════════════════
