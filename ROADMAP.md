@@ -1992,6 +1992,7 @@ As a builder, I need the repo shaped for a two-app frontend so that landing and 
 #### Problem Statement
 
 The old `packages/web` / `prontiq.dev/account` model has been retired by the ratified frontend strategy. The repo needs first-class `apps/landing` and `apps/console` workspaces, shared token plumbing via `packages/tokens`, and a consistent env / SDK / content-contract setup before any page-level work starts.
+The console visual direction should follow `docs/prototypes/console-dashboard-v1.html`; foundations work should preserve that shell/layout language without trying to ship every analytics panel shown in the prototype.
 
 #### Definition of Done
 
@@ -2406,6 +2407,7 @@ As a builder, I need a consistent component library so that both `apps/landing` 
 #### Problem Statement
 
 The ratified frontend architecture uses `apps/landing` and `apps/console`, not `packages/web`. Both apps need source-local shadcn/ui primitives, shared token-aware Tailwind setup, dark mode support, and predictable layout foundations. shadcn/ui provides accessible, composable components built on Radix UI + Tailwind and is owned as source code inside each app.
+For the console specifically, the initial shell and component vocabulary should be extracted from `docs/prototypes/console-dashboard-v1.html`: sidebar, top bar, page header, KPI strip, cards, tables, pills, and key-display patterns. The richer analytics panels in that file are reference material, not mandatory launch scope.
 
 #### Definition of Done
 

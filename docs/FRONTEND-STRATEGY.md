@@ -145,6 +145,11 @@ Notes:
 
 ## Console Architecture
 
+`docs/prototypes/console-dashboard-v1.html` is the canonical internal visual reference for `apps/console`.
+It locks the typography, shell layout, KPI treatment, and core component tone for the console build. It is
+not production source code; implementation should extract tokens, components, and layout patterns from it
+rather than porting the HTML directly.
+
 ### Auth boundary
 
 `apps/console` uses:
@@ -175,6 +180,8 @@ The initial console scope is:
 - danger zone / account deletion
 
 The older idea of a single Clerk `<UserProfile />` wrapper page is superseded by a proper authenticated app shell.
+The prototype is authoritative for the shell, typography, KPI style, and panel language. Richer analytics
+panels shown there are illustrative and may be deferred ticket-by-ticket.
 
 ## Landing Architecture
 
@@ -271,6 +278,7 @@ The next frontend tickets should be:
 - `packages/tokens`
 - env validation pattern
 - token/docs/email sync contract
+- preserve the visual direction established in `docs/prototypes/console-dashboard-v1.html`
 
 ## Cross References
 

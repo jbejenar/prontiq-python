@@ -10,6 +10,7 @@
 - **Old frontend model retired from forward-looking docs.** `ARCHITECTURE.MD` and `ROADMAP.md` no longer present `packages/web`, `app.prontiq.dev`, or a single `/account` page as the target frontend shape.
 - **Roadmap re-based for implementation.** `P1C.00 — Frontend Foundations` was added, `P1C.07` was rewritten around app-local shadcn/ui + Tailwind v3.4, and the next recommended work now starts with foundations rather than jumping straight into page work.
 - **Brand guidance archived.** `docs/BRAND.md` now points to the strategy and future token source instead of acting as canonical brand truth.
+- **Console visual reference adopted.** `docs/prototypes/console-dashboard-v1.html` is now the canonical internal visual reference for `apps/console`. It should guide tokens, shell layout, and component extraction, but it is not production source and not the landing-page spec.
 
 ### Verification evidence
 
@@ -21,8 +22,9 @@
 ### Next session should start with
 
 1. Read `docs/FRONTEND-STRATEGY.md`.
-2. Implement `P1C.00 — Frontend Foundations`.
-3. Then move to `P1C.07 — shadcn/ui + Tailwind v3.4 setup`.
+2. Read `docs/prototypes/console-dashboard-v1.html`.
+3. Implement `P1C.00 — Frontend Foundations`.
+4. Then move to `P1C.07 — shadcn/ui + Tailwind v3.4 setup`.
 
 ## Session 22 — 2026-04-19
 

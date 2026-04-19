@@ -100,6 +100,14 @@ Recommended priority:
 3. P1C account/landing surface rebuild after `P1C.00` and `P1C.07`.
 4. P1E.05 / P1E.06 ingestion hardening if platform work is preferred over frontend work.
 
+Before starting `P1C.00`, read:
+
+- `docs/FRONTEND-STRATEGY.md`
+- `docs/prototypes/console-dashboard-v1.html`
+
+The prototype is the canonical internal visual reference for `apps/console`. Preserve its typography, shell,
+KPI treatment, and component tone, but do not treat every panel in the file as launch scope.
+
 Reason:
 
 - P1B auth/billing execution is effectively complete.
