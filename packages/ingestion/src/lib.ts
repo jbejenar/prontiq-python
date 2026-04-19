@@ -1,7 +1,7 @@
 import { GetObjectCommand, HeadObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { Client } from "@opensearch-project/opensearch";
 import { AwsSigv4Signer } from "@opensearch-project/opensearch/aws";
-import { PRODUCT_REGISTRY, manifestSchema } from "@prontiq/shared";
+import { PRODUCT_REGISTRY, createLogger, manifestSchema } from "@prontiq/shared";
 import type { Manifest, ManifestFile, ProductConfig } from "@prontiq/shared";
 import { createGunzip } from "node:zlib";
 import { Readable } from "node:stream";
@@ -9,6 +9,7 @@ import { createInterface } from "node:readline";
 import type { ReadableStream as NodeReadableStream } from "node:stream/web";
 
 const s3 = new S3Client({});
+const logger = createLogger("ingestion-lib");
 
 let _client: Client | undefined;
 
@@ -454,7 +455,10 @@ export async function streamBulkIngest(
       batch = [];
       batchCount += 1;
       if (batchCount % 500 === 0) {
-        console.log(`Progress: ${ingested.toLocaleString()} ingested, batch size: ${batchDocs} docs`);
+        logger.info("Bulk ingest progress", {
+          batch_size_docs: batchDocs,
+          ingested,
+        });
       }
     }
   }
@@ -520,7 +524,11 @@ async function flushWithAdaptiveRetry(
 
       if (remaining.length >= ADAPTIVE_MIN_DOCS * 2 * 2) {
         const mid = Math.floor(remaining.length / 4) * 2;
-        console.log(`Splitting throttled subset: ${remaining.length / 2} docs → ${mid / 2} + ${(remaining.length - mid) / 2}`);
+        logger.info("Splitting throttled subset", {
+          left_docs: mid / 2,
+          right_docs: (remaining.length - mid) / 2,
+          total_docs: remaining.length / 2,
+        });
         const halfDocs = Math.max(Math.floor(currentBatchDocs / 2), ADAPTIVE_MIN_DOCS);
         const r1 = await flushWithAdaptiveRetry(remaining.slice(0, mid), halfDocs);
         const r2 = await flushWithAdaptiveRetry(remaining.slice(mid), halfDocs);
@@ -574,7 +582,13 @@ async function flushBulkBatchWithRetry(
       }
       const backoffMs = Math.min(1000 * 2 ** attempt, 30_000);
       const reason = isTimeout ? "timeout" : `HTTP ${statusCode}`;
-      console.log(`Bulk ${reason} — retrying ${currentBatch.length / 2} docs in ${backoffMs}ms (attempt ${attempt + 1}/${maxRetries})`);
+      logger.info("Retrying bulk request after retryable failure", {
+        attempt: attempt + 1,
+        backoff_ms: backoffMs,
+        docs: currentBatch.length / 2,
+        reason,
+        total_attempts: maxRetries,
+      });
       await new Promise((resolve) => setTimeout(resolve, backoffMs));
       continue;
     }
@@ -625,7 +639,12 @@ async function flushBulkBatchWithRetry(
     }
 
     const backoffMs = Math.min(1000 * 2 ** attempt, 30_000);
-    console.log(`Bulk item-level 429 — retrying ${retryBatch.length / 2} docs in ${backoffMs}ms (attempt ${attempt + 1}/${maxRetries})`);
+    logger.info("Retrying throttled bulk items", {
+      attempt: attempt + 1,
+      backoff_ms: backoffMs,
+      docs: retryBatch.length / 2,
+      total_attempts: maxRetries,
+    });
     await new Promise((resolve) => setTimeout(resolve, backoffMs));
     currentBatch = retryBatch;
   }

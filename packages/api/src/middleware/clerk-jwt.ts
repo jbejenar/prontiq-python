@@ -6,6 +6,7 @@ import {
   isClerkAPIResponseError,
 } from "@clerk/backend/errors";
 import { getAdminRoles } from "@prontiq/control-plane";
+import { createLogger } from "@prontiq/shared";
 
 /**
  * Clerk JWT middleware for `POST /v1/account/setup` and any future
@@ -77,6 +78,8 @@ export type ClerkVerifier = (token: string) => Promise<{
   org_role?: unknown;
   [claim: string]: unknown;
 }>;
+
+const logger = createLogger("api-clerk-jwt");
 
 declare module "hono" {
   interface ContextVariableMap {
@@ -277,7 +280,7 @@ export function clerkJwt(options: ClerkJwtOptions = {}) {
           // Caller fault (expired / tampered / bad signature). Log at
           // warn (not error) since these are caller-driven and
           // shouldn't trip the operator alarm.
-          console.warn("Clerk JWT verification failed (caller fault)", {
+          logger.warn("Clerk JWT verification failed (caller fault)", {
             request_id: c.get("requestId"),
             reason: failure.reason,
             error: errorMessage,
@@ -293,7 +296,7 @@ export function clerkJwt(options: ClerkJwtOptions = {}) {
           //   2. the route's PqAccountErrors / PqClerkWebhookErrors
           //      5xx CloudWatch alarm OBSERVES the outage (which it
           //      didn't when we returned 401)
-          console.error("Clerk verifier unavailable (transient outage)", {
+          logger.error("Clerk verifier unavailable (transient outage)", {
             request_id: c.get("requestId"),
             reason: failure.reason,
             ...(failure.retryAfter !== undefined ? { retryAfter: failure.retryAfter } : {}),
@@ -312,7 +315,7 @@ export function clerkJwt(options: ClerkJwtOptions = {}) {
         case "internal_error":
           // Operator-config bug (missing secret, malformed key,
           // unknown error). Loud failure for the platform alarm.
-          console.error("Clerk JWT verification failed (server fault)", {
+          logger.error("Clerk JWT verification failed (server fault)", {
             request_id: c.get("requestId"),
             reason: failure.reason,
             error: errorMessage,
@@ -325,7 +328,7 @@ export function clerkJwt(options: ClerkJwtOptions = {}) {
 
     const userId = typeof payload.sub === "string" ? payload.sub : undefined;
     if (!userId || userId.length === 0) {
-      console.warn("Clerk JWT verified but `sub` claim is missing/empty", {
+      logger.warn("Clerk JWT verified but `sub` claim is missing/empty", {
         request_id: c.get("requestId"),
       });
       return errorEnvelope(c, 401, "INVALID_TOKEN", "Token missing sub claim");
@@ -417,7 +420,7 @@ export function clerkAdminOnly(options: ClerkAdminOnlyOptions = {}) {
       // mounted before it. Either way, the route is misconfigured —
       // fail loud so the platform alarm fires rather than silently
       // letting the request through.
-      console.error("clerkAdminOnly mounted without upstream clerkJwt — principal missing", {
+      logger.error("clerkAdminOnly mounted without upstream clerkJwt — principal missing", {
         request_id: c.get("requestId"),
         path: c.req.path,
       });
@@ -435,7 +438,7 @@ export function clerkAdminOnly(options: ClerkAdminOnlyOptions = {}) {
 
     const adminRoles = rolesProvider();
     if (!adminRoles.has(principal.orgRole)) {
-      console.warn("clerkAdminOnly: rejecting non-admin caller", {
+      logger.warn("clerkAdminOnly: rejecting non-admin caller", {
         request_id: c.get("requestId"),
         userId: principal.userId,
         orgId: principal.orgId,

@@ -5,6 +5,7 @@ import {
   TransactWriteCommand,
 } from "@aws-sdk/lib-dynamodb";
 import { PLANS } from "@prontiq/shared";
+import { createLogger } from "@prontiq/shared";
 import Stripe from "stripe";
 import type { OrgEnvelopeRecord } from "@prontiq/shared";
 import { buildAuditTransactItem } from "./audit.js";
@@ -109,6 +110,7 @@ export interface ProvisioningDependencies {
 
 let cachedDdb: DynamoDBDocumentClient | undefined;
 let cachedStripe: Stripe | undefined;
+const defaultLogger = createLogger("control-plane-provisioning");
 
 function getDefaultDdb(): DynamoDBDocumentClient {
   if (!cachedDdb) {
@@ -459,7 +461,7 @@ async function sendWelcomeEmailSafely(
 export function createProvisioningService(
   overrides: Partial<ProvisioningDependencies> = {},
 ): { provisionOrg: (input: ProvisioningInput) => Promise<ProvisioningResult> } {
-  const logger = overrides.logger ?? console;
+  const logger = overrides.logger ?? defaultLogger;
   const dependencies: ProvisioningDependencies = {
     auditTableName: overrides.auditTableName ?? getRequiredEnv("AUDIT_TABLE_NAME"),
     ddb: overrides.ddb ?? getDefaultDdb(),

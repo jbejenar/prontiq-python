@@ -78,7 +78,7 @@ packages/
 | Layer          | Tool                                                   |
 | -------------- | ------------------------------------------------------ |
 | Infrastructure | SST v4 + Pulumi                                        |
-| API            | Hono + @hono/zod-openapi on Lambda (ARM64, Node.js 20) |
+| API            | Hono + @hono/zod-openapi on Lambda (ARM64, Node.js 24) |
 | Search         | OpenSearch 2.19 (managed)                              |
 | API Keys       | DynamoDB-native (`pq_live_` + SHA-256 hash-based lookup; live in prod) |
 | Auth (portal)  | Clerk — webhook live in prod (`POST /webhooks/clerk`) AND JWT-authenticated `POST /v1/account/setup` recovery endpoint live in prod (P1B.05 complete) |

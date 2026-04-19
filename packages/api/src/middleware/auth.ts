@@ -9,11 +9,13 @@ import {
   PRODUCT_REGISTRY,
   QUOTA_EMAIL_PENDING_LEASE_MINUTES,
   QUOTA_WARNING_THRESHOLD_FRACTION,
+  createLogger,
   getBillingEndpointsForProduct,
 } from "@prontiq/shared";
 import { hashKey } from "@prontiq/shared";
 import type { ApiKeyRecord, QuotaEmailTask, RedirectRecord, UsageCounterRecord } from "@prontiq/shared";
 import { __resetRateLimiterForTesting as resetBurstRateLimiterForTesting, applyBurstRateLimit } from "./rate-limit.js";
+import { captureDynamoClient } from "../tracing.js";
 
 type UsageUpdateResult = {
   creditCost: number;
@@ -30,6 +32,7 @@ type UsageUpdateResult = {
 let ddb: DynamoDBDocumentClient | undefined;
 let lambda: LambdaClient | undefined;
 let quotaEmailEnqueuerOverride: ((task: QuotaEmailTask) => Promise<void>) | undefined;
+const logger = createLogger("api-auth");
 
 const REDIRECT_SCOPE = "REDIRECT";
 const USAGE_TTL_SECONDS = 90 * 24 * 60 * 60;
@@ -44,7 +47,7 @@ declare module "hono" {
 
 function getDdb(): DynamoDBDocumentClient {
   if (!ddb) {
-    ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
+    ddb = DynamoDBDocumentClient.from(captureDynamoClient(new DynamoDBClient({})));
   }
   return ddb;
 }
@@ -223,7 +226,7 @@ function enqueueQuotaEmailTasksInBackground(
   ).then((enqueueResults) => {
     for (const [index, result] of enqueueResults.entries()) {
       if (result.status === "rejected") {
-        console.warn("Quota email enqueue failed", {
+        logger.warn("Quota email enqueue failed", {
           apiKeyHash: record.apiKeyHash,
           error: result.reason instanceof Error ? result.reason.message : String(result.reason),
           orgId: record.orgId,

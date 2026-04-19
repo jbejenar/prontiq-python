@@ -11,6 +11,7 @@ import {
   BILLING_GRACE_PERIOD_TOTAL_DAYS,
   PLANS,
   PRODUCT_REGISTRY,
+  createLogger,
   getBillingEndpointsForProduct,
   type ApiKeyRecord,
   type ApiKeySubscriptionItems,
@@ -94,6 +95,7 @@ const ORG_ID_INDEX = "orgId-index";
 const BILLING_ACTOR_ID = "stripe-webhook";
 let cachedDdb: DynamoDBDocumentClient | undefined;
 let cachedStripe: Stripe | undefined;
+const defaultLogger = createLogger("control-plane-stripe-billing");
 
 export function buildPastDueEmailBody(billingUrl: string): string {
   return [
@@ -1018,7 +1020,7 @@ async function processSubscriptionDeleted(
 export function createStripeBillingService(
   overrides: Partial<StripeBillingDependencies> = {},
 ): { handleEvent: (event: Stripe.Event) => Promise<StripeWebhookHandleResult> } {
-  const logger = overrides.logger ?? console;
+  const logger = overrides.logger ?? defaultLogger;
   const dependencies: StripeBillingDependencies = {
     auditTableName: overrides.auditTableName ?? getRequiredEnv("AUDIT_TABLE_NAME"),
     ddb: overrides.ddb ?? getDefaultDdb(),

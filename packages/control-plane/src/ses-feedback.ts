@@ -10,6 +10,7 @@ import {
   EMAIL_SUPPRESSION_BOUNCE_TTL_DAYS,
   EMAIL_SUPPRESSION_SOFT_BOUNCE_THRESHOLD,
   EMAIL_SUPPRESSION_SOFT_BOUNCE_WINDOW_DAYS,
+  createLogger,
   type SesSuppressionRecord,
 } from "@prontiq/shared";
 import {
@@ -64,6 +65,7 @@ export interface SesFeedbackDependencies {
 }
 
 let cachedDdb: DynamoDBDocumentClient | undefined;
+const defaultLogger = createLogger("control-plane-ses-feedback");
 
 function getDefaultDdb(): DynamoDBDocumentClient {
   if (!cachedDdb) {
@@ -301,7 +303,7 @@ export function createSesFeedbackService(
 ): { handleSnsEvent: (event: SnsEvent) => Promise<void> } {
   const dependencies: SesFeedbackDependencies = {
     ddb: overrides.ddb ?? getDefaultDdb(),
-    logger: overrides.logger ?? console,
+    logger: overrides.logger ?? defaultLogger,
     suppressionsTableName:
       overrides.suppressionsTableName ?? getRequiredEnv("SUPPRESSIONS_TABLE_NAME"),
   };

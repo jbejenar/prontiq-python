@@ -1,6 +1,8 @@
 import { OpenAPIHono } from "@hono/zod-openapi";
 import { cors } from "hono/cors";
 import { handle } from "hono/aws-lambda";
+import { createMiddleware } from "hono/factory";
+import { createLogger } from "@prontiq/shared";
 import { requestId } from "./middleware/request-id.js";
 import { auth } from "./middleware/auth.js";
 import { addressRoutes } from "./routes/address.js";
@@ -22,6 +24,24 @@ import { addressRoutes } from "./routes/address.js";
  * not here.
  */
 const app = new OpenAPIHono();
+const logger = createLogger("api");
+
+const requestLifecycleLogger = createMiddleware(async (c, next) => {
+  const startedAt = Date.now();
+  logger.info("request started", {
+    method: c.req.method,
+    path: c.req.path,
+    request_id: c.get("requestId"),
+  });
+  await next();
+  logger.info("request completed", {
+    latency: Date.now() - startedAt,
+    method: c.req.method,
+    path: c.req.path,
+    request_id: c.get("requestId"),
+    status: c.res.status,
+  });
+});
 
 // Global middleware
 app.use(
@@ -33,10 +53,11 @@ app.use(
   }),
 );
 app.use("*", requestId());
+app.use("*", requestLifecycleLogger);
 
 // Global error handler — catches unhandled exceptions in all routes/middleware
 app.onError((err, c) => {
-  console.error("Unhandled error", {
+  logger.error("Unhandled error", {
     request_id: c.get("requestId"),
     path: c.req.path,
     method: c.req.method,
@@ -61,7 +82,6 @@ app.onError((err, c) => {
 app.get("/v1/health", (c) => {
   return c.json({ status: "ok", timestamp: new Date().toISOString() });
 });
-
 
 app.doc31("/openapi.json", {
   openapi: "3.1.0",

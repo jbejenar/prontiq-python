@@ -1,5 +1,29 @@
 # NEXT-SESSION.md — Session Execution Log
 
+## Session 21 — 2026-04-19
+
+**Focus:** P1F.02 monitoring + alerting implementation.
+
+### Completed
+
+- **Prod observability baseline implemented.** `PqIngestAlerts` prod email subscriptions via `ALERT_EMAILS`, new prod alarms for address API 5xx/Lambda error rate and OpenSearch yellow/red/low-storage, and dashboard `prontiq-production` are now defined in the SST stack.
+- **Tracing and logs aligned to the roadmap evidence.** `PqApi` now uses X-Ray tracing with DynamoDB capture and explicit OpenSearch subsegments, and Lambda execution paths emit raw JSON logs with stable `request_id`, `path`, and `latency` fields where applicable.
+- **Docs/runbooks reconciled.** The observability architecture, roadmap, and operator docs now describe the actual Phase 1 CloudWatch + SNS/email + X-Ray stack instead of future PagerDuty/Slack/EMF assumptions.
+
+### Verification evidence
+
+- `pnpm build`
+- `pnpm lint`
+- `pnpm typecheck`
+- `pnpm test`
+
+### Next session should start with
+
+1. Read NEXT-WORK.md.
+2. Deploy P1F.02 to prod.
+3. Run the manual operator verification from `docs/runbooks/monitoring-alerting.md`.
+4. Then move to P1C.07.
+
 ## Session 20 — 2026-04-19
 
 **Focus:** P1B.12 auth middleware integration-test reconciliation.

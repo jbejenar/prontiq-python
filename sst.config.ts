@@ -1,5 +1,7 @@
 /// <reference path="./.sst/platform/config.d.ts" />
 
+import { calculateOpenSearchLowFreeStorageThresholdMiB } from "./packages/shared/src/observability.js";
+
 /**
  * Naming convention:
  * SST generates AWS names as: {app}-{stage}-{componentName}{ResourceType}-{hash}
@@ -16,6 +18,7 @@
 //   Principal: {"AWS": "arn:aws:iam::493712557159:root"}
 // Identity-based policies on each Lambda/Fargate role scope the actual es:ESHttp* actions.
 const OPENSEARCH_DOMAIN_ARN = "arn:aws:es:ap-southeast-2:493712557159:domain/flat-white";
+const OPENSEARCH_DOMAIN_NAME = "flat-white";
 const OPENSEARCH_ENDPOINT_DEFAULT =
   "https://search-flat-white-lrsdymw7a4u56cu2lrvxa3ggve.ap-southeast-2.es.amazonaws.com";
 const DATA_BUCKET_NAME = "flat-white-address-493712557159-ap-southeast-2-an";
@@ -261,6 +264,11 @@ export default $config({
       // the same validation as truly-unset secrets.
       return raw.trim();
     }
+    function readGithubVar(name: string): string {
+      const raw = process.env[name];
+      if (raw === undefined) return "";
+      return raw.trim();
+    }
     const isDeployedStage = $app.stage === "dev" || $app.stage === "prod";
     if (isDeployedStage) {
       const missing = REQUIRED_WEBHOOK_SECRETS.filter(
@@ -331,7 +339,7 @@ export default $config({
       },
     });
 
-    api.route("$default", {
+    const apiDefaultRoute = api.route("$default", {
       handler: "packages/api/src/index.handler",
       architecture: "arm64",
       runtime: "nodejs24.x",
@@ -354,6 +362,13 @@ export default $config({
         QUOTA_EMAIL_WORKER_FUNCTION_NAME: quotaEmailWorkerFn.name,
         USAGE_TABLE_NAME: authUsageTable.name,
       },
+      transform: {
+        function: {
+          tracingConfig: {
+            mode: "Active",
+          },
+        },
+      },
     });
 
     // Customer dashboard removed. The next account surface will be built
@@ -366,6 +381,25 @@ export default $config({
 
     // -- SNS: Ingestion failure alerts --
     const ingestAlerts = new aws.sns.Topic("PqIngestAlerts");
+    if (isProd) {
+      const alertEmails = readGithubVar("ALERT_EMAILS")
+        .split(",")
+        .map((value) => value.trim())
+        .filter((value) => value.length > 0);
+      if (alertEmails.length === 0) {
+        throw new Error(
+          'Missing GitHub Environment variable "ALERT_EMAILS" for stage "prod". ' +
+            "Set it to a comma-separated recipient list in Settings → Environments → prod → Variables.",
+        );
+      }
+      alertEmails.forEach((email, index) => {
+        new aws.sns.TopicSubscription(`PqAlertEmailSubscription${index + 1}`, {
+          topic: ingestAlerts.arn,
+          protocol: "email",
+          endpoint: email,
+        });
+      });
+    }
 
     // -- Ingestion Lambdas (Step Function tasks) --
     const opensearchEndpoint =
@@ -1176,6 +1210,335 @@ export default $config({
         Route: "ANY /v1/account/{proxy+}",
       },
     });
+
+    if (isProd) {
+      const opensearchDomain = aws.elasticsearch.getDomainOutput({
+        domainName: OPENSEARCH_DOMAIN_NAME,
+      });
+      const openSearchLowFreeStorageThreshold = opensearchDomain.ebsOptions.apply((options) => {
+        const volumeSize = options[0]?.volumeSize;
+        if (!volumeSize || volumeSize <= 0) {
+          throw new Error(
+            `Could not resolve EBS volume size for OpenSearch domain "${OPENSEARCH_DOMAIN_NAME}".`,
+          );
+        }
+        return calculateOpenSearchLowFreeStorageThresholdMiB(volumeSize);
+      });
+
+      new aws.cloudwatch.MetricAlarm("PqApi5xxRate", {
+        comparisonOperator: "GreaterThanThreshold",
+        evaluationPeriods: 1,
+        datapointsToAlarm: 1,
+        threshold: 1,
+        treatMissingData: "notBreaching",
+        alarmDescription:
+          "Address API 5xx rate exceeded 1% over 5 minutes. Check the PqApi Lambda logs and X-Ray traces for upstream failures.",
+        alarmActions: [ingestAlerts.arn],
+        okActions: [ingestAlerts.arn],
+        metricQueries: [
+          {
+            id: "e1",
+            expression: "IF(m1 > 0, (m2 / m1) * 100, 0)",
+            label: "Address API 5xx rate",
+            returnData: true,
+          },
+          {
+            id: "m1",
+            metric: {
+              metricName: "Count",
+              namespace: "AWS/ApiGateway",
+              period: 300,
+              stat: "Sum",
+              dimensions: {
+                ApiId: api.nodes.api.id,
+                Stage: "$default",
+                Route: "$default",
+              },
+            },
+          },
+          {
+            id: "m2",
+            metric: {
+              metricName: "5xx",
+              namespace: "AWS/ApiGateway",
+              period: 300,
+              stat: "Sum",
+              dimensions: {
+                ApiId: api.nodes.api.id,
+                Stage: "$default",
+                Route: "$default",
+              },
+            },
+          },
+        ],
+      });
+
+      new aws.cloudwatch.MetricAlarm("PqApiLambdaErrorRate", {
+        comparisonOperator: "GreaterThanThreshold",
+        evaluationPeriods: 1,
+        datapointsToAlarm: 1,
+        threshold: 1,
+        treatMissingData: "notBreaching",
+        alarmDescription:
+          "Address API Lambda error rate exceeded 1% over 5 minutes. Check the PqApi Lambda logs for unhandled exceptions.",
+        alarmActions: [ingestAlerts.arn],
+        okActions: [ingestAlerts.arn],
+        metricQueries: [
+          {
+            id: "e1",
+            expression: "IF(m1 > 0, (m2 / m1) * 100, 0)",
+            label: "Address API Lambda error rate",
+            returnData: true,
+          },
+          {
+            id: "m1",
+            metric: {
+              metricName: "Invocations",
+              namespace: "AWS/Lambda",
+              period: 300,
+              stat: "Sum",
+              dimensions: {
+                FunctionName: apiDefaultRoute.nodes.function.name,
+              },
+            },
+          },
+          {
+            id: "m2",
+            metric: {
+              metricName: "Errors",
+              namespace: "AWS/Lambda",
+              period: 300,
+              stat: "Sum",
+              dimensions: {
+                FunctionName: apiDefaultRoute.nodes.function.name,
+              },
+            },
+          },
+        ],
+      });
+
+      new aws.cloudwatch.MetricAlarm("PqOpenSearchYellow", {
+        comparisonOperator: "GreaterThanOrEqualToThreshold",
+        evaluationPeriods: 1,
+        datapointsToAlarm: 1,
+        metricName: "ClusterStatus.yellow",
+        namespace: "AWS/ES",
+        period: 300,
+        statistic: "Maximum",
+        threshold: 1,
+        treatMissingData: "notBreaching",
+        alarmDescription:
+          "OpenSearch domain cluster status is yellow. Check shard allocation and node health before redundancy degrades further.",
+        alarmActions: [ingestAlerts.arn],
+        okActions: [ingestAlerts.arn],
+        dimensions: {
+          DomainName: OPENSEARCH_DOMAIN_NAME,
+          ClientId: AWS_ACCOUNT_ID,
+        },
+      });
+
+      new aws.cloudwatch.MetricAlarm("PqOpenSearchRed", {
+        comparisonOperator: "GreaterThanOrEqualToThreshold",
+        evaluationPeriods: 1,
+        datapointsToAlarm: 1,
+        metricName: "ClusterStatus.red",
+        namespace: "AWS/ES",
+        period: 300,
+        statistic: "Maximum",
+        threshold: 1,
+        treatMissingData: "notBreaching",
+        alarmDescription:
+          "OpenSearch domain cluster status is red. Search availability is degraded or broken and needs immediate intervention.",
+        alarmActions: [ingestAlerts.arn],
+        okActions: [ingestAlerts.arn],
+        dimensions: {
+          DomainName: OPENSEARCH_DOMAIN_NAME,
+          ClientId: AWS_ACCOUNT_ID,
+        },
+      });
+
+      new aws.cloudwatch.MetricAlarm("PqOpenSearchLowFreeStorage", {
+        comparisonOperator: "LessThanThreshold",
+        evaluationPeriods: 1,
+        datapointsToAlarm: 1,
+        metricName: "FreeStorageSpace",
+        namespace: "AWS/ES",
+        period: 300,
+        statistic: "Minimum",
+        threshold: openSearchLowFreeStorageThreshold,
+        treatMissingData: "notBreaching",
+        alarmDescription:
+          "OpenSearch per-node free storage fell below 20% of provisioned capacity. Check indexing growth before the domain enters write-protection or cluster instability.",
+        alarmActions: [ingestAlerts.arn],
+        okActions: [ingestAlerts.arn],
+        dimensions: {
+          DomainName: OPENSEARCH_DOMAIN_NAME,
+          ClientId: AWS_ACCOUNT_ID,
+        },
+      });
+
+      new aws.cloudwatch.Dashboard("PqProductionDashboard", {
+        dashboardName: "prontiq-production",
+        dashboardBody: pulumi
+          .all([
+            api.nodes.api.id,
+            apiDefaultRoute.nodes.function.name,
+            clerkWebhookFn.name,
+            stripeWebhookFn.name,
+            accountFn.name,
+            sesFeedbackFn.name,
+            quotaEmailWorkerFn.name,
+            billingCron.nodes.function.name,
+            monthClose.nodes.function.name,
+          ])
+          .apply(
+            ([
+              apiId,
+              apiFunctionName,
+              clerkWebhookName,
+              stripeWebhookName,
+              accountName,
+              sesFeedbackName,
+              quotaEmailName,
+              billingCronName,
+              monthCloseName,
+            ]) =>
+              JSON.stringify({
+                widgets: [
+                  {
+                    type: "metric",
+                    x: 0,
+                    y: 0,
+                    width: 12,
+                    height: 6,
+                    properties: {
+                      title: "API Request Count",
+                      view: "timeSeries",
+                      region: AWS_REGION,
+                      stat: "Sum",
+                      period: 300,
+                      metrics: [
+                        ["AWS/ApiGateway", "Count", "ApiId", apiId, "Stage", "$default", "Route", "$default"],
+                      ],
+                    },
+                  },
+                  {
+                    type: "metric",
+                    x: 12,
+                    y: 0,
+                    width: 12,
+                    height: 6,
+                    properties: {
+                      title: "API Latency p50 / p95 / p99",
+                      view: "timeSeries",
+                      region: AWS_REGION,
+                      period: 300,
+                      metrics: [
+                        ["AWS/ApiGateway", "Latency", "ApiId", apiId, "Stage", "$default", "Route", "$default", { stat: "p50" }],
+                        ["...", { stat: "p95" }],
+                        ["...", { stat: "p99" }],
+                      ],
+                    },
+                  },
+                  {
+                    type: "metric",
+                    x: 0,
+                    y: 6,
+                    width: 12,
+                    height: 6,
+                    properties: {
+                      title: "API 5xx Rate",
+                      view: "timeSeries",
+                      region: AWS_REGION,
+                      period: 300,
+                      metrics: [
+                        [{ expression: "IF(m1 > 0, (m2 / m1) * 100, 0)", id: "e1", label: "5xx rate %" }],
+                        ["AWS/ApiGateway", "Count", "ApiId", apiId, "Stage", "$default", "Route", "$default", { id: "m1", stat: "Sum" }],
+                        [".", "5xx", ".", ".", ".", ".", ".", ".", { id: "m2", stat: "Sum" }],
+                      ],
+                    },
+                  },
+                  {
+                    type: "metric",
+                    x: 12,
+                    y: 6,
+                    width: 12,
+                    height: 6,
+                    properties: {
+                      title: "API Lambda Error Rate",
+                      view: "timeSeries",
+                      region: AWS_REGION,
+                      period: 300,
+                      metrics: [
+                        [{ expression: "IF(m1 > 0, (m2 / m1) * 100, 0)", id: "e1", label: "Lambda error rate %" }],
+                        ["AWS/Lambda", "Invocations", "FunctionName", apiFunctionName, { id: "m1", stat: "Sum" }],
+                        [".", "Errors", ".", ".", { id: "m2", stat: "Sum" }],
+                      ],
+                    },
+                  },
+                  {
+                    type: "metric",
+                    x: 0,
+                    y: 12,
+                    width: 12,
+                    height: 6,
+                    properties: {
+                      title: "OpenSearch Cluster Status",
+                      view: "timeSeries",
+                      region: AWS_REGION,
+                      period: 300,
+                      stat: "Maximum",
+                      metrics: [
+                        ["AWS/ES", "ClusterStatus.yellow", "DomainName", OPENSEARCH_DOMAIN_NAME, "ClientId", AWS_ACCOUNT_ID],
+                        [".", "ClusterStatus.red", ".", ".", ".", "."],
+                      ],
+                    },
+                  },
+                  {
+                    type: "metric",
+                    x: 12,
+                    y: 12,
+                    width: 12,
+                    height: 6,
+                    properties: {
+                      title: "OpenSearch Free Storage",
+                      view: "timeSeries",
+                      region: AWS_REGION,
+                      period: 300,
+                      stat: "Minimum",
+                      metrics: [
+                        ["AWS/ES", "FreeStorageSpace", "DomainName", OPENSEARCH_DOMAIN_NAME, "ClientId", AWS_ACCOUNT_ID],
+                      ],
+                    },
+                  },
+                  {
+                    type: "metric",
+                    x: 0,
+                    y: 18,
+                    width: 24,
+                    height: 6,
+                    properties: {
+                      title: "Critical Lambda Errors",
+                      view: "timeSeries",
+                      region: AWS_REGION,
+                      period: 300,
+                      stat: "Sum",
+                      metrics: [
+                        ["AWS/Lambda", "Errors", "FunctionName", clerkWebhookName],
+                        [".", ".", ".", stripeWebhookName],
+                        [".", ".", ".", accountName],
+                        [".", ".", ".", sesFeedbackName],
+                        [".", ".", ".", quotaEmailName],
+                        [".", ".", ".", billingCronName],
+                        [".", ".", ".", monthCloseName],
+                      ],
+                    },
+                  },
+                ],
+              }),
+          ),
+      });
+    }
 
     return {
       api: api.url,

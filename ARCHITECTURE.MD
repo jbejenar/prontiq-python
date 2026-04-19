@@ -109,7 +109,7 @@ Nobody else bundles Australian address validation with ABN verification with LEI
                                ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                         API LAYER                                            │
-│   Hono + @hono/zod-openapi on Lambda (ARM64, Node.js 20)  ·  SST v4 + Pulumi   │
+│   Hono + @hono/zod-openapi on Lambda (ARM64, Node.js 24)  ·  SST v4 + Pulumi   │
 │   Auto-generates OpenAPI 3.1 spec from Zod route schemas                        │
 │                                                                              │
 │   /v1/address/*    /v1/abn/*    /v1/lei/*    /v1/cve/*    /v1/patents/*     │
@@ -883,7 +883,7 @@ On a t3.small.search with 50GB gp3:
 
 ### 5.4 API Layer
 
-**Framework:** Hono + `@hono/zod-openapi` on Lambda (ARM64, Node.js 20) deployed via SST v4.
+**Framework:** Hono + `@hono/zod-openapi` on Lambda (ARM64, Node.js 24) deployed via SST v4.
 
 **Why Hono specifically:** the `@hono/zod-openapi` package auto-generates an OpenAPI 3.1 spec from Zod route schemas. That spec is consumed by Mintlify (docs) and Speakeasy (SDKs). Without it, you maintain the spec manually — and it drifts. Hono itself is chosen for its lightweight middleware composition and route grouping, which maps cleanly to a multi-product API.
 
@@ -1305,7 +1305,7 @@ Request arrives with X-Api-Key header
 │                 via pending timestamp fields on prontiq-usage, checks
 │                 prontiq-ses-suppressions, then sends via SES
 │                 configuration set — best-effort, never on the hot path.
-│  8. LOG         CloudWatch EMF (structured stdout, zero network)      ~0ms
+│  8. LOG         Structured JSON logs to CloudWatch                    ~0ms
 ```
 
 > **Why synchronous increment?** The previous design (read count → serve → async write) created a race window: two concurrent free-tier requests near `quotaPerProduct` could both observe the same count, both pass the check, both serve, and only count once because the writes raced. A leaked free-tier key could fan out to hundreds of in-flight requests and ride the boundary indefinitely. The atomic conditional `UpdateItem` closes this window — DDB executes the condition + increment as one operation. Cost: +3–5ms in the critical path. Acceptable given the 50ms total budget.
@@ -1600,7 +1600,7 @@ The previous design at T5 would have computed `sumLastPushed = 150 + 100 = 250 �
 
 **Cost at scale:**
 
-| Volume | DynamoDB | CloudWatch EMF | Cron Lambda | Total |
+| Volume | DynamoDB | CloudWatch Logs | Cron Lambda | Total |
 |---|---|---|---|---|
 | 100K req/mo | ~$0.15 | ~$0.50 | ~$0.00 | **~$0.65** |
 | 1M req/mo | ~$1.50 | ~$5.00 | ~$0.00 | **~$6.50** |
@@ -2447,15 +2447,14 @@ All errors follow a consistent JSON structure:
 | `SERVICE_UNAVAILABLE` | 503 | OpenSearch down (circuit open) |
 | `INTERNAL_ERROR` | 500 | Unhandled exception |
 
-**Live today** (`packages/shared/src/constants.ts:73-77` + `packages/shared/src/types.ts` `ErrorCode` union): `MISSING_API_KEY`, `INVALID_API_KEY`, `PRODUCT_NOT_ALLOWED`, `QUOTA_EXCEEDED`. The other 8 codes are forward contracts introduced with their features:
+**Live today** (`packages/shared/src/constants.ts` + `packages/shared/src/types.ts` `ErrorCode` union): `MISSING_API_KEY`, `INVALID_API_KEY`, `PRODUCT_NOT_ALLOWED`, `QUOTA_EXCEEDED`, `RATE_LIMITED`, `INVALID_SIGNATURE`, `INTERNAL_ERROR`.
 
-- `RATE_LIMITED` ships with P1B.09 (burst limiter middleware).
+Forward contracts still tied to future work:
+
 - `KEY_LIMIT_EXCEEDED` ships with P1C.03 (`/v1/account/keys/create` with per-tier cap).
-- `UNAUTHORIZED`, `ORG_REQUIRED` ship with P1C account endpoints (Clerk JWT + org resolution).
-- `INVALID_SIGNATURE` ships with P1B.05 / P1B.06 (Svix / Stripe webhook verification).
-- `VALIDATION_ERROR` ships when Zod middleware returns structured errors (already used in Zod openapi responses, may need a dedicated code in middleware).
-- `SERVICE_UNAVAILABLE` ships with a future circuit breaker on OpenSearch.
-- `INTERNAL_ERROR` is the default 500 — may already exist as a fallback in Hono error handler.
+- `UNAUTHORIZED`, `ORG_REQUIRED` ship with broader P1C account surfaces.
+- `VALIDATION_ERROR` ships when Zod middleware returns a dedicated contract code rather than the current generic error envelope.
+- `SERVICE_UNAVAILABLE` ships with a future OpenSearch circuit breaker.
 
 When adding any of the above codes to `packages/shared/src/constants.ts`, ensure this table stays in sync — it is the SDK consumer contract.
 
@@ -2463,34 +2462,32 @@ When adding any of the above codes to `packages/shared/src/constants.ts`, ensure
 
 ## 10. Monitoring & Alerting
 
-All metrics via CloudWatch. EMF for custom metrics — structured stdout, zero network calls.
+Phase 1 observability is CloudWatch-native: CloudWatch metrics/alarms, SNS email delivery, dashboard `prontiq-production`, X-Ray tracing on `PqApi`, and raw JSON application logs emitted to CloudWatch Logs.
 
 ### 10.1 Key Metrics
 
 | Metric | Source | Alarm Threshold |
 |---|---|---|
-| API latency (p50, p95, p99) | CloudWatch EMF | p99 > 50ms for 5 min |
-| Error rate (4xx, 5xx) | API Gateway + EMF | 5xx > 1% for 5 min |
+| API latency (p50, p95, p99) | API Gateway / CloudWatch | p99 > 50ms for 5 min |
+| Error rate (4xx, 5xx) | API Gateway + Lambda | 5xx > 1% for 5 min |
 | DynamoDB read/write latency | CloudWatch built-in | p99 > 20ms for 10 min |
 | DynamoDB throttled requests | CloudWatch built-in | > 0 for 1 min |
-| OpenSearch cluster health | CloudWatch built-in | RED for 1 min |
-| Circuit breaker state changes | CloudWatch EMF | Any state change |
+| OpenSearch cluster health | CloudWatch built-in | yellow/red state alarm |
+| OpenSearch free storage | CloudWatch built-in | < 20% free |
 | Lambda cold start rate | CloudWatch Insights | > 10% for 15 min |
 | SES bounce rate | SES/CloudWatch | > 3% for 1 hour |
 | SES complaint rate | SES/CloudWatch | > 0.05% for 1 hour |
-| Billing cron success/failure | CloudWatch EMF | Any failure |
+| Billing cron success/failure | Lambda `Errors` | Any failure |
 
 ### 10.2 Alerting Tiers
 
 | Tier | Channel | Response Time | Examples |
 |---|---|---|---|
-| **P1 — Critical** | PagerDuty (phone) | < 15 min | 5xx > 5%, circuit OPEN, DynamoDB throttled |
-| **P2 — Warning** | Slack #prontiq-alerts | < 1 hour | p99 > 50ms, SES bounce > 3%, cold start > 10% |
-| **P3 — Info** | Slack #prontiq-metrics | Next business day | DAX trigger approaching, usage nearing limits |
+| **Phase 1 alarms** | SNS → email (`PqIngestAlerts`) | minutes | API 5xx rate, API Lambda error rate, webhook/account route 5xx, OpenSearch yellow/red/low-storage, SES/control-plane failures |
 
 ### 10.3 Dashboard
 
-CloudWatch dashboard "prontiq-production": API Health (latency + error rate), DynamoDB (capacity, throttles), OpenSearch (cluster status), Billing (cron success, Stripe push count), Email (deliveries, bounces, complaints).
+CloudWatch dashboard `prontiq-production`: API request count, API latency `p50/p95/p99`, API 5xx rate, API Lambda error rate, OpenSearch cluster status, OpenSearch free storage, and critical Lambda error series.
 
 ---
 

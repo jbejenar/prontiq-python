@@ -4,9 +4,11 @@ import {
   StartExecutionCommand,
   ExecutionAlreadyExists,
 } from "@aws-sdk/client-sfn";
+import { createLogger } from "@prontiq/shared";
 import { readManifestJson, getProductConfig } from "./lib.js";
 
 const sfn = new SFNClient({});
+const logger = createLogger("ingestion-router");
 
 const STATE_MACHINE_ARN = process.env.STATE_MACHINE_ARN;
 
@@ -42,7 +44,7 @@ export const handler: Handler = async (event: EventBridgeS3Event) => {
   const key = event.detail.object.key;
 
   if (!key.endsWith(".json")) {
-    console.log(`Ignoring non-JSON object: ${key}`);
+    logger.info("Ignoring non-JSON object", { key });
     return { key, status: "ignored" };
   }
 
@@ -67,12 +69,12 @@ export const handler: Handler = async (event: EventBridgeS3Event) => {
     );
   } catch (error) {
     if (error instanceof ExecutionAlreadyExists) {
-      console.log(`Execution ${executionName} already exists — manifest already being processed`);
+      logger.info("Execution already exists", { executionName });
       return { executionName, status: "already_exists" };
     }
     throw error;
   }
 
-  console.log(`Started execution ${executionName}`);
+  logger.info("Started execution", { executionName });
   return { executionName, status: "started" };
 };

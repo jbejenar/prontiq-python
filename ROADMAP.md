@@ -3078,20 +3078,20 @@ Without monitoring, failures are discovered by customer complaints. CloudWatch a
 ##### Functional
 
 - [ ] CloudWatch alarms configured and active
-  - `Verify:` `aws cloudwatch describe-alarms` shows alarms
-  - `Evidence:` Alarms: API 5xx > 1%, Lambda errors > 1%, OpenSearch cluster yellow/red, OpenSearch storage > 80%
+  - `Verify:` `aws cloudwatch describe-alarms` shows the new prod alarms plus the existing webhook/control-plane alarms
+  - `Evidence:` implemented in `sst.config.ts`; pending prod deploy + `aws cloudwatch describe-alarms` verification
 - [ ] SNS topic for alerts → email notification
   - `Verify:` Trigger an alarm → email received within 5 minutes
-  - `Evidence:` Email from SNS with alarm details
+  - `Evidence:` implemented in `sst.config.ts` / `deploy-prod.yml`; pending prod deploy + SNS confirmation
 - [ ] CloudWatch dashboard: API latency (p50/p95/p99), request count, error rate, OpenSearch FreeStorageSpace
   - `Verify:` Dashboard URL accessible in AWS console
-  - `Evidence:` Charts render with real data after API calls
+  - `Evidence:` dashboard resource `prontiq-production` defined in `sst.config.ts`; pending prod deploy verification
 - [ ] X-Ray tracing enabled on API Lambda
-  - `Verify:` Make API call → trace visible in X-Ray console
-  - `Evidence:` Trace shows Lambda → DynamoDB → OpenSearch segments with timing
-- [ ] Structured JSON logging in all Lambda functions
+  - `Verify:` Make authenticated address API call → trace visible in X-Ray console
+  - `Evidence:` tracing helper + `PqApi` tracing config implemented; pending prod trace verification
+- [x] Structured JSON logging in all Lambda functions
   - `Verify:` CloudWatch Logs Insights query `fields @timestamp, request_id, path, latency | sort @timestamp desc`
-  - `Evidence:` Structured log entries with queryable fields
+  - `Evidence:` shared JSON logger in `@prontiq/shared` adopted across API, control-plane, webhooks, and ingestion Lambda paths
 
 #### Scope
 

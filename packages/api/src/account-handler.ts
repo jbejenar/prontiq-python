@@ -1,5 +1,7 @@
 import { OpenAPIHono } from "@hono/zod-openapi";
 import { handle } from "hono/aws-lambda";
+import { createMiddleware } from "hono/factory";
+import { createLogger } from "@prontiq/shared";
 import { requestId } from "./middleware/request-id.js";
 import { clerkAdminOnly, clerkJwt } from "./middleware/clerk-jwt.js";
 import { accountRoutes } from "./routes/account.js";
@@ -29,11 +31,30 @@ import { accountRoutes } from "./routes/account.js";
  */
 
 const app = new OpenAPIHono();
+const logger = createLogger("api-account");
+
+const requestLifecycleLogger = createMiddleware(async (c, next) => {
+  const startedAt = Date.now();
+  logger.info("request started", {
+    method: c.req.method,
+    path: c.req.path,
+    request_id: c.get("requestId"),
+  });
+  await next();
+  logger.info("request completed", {
+    latency: Date.now() - startedAt,
+    method: c.req.method,
+    path: c.req.path,
+    request_id: c.get("requestId"),
+    status: c.res.status,
+  });
+});
 
 app.use("*", requestId());
+app.use("*", requestLifecycleLogger);
 
 app.onError((err, c) => {
-  console.error("Unhandled error in PqAccount", {
+  logger.error("Unhandled error in PqAccount", {
     request_id: c.get("requestId"),
     path: c.req.path,
     method: c.req.method,

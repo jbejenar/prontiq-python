@@ -1,5 +1,5 @@
 import type { Handler } from "aws-lambda";
-import type { Manifest } from "@prontiq/shared";
+import { createLogger, type Manifest } from "@prontiq/shared";
 import { KnownGoodQueryNoHitsError, countDocuments, forceMergeIndex, refreshIndex, runKnownGoodQuery } from "./lib.js";
 
 /**
@@ -11,6 +11,8 @@ import { KnownGoodQueryNoHitsError, countDocuments, forceMergeIndex, refreshInde
  * 3. runKnownGoodQuery — with retry + delay (search_as_you_type needs a moment after refresh on large indices)
  * 4. forceMergeIndex — slow, best-effort
  */
+const logger = createLogger("ingestion-health-check");
+
 export async function healthCheck(event: {
   manifest: Manifest;
   indexName: string;
@@ -47,7 +49,11 @@ export async function healthCheck(event: {
       }
       if (attempt < queryRetryDelays.length) {
         const delayMs = queryRetryDelays[attempt]!;
-        console.log(`Known-good query returned no hits (attempt ${attempt + 1}/${queryRetryDelays.length + 1}), retrying in ${delayMs / 1000}s...`);
+        logger.info("Known-good query returned no hits; retrying", {
+          attempt: attempt + 1,
+          delay_seconds: delayMs / 1000,
+          total_attempts: queryRetryDelays.length + 1,
+        });
         await new Promise((resolve) => setTimeout(resolve, delayMs));
       }
     }
@@ -62,7 +68,7 @@ export async function healthCheck(event: {
     await forceMergeIndex(indexName);
   } catch (mergeError) {
     const msg = mergeError instanceof Error ? mergeError.message : String(mergeError);
-    console.warn(`Force merge failed (non-fatal): ${msg}`);
+    logger.warn("Force merge failed (non-fatal)", { error: msg, indexName });
   }
 
   return { ...event, healthy: true };

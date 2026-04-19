@@ -1,10 +1,12 @@
 import type { Handler } from "aws-lambda";
-import { PRODUCT_REGISTRY } from "@prontiq/shared";
+import { PRODUCT_REGISTRY, createLogger } from "@prontiq/shared";
 
 /**
  * Scheduled Lambda (every 6 hours): Delete expired indices per product retention policy.
  * Also verifies latest automated OpenSearch snapshot is < 48 hours old.
  */
+const logger = createLogger("ingestion-cleanup");
+
 export const handler: Handler = async () => {
   for (const [product, config] of Object.entries(PRODUCT_REGISTRY)) {
     // TODO: List all indices matching {product}-*
@@ -12,9 +14,10 @@ export const handler: Handler = async () => {
     // TODO: Delete indices older than config.retention_hours
     // TODO: Never delete if it's the only index for this product
 
-    console.log(
-      `Would clean up expired indices for '${product}' (retention: ${config.retention_hours}h)`,
-    );
+    logger.info("Would clean up expired indices", {
+      product,
+      retention_hours: config.retention_hours,
+    });
   }
 
   // TODO: Verify latest automated snapshot age < 48h, alert if stale

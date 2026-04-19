@@ -3,6 +3,7 @@ import { GetCommand } from "@aws-sdk/lib-dynamodb";
 import type { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 import {
   EMAIL_SUPPRESSION_SOFT_BOUNCE_THRESHOLD,
+  createLogger,
   type SesSuppressionRecord,
 } from "@prontiq/shared";
 
@@ -22,6 +23,7 @@ interface SesEmailClientLike {
 }
 
 const sesClients = new Map<string, SESv2Client>();
+const logger = createLogger("control-plane-email");
 
 export function normalizeEmailForSuppression(email: string): string {
   return email.trim().toLowerCase();
@@ -107,7 +109,7 @@ export async function sendSignedSesEmailWithClient(
     );
     return true;
   } catch (error) {
-    console.warn("SES send failed", {
+    logger.warn("SES send failed", {
       error: error instanceof Error ? error.message : String(error),
       fromEmail: input.fromEmail,
       region: input.region,

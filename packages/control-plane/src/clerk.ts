@@ -1,4 +1,5 @@
 import type { ClerkClient } from "@clerk/backend";
+import { createLogger } from "@prontiq/shared";
 
 /**
  * Resolves the verified primary email for a Clerk user via the
@@ -94,6 +95,7 @@ export async function resolvePrimaryEmail(
  * + logging the typo to CloudWatch is the safer behaviour.
  */
 export const DEFAULT_ADMIN_ROLES = ["org:admin", "admin"] as const;
+const logger = createLogger("control-plane-clerk");
 
 export function getAdminRoles(): Set<string> {
   const override = process.env.CLERK_ADMIN_ROLES;
@@ -107,7 +109,7 @@ export function getAdminRoles(): Set<string> {
       .filter((s) => s.length > 0),
   );
   if (parsed.size === 0) {
-    console.warn(
+    logger.warn(
       "CLERK_ADMIN_ROLES is set but contains no valid role tokens after parsing — falling back to defaults",
       { rawValue: override, defaultRoles: [...DEFAULT_ADMIN_ROLES] },
     );

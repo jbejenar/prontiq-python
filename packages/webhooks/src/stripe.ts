@@ -1,10 +1,12 @@
 import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2, Context } from "aws-lambda";
 import { createStripeBillingService } from "@prontiq/control-plane";
+import { createLogger } from "@prontiq/shared";
 import Stripe from "stripe";
 
 let cachedSecret: string | undefined;
 let cachedService: ReturnType<typeof createStripeBillingService> | undefined;
 let cachedStripe: Stripe | undefined;
+const logger = createLogger("webhooks-stripe");
 
 function getRequiredEnv(name: string): string {
   const value = process.env[name];
@@ -72,12 +74,12 @@ export function createStripeHandler(overrides: StripeHandlerOverrides = {}) {
       );
     } catch (error) {
       if (error instanceof Stripe.errors.StripeSignatureVerificationError) {
-        console.warn("Stripe webhook signature verification failed", {
+        logger.warn("Stripe webhook signature verification failed", {
           message: error.message,
         });
         return reply(400, { error: "invalid_signature" });
       }
-      console.error("Stripe webhook failed before event dispatch", {
+      logger.error("Stripe webhook failed before event dispatch", {
         error: error instanceof Error ? error.message : String(error),
       });
       return reply(500, { error: "internal_error" });

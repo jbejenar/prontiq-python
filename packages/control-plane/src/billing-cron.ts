@@ -1,6 +1,6 @@
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
-import type { UsageCounterRecord } from "@prontiq/shared";
+import { createLogger, type UsageCounterRecord } from "@prontiq/shared";
 import Stripe from "stripe";
 import {
   ACTIVE_REGISTRY_KEY,
@@ -37,6 +37,7 @@ export interface BillingCronSummary {
 
 let cachedDdb: DynamoDBDocumentClient | undefined;
 let cachedStripe: Stripe | undefined;
+const defaultLogger = createLogger("control-plane-billing-cron");
 
 function getRequiredEnv(name: string): string {
   const value = process.env[name];
@@ -74,7 +75,7 @@ export function createBillingCronService(
     const dependencies: BillingCronDependencies = {
       ddb: overrides.ddb ?? getDefaultDdb(),
       keysTableName: overrides.keysTableName ?? getRequiredEnv("KEYS_TABLE_NAME"),
-      logger: overrides.logger ?? console,
+      logger: overrides.logger ?? defaultLogger,
       stripe: await resolveStripe(),
       usageTableName: overrides.usageTableName ?? getRequiredEnv("USAGE_TABLE_NAME"),
     };

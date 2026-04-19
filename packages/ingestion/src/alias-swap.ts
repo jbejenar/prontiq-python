@@ -1,5 +1,5 @@
 import type { Handler } from "aws-lambda";
-import { PRODUCT_REGISTRY } from "@prontiq/shared";
+import { PRODUCT_REGISTRY, createLogger } from "@prontiq/shared";
 import type { Manifest } from "@prontiq/shared";
 import {
   buildAliasSwapActions,
@@ -18,6 +18,8 @@ import {
  * a concurrent older execution from rolling the alias backwards — unless force
  * is true (intentional operator rollback).
  */
+const logger = createLogger("ingestion-alias-swap");
+
 export async function aliasSwap(event: {
   manifest: Manifest;
   indexName: string;
@@ -42,9 +44,11 @@ export async function aliasSwap(event: {
   if (!force && previousIndex) {
     const liveVersion = versionFromIndexName(manifest.product, previousIndex);
     if (liveVersion && compareOpaqueVersions(manifest.version, liveVersion) < 0) {
-      console.log(
-        `Skipping alias swap: live version ${liveVersion} is newer than manifest version ${manifest.version}`,
-      );
+      logger.info("Skipping alias swap because a newer version is already live", {
+        indexName,
+        liveVersion,
+        manifestVersion: manifest.version,
+      });
       return { ...event, alias, previousIndex, swapped: false, reason: "newer_version_live" };
     }
   }

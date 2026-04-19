@@ -8,6 +8,7 @@ import {
   PLANS,
   QUOTA_EMAIL_PENDING_LEASE_MINUTES,
   QUOTA_WARNING_THRESHOLD_FRACTION,
+  createLogger,
   type OrgEnvelopeRecord,
   type QuotaEmailTask,
   type UsageCounterRecord,
@@ -39,6 +40,7 @@ type ThresholdField = {
 };
 
 let cachedDdb: DynamoDBDocumentClient | undefined;
+const defaultLogger = createLogger("control-plane-quota-email");
 
 function getDefaultDdb(): DynamoDBDocumentClient {
   if (!cachedDdb) {
@@ -312,7 +314,7 @@ async function sendQuotaEmailDefault(
 export function createQuotaEmailService(
   overrides: Partial<QuotaEmailDependencies> = {},
 ): { processTask: (task: QuotaEmailTask) => Promise<void> } {
-  const logger = overrides.logger ?? console;
+  const logger = overrides.logger ?? defaultLogger;
   const dependencies: QuotaEmailDependencies = {
     ddb: overrides.ddb ?? getDefaultDdb(),
     keysTableName: overrides.keysTableName ?? getRequiredEnv("KEYS_TABLE_NAME"),

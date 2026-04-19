@@ -7,6 +7,7 @@ import {
   type ProvisioningInput,
   type ProvisioningResult,
 } from "@prontiq/control-plane";
+import { createLogger } from "@prontiq/shared";
 
 /**
  * `POST /v1/account/setup` — Clerk-JWT-authenticated org provisioning
@@ -77,6 +78,7 @@ const clerkJwtSecurity = [{ ClerkJwt: [] }];
 
 let cachedClerkClient: ClerkClient | undefined;
 let cachedService: ReturnType<typeof createProvisioningService> | undefined;
+const logger = createLogger("api-account-routes");
 
 function getDefaultClerkClient(): ClerkClient {
   if (cachedClerkClient) return cachedClerkClient;
@@ -153,7 +155,7 @@ export function createAccountRoutes(overrides: AccountRouteOverrides = {}) {
     try {
       clerkClient = overrides.clerkClient ?? getDefaultClerkClient();
     } catch (error) {
-      console.error("Clerk client initialisation failed", {
+      logger.error("Clerk client initialisation failed", {
         request_id: requestId,
         error: error instanceof Error ? error.message : String(error),
       });
@@ -173,7 +175,7 @@ export function createAccountRoutes(overrides: AccountRouteOverrides = {}) {
     const emailLookup = await resolvePrimaryEmail(clerkClient, principal.userId);
     switch (emailLookup.kind) {
       case "transient_failure":
-        console.error("Clerk Backend API lookup failed (transient)", {
+        logger.error("Clerk Backend API lookup failed (transient)", {
           request_id: requestId,
           orgId: principal.orgId,
           userId: principal.userId,
@@ -192,7 +194,7 @@ export function createAccountRoutes(overrides: AccountRouteOverrides = {}) {
           503,
         );
       case "not_found":
-        console.error("User has no primary email — cannot provision via /v1/account/setup", {
+        logger.error("User has no primary email — cannot provision via /v1/account/setup", {
           request_id: requestId,
           orgId: principal.orgId,
           userId: principal.userId,
@@ -211,7 +213,7 @@ export function createAccountRoutes(overrides: AccountRouteOverrides = {}) {
           500,
         );
       case "not_verified":
-        console.error("Primary email is not verified — cannot provision via /v1/account/setup", {
+        logger.error("Primary email is not verified — cannot provision via /v1/account/setup", {
           request_id: requestId,
           orgId: principal.orgId,
           userId: principal.userId,
@@ -247,7 +249,7 @@ export function createAccountRoutes(overrides: AccountRouteOverrides = {}) {
 
     switch (result.status) {
       case "already_exists":
-        console.info("ORG envelope exists (account-setup replay)", {
+        logger.info("ORG envelope exists (account-setup replay)", {
           request_id: requestId,
           orgId: principal.orgId,
           stripeCustomerId: result.stripeCustomerId,
@@ -260,7 +262,7 @@ export function createAccountRoutes(overrides: AccountRouteOverrides = {}) {
           200,
         );
       case "created":
-        console.info("ORG envelope created (account-setup)", {
+        logger.info("ORG envelope created (account-setup)", {
           request_id: requestId,
           orgId: principal.orgId,
           stripeCustomerId: result.stripeCustomerId,
@@ -275,7 +277,7 @@ export function createAccountRoutes(overrides: AccountRouteOverrides = {}) {
           201,
         );
       case "retryable_failure":
-        console.error("ORG envelope provisioning retryable failure (account-setup)", {
+        logger.error("ORG envelope provisioning retryable failure (account-setup)", {
           request_id: requestId,
           orgId: principal.orgId,
           stripeCustomerId: result.stripeCustomerId,
@@ -292,7 +294,7 @@ export function createAccountRoutes(overrides: AccountRouteOverrides = {}) {
           503,
         );
       case "fatal_failure":
-        console.error("ORG envelope provisioning fatal failure (account-setup)", {
+        logger.error("ORG envelope provisioning fatal failure (account-setup)", {
           request_id: requestId,
           orgId: principal.orgId,
           stripeCustomerId: result.stripeCustomerId,

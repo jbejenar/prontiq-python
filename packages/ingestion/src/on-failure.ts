@@ -1,4 +1,5 @@
 import type { Handler } from "aws-lambda";
+import { createLogger } from "@prontiq/shared";
 import { currentAliasIndex, deleteIndexIfExists, getProductConfig, indexNameFor } from "./lib.js";
 import type { Manifest } from "@prontiq/shared";
 
@@ -16,16 +17,21 @@ import type { Manifest } from "@prontiq/shared";
  * State is preserved via ResultPath: "$.error" on Catch blocks, so $.manifest
  * and other fields remain accessible.
  */
+const logger = createLogger("ingestion-on-failure");
+
 export async function onFailure(event: {
   manifest?: Manifest;
   indexName?: string;
   error?: { Error?: string; Cause?: string };
 }) {
   const errorInfo = event.error ?? {};
-  console.error(`Ingestion failed: ${errorInfo.Error ?? "unknown"} — ${errorInfo.Cause ?? ""}`);
+  logger.error("Ingestion failed", {
+    cause: errorInfo.Cause ?? "",
+    error_name: errorInfo.Error ?? "unknown",
+  });
 
   if (!event.manifest) {
-    console.log("No manifest in state — ReadManifest likely failed, nothing to clean up");
+    logger.info("No manifest in state, skipping cleanup");
     return { ...event, cleaned: false };
   }
 
@@ -35,18 +41,19 @@ export async function onFailure(event: {
     const config = getProductConfig(event.manifest.product);
     const aliasTarget = await currentAliasIndex(config.alias);
     if (aliasTarget === indexName) {
-      console.log(
-        `Alias ${config.alias} already points to ${indexName} — swap succeeded, NOT deleting`,
-      );
+      logger.info("Alias already points to candidate index, not deleting", {
+        alias: config.alias,
+        indexName,
+      });
       return { ...event, cleaned: false, reason: "alias_points_to_candidate" };
     }
 
     await deleteIndexIfExists(indexName);
-    console.log(`Deleted candidate index ${indexName}`);
+    logger.info("Deleted candidate index", { indexName });
     return { ...event, cleaned: true, cleanedIndex: indexName };
   } catch (cleanupError) {
     const message = cleanupError instanceof Error ? cleanupError.message : String(cleanupError);
-    console.error(`Failed to delete candidate index ${indexName}: ${message}`);
+    logger.error("Failed to delete candidate index", { error: message, indexName });
     return { ...event, cleaned: false, cleanupError: message };
   }
 }

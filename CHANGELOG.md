@@ -36,6 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Phase 1 observability baseline** (`P1F.02`) is implemented in code. `PqIngestAlerts` prod email subscriptions from `ALERT_EMAILS`, new CloudWatch alarms for address API 5xx/Lambda error rate and OpenSearch yellow/red/low-storage, dashboard `prontiq-production`, X-Ray tracing on `PqApi`, and structured JSON logs across Lambda execution paths are ready; prod deploy and manual operator verification remain pending.
 - **Auth middleware integration coverage** (`P1B.12`) is now reconciled to the shipped hash-based auth path. The existing API integration suite now covers direct unknown/revoked-key failures, REDIRECT success writing usage on `newHash`, no orphan usage writes on pre-increment failure paths, and the atomic free-tier quota race. The roadmap ticket no longer claims a standalone seed script, webhook provisioning idempotency, or first-key creation assertions.
 - ROADMAP P1B ticket count expanded from 9 to 13 (3 Unkey tickets deleted, 7 new DDB-native tickets added). Total ROADMAP ticket count: 72 → 76.
 - ARCHITECTURE.MD numbering flattened: new §7–§12 inserted; existing §7 CI/CD → §13, §8 Phasing → §14, §9 Competitive Position → §15, §10 Design Principles → §16, Licence → §17. §14 Phasing rewritten with security deliverables per phase (v2.2 §18).

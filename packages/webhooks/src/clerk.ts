@@ -6,6 +6,7 @@ import {
   getAdminRoles,
   resolvePrimaryEmail,
 } from "@prontiq/control-plane";
+import { createLogger } from "@prontiq/shared";
 
 /**
  * Clerk webhook handler for `organizationMembership.created`.
@@ -62,6 +63,7 @@ interface ParsedClerkEvent {
 let cachedService: ReturnType<typeof createProvisioningService> | undefined;
 let cachedSecret: string | undefined;
 let cachedClerkClient: ClerkClient | undefined;
+const logger = createLogger("webhooks-clerk");
 
 function getProvisioningService(): ReturnType<typeof createProvisioningService> {
   if (!cachedService) {
@@ -155,7 +157,7 @@ export function createClerkHandler(overrides: HandlerOverrides = {}) {
       // throws WebhookVerificationError on signature failure.
       const verified = wh.verify(rawBody, svixHeaders) as ParsedClerkEvent | null;
       if (!verified || typeof verified !== "object" || typeof verified.type !== "string") {
-        console.warn("Clerk webhook verified but payload shape is unexpected", {
+        logger.warn("Clerk webhook verified but payload shape is unexpected", {
           svixId: svixHeaders["svix-id"],
         });
         return reply(400, { error: "malformed_payload" });
@@ -163,26 +165,26 @@ export function createClerkHandler(overrides: HandlerOverrides = {}) {
       parsed = verified;
     } catch (error) {
       if (error instanceof WebhookVerificationError) {
-        console.warn("Clerk webhook signature verification failed", {
+        logger.warn("Clerk webhook signature verification failed", {
           message: error.message,
         });
         return reply(401, { error: "invalid_signature" });
       }
       // CLERK_WEBHOOK_SECRET missing or other startup error — fail
       // loud so the platform alarm fires.
-      console.error("Clerk webhook handler failed before verification", {
+      logger.error("Clerk webhook handler failed before verification", {
         error: error instanceof Error ? error.message : String(error),
       });
       return reply(500, { error: "internal_error" });
     }
 
     if (parsed.type !== "organizationMembership.created") {
-      console.info("Skipping non-provisioning event", { type: parsed.type });
+      logger.info("Skipping non-provisioning event", { type: parsed.type });
       return reply(200, { skipped: true, reason: "unsubscribed_event_type", type: parsed.type });
     }
 
     if (!isOrganizationMembershipCreated(parsed)) {
-      console.warn("organizationMembership.created payload missing required fields", {
+      logger.warn("organizationMembership.created payload missing required fields", {
         type: parsed.type,
       });
       return reply(400, { error: "malformed_payload", type: parsed.type });
@@ -191,7 +193,7 @@ export function createClerkHandler(overrides: HandlerOverrides = {}) {
     const { data } = parsed;
     const adminRoles = overrides.adminRoles ?? getAdminRoles();
     if (!adminRoles.has(data.role)) {
-      console.info("Skipping non-admin organizationMembership.created", {
+      logger.info("Skipping non-admin organizationMembership.created", {
         orgId: data.organization.id,
         userId: data.public_user_data.user_id,
         role: data.role,
@@ -208,7 +210,7 @@ export function createClerkHandler(overrides: HandlerOverrides = {}) {
     try {
       clerkClient = overrides.clerkClient ?? getDefaultClerkClient();
     } catch (error) {
-      console.error("Clerk client initialisation failed", {
+      logger.error("Clerk client initialisation failed", {
         error: error instanceof Error ? error.message : String(error),
       });
       return reply(500, { error: "internal_error" });
@@ -217,7 +219,7 @@ export function createClerkHandler(overrides: HandlerOverrides = {}) {
     const emailLookup = await resolvePrimaryEmail(clerkClient, data.public_user_data.user_id);
     switch (emailLookup.kind) {
       case "transient_failure":
-        console.error("Clerk Backend API lookup failed (transient)", {
+        logger.error("Clerk Backend API lookup failed (transient)", {
           orgId: data.organization.id,
           userId: data.public_user_data.user_id,
           error: emailLookup.error.message,
@@ -228,7 +230,7 @@ export function createClerkHandler(overrides: HandlerOverrides = {}) {
         // signup, or operator deleted the email post-signup). Cannot
         // provision — operator must add a primary email in the Clerk
         // dashboard, then "Resend" the failed message.
-        console.error("User has no primary email — cannot provision", {
+        logger.error("User has no primary email — cannot provision", {
           orgId: data.organization.id,
           userId: data.public_user_data.user_id,
         });
@@ -241,7 +243,7 @@ export function createClerkHandler(overrides: HandlerOverrides = {}) {
         // is "verify your primary email" or "set a verified email as
         // primary in Clerk dashboard", then "Resend" the failed
         // message.
-        console.error("Primary email is not verified — cannot provision", {
+        logger.error("Primary email is not verified — cannot provision", {
           orgId: data.organization.id,
           userId: data.public_user_data.user_id,
           verificationStatus: emailLookup.verificationStatus,
@@ -261,26 +263,26 @@ export function createClerkHandler(overrides: HandlerOverrides = {}) {
 
     switch (result.status) {
       case "already_exists":
-        console.info("ORG envelope exists", {
+        logger.info("ORG envelope exists", {
           orgId: data.organization.id,
           stripeCustomerId: result.stripeCustomerId,
         });
         return reply(200, { ok: true, status: "already_exists" });
       case "created":
-        console.info("ORG envelope created", {
+        logger.info("ORG envelope created", {
           orgId: data.organization.id,
           stripeCustomerId: result.stripeCustomerId,
           emailSent: result.emailSent,
         });
         return reply(200, { ok: true, status: "created", emailSent: result.emailSent });
       case "retryable_failure":
-        console.error("ORG envelope provisioning retryable failure", {
+        logger.error("ORG envelope provisioning retryable failure", {
           orgId: data.organization.id,
           stripeCustomerId: result.stripeCustomerId,
         });
         return reply(500, { error: "retryable_failure" });
       case "fatal_failure":
-        console.error("ORG envelope provisioning fatal failure", {
+        logger.error("ORG envelope provisioning fatal failure", {
           orgId: data.organization.id,
           stripeCustomerId: result.stripeCustomerId,
         });

@@ -204,4 +204,4 @@ aws dynamodb delete-item \
 - `PqSesFeedbackErrors`
 - `PqQuotaEmailWorkerErrors`
 
-These should page the same operator channel as the other control-plane Lambdas until broader monitoring lands in P1F.02.
+These page via the shared `PqIngestAlerts` Phase 1 alert path. See `docs/runbooks/monitoring-alerting.md`.

@@ -1,5 +1,6 @@
 import { PRODUCT_REGISTRY } from "@prontiq/shared";
 import { getOpenSearchClient } from "./client.js";
+import { withOpenSearchSubsegment } from "../tracing.js";
 
 const ADDRESS_ALIAS = PRODUCT_REGISTRY["address"]!.alias;
 
@@ -41,14 +42,16 @@ export async function autocomplete(q: string, state?: string, limit = 5) {
   // Phase 1: strict — operator AND requires every token (including the last as
   // prefix) to match. Gives the best ranking when the user is typing a valid
   // prefix (e.g. "9 endeavour cou" → COURT ranks first).
-  const strict = await client.search({
-    index: ADDRESS_ALIAS,
-    body: {
-      size: limit,
-      query: buildAutocompleteQuery(q, state, "and"),
-      _source: sourceFields,
-    },
-  });
+  const strict = await withOpenSearchSubsegment("autocomplete.strict", () =>
+    client.search({
+      index: ADDRESS_ALIAS,
+      body: {
+        size: limit,
+        query: buildAutocompleteQuery(q, state, "and"),
+        _source: sourceFields,
+      },
+    }),
+  );
 
   let response = strict;
   let hits = strict.body.hits.hits as AnyRecord[];
@@ -58,14 +61,16 @@ export async function autocomplete(q: string, state?: string, limit = 5) {
   // partial matches still return SOMETHING. Slightly worse ranking but
   // never empty when partial matches exist.
   if (hits.length === 0) {
-    const lenient = await client.search({
-      index: ADDRESS_ALIAS,
-      body: {
-        size: limit,
-        query: buildAutocompleteQuery(q, state, "or"),
-        _source: sourceFields,
-      },
-    });
+    const lenient = await withOpenSearchSubsegment("autocomplete.lenient", () =>
+      client.search({
+        index: ADDRESS_ALIAS,
+        body: {
+          size: limit,
+          query: buildAutocompleteQuery(q, state, "or"),
+          _source: sourceFields,
+        },
+      }),
+    );
     response = lenient;
     hits = lenient.body.hits.hits as AnyRecord[];
   }
@@ -81,20 +86,22 @@ export async function autocomplete(q: string, state?: string, limit = 5) {
 }
 
 export async function validate(q: string) {
-  const response = await getOpenSearchClient().search({
-    index: ADDRESS_ALIAS,
-    body: {
-      size: 1,
-      query: {
-        multi_match: {
-          query: q,
-          type: "best_fields",
-          fuzziness: "AUTO",
-          fields: ["addressLabelSearch"],
+  const response = await withOpenSearchSubsegment("validate", () =>
+    getOpenSearchClient().search({
+      index: ADDRESS_ALIAS,
+      body: {
+        size: 1,
+        query: {
+          multi_match: {
+            query: q,
+            type: "best_fields",
+            fuzziness: "AUTO",
+            fields: ["addressLabelSearch"],
+          },
         },
       },
-    },
-  });
+    }),
+  );
 
   const hits = response.body.hits.hits as AnyRecord[];
   const hit = hits[0];
@@ -378,11 +385,11 @@ function scoreToConfidence(
 }
 
 export async function enrich(id: string) {
-  const response = await getOpenSearchClient().get(
-    { index: ADDRESS_ALIAS, id },
-    // Suppress the client's throw on 404 so we can distinguish doc-missing
-    // (benign) from index-missing (infrastructure failure).
-    { ignore: [404] },
+  const response = await withOpenSearchSubsegment("enrich", () =>
+    getOpenSearchClient().get(
+      { index: ADDRESS_ALIAS, id },
+      { ignore: [404] },
+    ),
   );
 
   // Benign: document not found (index exists, id doesn't).
@@ -406,27 +413,29 @@ export async function enrich(id: string) {
 }
 
 export async function reverse(lat: number, lon: number, radius: number, limit: number) {
-  const response = await getOpenSearchClient().search({
-    index: ADDRESS_ALIAS,
-    body: {
-      size: limit,
-      query: {
-        geo_distance: {
-          distance: `${radius}m`,
-          location: { lat, lon },
-        },
-      },
-      sort: [
-        {
-          _geo_distance: {
+  const response = await withOpenSearchSubsegment("reverse", () =>
+    getOpenSearchClient().search({
+      index: ADDRESS_ALIAS,
+      body: {
+        size: limit,
+        query: {
+          geo_distance: {
+            distance: `${radius}m`,
             location: { lat, lon },
-            order: "asc",
-            unit: "m",
           },
         },
-      ],
-    },
-  });
+        sort: [
+          {
+            _geo_distance: {
+              location: { lat, lon },
+              order: "asc",
+              unit: "m",
+            },
+          },
+        ],
+      },
+    }),
+  );
 
   const hits = response.body.hits.hits as AnyRecord[];
 
@@ -441,21 +450,23 @@ export async function reverse(lat: number, lon: number, radius: number, limit: n
 }
 
 export async function lookupPostcode(postcode: string, limit: number) {
-  const response = await getOpenSearchClient().search({
-    index: ADDRESS_ALIAS,
-    body: {
-      size: 0,
-      query: { term: { postcode } },
-      aggs: {
-        localities: {
-          terms: { field: "localityName", size: limit },
-          aggs: {
-            state: { terms: { field: "state", size: 1 } },
+  const response = await withOpenSearchSubsegment("lookup_postcode", () =>
+    getOpenSearchClient().search({
+      index: ADDRESS_ALIAS,
+      body: {
+        size: 0,
+        query: { term: { postcode } },
+        aggs: {
+          localities: {
+            terms: { field: "localityName", size: limit },
+            aggs: {
+              state: { terms: { field: "state", size: 1 } },
+            },
           },
         },
       },
-    },
-  });
+    }),
+  );
 
   const aggs = response.body.aggregations as AnyRecord | undefined;
   const buckets = (aggs?.localities?.buckets ?? []) as AnyRecord[];
@@ -485,15 +496,17 @@ export async function lookupSuburb(suburb: string, state: string | undefined, li
     exactMust.push({ term: { state: stateUpper } });
   }
 
-  const exactResponse = await client.search({
-    index: ADDRESS_ALIAS,
-    body: {
-      size: 1,
-      _source: false,
-      terminate_after: 1,
-      query: { bool: { must: exactMust } },
-    },
-  });
+  const exactResponse = await withOpenSearchSubsegment("lookup_suburb.exact", () =>
+    client.search({
+      index: ADDRESS_ALIAS,
+      body: {
+        size: 1,
+        _source: false,
+        terminate_after: 1,
+        query: { bool: { must: exactMust } },
+      },
+    }),
+  );
   const exactMatched =
     (exactResponse.body.hits.hits as AnyRecord[]).length > 0;
 
@@ -547,16 +560,17 @@ export async function lookupSuburb(suburb: string, state: string | undefined, li
     // cardinality ever exceeds this, `match` scoring ensures closer
     // candidates are the ones that survive.
     const CANDIDATE_LIMIT = 100;
-    const fuzzyResponse = await client.search({
-      index: ADDRESS_ALIAS,
-      body: {
-        size: CANDIDATE_LIMIT,
-        query: { bool: { must: fuzzyMust } },
-        _source: ["localityName"],
-        collapse: { field: "localityName" },
-        // default sort: _score desc (relevance-first per collapsed group).
-      },
-    });
+    const fuzzyResponse = await withOpenSearchSubsegment("lookup_suburb.fuzzy", () =>
+      client.search({
+        index: ADDRESS_ALIAS,
+        body: {
+          size: CANDIDATE_LIMIT,
+          query: { bool: { must: fuzzyMust } },
+          _source: ["localityName"],
+          collapse: { field: "localityName" },
+        },
+      }),
+    );
 
     const hits = fuzzyResponse.body.hits.hits as AnyRecord[];
     if (hits.length === 0) {
@@ -612,22 +626,24 @@ export async function lookupSuburb(suburb: string, state: string | undefined, li
       if (stateUpper) {
         tiebreakMust.push({ term: { state: stateUpper } });
       }
-      const tiebreakResponse = await client.search({
-        index: ADDRESS_ALIAS,
-        body: {
-          size: 0,
-          query: { bool: { must: tiebreakMust } },
-          aggs: {
-            tiebreak: {
-              terms: {
-                field: "localityName",
-                size: closestBand.length,
-                order: { _count: "desc" },
+      const tiebreakResponse = await withOpenSearchSubsegment("lookup_suburb.tiebreak", () =>
+        client.search({
+          index: ADDRESS_ALIAS,
+          body: {
+            size: 0,
+            query: { bool: { must: tiebreakMust } },
+            aggs: {
+              tiebreak: {
+                terms: {
+                  field: "localityName",
+                  size: closestBand.length,
+                  order: { _count: "desc" },
+                },
               },
             },
           },
-        },
-      });
+        }),
+      );
       const tbBuckets = ((tiebreakResponse.body.aggregations as
         | AnyRecord
         | undefined)?.tiebreak?.buckets ?? []) as Array<{
@@ -649,21 +665,23 @@ export async function lookupSuburb(suburb: string, state: string | undefined, li
     aggMust.push({ term: { state: stateUpper } });
   }
 
-  const aggResponse = await client.search({
-    index: ADDRESS_ALIAS,
-    body: {
-      size: 0,
-      query: { bool: { must: aggMust } },
-      aggs: {
-        postcodes: {
-          terms: { field: "postcode", size: limit },
-        },
-        bounds: {
-          geo_bounds: { field: "location" },
+  const aggResponse = await withOpenSearchSubsegment("lookup_suburb.aggregate", () =>
+    client.search({
+      index: ADDRESS_ALIAS,
+      body: {
+        size: 0,
+        query: { bool: { must: aggMust } },
+        aggs: {
+          postcodes: {
+            terms: { field: "postcode", size: limit },
+          },
+          bounds: {
+            geo_bounds: { field: "location" },
+          },
         },
       },
-    },
-  });
+    }),
+  );
 
   const aggs = aggResponse.body.aggregations as AnyRecord | undefined;
   const postcodeBuckets = (aggs?.postcodes?.buckets ?? []) as AnyRecord[];

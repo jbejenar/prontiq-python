@@ -61,3 +61,6 @@ export {
   postcodeLookupSchema,
   suburbLookupSchema,
 } from "./validation.js";
+
+export { createLogger } from "./logging.js";
+export type { AppLogger } from "./logging.js";

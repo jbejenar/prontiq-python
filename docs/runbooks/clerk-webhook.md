@@ -184,7 +184,9 @@ The classifier lives in `packages/api/src/middleware/clerk-jwt.ts` (`classifyVer
 |---|---|
 | Handler logs | `/aws/lambda/prontiq-<stage>-PqClerkWebhookFunction-<rand>` |
 | Error alarm | `PqClerkWebhookErrors` (region `ap-southeast-2`). Tracks `AWS/ApiGateway 5xx` on the `POST /webhooks/clerk` route (covers both unhandled Lambda exceptions AND handler-returned 500s). |
-| Alarm SNS topic | `PqIngestAlerts` (reused for control-plane alerting until P1F.02 lands) |
+| Alarm SNS topic | `PqIngestAlerts` |
+
+See also: `docs/runbooks/monitoring-alerting.md` for the shared Phase 1 alerting and dashboard baseline.
 
 ## Tear-down (only if the entire webhook surface is being replaced)
 

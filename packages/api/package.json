@@ -14,7 +14,7 @@
   "scripts": {
     "build": "node ../../scripts/ts-package-build.mjs clean && tsc -p tsconfig.json",
     "typecheck": "tsc --noEmit",
-    "test": "pnpm -w build --filter @prontiq/api... && node --test dist/search/queries.test.js dist/scripts/migrate-api-keys.test.js dist/scripts/rotate-prod-key.test.js dist/middleware/clerk-jwt.test.js dist/middleware/rate-limit.test.js",
+    "test": "pnpm -w build --filter @prontiq/api... && node --test dist/search/queries.test.js dist/scripts/migrate-api-keys.test.js dist/scripts/rotate-prod-key.test.js dist/middleware/clerk-jwt.test.js dist/middleware/rate-limit.test.js dist/tracing.test.js",
     "test:integration": "pnpm -w build --filter @prontiq/api... && node --test dist/search/queries.integration.test.js dist/middleware/auth.integration.test.js dist/middleware/redirect-gsi.integration.test.js dist/routes/account.integration.test.js",
     "smoke": "pnpm -w build --filter @prontiq/api... && node dist/scripts/smoke-test.js",
     "smoke:prod": "pnpm -w build --filter @prontiq/api... && PRONTIQ_API=https://api.prontiq.dev node dist/scripts/smoke-test.js",
@@ -35,6 +35,7 @@
     "@opensearch-project/opensearch": "^3.2.0",
     "@prontiq/control-plane": "workspace:*",
     "@prontiq/shared": "workspace:*",
+    "aws-xray-sdk-core": "^3.12.0",
     "hono": "^4.12.14",
     "zod": "^4.3.6"
   },
