@@ -65,7 +65,7 @@ packages/
   control-plane/   @prontiq/control-plane   provisionOrg service + writeAudit helpers (consumed by webhooks + api)
   api/             @prontiq/api             Hono API on Lambda (ARM64)
   ingestion/       @prontiq/ingestion       Step Functions + Lambda indexing
-  webhooks/        @prontiq/webhooks        Clerk webhook (live) + Stripe stub (P1B.06 pending)
+  webhooks/        @prontiq/webhooks        Clerk webhook + Stripe billing webhook
   docs/            @prontiq/docs            Mintlify documentation
   plugins/
     shopify/                                Checkout UI Extension
@@ -82,7 +82,7 @@ packages/
 | Search         | OpenSearch 2.19 (managed)                              |
 | API Keys       | DynamoDB-native (`pq_live_` + SHA-256 hash-based lookup; live in prod) |
 | Auth (portal)  | Clerk — webhook live in prod (`POST /webhooks/clerk`) AND JWT-authenticated `POST /v1/account/setup` recovery endpoint live in prod (P1B.05 complete) |
-| Billing        | Stripe customer creation live (via Clerk webhook → control-plane); subscription webhook (P1B.06) and billing cron (P1B.10) pending |
+| Billing        | Stripe customer creation, subscription webhook, hourly billing cron, and month-close all live; SES quota/billing mail verified against simulator recipients |
 | Dashboard      | `/account` page — to be rebuilt per ARCHITECTURE.MD §5.9 (P1C) |
 | Docs           | Mintlify at `docs.prontiq.dev` (live)                  |
 | SDKs           | Speakeasy generates `@prontiq/sdk` (TypeScript) — npm publish pending NPM_TOKEN |
@@ -96,7 +96,7 @@ See [`ROADMAP.md`](ROADMAP.md) for the full 76-ticket plan.
 | ------- | ------------------------- | ------- | --------- |
 | **P0**  | Infrastructure Foundation | 6       | 6/6       |
 | **P1A** | API Core (Address)        | 13      | 9/13      |
-| **P1B** | Auth & Billing            | 13      | 5/13      |
+| **P1B** | Auth & Billing            | 13      | 8/13      |
 | **P1C** | Dashboard                 | 7       | 0/7       |
 | **P1D** | Docs & SDK                | 5       | 2/5       |
 | **P1E** | Ingestion                 | 6       | 4/6       |
@@ -105,7 +105,7 @@ See [`ROADMAP.md`](ROADMAP.md) for the full 76-ticket plan.
 | **P3**  | LEI + Full Dashboard      | 7       | 0/7       |
 | **P4**  | Shopify + WooCommerce     | 5       | 0/5       |
 | **P5**  | CVE/NVD + Patents         | 4       | 0/4       |
-|         |                           | **76**  | **27/76** |
+|         |                           | **76**  | **30/76** |
 
 ## Commands
 

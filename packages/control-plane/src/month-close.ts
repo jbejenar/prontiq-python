@@ -9,18 +9,15 @@ import {
   buildUsageScopeIndex,
   discoverAttributionChain,
   discoverProductsForMonth,
-  getBillingMonthKeys,
-  getRetirementBlockingMonthKeys,
-  hasOutstandingBillableUsage,
+  getPreviousMonthKey,
   loadKey,
   loadRegistryApiKeyHashes,
   loadUsageRowsForHash,
   reconcileBillingScope,
   type RegistryMembershipState,
-  updateRegistryMembership,
 } from "./billing-runtime.js";
 
-export interface BillingCronDependencies {
+export interface MonthCloseDependencies {
   ddb: DynamoDBDocumentClient;
   keysTableName: string;
   logger: BillingLogger;
@@ -28,7 +25,8 @@ export interface BillingCronDependencies {
   usageTableName: string;
 }
 
-export interface BillingCronSummary {
+export interface MonthCloseSummary {
+  closedScopes: number;
   keysProcessed: number;
   meterEventsSent: number;
   negativeDeltas: number;
@@ -60,25 +58,23 @@ function getDefaultStripe(): Stripe {
   return cachedStripe;
 }
 
-export function createBillingCronService(
-  overrides: Partial<BillingCronDependencies> = {},
-): { handleTick: (now?: Date) => Promise<BillingCronSummary> } {
-  async function resolveStripe(): Promise<Stripe> {
-    if (overrides.stripe) {
-      return overrides.stripe;
-    }
-    return getDefaultStripe();
-  }
-
-  async function handleTick(now = new Date()): Promise<BillingCronSummary> {
-    const dependencies: BillingCronDependencies = {
+export function createMonthCloseService(
+  overrides: Partial<MonthCloseDependencies> = {},
+): { handleTick: (now?: Date) => Promise<MonthCloseSummary> } {
+  function resolveDependencies(): MonthCloseDependencies {
+    return {
       ddb: overrides.ddb ?? getDefaultDdb(),
       keysTableName: overrides.keysTableName ?? getRequiredEnv("KEYS_TABLE_NAME"),
       logger: overrides.logger ?? console,
-      stripe: await resolveStripe(),
+      stripe: overrides.stripe ?? getDefaultStripe(),
       usageTableName: overrides.usageTableName ?? getRequiredEnv("USAGE_TABLE_NAME"),
     };
-    const summary: BillingCronSummary = {
+  }
+
+  async function handleTick(now = new Date()): Promise<MonthCloseSummary> {
+    const dependencies = resolveDependencies();
+    const summary: MonthCloseSummary = {
+      closedScopes: 0,
       keysProcessed: 0,
       meterEventsSent: 0,
       negativeDeltas: 0,
@@ -107,8 +103,7 @@ export function createBillingCronService(
       registryStatuses.set(hash, current);
     }
 
-    const monthKeys = getBillingMonthKeys(now);
-    const retirementBlockingMonthKeys = getRetirementBlockingMonthKeys(now);
+    const previousMonthKey = getPreviousMonthKey(now);
 
     for (const [apiKeyHash, registryStatus] of registryStatuses) {
       const key = await loadKey(dependencies.ddb, dependencies.keysTableName, apiKeyHash);
@@ -126,54 +121,41 @@ export function createBillingCronService(
         usageRowsByHash.set(hash, buildUsageScopeIndex(rows));
       }
 
-      for (const monthKey of monthKeys) {
-        const productsToProcess = discoverProductsForMonth(key.products, usageRowsByHash, chain, monthKey);
-        if (productsToProcess.length === 0) {
-          summary.scopesSkipped += 1;
-          continue;
-        }
-
-        for (const product of productsToProcess) {
-          const result = await reconcileBillingScope({
-            chain,
-            currentHash: apiKeyHash,
-            ddb: dependencies.ddb,
-            logger: dependencies.logger,
-            monthKey,
-            now,
-            product,
-            stripe: dependencies.stripe,
-            stripeCustomerId: key.stripeCustomerId,
-            usageRowsByHash,
-            usageTableName: dependencies.usageTableName,
-          });
-          summary.meterEventsSent += result.meterEventsSent;
-          summary.negativeDeltas += result.negativeDeltas;
-          summary.scopesSkipped += result.scopesSkipped;
-        }
+      const productsToProcess = discoverProductsForMonth(key.products, usageRowsByHash, chain, previousMonthKey);
+      if (productsToProcess.length === 0) {
+        summary.scopesSkipped += 1;
+        continue;
       }
 
-      if (
-        registryStatus.retired &&
-        !hasOutstandingBillableUsage(apiKeyHash, retirementBlockingMonthKeys, usageRowsByHash, chain)
-      ) {
-        await updateRegistryMembership(
-          dependencies.ddb,
-          dependencies.keysTableName,
-          RETIRED_REGISTRY_KEY,
-          [apiKeyHash],
-          "delete",
-        );
+      for (const product of productsToProcess) {
+        const result = await reconcileBillingScope({
+          chain,
+          closeAfterFinalize: true,
+          currentHash: apiKeyHash,
+          ddb: dependencies.ddb,
+          logger: dependencies.logger,
+          monthKey: previousMonthKey,
+          now,
+          product,
+          stripe: dependencies.stripe,
+          stripeCustomerId: key.stripeCustomerId,
+          usageRowsByHash,
+          usageTableName: dependencies.usageTableName,
+        });
+        summary.closedScopes += result.closedScopes;
+        summary.meterEventsSent += result.meterEventsSent;
+        summary.negativeDeltas += result.negativeDeltas;
+        summary.scopesSkipped += result.scopesSkipped;
       }
     }
 
-    dependencies.logger.info("Billing cron completed", summary);
+    dependencies.logger.info("Month-close completed", summary);
     return summary;
   }
 
   return { handleTick };
 }
 
-export async function handler(): Promise<BillingCronSummary> {
-  return createBillingCronService().handleTick();
+export async function handler(): Promise<MonthCloseSummary> {
+  return createMonthCloseService().handleTick();
 }

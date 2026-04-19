@@ -35,6 +35,12 @@ export type {
   BillingCronSummary,
 } from "./billing-cron.js";
 
+export { createMonthCloseService } from "./month-close.js";
+export type {
+  MonthCloseDependencies,
+  MonthCloseSummary,
+} from "./month-close.js";
+
 export { createQuotaEmailService } from "./quota-email.js";
 export type {
   QuotaEmailDependencies,

@@ -1,9 +1,9 @@
 # NEXT-WORK.md — Active Sprint
 
 > Extracted from ROADMAP.md. This is what agents should work on NOW.
-> Last updated: 2026-04-19 (Session 16)
+> Last updated: 2026-04-19 (Session 18)
 
-## Current Phase: Final P1B billing hardening remains
+## Current Phase: Post-P1B billing hardening
 
 ### What's Live
 
@@ -25,6 +25,7 @@
 - **P1B.05 complete (2026-04-18).** Clerk webhook handler (`POST /webhooks/clerk`) AND `POST /v1/account/setup` recovery endpoint both live in dev + prod. Webhook dev verified end-to-end with real Svix traffic on 2026-04-18: `org_3CTU4Oh1XTqVdEGcyTBGqRWujCm` provisioned (Stripe customer `cus_UM5zw8xl8HgS9n`, ORG envelope, audit row, all atomic via `TransactWriteItems`); 4 subsequent Svix retries returned `already_exists` with zero side effects. Account-setup endpoint runs the same `createProvisioningService().provisionOrg(...)` code path as the webhook, so a delayed/missed webhook is recoverable from the dashboard. Three Lambdas now serve `PqApi`: address-API `$default` (hot path), `PqClerkWebhook` (Svix-signed), `PqAccount` (Clerk-JWT-authenticated `/v1/account/*`).
 - **P1B.06 + P1B.10 complete (2026-04-18; rollout verified 2026-04-19).** Stripe webhook + hourly billing cron are live in dev + prod. Dev Stripe webhook verification has been exercised end to end on real sandbox deliveries across tier reconciliation, `past_due`, recovery, cancellation, and `invoice.payment_failed` log-only. Prod is deployed, the Stripe destination is configured correctly, and the first real production billing event is now the final live confirmation point.
 - **P1B.08 complete (2026-04-19; rollout verified 2026-04-19).** SES feedback ingestion, suppression-aware welcome / `past_due` / quota emails, and 80% / 100% quota notifications are live in dev + prod. `prontiq.dev` is verified in SES with DKIM active, simulator-based positive-send plus bounce / complaint flows were exercised in both stages, and the post-merge config-set IAM/send-path fixes are deployed. SES is still in sandbox, so simulator validation is complete but normal-recipient delivery remains blocked until AWS production access is enabled.
+- **P1B.11 complete (2026-04-19).** `PqMonthClose` is live in dev + prod on `cron(30 0 1 * ? *)`. It reuses the same replay-safe pending meter identifier model as `PqBillingCron`, finalizes previous-month deltas exactly once, and marks the current-hash previous-month scope `closed=true` so the hourly cron stops revisiting it permanently. Dev integration and manual service verification proved: remaining previous-month delta push, zero-delta close, predecessor-only chain finalization, rerun idempotency, and hourly-cron skip on closed prior-month scopes.
 - **`@prontiq/control-plane` package** (recovered from prior design + hardened) provides `createProvisioningService()`, `writeAudit()` / `buildAuditTransactItem()`, AND `resolvePrimaryEmail()`. Both ingress paths (Clerk webhook + `/v1/account/setup`) consume the same provisioning service AND the same verified-primary-email helper — invariants enforced once at the package boundary.
 - The legacy raw-key table is retained only for rollback/soak; the old `pq_live_prod_...` seed key has been rotated and revoked.
 - Future prod seed-key rotation now has an operator command:
@@ -75,7 +76,6 @@ POST /v1/account/setup  (Clerk JWT; not API key — recovery provisioning)
 - **P1B.06 / P1B.10 rollout status (2026-04-19):** dev Stripe webhook verification is complete on real sandbox deliveries across tier reconciliation, `past_due`, recovery, cancellation, and `invoice.payment_failed`. Prod is deployed and the Stripe destination is configured correctly, but the first real production billing delivery is still the final live confirmation point.
 - ~~P1B.07 — `prontiq-audit` writer helper~~ ✅ shipped
 - ~~P1B.08 — SES suppression / bounce handling~~ ✅ shipped (2026-04-19)
-- P1B.11 — month-close job
 
 ### 2. Finish ingestion hardening
 
@@ -94,15 +94,15 @@ POST /v1/account/setup  (Clerk JWT; not API key — recovery provisioning)
 
 Recommended priority:
 
-1. **P1B.11 — month-close job.** The hourly billing cron is live, and P1B.08 finished the SES suppression + quota-email side. The remaining billing hardening step is the day-1 finalisation sweep that marks previous-month scopes `closed: true` so the hourly cron stops revisiting them permanently.
-2. P1F.02 — monitoring + alerting. Control-plane coverage now includes `PqClerkWebhookErrors`, `PqStripeWebhookErrors`, `PqBillingCronErrors`, `PqAccountErrors`, `PqSesFeedbackErrors`, and `PqQuotaEmailWorkerErrors`. Need broader DDB/Stripe/OpenSearch visibility before P1C dashboard work goes live.
-3. P1C account surface rebuild. The billing/backend primitives are now materially complete enough that customer-facing account/billing UX can resume after month-close.
+1. P1F.02 — monitoring + alerting. Control-plane coverage now includes `PqClerkWebhookErrors`, `PqStripeWebhookErrors`, `PqBillingCronErrors`, `PqMonthCloseErrors`, `PqAccountErrors`, `PqSesFeedbackErrors`, and `PqQuotaEmailWorkerErrors`. Need broader DDB/Stripe/OpenSearch visibility before P1C dashboard work goes live.
+2. P1C account surface rebuild. The billing/backend primitives are now materially complete enough that customer-facing account/billing UX can resume after month-close.
+3. P1E.05 / P1E.06 ingestion hardening remain the next backend-only platform items after observability.
 
 Reason:
 
 - P1B.08 is now shipped: SES feedback ingestion, suppression-aware sends, and 80% / 100% quota emails are live.
-- The last remaining P1B billing gap is month-close.
-- After month-close, the highest-value work is visibility hardening plus the rebuilt customer-facing account surface.
+- P1B.11 is now shipped: previous-month scopes are finalized and explicitly closed.
+- The highest-value next work is visibility hardening plus the rebuilt customer-facing account surface.
 
 ### Operator follow-ups (one-time, not blocking next ticket)
 

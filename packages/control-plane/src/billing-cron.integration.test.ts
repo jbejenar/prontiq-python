@@ -498,6 +498,41 @@ test("billing cron still meters removed products during previous-month grace swe
   });
 });
 
+test("billing cron skips a closed previous-month scope during the day-1 grace window", async () => {
+  const now = new Date("2026-05-01T02:00:00.000Z");
+  const hash = "z".repeat(64);
+  await seedKey(makeKey({ apiKeyHash: hash, stripeCustomerId: "cus_closed_123" }));
+  await seedRegistry([hash]);
+  await seedUsage(makeUsage({
+    apiKeyHash: hash,
+    closed: true,
+    lastPushedCumulativeCount: 10,
+    requestCount: 14,
+    scope: "address#2026-04",
+  }));
+
+  const { calls, stripe } = makeStripeRecorder();
+  const summary = await createBillingCronService({
+    ddb,
+    keysTableName: KEYS_TABLE,
+    logger: console,
+    stripe,
+    usageTableName: USAGE_TABLE,
+  }).handleTick(now);
+
+  assert.equal(summary.meterEventsSent, 0);
+  assert.equal(calls.length, 0);
+
+  const usage = await ddb.send(
+    new GetCommand({
+      TableName: USAGE_TABLE,
+      Key: { apiKeyHash: hash, scope: "address#2026-04" },
+    }),
+  );
+  assert.equal(usage.Item?.closed, true);
+  assert.equal(usage.Item?.lastPushedCumulativeCount, 10);
+});
+
 test("billing cron meters retired hashes until their final delta is drained, then removes them from the retired registry", async () => {
   await withTemporaryBillingEndpoint("abn.lookup", {
     creditCost: 2,

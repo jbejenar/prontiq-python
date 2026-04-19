@@ -1,5 +1,41 @@
 # NEXT-SESSION.md — Session Execution Log
 
+## Session 18 — 2026-04-19
+
+**Focus:** P1B.11 month-close finalisation Lambda.
+
+### Completed
+
+- **Month-close finalisation is live.** `PqMonthClose` now runs on `cron(30 0 1 * ? *)` in dev + prod and reuses the same replay-safe pending meter identifier flow as `PqBillingCron`.
+- **Previous-month scopes now close explicitly.** After the final previous-month sweep succeeds, the current-hash row is marked `closed=true`, which makes the hourly cron stop revisiting that scope permanently.
+- **Billing runtime extracted.** Shared scope-reconciliation logic now lives in `packages/control-plane/src/billing-runtime.ts`, so hourly and monthly billing paths use the same redirect-chain discovery, pending-marker claim/finalize, and Stripe meter-event semantics.
+- **Operator docs updated.** New `docs/runbooks/month-close.md` documents the schedule, manual invocation, expected DynamoDB state, and recovery path for wrongly closed scopes or failed monthly runs.
+
+### Verification evidence
+
+- `pnpm --filter @prontiq/control-plane build`
+- `pnpm --filter @prontiq/control-plane typecheck`
+- `pnpm --filter @prontiq/control-plane test:integration`
+
+Integration coverage now includes:
+
+- remaining previous-month delta push + close
+- zero-delta close with no extra Stripe event
+- retired predecessor-only chain finalisation
+- month-close rerun idempotency
+- hourly cron skip on closed previous-month scopes
+
+### Next session should start with
+
+1. Read NEXT-WORK.md.
+2. P1F.02 — monitoring + alerting.
+3. Keep `docs/runbooks/month-close.md` as the operator source of truth for monthly billing finalisation.
+
+> Per-session summary of what happened. Newest session first.
+> Purpose: continuity across session breaks without reading git log.
+
+---
+
 ## Session 17 — 2026-04-19
 
 **Focus:** P1B.08 rollout verification and SES production-readiness follow-up.
@@ -34,9 +70,6 @@
 1. Request / confirm SES production access for `prontiq.dev` in `ap-southeast-2`.
 2. Keep `docs/runbooks/ses-suppression.md` as the source of truth for SES operations.
 3. Move to P1B.11 month-close once the SES production-access request is in flight or approved.
-
-> Per-session summary of what happened. Newest session first.
-> Purpose: continuity across session breaks without reading git log.
 
 ---
 

@@ -1,7 +1,7 @@
 # Prontiq Platform — Roadmap
 
 > A unified data API platform for Australian and global open data.
-> Last updated: 2026-04-17 · v1.4
+> Last updated: 2026-04-19 · v1.4
 >
 > **Reference:** `ARCHITECTURE.MD` is the authoritative design doc. This roadmap is the execution plan.
 
@@ -23,7 +23,7 @@
 | --------- | -------------------------- | ------- | ---------- | ----------- |
 | **P0**    | Infrastructure Foundation  | 6       | 6/6 ✅     | Week 1      |
 | **P1A**   | API Core (Address)         | 13      | 9/13       | Weeks 2-3   |
-| **P1B**   | Auth & Billing             | 13      | 7/13       | Weeks 3-4   |
+| **P1B**   | Auth & Billing             | 13      | 8/13       | Weeks 3-4   |
 | **P1C**   | Dashboard                  | 7       | 0/7        | Weeks 4-5   |
 | **P1D**   | Docs & SDK                 | 5       | 2/5        | Week 5      |
 | **P1E**   | Ingestion (Phase 1)        | 6       | 4/6        | Week 6      |
@@ -32,7 +32,7 @@
 | **P3**    | GLEIF/LEI + Full Dashboard | 7       | 0/7        | Weeks 11-13 |
 | **P4**    | Shopify + WooCommerce      | 5       | 0/5        | Weeks 14-17 |
 | **P5**    | CVE/NVD + Patents          | 4       | 0/4        | Weeks 18-21 |
-| **Total** |                            | **76**  | **29/76**  |             |
+| **Total** |                            | **76**  | **30/76**  |             |
 
 ---
 
@@ -1071,7 +1071,7 @@ Options:
 
 > **Goal:** Sign-up → DDB-native API key → hash-verified requests → rate-limited with burst limiter → usage tracked per-month → billed hourly via Stripe, with 14-day payment grace period.
 >
-> **Current state.** P1B.02, P1B.04, P1B.04b, P1B.05, P1B.06, P1B.07, P1B.08, and P1B.10 are shipped. The DynamoDB-native key model is live in prod, the prod migration was executed on 2026-04-16, org provisioning + Stripe billing sync are live, hourly usage now flows into Stripe meters, and SES feedback / quota-email delivery is live in dev + prod. The remaining P1B work is month-close.
+> **Current state.** P1B.02, P1B.04, P1B.04b, P1B.05, P1B.06, P1B.07, P1B.08, P1B.10, and P1B.11 are shipped. The DynamoDB-native key model is live in prod, the prod migration was executed on 2026-04-16, org provisioning + Stripe billing sync are live, hourly usage now flows into Stripe meters, SES feedback / quota-email delivery is live in dev + prod, and previous-month scopes are now explicitly finalized and closed by the monthly `PqMonthClose` sweep.
 >
 > **Scope boundary.** The hot-path middleware rewrite (hash-based lookup, REDIRECT fallback, new usage-table writes) ships in **P1B.04b** (cutover), NOT in P1B.02. P1B.02 is pure crypto primitives only — no DDB dependency — which is why it remains parallel-safe. P1B.04b flips schema + code atomically once P1B.02 and P1B.04 are both done.
 >
@@ -1827,12 +1827,12 @@ Hourly EventBridge-triggered Lambda. Per ARCHITECTURE.MD §5.6.2 (rewritten to f
 ```yaml
 id: P1B.11
 title: Month-close Lambda
-status: pending
+status: complete
 priority: p1-high
 epic: P1B
 persona: [ops]
 depends_on: [P1B.10]
-completed: null
+completed: 2026-04-19
 ```
 
 #### User Story
@@ -1847,15 +1847,20 @@ Stripe invoices finalise on the month boundary. Usage writes can arrive late (cl
 
 ##### Functional
 
-- [ ] Scheduled Lambda runs monthly via EventBridge cron `30 0 1 * ? *` (UTC)
-  - `Verify:` EventBridge rule exists
-  - `Evidence:` SST config
-- [ ] For each billable key, fetch previous-month `prontiq-usage` scope
-- [ ] Push any remaining delta to Stripe
-- [ ] UpdateItem SET `closed: true` on the scope
-- [ ] Hourly cron (P1B.10) skips scopes with `closed: true`
-  - `Verify:` Integration test: seed a closed scope with nonzero delta; hourly cron does not re-push
-  - `Evidence:` Test assertion
+- [x] Scheduled Lambda runs monthly via EventBridge cron `30 0 1 * ? *` (UTC)
+  - `Verify:` `PqMonthClose` exists in SST and deploys in dev + prod
+  - `Evidence:` `sst.config.ts`
+- [x] For each billable key, fetch previous-month `prontiq-usage` scope
+  - `Evidence:` `packages/control-plane/src/month-close.ts`
+- [x] Push any remaining delta to Stripe
+  - `Verify:` integration test pushes remaining previous-month delta exactly once
+  - `Evidence:` `packages/control-plane/src/month-close.integration.test.ts`
+- [x] UpdateItem SET `closed: true` on the scope
+  - `Verify:` integration tests assert `closed=true` after finalisation and zero-delta close
+  - `Evidence:` `packages/control-plane/src/month-close.integration.test.ts`
+- [x] Hourly cron (P1B.10) skips scopes with `closed: true`
+  - `Verify:` integration test seeds a closed scope with nonzero delta and proves no repush
+  - `Evidence:` `packages/control-plane/src/billing-cron.integration.test.ts`
 
 #### Scope
 
@@ -1864,6 +1869,13 @@ Stripe invoices finalise on the month boundary. Usage writes can arrive late (cl
 **Out — Do Not Implement:**
 
 - Refund / correction flow → manual Stripe dashboard
+
+#### Shipped Evidence
+
+- `packages/control-plane/src/billing-runtime.ts` now holds the shared chain-discovery and replay-safe scope-reconciliation logic used by both hourly billing and month-close.
+- `packages/control-plane/src/month-close.ts` implements `createMonthCloseService()` and the Lambda handler.
+- `sst.config.ts` wires `PqMonthClose` plus `PqMonthCloseErrors`.
+- `docs/runbooks/month-close.md` is the operator runbook.
 
 ---
 

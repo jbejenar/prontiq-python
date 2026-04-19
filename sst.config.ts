@@ -1074,6 +1074,42 @@ export default $config({
       },
     });
 
+    const monthClose = new sst.aws.Cron("PqMonthClose", {
+      schedule: "cron(30 0 1 * ? *)",
+      function: {
+        handler: "packages/control-plane/src/month-close.handler",
+        architecture: "arm64",
+        runtime: "nodejs24.x",
+        memory: "512 MB",
+        timeout: "2 minutes",
+        link: [authKeysTable, authUsageTable],
+        environment: {
+          KEYS_TABLE_NAME: authKeysTable.name,
+          STRIPE_SECRET_KEY: $util.secret(readGithubSecret("STRIPE_SECRET_KEY")),
+          USAGE_TABLE_NAME: authUsageTable.name,
+        },
+      },
+    });
+
+    new aws.cloudwatch.MetricAlarm("PqMonthCloseErrors", {
+      comparisonOperator: "GreaterThanThreshold",
+      evaluationPeriods: 1,
+      datapointsToAlarm: 1,
+      metricName: "Errors",
+      namespace: "AWS/Lambda",
+      period: 3600,
+      statistic: "Sum",
+      threshold: 0,
+      treatMissingData: "notBreaching",
+      alarmDescription:
+        "Month-close Lambda recorded an error during the day-1 previous-month finalisation sweep. Check CloudWatch Logs before billing close drifts.",
+      alarmActions: [ingestAlerts.arn],
+      okActions: [ingestAlerts.arn],
+      dimensions: {
+        FunctionName: monthClose.nodes.function.name,
+      },
+    });
+
     // ─── Account-handler Lambda (P1B.05 PR 3): POST /v1/account/setup ───
     //
     // Same control-plane env contract as PqClerkWebhook — see the

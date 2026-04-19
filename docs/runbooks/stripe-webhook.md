@@ -92,6 +92,7 @@ The billing cron uses the same shared definitions to resolve Stripe meter event 
 The billing cron also meters the union of current entitlements plus any outstanding/pending current-month or previous-month usage scopes it finds in `prontiq-usage`, so removing a family from Stripe does not drop the final unpaid delta that accrued before the removal.
 Full downgrade/cancellation is now two-phase: the webhook removes hashes from `REGISTRY#active-keys` but moves them into `REGISTRY#retired-billing-keys`, and the hourly billing cron keeps sweeping those retired hashes until the final current/previous-month delta is flushed before retiring them completely. A later paid re-upgrade does not clobber that drain state: the hash is added back to `REGISTRY#active-keys`, but retired membership remains until the same chain-aware retirement check says the historical billable scopes are fully settled. Retirement checks always inspect both current- and previous-month billable scopes, even outside the early-UTC previous-month processing window, so a lingering prior-month delta cannot make the hash disappear early.
 Request-time key activity and billing-finalisation activity are intentionally separate: a revoked key (`active=false`) must still stay billable through the retired registry until its final owed delta is drained.
+Monthly previous-month finalisation now belongs to `PqMonthClose`, not the webhook itself. Use `docs/runbooks/month-close.md` for the day-1 close procedure and recovery steps.
 
 ## Stripe Metadata Contract
 
