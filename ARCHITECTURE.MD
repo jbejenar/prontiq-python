@@ -967,7 +967,7 @@ Monthly quotas prevent exceeding the plan over 30 days. Burst rate limiting prev
 | Monthly quota | Exceeding 50K req/month | DynamoDB atomic counter | Hono middleware |
 | Burst rate limit | Exceeding 100 req/sec | In-memory token bucket per apiKeyHash | Hono middleware |
 
-The token bucket lives in a module-scoped `Map` inside the Lambda. Each key gets a bucket with capacity = `rateLimit` (from key metadata). On each request, consume one token. If empty, return 429 `RATE_LIMITED` with `Retry-After` header. Tokens refill at the configured rate.
+The token bucket lives in a module-scoped `Map` inside `packages/api/src/middleware/rate-limit.ts`. Each key gets a bucket with capacity = `rateLimit` (from key metadata loaded by auth middleware). On each request, consume one token. If empty, return 429 `RATE_LIMITED` with `Retry-After` header. Tokens refill at the configured rate.
 
 **Why in-memory, not DynamoDB:** per-second rate limiting requires microsecond-level decisions. DynamoDB round-trips (2-5ms) are too slow.
 

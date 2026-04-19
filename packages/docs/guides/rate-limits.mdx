@@ -41,6 +41,19 @@ In addition to monthly quotas, API Gateway enforces per-route rate limits to pro
 
 These limits apply across all API keys. If you need higher throughput, contact us for Enterprise.
 
+## Per-key burst limiting
+
+Prontiq also enforces a per-key burst limiter in the application layer.
+
+- It uses a token bucket keyed by your API key hash
+- Bucket capacity is based on your plan's per-second rate limit
+- If the bucket is empty, the API returns `429 RATE_LIMITED`
+- Responses include a `Retry-After` header so clients know when to retry
+
+<Info>
+  The burst limiter is enforced per Lambda instance, not globally across every concurrent instance. API Gateway throttling still provides the outer global safety net.
+</Info>
+
 <Info>
   Responses already include `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`, and `X-RateLimit-Product` so customers can track remaining monthly credits in real time.
 </Info>

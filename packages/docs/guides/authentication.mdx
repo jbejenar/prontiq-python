@@ -82,6 +82,21 @@ All errors follow a consistent JSON format with a `request_id` for tracing.
 }
 ```
 
+### 429 — Burst rate limited
+
+```json
+{
+  "error": {
+    "code": "RATE_LIMITED",
+    "message": "Rate limit exceeded",
+    "status": 429,
+    "request_id": "req_abc123..."
+  }
+}
+```
+
+Burst-limited responses also include a `Retry-After` header.
+
 ## Request IDs
 
 Every response includes an `X-Request-Id` header (format: `req_...`). Include this when contacting support — it traces directly to the log entry.

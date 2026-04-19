@@ -23,7 +23,7 @@
 | --------- | -------------------------- | ------- | ---------- | ----------- |
 | **P0**    | Infrastructure Foundation  | 6       | 6/6 ✅     | Week 1      |
 | **P1A**   | API Core (Address)         | 13      | 9/13       | Weeks 2-3   |
-| **P1B**   | Auth & Billing             | 13      | 8/13       | Weeks 3-4   |
+| **P1B**   | Auth & Billing             | 13      | 9/13       | Weeks 3-4   |
 | **P1C**   | Dashboard                  | 7       | 0/7        | Weeks 4-5   |
 | **P1D**   | Docs & SDK                 | 5       | 2/5        | Week 5      |
 | **P1E**   | Ingestion (Phase 1)        | 6       | 4/6        | Week 6      |
@@ -32,7 +32,7 @@
 | **P3**    | GLEIF/LEI + Full Dashboard | 7       | 0/7        | Weeks 11-13 |
 | **P4**    | Shopify + WooCommerce      | 5       | 0/5        | Weeks 14-17 |
 | **P5**    | CVE/NVD + Patents          | 4       | 0/4        | Weeks 18-21 |
-| **Total** |                            | **76**  | **30/76**  |             |
+| **Total** |                            | **76**  | **31/76**  |             |
 
 ---
 
@@ -1071,7 +1071,7 @@ Options:
 
 > **Goal:** Sign-up → DDB-native API key → hash-verified requests → rate-limited with burst limiter → usage tracked per-month → billed hourly via Stripe, with 14-day payment grace period.
 >
-> **Current state.** P1B.02, P1B.04, P1B.04b, P1B.05, P1B.06, P1B.07, P1B.08, P1B.10, and P1B.11 are shipped. The DynamoDB-native key model is live in prod, the prod migration was executed on 2026-04-16, org provisioning + Stripe billing sync are live, hourly usage now flows into Stripe meters, SES feedback / quota-email delivery is live in dev + prod, and previous-month scopes are now explicitly finalized and closed by the monthly `PqMonthClose` sweep.
+> **Current state.** P1B.02, P1B.04, P1B.04b, P1B.05, P1B.06, P1B.07, P1B.08, P1B.09, P1B.10, and P1B.11 are shipped. The DynamoDB-native key model is live in prod, the prod migration was executed on 2026-04-16, org provisioning + Stripe billing sync are live, per-key burst limiting is enforced in the API middleware, hourly usage now flows into Stripe meters, SES feedback / quota-email delivery is live in dev + prod, and previous-month scopes are now explicitly finalized and closed by the monthly `PqMonthClose` sweep.
 >
 > **Scope boundary.** The hot-path middleware rewrite (hash-based lookup, REDIRECT fallback, new usage-table writes) ships in **P1B.04b** (cutover), NOT in P1B.02. P1B.02 is pure crypto primitives only — no DDB dependency — which is why it remains parallel-safe. P1B.04b flips schema + code atomically once P1B.02 and P1B.04 are both done.
 >
@@ -1690,12 +1690,12 @@ completed: 2026-04-19
 ```yaml
 id: P1B.09
 title: Burst Rate Limiter Middleware
-status: pending
+status: complete
 priority: p1-high
 epic: P1B
 persona: [builder]
 depends_on: [P1B.02, P1B.04b]
-completed: null
+completed: 2026-04-19
 ```
 
 #### User Story
@@ -1714,26 +1714,28 @@ Known caveat: per-Lambda-instance, not global — documented and accepted for Ph
 
 ##### Functional
 
-- [ ] Middleware `packages/api/src/middleware/rate-limit.ts` instantiates a module-scoped `Map<apiKeyHash, TokenBucket>`
+- [x] Middleware `packages/api/src/middleware/rate-limit.ts` instantiates a module-scoped `Map<apiKeyHash, TokenBucket>`
   - `Verify:` Code review
-  - `Evidence:` File exists with implementation
-- [ ] Reads `apiKeyHash` and `record.rateLimit` from request context (set by the post-P1B.04b auth middleware)
-  - `Verify:` Unit test wires a fake context with `c.set("apiKey", { rateLimit: 100, apiKeyHash: "abc..." })` and confirms the limiter reads both
-  - `Evidence:` Test passes
-- [ ] On each request: consume 1 token from the bucket for this key (create bucket with capacity = `record.rateLimit` on first encounter)
-  - `Verify:` Unit test
-  - `Evidence:` Vitest output
-- [ ] Empty bucket → return 429 with `code: "RATE_LIMITED"` body and `Retry-After` header
-  - `Verify:` Integration test: 200 requests at rate > limit; receive 429 with Retry-After
-  - `Evidence:` Response
-- [ ] Buckets refill at `rateLimit` tokens/second (continuous refill, floor at capacity)
-  - `Verify:` Sleep `1/rateLimit` after burst; next request succeeds
-  - `Evidence:` Integration test
-- [ ] Notes section in ticket + README call out the per-instance caveat — global burst control is deferred (Redis / API Gateway usage plans, post-Phase-1)
+  - `Evidence:` `packages/api/src/middleware/rate-limit.ts`
+- [x] Reads `apiKeyHash` and `record.rateLimit` from request context (set by the post-P1B.04b auth middleware)
+  - `Verify:` auth middleware delegates to the extracted limiter after loading the post-cutover `ApiKeyRecord`
+  - `Evidence:` `packages/api/src/middleware/auth.ts`
+- [x] On each request: consume 1 token from the bucket for this key (create bucket with capacity = `record.rateLimit` on first encounter)
+  - `Verify:` unit test
+  - `Evidence:` `packages/api/src/middleware/rate-limit.test.ts`
+- [x] Empty bucket → return 429 with `code: "RATE_LIMITED"` body and `Retry-After` header
+  - `Verify:` integration test
+  - `Evidence:` `packages/api/src/middleware/auth.integration.test.ts`
+- [x] Buckets refill at `rateLimit` tokens/second (continuous refill, floor at capacity)
+  - `Verify:` unit + integration tests
+  - `Evidence:` `packages/api/src/middleware/rate-limit.test.ts`, `packages/api/src/middleware/auth.integration.test.ts`
+- [x] Notes section in ticket + README call out the per-instance caveat — global burst control is deferred (Redis / API Gateway usage plans, post-Phase-1)
+  - `Verify:` docs review
+  - `Evidence:` `ARCHITECTURE.MD`, `README.md`
 
 ##### Testing
 
-- [ ] Integration test covers burst + refill + multiple keys isolated
+- [x] Integration test covers burst + refill + multiple keys isolated
 
 #### Scope
 
@@ -1743,6 +1745,13 @@ Known caveat: per-Lambda-instance, not global — documented and accepted for Ph
 
 - Global (cross-Lambda) rate limiter → post-Phase-1
 - Per-product burst — single bucket per key today
+
+#### Shipped Evidence
+
+- `packages/api/src/middleware/rate-limit.ts` now owns the module-scoped per-key token bucket and 429 `RATE_LIMITED` response helper.
+- `packages/api/src/middleware/auth.ts` still owns auth, product gating, and quota accounting, but delegates burst enforcement before usage increment.
+- `packages/api/src/middleware/rate-limit.test.ts` covers consumption, refill, capacity cap, per-key isolation, and bypass semantics.
+- `packages/api/src/middleware/auth.integration.test.ts` proves burst exhaustion, refill, isolated buckets, and no orphan usage increments on `RATE_LIMITED`.
 
 ---
 
@@ -2494,8 +2503,8 @@ The Getting Started guide is the highest-traffic page on any API docs site. If a
   - `Verify:` Table matches `PLANS` in `packages/shared/src/constants.ts` (per ARCHITECTURE.MD §5.6.1)
   - `Evidence:` Free: 10K credits/mo, Starter: 10K credits/mo, Growth: 50K credits/mo per family; rate limit rows per tier (10/50/100 req/sec)
 - [ ] Error handling guide (all error codes per ARCHITECTURE.MD §9, retry logic, request_id tracing)
-  - `Verify:` All live-today codes documented; forward-contract codes marked as "introduced in P1B.09 / P1C / etc."
-  - `Evidence:` Live: `MISSING_API_KEY`, `INVALID_API_KEY`, `PRODUCT_NOT_ALLOWED`, `QUOTA_EXCEEDED`. Forward: `RATE_LIMITED`, `KEY_LIMIT_EXCEEDED`, `UNAUTHORIZED`, `ORG_REQUIRED`, `INVALID_SIGNATURE`, `VALIDATION_ERROR`, `SERVICE_UNAVAILABLE`, `INTERNAL_ERROR`
+  - `Verify:` All live-today codes documented; forward-contract codes marked as "introduced in P1C / etc."
+  - `Evidence:` Live: `MISSING_API_KEY`, `INVALID_API_KEY`, `PRODUCT_NOT_ALLOWED`, `QUOTA_EXCEEDED`, `RATE_LIMITED`. Forward: `KEY_LIMIT_EXCEEDED`, `UNAUTHORIZED`, `ORG_REQUIRED`, `INVALID_SIGNATURE`, `VALIDATION_ERROR`, `SERVICE_UNAVAILABLE`, `INTERNAL_ERROR`
 
 #### Scope
 

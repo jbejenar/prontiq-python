@@ -1,7 +1,7 @@
 import test, { after, before, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import { DynamoDBClient, CreateTableCommand, DeleteTableCommand, DescribeTableCommand } from "@aws-sdk/client-dynamodb";
-import { DynamoDBDocumentClient, PutCommand } from "@aws-sdk/lib-dynamodb";
+import { DynamoDBDocumentClient, GetCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
 import { Hono } from "hono";
 import type { ExecutionContext } from "hono";
 import {
@@ -164,6 +164,16 @@ async function seedUsage(record: UsageCounterRecord): Promise<void> {
   );
 }
 
+async function getUsage(apiKeyHash: string, scope: string): Promise<UsageCounterRecord | undefined> {
+  const result = await docClient.send(
+    new GetCommand({
+      TableName: USAGE_TABLE,
+      Key: { apiKeyHash, scope },
+    }),
+  );
+  return result.Item as UsageCounterRecord | undefined;
+}
+
 async function request(path: string, apiKey?: string): Promise<Response> {
   return requestWithExecutionContext(path, undefined, apiKey);
 }
@@ -299,6 +309,53 @@ test("burst limiter returns RATE_LIMITED with Retry-After", async () => {
   assert.equal(second.status, 429);
   assert.equal(body.error.code, "RATE_LIMITED");
   assert.equal(second.headers.get("Retry-After"), "1");
+});
+
+test("burst limiter refills and allows a later request", async () => {
+  const rawKey = "pq_test_rate_refill_key_123";
+  await seedKey(rawKey, { quotaPerProduct: 10, rateLimit: 1, tier: "starter" });
+
+  const first = await request("/v1/address/autocomplete", rawKey);
+  assert.equal(first.status, 200);
+
+  const second = await request("/v1/address/autocomplete", rawKey);
+  assert.equal(second.status, 429);
+
+  await new Promise((resolve) => setTimeout(resolve, 1_100));
+
+  const third = await request("/v1/address/autocomplete", rawKey);
+  assert.equal(third.status, 200);
+});
+
+test("burst limiter is isolated per key", async () => {
+  const firstKey = "pq_test_rate_isolated_first_123";
+  const secondKey = "pq_test_rate_isolated_second_123";
+  await seedKey(firstKey, { quotaPerProduct: 10, rateLimit: 1, tier: "starter" });
+  await seedKey(secondKey, { quotaPerProduct: 10, rateLimit: 1, tier: "starter" });
+
+  const firstA = await request("/v1/address/autocomplete", firstKey);
+  assert.equal(firstA.status, 200);
+  const firstB = await request("/v1/address/autocomplete", secondKey);
+  assert.equal(firstB.status, 200);
+
+  const secondA = await request("/v1/address/autocomplete", firstKey);
+  assert.equal(secondA.status, 429);
+  const secondB = await request("/v1/address/autocomplete", secondKey);
+  assert.equal(secondB.status, 429);
+});
+
+test("RATE_LIMITED responses do not increment usage", async () => {
+  const rawKey = "pq_test_rate_usage_guard_key_123";
+  const record = await seedKey(rawKey, { quotaPerProduct: 10, rateLimit: 1, tier: "starter" });
+
+  const first = await request("/v1/address/autocomplete", rawKey);
+  assert.equal(first.status, 200);
+
+  const second = await request("/v1/address/autocomplete", rawKey);
+  assert.equal(second.status, 429);
+
+  const usage = await getUsage(record.apiKeyHash, `address#${CURRENT_MONTH}`);
+  assert.equal(usage?.requestCount, 1);
 });
 
 test("product gating rejects disallowed products", async () => {

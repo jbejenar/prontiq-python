@@ -13,11 +13,7 @@ import {
 } from "@prontiq/shared";
 import { hashKey } from "@prontiq/shared";
 import type { ApiKeyRecord, QuotaEmailTask, RedirectRecord, UsageCounterRecord } from "@prontiq/shared";
-
-type RateLimitBucket = {
-  lastRefillAtMs: number;
-  tokens: number;
-};
+import { __resetRateLimiterForTesting as resetBurstRateLimiterForTesting, applyBurstRateLimit } from "./rate-limit.js";
 
 type UsageUpdateResult = {
   creditCost: number;
@@ -35,7 +31,6 @@ let ddb: DynamoDBDocumentClient | undefined;
 let lambda: LambdaClient | undefined;
 let quotaEmailEnqueuerOverride: ((task: QuotaEmailTask) => Promise<void>) | undefined;
 
-const rateLimitBuckets = new Map<string, RateLimitBucket>();
 const REDIRECT_SCOPE = "REDIRECT";
 const USAGE_TTL_SECONDS = 90 * 24 * 60 * 60;
 
@@ -266,41 +261,6 @@ function setRateLimitHeaders(
   }
 }
 
-function consumeRateLimitToken(
-  apiKeyHash: string,
-  rateLimit: number | null,
-  nowMs: number = Date.now(),
-): { allowed: boolean; retryAfterSeconds?: number } {
-  if (rateLimit == null || !Number.isFinite(rateLimit) || rateLimit <= 0) {
-    return { allowed: true };
-  }
-
-  const current = rateLimitBuckets.get(apiKeyHash) ?? {
-    lastRefillAtMs: nowMs,
-    tokens: rateLimit,
-  };
-
-  const elapsedSeconds = Math.max(0, (nowMs - current.lastRefillAtMs) / 1000);
-  const refilledTokens = Math.min(rateLimit, current.tokens + elapsedSeconds * rateLimit);
-
-  if (refilledTokens < 1) {
-    rateLimitBuckets.set(apiKeyHash, {
-      lastRefillAtMs: nowMs,
-      tokens: refilledTokens,
-    });
-    return {
-      allowed: false,
-      retryAfterSeconds: Math.max(1, Math.ceil((1 - refilledTokens) / rateLimit)),
-    };
-  }
-
-  rateLimitBuckets.set(apiKeyHash, {
-    lastRefillAtMs: nowMs,
-    tokens: refilledTokens - 1,
-  });
-  return { allowed: true };
-}
-
 async function getKeyRecord(apiKeyHash: string): Promise<ApiKeyRecord | undefined> {
   const result = await getDdb().send(
     new GetCommand({
@@ -445,7 +405,7 @@ export function __setQuotaEmailEnqueuerForTesting(
 }
 
 export function __resetRateLimiterForTesting(): void {
-  rateLimitBuckets.clear();
+  resetBurstRateLimiterForTesting();
 }
 
 export function auth() {
@@ -509,19 +469,9 @@ export function auth() {
       );
     }
 
-    const rateLimitResult = consumeRateLimitToken(record.apiKeyHash, record.rateLimit);
-    if (!rateLimitResult.allowed) {
-      c.header("Retry-After", String(rateLimitResult.retryAfterSeconds ?? 1));
-      return c.json(
-        {
-          error: {
-            ...ERROR_CODES.RATE_LIMITED,
-            code: "RATE_LIMITED" as const,
-            request_id: c.get("requestId"),
-          },
-        },
-        429,
-      );
+    const rateLimitResponse = applyBurstRateLimit(c, record);
+    if (rateLimitResponse) {
+      return rateLimitResponse;
     }
 
     const creditCost = getCreditCost(c.req.path, product);

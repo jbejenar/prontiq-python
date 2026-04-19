@@ -1,5 +1,28 @@
 # NEXT-SESSION.md — Session Execution Log
 
+## Session 19 — 2026-04-19
+
+**Focus:** P1B.09 burst rate limiter extraction, coverage completion, and doc reconciliation.
+
+### Completed
+
+- **Burst limiter extracted into its own module.** The token-bucket logic now lives in `packages/api/src/middleware/rate-limit.ts` instead of being embedded directly in `auth.ts`.
+- **Auth path behavior preserved.** The live middleware still enforces per-key in-memory burst limiting before usage increments and returns `429 RATE_LIMITED` with `Retry-After`.
+- **Coverage completed.** New unit tests cover refill math, capacity capping, bypass semantics, and key isolation; auth integration tests now cover refill, isolated buckets, and the invariant that `RATE_LIMITED` does not increment `prontiq-usage`.
+- **Roadmap/docs reconciled.** P1B.09 is now marked complete and public docs treat `RATE_LIMITED` as a live contract instead of a future-only error.
+
+### Verification evidence
+
+- `pnpm --filter @prontiq/api test`
+- `pnpm --filter @prontiq/api test:integration`
+- `pnpm --filter @prontiq/api typecheck`
+
+### Next session should start with
+
+1. Read NEXT-WORK.md.
+2. P1B.12 — auth middleware integration-test reconciliation.
+3. Then move to P1F.02 monitoring + alerting.
+
 ## Session 18 — 2026-04-19
 
 **Focus:** P1B.11 month-close finalisation Lambda.

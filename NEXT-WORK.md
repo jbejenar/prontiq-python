@@ -1,7 +1,7 @@
 # NEXT-WORK.md — Active Sprint
 
 > Extracted from ROADMAP.md. This is what agents should work on NOW.
-> Last updated: 2026-04-19 (Session 18)
+> Last updated: 2026-04-19 (Session 19)
 
 ## Current Phase: Post-P1B billing hardening
 
@@ -26,6 +26,7 @@
 - **P1B.06 + P1B.10 complete (2026-04-18; rollout verified 2026-04-19).** Stripe webhook + hourly billing cron are live in dev + prod. Dev Stripe webhook verification has been exercised end to end on real sandbox deliveries across tier reconciliation, `past_due`, recovery, cancellation, and `invoice.payment_failed` log-only. Prod is deployed, the Stripe destination is configured correctly, and the first real production billing event is now the final live confirmation point.
 - **P1B.08 complete (2026-04-19; rollout verified 2026-04-19).** SES feedback ingestion, suppression-aware welcome / `past_due` / quota emails, and 80% / 100% quota notifications are live in dev + prod. `prontiq.dev` is verified in SES with DKIM active, simulator-based positive-send plus bounce / complaint flows were exercised in both stages, and the post-merge config-set IAM/send-path fixes are deployed. SES is still in sandbox, so simulator validation is complete but normal-recipient delivery remains blocked until AWS production access is enabled.
 - **P1B.11 complete (2026-04-19).** `PqMonthClose` is live in dev + prod on `cron(30 0 1 * ? *)`. It reuses the same replay-safe pending meter identifier model as `PqBillingCron`, finalizes previous-month deltas exactly once, and marks the current-hash previous-month scope `closed=true` so the hourly cron stops revisiting it permanently. Dev integration and manual service verification proved: remaining previous-month delta push, zero-delta close, predecessor-only chain finalization, rerun idempotency, and hourly-cron skip on closed prior-month scopes.
+- **P1B.09 complete (2026-04-19).** Per-key burst limiting is now explicitly extracted into `packages/api/src/middleware/rate-limit.ts`, remains enforced in the live auth path, and is covered by both unit and integration tests for burst exhaustion, refill, key isolation, and no orphan usage increments on `RATE_LIMITED`.
 - **`@prontiq/control-plane` package** (recovered from prior design + hardened) provides `createProvisioningService()`, `writeAudit()` / `buildAuditTransactItem()`, AND `resolvePrimaryEmail()`. Both ingress paths (Clerk webhook + `/v1/account/setup`) consume the same provisioning service AND the same verified-primary-email helper — invariants enforced once at the package boundary.
 - The legacy raw-key table is retained only for rollback/soak; the old `pq_live_prod_...` seed key has been rotated and revoked.
 - Future prod seed-key rotation now has an operator command:
@@ -76,6 +77,7 @@ POST /v1/account/setup  (Clerk JWT; not API key — recovery provisioning)
 - **P1B.06 / P1B.10 rollout status (2026-04-19):** dev Stripe webhook verification is complete on real sandbox deliveries across tier reconciliation, `past_due`, recovery, cancellation, and `invoice.payment_failed`. Prod is deployed and the Stripe destination is configured correctly, but the first real production billing delivery is still the final live confirmation point.
 - ~~P1B.07 — `prontiq-audit` writer helper~~ ✅ shipped
 - ~~P1B.08 — SES suppression / bounce handling~~ ✅ shipped (2026-04-19)
+- ~~P1B.09 — burst rate limiter middleware~~ ✅ shipped (2026-04-19)
 
 ### 2. Finish ingestion hardening
 
@@ -94,15 +96,15 @@ POST /v1/account/setup  (Clerk JWT; not API key — recovery provisioning)
 
 Recommended priority:
 
-1. P1F.02 — monitoring + alerting. Control-plane coverage now includes `PqClerkWebhookErrors`, `PqStripeWebhookErrors`, `PqBillingCronErrors`, `PqMonthCloseErrors`, `PqAccountErrors`, `PqSesFeedbackErrors`, and `PqQuotaEmailWorkerErrors`. Need broader DDB/Stripe/OpenSearch visibility before P1C dashboard work goes live.
-2. P1C account surface rebuild. The billing/backend primitives are now materially complete enough that customer-facing account/billing UX can resume after month-close.
-3. P1E.05 / P1E.06 ingestion hardening remain the next backend-only platform items after observability.
+1. P1B.12 — auth middleware integration-test reconciliation. Most of the auth chain is already covered, but the roadmap ticket needs to be closed against the real post-P1B.09 surface instead of left as a stale future item.
+2. P1F.02 — monitoring + alerting. Control-plane coverage now includes `PqClerkWebhookErrors`, `PqStripeWebhookErrors`, `PqBillingCronErrors`, `PqMonthCloseErrors`, `PqAccountErrors`, `PqSesFeedbackErrors`, and `PqQuotaEmailWorkerErrors`. Need broader DDB/Stripe/OpenSearch visibility before P1C dashboard work goes live.
+3. P1C account surface rebuild. The billing/backend primitives are now materially complete enough that customer-facing account/billing UX can resume after auth-test reconciliation and observability hardening.
 
 Reason:
 
-- P1B.08 is now shipped: SES feedback ingestion, suppression-aware sends, and 80% / 100% quota emails are live.
-- P1B.11 is now shipped: previous-month scopes are finalized and explicitly closed.
-- The highest-value next work is visibility hardening plus the rebuilt customer-facing account surface.
+- P1B.09 is now shipped: the per-key burst limiter is explicitly extracted and verified, so P1B.12 is the remaining auth test-cleanup ticket.
+- P1B.08 and P1B.11 are already shipped, so the remaining auth/billing work is test reconciliation plus observability hardening.
+- After that, the highest-value next work is the rebuilt customer-facing account surface.
 
 ### Operator follow-ups (one-time, not blocking next ticket)
 
