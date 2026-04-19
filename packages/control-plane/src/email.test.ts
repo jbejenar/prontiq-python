@@ -106,3 +106,23 @@ test("sendSignedSesEmailWithClient succeeds without relying on env credentials",
   assert.equal(ok, true);
   assert.equal(sendCount, 1);
 });
+
+test("sendSignedSesEmailWithClient returns false when SES rejects the send", async () => {
+  const ok = await sendSignedSesEmailWithClient(
+    {
+      bodyText: "hello",
+      configurationSetName: "prontiq-transactional-dev",
+      fromEmail: "noreply@prontiq.dev",
+      region: "ap-southeast-2",
+      subject: "subject",
+      toEmail: "success@simulator.amazonses.com",
+    },
+    {
+      async send() {
+        throw new Error("MessageRejected");
+      },
+    },
+  );
+
+  assert.equal(ok, false);
+});

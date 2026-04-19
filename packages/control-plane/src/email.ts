@@ -106,7 +106,13 @@ export async function sendSignedSesEmailWithClient(
       }),
     );
     return true;
-  } catch {
+  } catch (error) {
+    console.warn("SES send failed", {
+      error: error instanceof Error ? error.message : String(error),
+      fromEmail: input.fromEmail,
+      region: input.region,
+      toEmail: input.toEmail,
+    });
     return false;
   }
 }
