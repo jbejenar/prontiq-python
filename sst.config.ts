@@ -40,6 +40,10 @@ export default $config({
   },
   async run() {
     const pulumi = await import("@pulumi/pulumi");
+    const {
+      DEFAULT_ACCOUNT_URL,
+      DEFAULT_BILLING_URL,
+    } = await import("./packages/shared/src/constants.js");
     const { calculateOpenSearchLowFreeStorageThresholdMiB } = await import(
       "./packages/shared/src/observability.js"
     );
@@ -152,7 +156,7 @@ export default $config({
         WELCOME_EMAIL_FROM:
           process.env.WELCOME_EMAIL_FROM ?? "noreply@prontiq.dev",
         PRONTIQ_BILLING_URL:
-          process.env.PRONTIQ_BILLING_URL ?? process.env.PRONTIQ_ACCOUNT_URL ?? "https://prontiq.dev/account",
+          process.env.PRONTIQ_BILLING_URL ?? DEFAULT_BILLING_URL,
         PRONTIQ_DOCS_URL: process.env.PRONTIQ_DOCS_URL ?? "https://docs.prontiq.dev",
         SES_CONFIGURATION_SET_NAME: sesConfigurationSet.configurationSetName,
       };
@@ -925,8 +929,7 @@ export default $config({
         CLERK_ADMIN_ROLES: process.env.CLERK_ADMIN_ROLES ?? "",
         AUDIT_TABLE_NAME: auditTable.name,
         ...sharedEmailEnv(),
-        PRONTIQ_ACCOUNT_URL:
-          process.env.PRONTIQ_ACCOUNT_URL ?? "https://prontiq.dev/account",
+        PRONTIQ_ACCOUNT_URL: process.env.PRONTIQ_ACCOUNT_URL ?? DEFAULT_ACCOUNT_URL,
       };
     }
 

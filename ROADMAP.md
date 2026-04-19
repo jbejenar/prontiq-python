@@ -13,7 +13,7 @@
 
 **Stack:** SST v4 + Pulumi · Hono + @hono/zod-openapi · OpenSearch 2.19 · DynamoDB (DDB-native keys, hash-based) · Clerk · Stripe · Next.js 15 · Mintlify · Speakeasy
 
-**Repo:** pnpm monorepo with Turborepo. 10 workspace packages. TypeScript strict. ESM only.
+**Repo:** pnpm monorepo with Turborepo. 9 workspace packages live today; the ratified frontend shape expands that with `apps/landing`, `apps/console`, and `packages/tokens`. TypeScript strict. ESM only.
 
 ---
 
@@ -24,15 +24,15 @@
 | **P0**    | Infrastructure Foundation  | 6       | 6/6 ✅     | Week 1      |
 | **P1A**   | API Core (Address)         | 13      | 9/13       | Weeks 2-3   |
 | **P1B**   | Auth & Billing             | 13      | 11/13      | Weeks 3-4   |
-| **P1C**   | Dashboard                  | 7       | 0/7        | Weeks 4-5   |
+| **P1C**   | Frontend Surfaces          | 8       | 0/8        | Weeks 4-6   |
 | **P1D**   | Docs & SDK                 | 5       | 2/5        | Week 5      |
 | **P1E**   | Ingestion (Phase 1)        | 6       | 4/6        | Week 6      |
-| **P1F**   | Distribution               | 2       | 1/2        | Week 6      |
+| **P1F**   | Distribution               | 2       | 2/2        | Week 6      |
 | **P2**    | ABN/ASIC Verification      | 8       | 0/8        | Weeks 7-10  |
 | **P3**    | GLEIF/LEI + Full Dashboard | 7       | 0/7        | Weeks 11-13 |
 | **P4**    | Shopify + WooCommerce      | 5       | 0/5        | Weeks 14-17 |
 | **P5**    | CVE/NVD + Patents          | 4       | 0/4        | Weeks 18-21 |
-| **Total** |                            | **76**  | **33/76**  |             |
+| **Total** |                            | **77**  | **34/77**  |             |
 
 ---
 
@@ -1960,11 +1960,71 @@ Post-migration, auth middleware hashes the incoming key, looks up in `prontiq-ke
 
 ---
 
-## Phase 1C — Dashboard
+## Phase 1C — Frontend Surfaces
 
-> **Goal:** Developer portal with sign-up, key display, usage, billing, and playground.
+> **Goal:** Ship the customer-facing frontend stack: `apps/landing` for `prontiq.dev`, `apps/console` for `console.prontiq.dev`, and the shared frontend foundations that support both.
 >
-> **Dependency:** P1C.07 (shadcn/ui) should be done first as all pages depend on it. P1C.01-06 are independent after that.
+> **Dependency:** P1C.00 lays the foundation. P1C.07 establishes the component/tooling base. Feature tickets build on top of those two anchors.
+
+---
+
+### Ticket P1C.00 — Frontend Foundations
+
+```yaml
+id: P1C.00
+title: Frontend Foundations
+status: pending
+priority: p0-critical
+epic: P1C
+persona: [builder]
+depends_on: [P0.02]
+completed: null
+tech_stack:
+  framework: Next.js 15
+  package_manager: pnpm workspace
+  tokens: packages/tokens
+```
+
+#### User Story
+
+As a builder, I need the repo shaped for a two-app frontend so that landing and console work can proceed without inventing structure ticket by ticket.
+
+#### Problem Statement
+
+The old `packages/web` / `prontiq.dev/account` model has been retired by the ratified frontend strategy. The repo needs first-class `apps/landing` and `apps/console` workspaces, shared token plumbing via `packages/tokens`, and a consistent env / SDK / content-contract setup before any page-level work starts.
+
+#### Definition of Done
+
+##### Functional
+
+- [ ] Workspace wiring includes `apps/*`
+  - `Verify:` `pnpm -r list --depth -1` shows landing and console workspaces
+  - `Evidence:` `pnpm-workspace.yaml`
+- [ ] `apps/landing` scaffolded as the future `prontiq.dev`
+  - `Verify:` `pnpm --filter landing build`
+  - `Evidence:` Next.js app directory exists
+- [ ] `apps/console` scaffolded as the future `console.prontiq.dev`
+  - `Verify:` `pnpm --filter console build`
+  - `Evidence:` Next.js app directory exists
+- [ ] `packages/tokens` scaffolded with emitted artifacts contract
+  - `Verify:` `pnpm --filter @prontiq/tokens build`
+  - `Evidence:` package emits CSS + Tailwind preset placeholders
+- [ ] Shared frontend env validation pattern established
+  - `Verify:` invalid env fails build in one app
+  - `Evidence:` app-local `lib/env.ts`
+- [ ] Existing `sdks/typescript` is the documented frontend SDK source
+  - `Verify:` console imports `@prontiq/sdk` without a parallel SDK package
+  - `Evidence:` no `packages/sdk` introduced
+
+#### Scope
+
+**In:** Repo shape, workspace plumbing, app scaffolds, token package scaffold, env pattern
+
+**Out — Do Not Implement:**
+
+- Landing page UX
+- Console feature pages
+- Final token design values
 
 ---
 
@@ -1977,7 +2037,7 @@ status: pending
 priority: p0-critical
 epic: P1C
 persona: [visitor]
-depends_on: [P1A.02, P1D.05, P1C.07]
+depends_on: [P1C.00, P1A.02, P1D.05, P1C.07]
 completed: null
 ```
 
@@ -1987,18 +2047,18 @@ As a visitor, I see a hero autocomplete demo that works live so that I immediate
 
 #### Problem Statement
 
-The landing page IS the product pitch. A live autocomplete demo (type an address, see enriched results in real-time) is worth more than any marketing copy. The `<prontiq-address>` web component powers the demo. Below: pricing table (Stripe embedded), "Get Started Free" (Clerk sign-up). The page must be fast, mobile-responsive, and convert visitors to sign-ups.
+`apps/landing` is the public marketing and conversion surface for `prontiq.dev`. It needs to demonstrate the product instantly, but the live hero demo depends on a safe demo-path strategy (public endpoint, proxy, or tightly constrained demo key). The page should be SSG-first, fast, mobile-responsive, and built for conversion instead of doubling as the authenticated app shell.
 
 #### Definition of Done
 
 ##### Functional
 
-- [ ] `<prontiq-address>` web component embedded on landing page
+- [ ] Hero interaction embedded on the landing page
   - `Verify:` Landing page renders autocomplete input
-  - `Evidence:` Component visible, functional
-- [ ] Live autocomplete against real API (uses demo key)
-  - `Verify:` Type "9 endeavour" → suggestions appear from G-NAF data
-  - `Evidence:` Real address data, not mocked
+  - `Evidence:` Real component or approved static fallback present
+- [ ] Demo path chosen and implemented safely
+  - `Verify:` Type "9 endeavour" → real suggestions appear OR approved static fallback ships with no exposed privileged key
+  - `Evidence:` backend-safe demo path or explicit fallback implementation
 - [ ] Pricing table below hero (Prontiq Free card + Stripe embedded paid pricing table)
   - `Verify:` Free card plus Starter / Growth plans visible with prices
   - `Evidence:` Free is rendered by the site; Stripe pricing table renders paid plans correctly
@@ -2021,22 +2081,22 @@ The landing page IS the product pitch. A live autocomplete demo (type an address
 
 ---
 
-### Ticket P1C.02 — Dashboard Overview Page
+### Ticket P1C.02 — Console Overview Page
 
 ```yaml
 id: P1C.02
-title: Dashboard Overview Page
+title: Console Overview Page
 status: pending
 priority: p0-critical
 epic: P1C
 persona: [api-consumer]
-depends_on: [P1B.04, P1B.05, P1C.07]
+depends_on: [P1C.00, P1B.04, P1B.05, P1C.07]
 completed: null
 ```
 
 #### User Story
 
-As a logged-in developer, I see my API key, usage summary, and quick-start code snippets so that I can start using the API within 60 seconds of signing up.
+As a logged-in developer, I land in `apps/console` and see my API key, usage summary, and quick-start code snippets so that I can start using the API within 60 seconds of signing up.
 
 #### Definition of Done
 
@@ -2079,7 +2139,7 @@ status: pending
 priority: p1-high
 epic: P1C
 persona: [api-consumer]
-depends_on: [P1B.02, P1B.04b, P1B.05, P1C.07]
+depends_on: [P1C.00, P1B.02, P1B.04b, P1B.05, P1C.07]
 completed: null
 tech_stack:
   ui: Next.js 15 + shadcn/ui
@@ -2088,7 +2148,7 @@ tech_stack:
 
 #### User Story
 
-As a new developer, my **first** API key is created from `/account` (not via webhook email). The raw key shows once in the response. As a returning developer, I can view, create, rotate, and revoke keys for different environments / team members.
+As a new developer, my **first** API key is created from the console key-management flow (not via webhook email). The raw key shows once in the response. As a returning developer, I can view, create, rotate, and revoke keys for different environments / team members.
 
 #### Problem Statement
 
@@ -2102,11 +2162,11 @@ Key rotation must be atomic (TransactWrite swap) with a REDIRECT record per §5.
 
 ##### Functional — First-Key Flow
 
-- [ ] On first visit to `/account`: detect `ORG#{orgId}.hasFirstKey === false` → render "Create your first API key" CTA (instead of empty key list). If `ORG#{orgId}` does not exist (Clerk webhook missed): render "Set up your account" CTA which calls `POST /v1/account/setup` (P1B.05 recovery endpoint).
-  - `Verify:` Sign up a new test user; observe `/account` shows "Create your first API key" button; click it; raw key appears in modal; refresh page; key list now shows masked prefix
+- [ ] On first visit to the console keys surface: detect `ORG#{orgId}.hasFirstKey === false` → render "Create your first API key" CTA (instead of empty key list). If `ORG#{orgId}` does not exist (Clerk webhook missed): render "Set up your account" CTA which calls `POST /v1/account/setup` (P1B.05 recovery endpoint).
+  - `Verify:` Sign up a new test user; observe the console shows "Create your first API key" button; click it; raw key appears in modal; refresh page; key list now shows masked prefix
   - `Evidence:` UI screenshot + DDB record diff
-- [ ] **Missing-ORG recovery UI** (per PR #59 review #6 Bug 12 — moved here from P1B.05 because UI verification belongs to the ticket that owns the dashboard): if `/account` detects no `ORG#{orgId}` envelope (Clerk webhook missed entirely), render "Set up your account" CTA that calls `POST /v1/account/setup` (P1B.05 endpoint). After the call returns, transition to "Create your first API key" CTA.
-  - `Verify:` Manually delete `ORG#{orgId}` for a test user; sign in to `/account`; assert "Set up your account" button is visible. Click it. Assert the page transitions to the first-key CTA after `POST /v1/account/setup` returns.
+- [ ] **Missing-ORG recovery UI** (per PR #59 review #6 Bug 12 — moved here from P1B.05 because UI verification belongs to the ticket that owns the dashboard): if the console detects no `ORG#{orgId}` envelope (Clerk webhook missed entirely), render "Set up your account" CTA that calls `POST /v1/account/setup` (P1B.05 endpoint). After the call returns, transition to "Create your first API key" CTA.
+  - `Verify:` Manually delete `ORG#{orgId}` for a test user; sign in to the console; assert "Set up your account" button is visible. Click it. Assert the page transitions to the first-key CTA after `POST /v1/account/setup` returns.
   - `Evidence:` E2E UI test (Playwright or similar)
 - [ ] **First-key creation idempotency** (covers what used to be in P1B.12; moved here per PR #59 review #5 Bug 8 — assertions belong in the ticket that owns the endpoint). Call `POST /v1/account/keys/create` against a freshly-provisioned test user. Verify exactly:
   - 1 `prontiq-keys/{apiKeyHash}` row created
@@ -2124,7 +2184,7 @@ Key rotation must be atomic (TransactWrite swap) with a REDIRECT record per §5.
 ##### Functional — Key Management
 
 - [ ] List all org keys via `GET /v1/account/keys` (DDB GSI on `orgId-index` with **`FilterExpression: "attribute_exists(keyPrefix) AND attribute_exists(active)"`** — sentinel guard per ARCHITECTURE.MD §5.5.1, prevents the ORG envelope from leaking into the response) with masked prefix, creation date, last-used timestamp, product scopes
-  - `Verify:` `/account` keys tab loads with table of keys
+  - `Verify:` console keys page loads with table of keys
   - `Evidence:` Table renders with real DDB data; raw key and hash never returned
 - [ ] Create new key via `POST /v1/account/keys/create` (generates via `generateKey()` from P1B.02, hashes, TransactWriteItems: PutItem to `prontiq-keys` + UpdateItem `ORG#{orgId}` SET `hasFirstKey: true` + audit CREATE, returns raw key once in response body)
   - `Verify:` Click "Create Key" → new key shown once in modal; reload page hides raw key; only masked prefix in list. `ORG#{orgId}.hasFirstKey === true` after first call.
@@ -2164,7 +2224,7 @@ status: pending
 priority: p1-high
 epic: P1C
 persona: [api-consumer]
-depends_on: [P1C.07]
+depends_on: [P1C.00, P1C.07]
 completed: null
 tech_stack:
   ui: Next.js 15 + shadcn/ui
@@ -2218,7 +2278,7 @@ status: pending
 priority: p1-high
 epic: P1C
 persona: [api-consumer]
-depends_on: [P1B.03, P1C.07]
+depends_on: [P1C.00, P1B.03, P1C.07]
 completed: null
 tech_stack:
   billing: Stripe embedded customer portal
@@ -2273,7 +2333,7 @@ status: pending
 priority: p2-value
 epic: P1C
 persona: [api-consumer]
-depends_on: [P1A.01, P1C.07]
+depends_on: [P1C.00, P1A.01, P1C.07]
 completed: null
 tech_stack:
   ui: Next.js 15 + shadcn/ui
@@ -2332,48 +2392,51 @@ status: pending
 priority: p0-critical
 epic: P1C
 persona: [builder]
-depends_on: [P0.02]
+depends_on: [P1C.00]
 completed: null
 tech_stack:
-  ui: shadcn/ui + Tailwind CSS v4
+  ui: shadcn/ui + Tailwind CSS v3.4
   framework: Next.js 15
 ```
 
 #### User Story
 
-As a builder, I need a consistent component library so that all `/account` tabs share the same design system and I don't reinvent UI primitives.
+As a builder, I need a consistent component library so that both `apps/landing` and `apps/console` share the same design vocabulary and I don't reinvent UI primitives.
 
 #### Problem Statement
 
-The `/account` page (ARCHITECTURE.MD §5.9) wraps Clerk's `<UserProfile />` with custom tabs for Usage, Billing, and API Keys. Each tab needs consistent UI primitives (buttons, tables, dialogs). shadcn/ui provides accessible, composable components built on Radix UI + Tailwind. It's not a dependency — components are copied into the project and can be customized. Lives in `packages/web/` (new package introduced by P1C).
+The ratified frontend architecture uses `apps/landing` and `apps/console`, not `packages/web`. Both apps need source-local shadcn/ui primitives, shared token-aware Tailwind setup, dark mode support, and predictable layout foundations. shadcn/ui provides accessible, composable components built on Radix UI + Tailwind and is owned as source code inside each app.
 
 #### Definition of Done
 
 ##### Functional
 
-- [ ] Tailwind CSS v4 configured in the web package
-  - `Verify:` `pnpm --filter @prontiq/web dev` → Tailwind classes apply correctly
-  - `Evidence:` `packages/web/tailwind.config.ts` or CSS `@import` exists
-- [ ] shadcn/ui initialized with core components
-  - `Verify:` `ls packages/web/components/ui/` shows component files
+- [ ] Tailwind CSS v3.4 configured for both apps via the shared token strategy
+  - `Verify:` `pnpm --filter landing dev` and `pnpm --filter console dev` both render styled components
+  - `Evidence:` `apps/*/tailwind.config.ts` imports the shared preset or equivalent token-aware setup
+- [ ] shadcn/ui initialized with core components in the app-local `components/ui/` directories
+  - `Verify:` `ls apps/landing/components/ui/` and `ls apps/console/components/ui/` show component files
   - `Evidence:` Button, Card, Input, Table, Dialog, Sheet, Tabs, Badge, Skeleton present
 - [ ] Dark mode support (system preference + manual toggle)
   - `Verify:` Toggle dark mode → all components switch themes
   - `Evidence:` `ThemeProvider` wrapper in layout, `class="dark"` applied to `<html>`
-- [ ] `/account` page layout — sidebar-lite (Clerk `<UserProfile />` with custom tabs per ARCHITECTURE.MD §5.9.1)
-  - `Verify:` `/account` renders with tabs for Profile / Security / Usage / Billing / API Key
-  - `Evidence:` Clerk profile wrapper with custom tab components
+- [ ] Console app shell established
+  - `Verify:` authenticated console route renders sidebar/top-level navigation and protected layout
+  - `Evidence:` `apps/console/app/(dashboard)/layout.tsx`
+- [ ] Landing app shell established
+  - `Verify:` landing home route renders using the same token-aware component system
+  - `Evidence:` `apps/landing/app/page.tsx`
 - [ ] Responsive: sidebar collapses to bottom nav or hamburger on mobile
   - `Verify:` Resize to 375px → sidebar becomes hamburger/bottom nav
   - `Evidence:` Working at mobile breakpoint
 
 #### Scope
 
-**In:** Component library init, layout shell, dark mode, responsive sidebar
+**In:** Component library init, app-local primitives, layout shells, dark mode, responsive navigation
 
 **Out — Do Not Implement:**
 
-- Custom branded theme (colors, fonts) → future (shadcn defaults for MVP)
+- Full branded token package authoring → P1C.00 follow-on / dedicated implementation ticket
 - Animation library → future
 - Custom icon set → use Lucide icons (bundled with shadcn)
 
@@ -2946,7 +3009,7 @@ persona: [ops]
 depends_on: [P1E.04]
 completed: null
 tech_stack:
-  runtime: Lambda (Node.js 20)
+  runtime: Lambda (Node.js 24)
   schedule: EventBridge (every 6 hours)
 ```
 
@@ -2956,7 +3019,7 @@ As a platform operator, expired old indices are automatically deleted so that Op
 
 #### Problem Statement
 
-After each alias swap, the old index stays around for rollback (7 days for address, 48 hours for ABN/LEI). Without automated cleanup, indices accumulate and exhaust the 20GB gp3 storage on t3.small. The cleanup Lambda also verifies OpenSearch automated snapshots are running — the last line of defense against data loss.
+After each alias swap, the old index stays around for rollback (7 days for address, 48 hours for ABN/LEI). Without automated cleanup, indices accumulate and consume the shared 50GB gp3 storage on the current domain. The cleanup Lambda also verifies OpenSearch automated snapshots are running — the last line of defense against data loss.
 
 #### Definition of Done
 
@@ -3016,7 +3079,7 @@ As a builder, the API and dashboard are accessible at branded domains so that th
 
 #### Problem Statement
 
-Currently the API is at a random AWS URL (`59jym47ia1.execute-api...`) and the dashboard at a CloudFront hash (`d2ttwndpb06ei3.cloudfront.net`). Custom domains (`api.prontiq.dev`, `app.prontiq.dev`, `docs.prontiq.dev`) are essential for credibility, documentation examples, and SDK defaults.
+Currently the API is at a random AWS URL (`59jym47ia1.execute-api...`) and the future console host is planned at a branded subdomain. Custom domains (`api.prontiq.dev`, `console.prontiq.dev`, `docs.prontiq.dev`) are essential for credibility, documentation examples, and SDK defaults.
 
 #### Definition of Done
 
@@ -3025,9 +3088,9 @@ Currently the API is at a random AWS URL (`59jym47ia1.execute-api...`) and the d
 - [ ] `api.prontiq.dev` → API Gateway custom domain
   - `Verify:` `curl https://api.prontiq.dev/v1/health` returns 200
   - `Evidence:` DNS CNAME configured, ACM cert validated
-- [ ] `app.prontiq.dev` → Dashboard (CloudFront alternate domain)
-  - `Verify:` `curl https://app.prontiq.dev` returns dashboard HTML
-  - `Evidence:` CloudFront alternate domain configured
+- [ ] `console.prontiq.dev` → Console app
+  - `Verify:` `curl https://console.prontiq.dev` returns console HTML
+  - `Evidence:` hosting/domain configuration active
 - [ ] `docs.prontiq.dev` → Mintlify custom domain
   - `Verify:` `curl https://docs.prontiq.dev` returns docs site
   - `Evidence:` Mintlify dashboard shows custom domain active
@@ -3054,12 +3117,12 @@ Currently the API is at a random AWS URL (`59jym47ia1.execute-api...`) and the d
 ```yaml
 id: P1F.02
 title: Monitoring + Alerting
-status: pending
+status: complete
 priority: p1-high
 epic: P1F
 persona: [ops]
 depends_on: [P0.02]
-completed: null
+completed: 2026-04-19
 tech_stack:
   monitoring: CloudWatch + X-Ray
   alerting: SNS → email
@@ -3077,21 +3140,21 @@ Without monitoring, failures are discovered by customer complaints. CloudWatch a
 
 ##### Functional
 
-- [ ] CloudWatch alarms configured and active
+- [x] CloudWatch alarms configured and active
   - `Verify:` `aws cloudwatch describe-alarms` shows the new prod alarms plus the existing webhook/control-plane alarms
-  - `Evidence:` implemented in `sst.config.ts`; pending prod deploy + `aws cloudwatch describe-alarms` verification
-- [ ] SNS topic for alerts → email notification
+  - `Evidence:` verified 2026-04-19 in prod: `PqApi5xxRate`, `PqApiLambdaErrorRate`, `PqOpenSearchYellow`, `PqOpenSearchRed`, `PqOpenSearchLowFreeStorage` all present and `OK`
+- [x] SNS topic for alerts → email notification
   - `Verify:` Trigger an alarm → email received within 5 minutes
-  - `Evidence:` implemented in `sst.config.ts` / `deploy-prod.yml`; pending prod deploy + SNS confirmation
-- [ ] CloudWatch dashboard: API latency (p50/p95/p99), request count, error rate, OpenSearch FreeStorageSpace
+  - `Evidence:` verified 2026-04-19 in prod: forced `PqApiLambdaErrorRate-6848399` to `ALARM`; confirmed SNS email received on `jbejenar@gmail.com`; alarm restored to `OK`
+- [x] CloudWatch dashboard: API latency (p50/p95/p99), request count, error rate, OpenSearch FreeStorageSpace
   - `Verify:` Dashboard URL accessible in AWS console
-  - `Evidence:` dashboard resource `prontiq-production` defined in `sst.config.ts`; pending prod deploy verification
-- [ ] X-Ray tracing enabled on API Lambda
+  - `Evidence:` verified 2026-04-19 in prod: dashboard `prontiq-production` exists in CloudWatch
+- [x] X-Ray tracing enabled on API Lambda
   - `Verify:` Make authenticated address API call → trace visible in X-Ray console
-  - `Evidence:` tracing helper + `PqApi` tracing config implemented; pending prod trace verification
+  - `Evidence:` verified 2026-04-19 in prod: trace `1-69e4c337-5fa58fb877e8c5a611ed93e5` includes Lambda + DynamoDB + explicit `OpenSearch` subsegments after adding X-Ray write permissions to `PqApi`
 - [x] Structured JSON logging in all Lambda functions
   - `Verify:` CloudWatch Logs Insights query `fields @timestamp, request_id, path, latency | sort @timestamp desc`
-  - `Evidence:` shared JSON logger in `@prontiq/shared` adopted across API, control-plane, webhooks, and ingestion Lambda paths
+  - `Evidence:` verified 2026-04-19 in prod on `PqApi` logs: JSON request lifecycle events include `request_id`, `path`, `method`, `latency`, and structured error fields
 
 #### Scope
 

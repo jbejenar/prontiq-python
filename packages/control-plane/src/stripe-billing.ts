@@ -9,6 +9,7 @@ import {
 import {
   BILLING_GRACE_PERIOD_PAST_DUE_DAYS_REMAINING,
   BILLING_GRACE_PERIOD_TOTAL_DAYS,
+  DEFAULT_BILLING_URL,
   PLANS,
   PRODUCT_REGISTRY,
   createLogger,
@@ -749,7 +750,7 @@ async function sendPastDueEmailSafely(
       return false;
     }
     return await dependencies.sendPaymentFailureEmail({
-      billingUrl: getOptionalEnv("PRONTIQ_BILLING_URL", "https://prontiq.dev/account"),
+      billingUrl: getOptionalEnv("PRONTIQ_BILLING_URL", DEFAULT_BILLING_URL),
       fromEmail: emailFrom,
       region: getOptionalEnv("AWS_REGION", "ap-southeast-2"),
       toEmail: ownerEmail,

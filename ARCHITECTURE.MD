@@ -1670,10 +1670,10 @@ One extra Stripe API call per webhook invocation. Webhooks fire rarely (signup, 
      Re-read ORG#{orgId} → return 200. The competing call already won.
 
 5. Send welcome email via SES — best-effort and suppression-aware. Subject: "Welcome to Prontiq."
-   Body: "Your account is ready. Sign in at https://prontiq.dev/account
+   Body: "Your account is ready. Sign in at https://console.prontiq.dev
    to create your first API key." Includes docs link.
    A failed email does NOT block sign-in. The user can sign in and the
-   /account page detects "no key yet" and shows the "Create your first
+   console detects "no key yet" and shows the "Create your first
    API key" CTA. SES failures are recoverable by the user without
    operator intervention.
 
@@ -1893,43 +1893,41 @@ Stripe is configured with `cancel_at_period_end: true` on user-initiated cancell
 
 ### 5.9 Dashboard & Account Security
 
-No custom dashboard application. One Next.js page at `prontiq.dev/account` using Clerk's `<UserProfile />` with custom tabs. Every tab is DynamoDB-backed or Stripe-hosted — no third-party management UI.
+The customer-facing frontend is a two-app Next.js architecture, not a single `/account` page.
 
-> Forward contract: no `/v1/account/*` routes exist in live code yet. Implementation tracked under P1B and P1C tickets.
+- `prontiq.dev` is the landing and content surface
+- `console.prontiq.dev` is the authenticated application
+- `docs.prontiq.dev` remains the Mintlify docs surface
 
-#### 5.9.1 Account Page Structure
+The console is a client-rendered app below the auth boundary. It calls `api.prontiq.dev` directly with Clerk-issued JWTs for `/v1/account/*` routes and with user-managed API keys for product exploration flows where appropriate.
 
-```
-┌───────────────────────────────────────────────────┐
-│  Prontiq                                 [Sign out] │
-│                                                     │
-│  [Profile] [Security] [Usage] [Billing] [API Key]  │
-│  ─────────────────────────────────────────────────  │
-│                                                     │
-│  April 2026                                         │
-│                                                     │
-│  Address API    ██████████████░░░  47,200 / 50,000  │
-│  ABN Verify     ████░░░░░░░░░░░░   8,300 / 50,000  │
-│  LEI Lookup     █░░░░░░░░░░░░░░░   1,200 / 50,000  │
-│                                                     │
-│  Plan: Growth ($99/mo)  ·  Resets May 1             │
-│  [View daily breakdown ▼]                           │
-└───────────────────────────────────────────────────┘
-```
+> Canonical frontend strategy: [docs/FRONTEND-STRATEGY.md](docs/FRONTEND-STRATEGY.md). This section is the architecture summary; the strategy doc is the frontend source of truth.
 
-| Tab | Data Source | Components |
+#### 5.9.1 Console Structure
+
+Initial console pages:
+
+| Route area | Data source | Notes |
 |---|---|---|
-| **Profile** | Clerk managed | Name, email, avatar, connected accounts |
-| **Security** | Clerk + custom (§5.9.2) | Password, 2FA, active sessions, login history |
-| **Usage** | `GET /v1/account/usage` → DynamoDB | Progress bars, 30-day chart, quota warnings |
-| **Billing** | Stripe embedded pricing table + customer portal | Plan management, invoices, payment methods |
-| **API Key** | `GET /v1/account/keys` → DynamoDB GSI | Masked key display, Create/Rotate/Revoke, audit log |
+| **Overview** | DynamoDB-backed account endpoints | Usage summary, plan state, onboarding |
+| **Keys** | `/v1/account/keys*` | First-key flow, create, rotate, revoke, audit |
+| **Usage** | `/v1/account/usage` | Charts, quota visibility, export |
+| **Billing** | Stripe pricing table + customer portal | Subscription management |
+| **Playground** | `@prontiq/sdk` + public API | Pre-authenticated exploration |
+| **Danger Zone** | dedicated account-management flow | Self-service org deletion |
+
+Identity model:
+
+- Clerk Organizations are canonical
+- all dashboard state is scoped to active `orgId`
+- keys, billing, usage, and audit are org-scoped
+- the console host is `https://console.prontiq.dev`
 
 #### 5.9.2 Account Security
 
 ##### Authentication & Session Management
 
-Sessions are HttpOnly, Secure, SameSite=Lax cookies. 7-day sliding window. 30-minute idle timeout on the account page. Users can view and revoke individual sessions.
+Sessions are HttpOnly, Secure, SameSite=Lax cookies. 7-day sliding window. 30-minute idle timeout in the console. Users can view and revoke individual sessions.
 
 ##### Sensitive Action Re-authentication
 
@@ -1945,7 +1943,7 @@ Sessions are HttpOnly, Secure, SameSite=Lax cookies. 7-day sliding window. 30-mi
 
 ##### CSRF Protection
 
-SameSite=Lax cookies. All state-mutating requests require Clerk session token in `Authorization` header. CORS restricts `/v1/account/*` to `https://prontiq.dev`. API Gateway rejects requests without valid Origin/Referer.
+SameSite=Lax cookies. All state-mutating requests require Clerk session token in `Authorization` header. CORS for `/v1/account/*` is intended to allow `https://console.prontiq.dev` as the canonical authenticated frontend origin. API Gateway rejects requests without valid Origin/Referer.
 
 ##### Account Endpoint Rate Limits
 
@@ -1963,43 +1961,30 @@ The API Key tab displays recent key lifecycle events from `prontiq-audit` — wh
 
 ##### Multi-org Isolation & Role-Based Access
 
-Clerk supports multiple orgs per user. The account page respects the currently selected org via `<OrganizationSwitcher>`. Keys, usage, billing, and audit are all scoped to `orgId` derived from the Clerk session — never from URL or request body.
+Clerk supports multiple orgs per user. The console respects the currently selected org via `<OrganizationSwitcher>`. Keys, usage, billing, and audit are all scoped to `orgId` derived from the Clerk session — never from URL or request body.
 
 Only users with the Clerk role `admin` can create, rotate, or revoke keys. The `member` role can view usage and keys (masked) but cannot mutate them.
 
 ### 5.10 Brand
 
-All design tokens defined in `packages/shared/src/brand.ts`. One file, all surfaces.
+**Source of truth:** future `packages/tokens` package.
 
-```typescript
-export const brand = {
-  name: 'Prontiq',
-  colors: {
-    primary: '#0F172A',      // near-black, terminal aesthetic
-    accent: '#3B82F6',       // blue, links and focus rings
-    surface: '#FFFFFF',
-    muted: '#64748B',
-    success: '#10B981',
-    danger: '#EF4444',
-  },
-  font: {
-    sans: 'Inter, system-ui, sans-serif',
-    mono: 'JetBrains Mono, monospace',
-  },
-  radius: '8px',
-  logo: { light: '/logo-light.svg', dark: '/logo-dark.svg' },
-};
-```
+The planned token source is `packages/tokens/src/tokens.ts`. It will emit:
 
-| Surface | How It's Themed | Sync |
-|---|---|---|
-| **Landing page** (Next.js) | Tailwind `theme.extend` consuming `brand.ts` | Build-time import |
-| **Clerk** (sign-in, profile) | `<ClerkProvider appearance>` — `colorPrimary`, `fontFamily`, `borderRadius` | Runtime import |
-| **Mintlify** (docs) | `mint.json` — `colors.primary`, `logo`, `font` | CI script reads `brand.ts` → writes `mint.json` |
-| **Stripe** (billing portal) | Dashboard → Branding — logo, icon, accent | Manual one-time setup |
-| **SES emails** | HTML template — same logo, colours, font | Build-time token injection |
+- CSS variables for both Next.js apps
+- Tailwind preset for app styling
+- Mintlify theme payload for docs sync
+- SES variables for transactional email styling
 
-> **TODO — reconcile with `docs/BRAND.md`.** The existing BRAND.md specifies `DM Sans` / `Instrument Serif` / `IoskeleyMono` with `#06080d` / `#22d3ee`. v2.2 canonicalizes `Inter` / `JetBrains Mono` with `#0F172A` / `#3B82F6`. These disagree. Reconciliation is a separate ticket; `brand.ts` does not exist in the repo yet.
+Canonical palette and typography match the shipped `prontiq.dev` visual language:
+
+- accent: `#00e5a0` on dark, `#009366` on light
+- dark background: `#0a0d0b`
+- light background: `#f6f4ec`
+- display / numeric type: Instrument Serif
+- body / technical type: JetBrains Mono
+
+For the full rationale, theming mechanism, and app-level frontend decisions, see [docs/FRONTEND-STRATEGY.md](docs/FRONTEND-STRATEGY.md).
 
 ### 5.11 Docs & SDKs
 
@@ -2062,7 +2047,7 @@ const { entity } = await prontiq.lei.lookup({ lei: "549300MLUDYVRQOOXS22" });
 
 ## 6. Monorepo Structure
 
-Live layout. The account Next.js app (`/account` page) and `brand.ts` in `shared/` are planned additions in P1B/P1C and are marked below.
+Live layout today plus planned frontend additions. The future frontend shape is `apps/landing`, `apps/console`, and `packages/tokens` — not `packages/web` and not a single `/account` page.
 
 ```
 prontiq-platform/
@@ -2098,7 +2083,6 @@ prontiq-platform/
 │   │   │   ├── constants.ts            # Product→alias mapping, ERROR_CODES, PLANS (P1B.03)
 │   │   │   ├── validation.ts           # Zod schemas (shared between API and ingestion)
 │   │   │   ├── keys.ts                 # generateKey, hashKey (P1B.02)
-│   │   │   └── brand.ts                # (Planned — §5.10; reconcile with docs/BRAND.md)
 │   │   └── package.json
 │   ├── docs/                           # Mintlify config + MDX content + openapi.json
 │   │   ├── mint.json
@@ -2125,14 +2109,14 @@ prontiq-platform/
 │   │   │   ├── stripe.ts               # 4 events (§5.7) — stub; P1B.06
 │   │   │   └── index.ts                # Router
 │   │   └── package.json
+│   ├── tokens/                         # Planned (P1C) — design tokens + emitted theming artifacts
 │   └── plugins/                        # Phase 4 distribution
 │       ├── shopify/                    # Checkout UI Extension
 │       ├── woocommerce/                # WP plugin
 │       └── web-component/              # <prontiq-address> widget
-│
-│   # Planned (P1C):
-│   # └── web/                          # Next.js — landing page + /account page (Clerk UserProfile + custom tabs)
-│
+├── apps/                               # Planned (P1C)
+│   ├── landing/                        # Next.js 15 — prontiq.dev
+│   └── console/                        # Next.js 15 — console.prontiq.dev
 ├── scripts/                            # sync-brand-to-mintlify.ts, seed-test-data.ts, purge-org.ts, ts-package-build.mjs
 ├── docs/                               # ARCHITECTURE.MD, ROADMAP.md, decisions/, operations/, runbooks/
 ├── .github/
@@ -2142,7 +2126,7 @@ prontiq-platform/
 └── tsconfig.json
 ```
 
-Seven packages today (`api`, `control-plane`, `docs`, `ingestion`, `plugins`, `shared`, `webhooks`). The eighth (`web`) is added in P1C when the `/account` page ships. No dashboard application — the account page is a thin Clerk-wrapped Next.js view over DynamoDB-backed and Stripe-hosted components. `control-plane` was added in P1B.05 PR 1/3 to keep `provisionOrg` callable from both `webhooks` (server-to-server) and `api` (user-driven recovery via `/v1/account/setup`, P1B.05 PR 3/3) without an awkward `api → webhooks` dep direction.
+Seven package workspaces are live today (`api`, `control-plane`, `docs`, `ingestion`, `plugins`, `shared`, `webhooks`). The next frontend expansion adds two apps (`landing`, `console`) plus `packages/tokens`. `control-plane` was added in P1B.05 PR 1/3 to keep `provisionOrg` callable from both `webhooks` (server-to-server) and `api` (user-driven recovery via `/v1/account/setup`, P1B.05 PR 3/3) without an awkward `api → webhooks` dep direction.
 
 ---
 

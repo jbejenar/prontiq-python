@@ -5,6 +5,7 @@ import {
   UpdateCommand,
 } from "@aws-sdk/lib-dynamodb";
 import {
+  DEFAULT_BILLING_URL,
   PLANS,
   QUOTA_EMAIL_PENDING_LEASE_MINUTES,
   QUOTA_WARNING_THRESHOLD_FRACTION,
@@ -102,7 +103,7 @@ function buildQuotaEmailSubject(task: QuotaEmailTask, tier: OrgEnvelopeRecord["t
 
 function buildQuotaEmailBody(task: QuotaEmailTask, envelope: OrgEnvelopeRecord): string {
   const familyDisplayName = getFamilyDisplayName(task.product);
-  const billingUrl = getOptionalEnv("PRONTIQ_BILLING_URL", "https://prontiq.dev/account");
+  const billingUrl = getOptionalEnv("PRONTIQ_BILLING_URL", DEFAULT_BILLING_URL);
   const docsUrl = getOptionalEnv("PRONTIQ_DOCS_URL", "https://docs.prontiq.dev");
   const plan = PLANS[envelope.tier];
   const includedCredits = plan.quotaPerProduct;

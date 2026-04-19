@@ -35,7 +35,7 @@ For `dev` and `prod`, set these before deploy:
 - `PRONTIQ_BILLING_URL` — optional account/billing-management URL used in `past_due` emails
 - `WELCOME_EMAIL_FROM` — SES sender identity used for best-effort billing emails
 
-`PRONTIQ_BILLING_URL` falls back to `PRONTIQ_ACCOUNT_URL` if it is not set, but the dedicated billing URL is preferred once the account/billing surface diverges.
+`PRONTIQ_BILLING_URL` falls back to `https://console.prontiq.dev/billing` if it is not set. `PRONTIQ_ACCOUNT_URL` remains the sign-in / account entrypoint and does not override billing email links.
 
 The SST deploy guard now fails if either required Stripe secret is missing or whitespace-only.
 

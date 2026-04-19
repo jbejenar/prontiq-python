@@ -167,6 +167,8 @@ export function getMeterEventNameForProduct(product: string): string | null {
 
 export const BILLING_GRACE_PERIOD_TOTAL_DAYS = 14;
 export const BILLING_GRACE_PERIOD_PAST_DUE_DAYS_REMAINING = 7;
+export const DEFAULT_ACCOUNT_URL = "https://console.prontiq.dev";
+export const DEFAULT_BILLING_URL = "https://console.prontiq.dev/billing";
 export const EMAIL_SUPPRESSION_SOFT_BOUNCE_THRESHOLD = 3;
 export const EMAIL_SUPPRESSION_SOFT_BOUNCE_WINDOW_DAYS = 30;
 export const EMAIL_SUPPRESSION_BOUNCE_TTL_DAYS = 90;

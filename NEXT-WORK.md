@@ -1,9 +1,9 @@
 # NEXT-WORK.md — Active Sprint
 
 > Extracted from ROADMAP.md. This is what agents should work on NOW.
-> Last updated: 2026-04-19 (Session 21)
+> Last updated: 2026-04-19 (Session 22)
 
-## Current Phase: P1F rollout verification
+## Current Phase: P1C frontend ratification -> foundations
 
 ### What's Live
 
@@ -28,7 +28,7 @@
 - **P1B.11 complete (2026-04-19).** `PqMonthClose` is live in dev + prod on `cron(30 0 1 * ? *)`. It reuses the same replay-safe pending meter identifier model as `PqBillingCron`, finalizes previous-month deltas exactly once, and marks the current-hash previous-month scope `closed=true` so the hourly cron stops revisiting it permanently. Dev integration and manual service verification proved: remaining previous-month delta push, zero-delta close, predecessor-only chain finalization, rerun idempotency, and hourly-cron skip on closed prior-month scopes.
 - **P1B.09 complete (2026-04-19).** Per-key burst limiting is now explicitly extracted into `packages/api/src/middleware/rate-limit.ts`, remains enforced in the live auth path, and is covered by both unit and integration tests for burst exhaustion, refill, key isolation, and no orphan usage increments on `RATE_LIMITED`.
 - **P1B.12 complete (2026-04-19).** The auth middleware integration suite is now reconciled to the real post-cutover surface: direct unknown/revoked key failures, REDIRECT success writing usage on `newHash`, no orphan usage on pre-increment failures, and the atomic free-tier quota race are all covered in `packages/api/src/middleware/auth.integration.test.ts`. The roadmap ticket no longer claims webhook idempotency, first-key creation, or a standalone seed script.
-- **P1F.02 implementation complete (2026-04-19).** The prod observability baseline is implemented in code: `PqIngestAlerts` prod email subscriptions via `ALERT_EMAILS`, `prontiq-production` dashboard, new prod alarms for address API 5xx/Lambda error rate and OpenSearch yellow/red/low-storage, `PqApi` X-Ray tracing, and structured JSON logs across Lambda execution paths. Prod deploy and manual operator verification remain pending.
+- **P1F.02 complete (2026-04-19).** The prod observability baseline is live and verified: `PqIngestAlerts` prod email subscriptions via `ALERT_EMAILS`, `prontiq-production` dashboard, prod alarms for address API 5xx/Lambda error rate and OpenSearch yellow/red/low-storage, `PqApi` X-Ray tracing with DynamoDB + OpenSearch segments, and structured JSON logs across Lambda execution paths. SNS email delivery was verified by forcing `PqApiLambdaErrorRate` to `ALARM` and confirming receipt on a confirmed subscriber.
 - **`@prontiq/control-plane` package** (recovered from prior design + hardened) provides `createProvisioningService()`, `writeAudit()` / `buildAuditTransactItem()`, AND `resolvePrimaryEmail()`. Both ingress paths (Clerk webhook + `/v1/account/setup`) consume the same provisioning service AND the same verified-primary-email helper — invariants enforced once at the package boundary.
 - The legacy raw-key table is retained only for rollback/soak; the old `pq_live_prod_...` seed key has been rotated and revoked.
 - Future prod seed-key rotation now has an operator command:
@@ -86,23 +86,25 @@ POST /v1/account/setup  (Clerk JWT; not API key — recovery provisioning)
 - P1E.05 — cache invalidation after alias swap
 - P1E.06 — cleanup Lambda completion / enforcement
 
-### 3. Rebuild customer-facing account surface
+### 3. Ratified frontend rebuild
 
-- P1C remains effectively a fresh build; the older dashboard codepath is gone and should not be treated as partially live.
+- P1C remains effectively a fresh build; the older `packages/web` / `/account` model is retired and should not be treated as partially live.
+- Frontend architecture is now ratified around future `apps/landing`, future `apps/console`, and future `packages/tokens`.
 
 ## Recommended Next Work
 
 Recommended priority:
 
-1. Finish P1F.02 rollout: prod deploy plus manual verification of alarms, SNS confirmation, dashboard, X-Ray, and Logs Insights.
-2. P1C.07 — shadcn/ui component library setup. It is the dependency anchor for the rest of the account/dashboard rebuild.
-3. P1C account surface rebuild after `P1C.07`.
+1. P1C.00 — frontend foundations (`apps/landing`, `apps/console`, `packages/tokens`, workspace/env scaffolding).
+2. P1C.07 — shadcn/ui + Tailwind v3.4 setup on top of those foundations.
+3. P1C account/landing surface rebuild after `P1C.00` and `P1C.07`.
+4. P1E.05 / P1E.06 ingestion hardening if platform work is preferred over frontend work.
 
 Reason:
 
 - P1B auth/billing execution is effectively complete.
-- P1F.02 code is ready, but the ticket is not honestly closed until the prod/operator verification is done.
-- After that, the next milestone is the P1C rebuild.
+- P1F observability hardening is now closed.
+- The next milestone is the ratified two-app frontend build.
 - API Gateway caching remains a pragmatic performance/cost option if platform work is preferred over dashboard work.
 
 ### Operator follow-ups (one-time, not blocking next ticket)
@@ -122,7 +124,8 @@ Reason:
 | File | Purpose | When to Read |
 |------|---------|--------------|
 | `ARCHITECTURE.MD` | Full platform design | When you need design context |
-| `ROADMAP.md` | Master plan (76 tickets) | When you need the full scope |
+| `ROADMAP.md` | Master plan (77 tickets) | When you need the full scope |
+| `docs/FRONTEND-STRATEGY.md` | Canonical frontend architecture | Before any P1C implementation |
 | `docs/decisions/001-remove-unkey.md` | ADR — why Unkey was removed | When auditing architecture decisions |
 | `sst.config.ts` | Infrastructure definition | When working on infra |
 | `packages/shared/src/constants.ts` | Product registry, tier limits | When working on auth/billing |

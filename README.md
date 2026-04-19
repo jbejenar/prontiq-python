@@ -10,7 +10,7 @@ Prontiq is starting with developer-friendly Australian address validation. The b
 | ------------------------------ | --------------- | ----------- | -------------------------- |
 | **Address Validation** (G-NAF) | `/v1/address/*` | data.gov.au | Live — 15M docs, 6 endpoints |
 
-Live at `https://api.prontiq.dev`. Docs at `https://docs.prontiq.dev`. TypeScript SDK auto-generated to `sdks/typescript/` (npm publish pending).
+Live at `https://api.prontiq.dev`. Docs at `https://docs.prontiq.dev`. TypeScript SDK auto-generated to `sdks/typescript/` (npm publish pending). The ratified frontend architecture is a two-app model: future `prontiq.dev` landing app plus future `console.prontiq.dev` authenticated console.
 
 ### Server-to-server surface
 
@@ -52,7 +52,7 @@ pnpm deploy:prod    # sst deploy --stage prod (manual dispatch in CI)
 ```
 Free open dataset → independent pipeline → S3 (NDJSON + manifest.json)
     → event-driven indexing → OpenSearch → commercial API
-    → auth / billing / docs
+    → auth / billing / docs / frontend apps
 ```
 
 See [`ARCHITECTURE.MD`](ARCHITECTURE.MD) for the full design.
@@ -67,10 +67,14 @@ packages/
   ingestion/       @prontiq/ingestion       Step Functions + Lambda indexing
   webhooks/        @prontiq/webhooks        Clerk webhook + Stripe billing webhook
   docs/            @prontiq/docs            Mintlify documentation
+  tokens/          @prontiq/tokens          Planned design-token source (P1C)
   plugins/
     shopify/                                Checkout UI Extension
     woocommerce/                            WP plugin
     web-component/                          <prontiq-address> widget
+apps/
+  landing/                                  Planned Next.js app for prontiq.dev (P1C)
+  console/                                  Planned Next.js app for console.prontiq.dev (P1C)
 ```
 
 ## Stack
@@ -83,29 +87,29 @@ packages/
 | API Keys       | DynamoDB-native (`pq_live_` + SHA-256 hash-based lookup; live in prod) |
 | Auth (portal)  | Clerk — webhook live in prod (`POST /webhooks/clerk`) AND JWT-authenticated `POST /v1/account/setup` recovery endpoint live in prod (P1B.05 complete) |
 | Billing        | Stripe customer creation, subscription webhook, hourly billing cron, and month-close all live; SES quota/billing mail verified against simulator recipients |
-| Dashboard      | `/account` page — to be rebuilt per ARCHITECTURE.MD §5.9 (P1C) |
+| Frontend       | Planned `apps/landing` + `apps/console` per `docs/FRONTEND-STRATEGY.md` |
 | Docs           | Mintlify at `docs.prontiq.dev` (live)                  |
 | SDKs           | Speakeasy generates `@prontiq/sdk` (TypeScript) — npm publish pending NPM_TOKEN |
 | CI/CD          | GitHub Actions + OIDC (no stored credentials)          |
 
 ## Roadmap Progress
 
-See [`ROADMAP.md`](ROADMAP.md) for the full 76-ticket plan.
+See [`ROADMAP.md`](ROADMAP.md) for the full 77-ticket plan.
 
 | Phase   | Epic                      | Tickets | Done      |
 | ------- | ------------------------- | ------- | --------- |
 | **P0**  | Infrastructure Foundation | 6       | 6/6       |
 | **P1A** | API Core (Address)        | 13      | 9/13      |
 | **P1B** | Auth & Billing            | 13      | 11/13     |
-| **P1C** | Dashboard                 | 7       | 0/7       |
+| **P1C** | Frontend Surfaces         | 8       | 0/8       |
 | **P1D** | Docs & SDK                | 5       | 2/5       |
 | **P1E** | Ingestion                 | 6       | 4/6       |
-| **P1F** | Distribution              | 2       | 1/2       |
+| **P1F** | Distribution              | 2       | 2/2       |
 | **P2**  | ABN/ASIC Verification     | 8       | 0/8       |
 | **P3**  | LEI + Full Dashboard      | 7       | 0/7       |
 | **P4**  | Shopify + WooCommerce     | 5       | 0/5       |
 | **P5**  | CVE/NVD + Patents         | 4       | 0/4       |
-|         |                           | **76**  | **33/76** |
+|         |                           | **77**  | **34/77** |
 
 ## Commands
 
@@ -127,7 +131,7 @@ pnpm format           # Prettier format all files
 
 ## Brand
 
-Use **Prontiq** in prose and **prontiq** for the logo wordmark, domains, packages, and code identifiers. See [`docs/BRAND.md`](docs/BRAND.md).
+Use **Prontiq** in prose and **prontiq** for the logo wordmark, domains, packages, and code identifiers. See [`docs/FRONTEND-STRATEGY.md`](docs/FRONTEND-STRATEGY.md) for the canonical frontend/brand direction and [`docs/BRAND.md`](docs/BRAND.md) for archived historical guidance only.
 
 ## Licence
 

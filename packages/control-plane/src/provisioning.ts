@@ -4,10 +4,13 @@ import {
   GetCommand,
   TransactWriteCommand,
 } from "@aws-sdk/lib-dynamodb";
-import { PLANS } from "@prontiq/shared";
-import { createLogger } from "@prontiq/shared";
+import {
+  DEFAULT_ACCOUNT_URL,
+  PLANS,
+  createLogger,
+  type OrgEnvelopeRecord,
+} from "@prontiq/shared";
 import Stripe from "stripe";
-import type { OrgEnvelopeRecord } from "@prontiq/shared";
 import { buildAuditTransactItem } from "./audit.js";
 import { isSuppressedEmail, sendSignedSesEmail } from "./email.js";
 
@@ -445,7 +448,7 @@ async function sendWelcomeEmailSafely(
       docsUrl: getOptionalEnv("PRONTIQ_DOCS_URL", "https://docs.prontiq.dev"),
       fromEmail: emailFrom,
       region: getOptionalEnv("AWS_REGION", "ap-southeast-2"),
-      signInUrl: getOptionalEnv("PRONTIQ_ACCOUNT_URL", "https://prontiq.dev/account"),
+      signInUrl: getOptionalEnv("PRONTIQ_ACCOUNT_URL", DEFAULT_ACCOUNT_URL),
       toEmail: input.ownerEmail,
     });
   } catch (error) {
