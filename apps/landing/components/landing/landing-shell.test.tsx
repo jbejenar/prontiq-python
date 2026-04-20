@@ -17,7 +17,7 @@ afterEach(() => {
 });
 
 test("landing shell renders the real landing sections", () => {
-  render(<LandingShell />);
+  render(<LandingShell accountUrl="https://preview.prontiq.dev" />);
 
   expect(screen.getByRole("heading", { name: /One address endpoint/i })).toBeInTheDocument();
   expect(screen.getByRole("heading", { name: /Type an address\. Watch it resolve\./i })).toBeInTheDocument();
@@ -25,7 +25,10 @@ test("landing shell renders the real landing sections", () => {
   expect(screen.getByText("Try it")).toBeInTheDocument();
   expect(screen.getByText("prontiq.dev")).toBeInTheDocument();
   expect(screen.getByText("Stripe pricing unavailable")).toBeInTheDocument();
+  expect(screen.getByText("Starter · Growth")).toBeInTheDocument();
+  expect(screen.queryByText("Pay as you go · Starter · Growth · Max")).not.toBeInTheDocument();
   expect(screen.getAllByText("10,000 credits per month")).toHaveLength(1);
+  expect(screen.getByRole("link", { name: "Console" })).toHaveAttribute("href", "https://preview.prontiq.dev");
 });
 
 test("landing shell reports Clerk as configured when the publishable key is present", async () => {
@@ -53,7 +56,7 @@ test("landing shell reports Clerk as configured when the publishable key is pres
   }));
 
   const { LandingShell: ConfiguredLandingShell } = await import("./landing-shell.js");
-  render(<ConfiguredLandingShell />);
+  render(<ConfiguredLandingShell accountUrl="https://preview.prontiq.dev" />);
 
   expect(screen.getByText("Landing signup is configured.")).toBeInTheDocument();
 });

@@ -7,6 +7,7 @@ import {
   consumeDemoRouteRateLimits,
   getClientIdentifier,
   sanitizeDemoQuery,
+  shouldTrustDemoProxyHeaders,
   throttleResponse,
   upstreamFailureResponse,
 } from "../../../../../lib/demo-proxy.js";
@@ -15,7 +16,9 @@ import { serverEnv } from "../../../../../lib/server-env.js";
 const logger = createLogger("landing-demo-route");
 
 export async function GET(request: Request) {
-  const clientIdentity = getClientIdentifier(new Headers(request.headers), request.url);
+  const clientIdentity = getClientIdentifier(new Headers(request.headers), request.url, {
+    trustProxyHeaders: shouldTrustDemoProxyHeaders(),
+  });
   const rateLimit = consumeDemoRouteRateLimits(clientIdentity.clientKey);
   if (!rateLimit.allowed) {
     return applyDemoSessionCookie(

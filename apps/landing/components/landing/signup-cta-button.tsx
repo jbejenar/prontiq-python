@@ -2,24 +2,24 @@
 
 import type { ReactNode } from "react";
 import { SignUpButton } from "@clerk/nextjs";
-import { DEFAULT_ACCOUNT_URL } from "@prontiq/shared/constants";
 
 import { Button, type ButtonProps } from "../ui/button.js";
 import type { LandingClerkRuntimeMode } from "../../lib/clerk.js";
 
 interface SignupCTAButtonProps extends Omit<ButtonProps, "children"> {
+  accountUrl: string;
   children: ReactNode;
   mode: LandingClerkRuntimeMode;
 }
 
-export function SignupCTAButton({ children, mode, ...buttonProps }: SignupCTAButtonProps) {
+export function SignupCTAButton({ accountUrl, children, mode, ...buttonProps }: SignupCTAButtonProps) {
   if (mode === "enabled") {
     return (
       <SignUpButton
-        fallbackRedirectUrl={DEFAULT_ACCOUNT_URL}
-        forceRedirectUrl={DEFAULT_ACCOUNT_URL}
+        fallbackRedirectUrl={accountUrl}
+        forceRedirectUrl={accountUrl}
         mode="modal"
-        signInFallbackRedirectUrl={DEFAULT_ACCOUNT_URL}
+        signInFallbackRedirectUrl={accountUrl}
       >
         <Button {...buttonProps}>{children}</Button>
       </SignUpButton>

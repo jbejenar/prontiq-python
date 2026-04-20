@@ -190,7 +190,7 @@ export interface AuditRecord {
   ttl: number;
 }
 
-export type Tier = "free" | "starter" | "growth" | "enterprise";
+export type Tier = "free" | "payg" | "starter" | "growth" | "max" | "enterprise";
 
 /** The inner error object — used by middleware/handlers to construct errors */
 export interface ApiErrorBody {

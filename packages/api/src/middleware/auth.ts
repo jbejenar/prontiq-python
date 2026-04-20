@@ -154,7 +154,7 @@ function getQuotaEmailTasks(
   now: Date,
 ): QuotaEmailTask[] {
   const limit = record.quotaPerProduct;
-  if (limit == null) {
+  if (limit == null || limit <= 0) {
     return [];
   }
 

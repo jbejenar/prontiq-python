@@ -20,7 +20,7 @@
   "scripts": {
     "build": "node ../../scripts/ts-package-build.mjs clean && tsc -p tsconfig.json && node dist/build-cli.js",
     "typecheck": "tsc --noEmit",
-    "test": "pnpm -w build --filter @prontiq/tokens... && node --test dist/**/*.test.js",
+    "test": "pnpm -w build --filter @prontiq/tokens... && node ../../scripts/run-node-tests.mjs dist/**/*.test.js",
     "lint": "eslint src/",
     "clean": "node ../../scripts/ts-package-build.mjs clean"
   },

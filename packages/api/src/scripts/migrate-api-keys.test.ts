@@ -35,7 +35,7 @@ test("buildMigrationPlan converts legacy usage maps into v2.2 records", () => {
   assert.equal(plan.keyRecord.products.includes("address"), true);
   assert.equal(plan.keyRecord.products.includes("abn"), true);
   assert.equal(plan.keyRecord.lastUsedAt, null);
-  assert.equal(plan.keyRecord.quotaPerProduct, 10000);
+  assert.equal(plan.keyRecord.quotaPerProduct, 25000);
   assert.equal(plan.usageRecords.length, 3);
   assert.deepEqual(
     plan.usageRecords.map(({ scope, requestCount, lastPushedCumulativeCount, lastUsedAt }) => ({

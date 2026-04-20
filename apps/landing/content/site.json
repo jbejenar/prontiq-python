@@ -33,7 +33,11 @@
   "pricing": {
     "kicker": "Pricing",
     "title": "Usage-based. No seats.",
-    "intro": "Free gets you building immediately. Paid plans are handled by Stripe so upgrades stay self-serve.",
+    "intro": "Free gets you building immediately. Starter and Growth are the currently selectable paid plans in the interim Stripe-backed purchase surface while Prontiq replaces it with first-party Checkout flows.",
+    "paidPlanLabels": [
+      "Starter",
+      "Growth"
+    ],
     "freeTier": {
       "name": "Free",
       "priceLabel": "$0",
@@ -48,7 +52,7 @@
       ],
       "ctaLabel": "Start Free"
     },
-    "paidPlansFootnote": "Starter and Growth are rendered by the Stripe pricing table."
+    "paidPlansFootnote": "Starter and Growth are the currently selectable paid plans in the interim Stripe pricing surface. Pay as you go and Max move to Prontiq-rendered plan cards plus Checkout."
   },
   "featuresIntro": "Fast autocomplete, validation, enrichment, and reverse geocoding.",
   "footer": {

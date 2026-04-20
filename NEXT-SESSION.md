@@ -8,7 +8,7 @@
 
 - **`P1C.01` is now complete.** `apps/landing` now renders the real `prontiq.dev` landing page with sticky nav, hero statement, live demo, pricing section, and footer.
 - **The hero demo is now live and guarded.** The page embeds `@prontiq/web-component`, routes suggestions through `GET /api/demo/address/autocomplete`, and applies app-local per-IP token-bucket rate limiting plus query/limit clamps. No client-side API key is exposed.
-- **Commercial CTA paths are now real but build-safe.** The landing page now renders a config-owned Prontiq Free card, a Stripe embedded paid-pricing wrapper, and Clerk modal CTA wrappers. Helper-managed local/CI runs remain keyless-safe; absent Clerk or Stripe envs degrade to deterministic fallback states instead of failing open.
+- **Commercial CTA paths are now real but build-safe.** The landing page now renders a config-owned Prontiq Free card and Clerk modal CTA wrappers. The original Stripe Pricing Table integration is now treated as a superseded interim implementation; the forward-looking replacement is Prontiq-rendered paid plan cards plus backend-created Checkout Sessions. Helper-managed local/CI runs remain keyless-safe; absent Clerk or Stripe envs degrade to deterministic fallback states instead of failing open.
 - **Source-of-truth docs are reconciled.** Roadmap, architecture, frontend strategy, README/HINTS, and current-work tracking now treat `P1C.01` as shipped work and move the active frontend queue to `P1C.02`.
 
 ### Verification evidence

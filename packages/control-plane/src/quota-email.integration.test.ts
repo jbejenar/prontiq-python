@@ -18,6 +18,7 @@ import type {
   SesSuppressionRecord,
   UsageCounterRecord,
 } from "@prontiq/shared";
+import { PLANS, QUOTA_WARNING_THRESHOLD_FRACTION } from "@prontiq/shared";
 
 const DDB_URL = process.env.DYNAMODB_TEST_URL ?? "http://localhost:8000";
 const SUFFIX = Date.now().toString();
@@ -95,10 +96,13 @@ function makeEnvelope(overrides: Partial<OrgEnvelopeRecord> = {}): OrgEnvelopeRe
 }
 
 function makeUsage(overrides: Partial<UsageCounterRecord> = {}): UsageCounterRecord {
+  const starterQuota = PLANS.starter.quotaPerProduct ?? 0;
+  const warningRequestCount = Math.ceil(starterQuota * QUOTA_WARNING_THRESHOLD_FRACTION);
+
   return {
     apiKeyHash: "hash_test_123",
     lastPushedCumulativeCount: 0,
-    requestCount: 8_000,
+    requestCount: warningRequestCount,
     scope: "address#2026-04",
     ttl: 1_800_000_000,
     ...overrides,

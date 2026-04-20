@@ -23,8 +23,8 @@
 | --------- | -------------------------- | ------- | ---------- | ----------- |
 | **P0**    | Infrastructure Foundation  | 6       | 6/6 ✅     | Week 1      |
 | **P1A**   | API Core (Address)         | 13      | 10/13      | Weeks 2-3   |
-| **P1B**   | Auth & Billing             | 13      | 11/13      | Weeks 3-4   |
-| **P1C**   | Frontend Surfaces          | 8       | 2/8        | Weeks 4-6   |
+| **P1B**   | Auth & Billing             | 14      | 11/14      | Weeks 3-4   |
+| **P1C**   | Frontend Surfaces          | 9       | 3/9        | Weeks 4-6   |
 | **P1D**   | Docs & SDK                 | 5       | 2/5        | Week 5      |
 | **P1E**   | Ingestion (Phase 1)        | 6       | 4/6        | Week 6      |
 | **P1F**   | Distribution               | 3       | 3/3 ✅     | Week 6      |
@@ -32,7 +32,7 @@
 | **P3**    | GLEIF/LEI + Full Dashboard | 7       | 0/7        | Weeks 11-13 |
 | **P4**    | Shopify + WooCommerce      | 5       | 0/5        | Weeks 14-17 |
 | **P5**    | CVE/NVD + Patents          | 4       | 0/4        | Weeks 18-21 |
-| **Total** |                            | **78**  | **38/78**  |             |
+| **Total** |                            | **80**  | **39/80**  |             |
 
 ---
 
@@ -1200,11 +1200,11 @@ v2.2 removes Unkey (ADR-001). Key generation and hashing are the foundational pr
 
 ---
 
-### Ticket P1B.03 — Stripe Setup (Products + PLANS + Pricing Table)
+### Ticket P1B.03 — Stripe Setup (Products + PLANS + Customer Portal)
 
 ```yaml
 id: P1B.03
-title: Stripe Setup (Products + PLANS + Pricing Table)
+title: Stripe Setup (Products + PLANS + Customer Portal)
 status: pending
 priority: p0-critical
 epic: P1B
@@ -1217,25 +1217,28 @@ tech_stack:
 
 #### User Story
 
-As a builder, I need Stripe configured with subscription plans, family-level credit meters, an embedded Pricing Table, and matching `PLANS` / `BILLING_ENDPOINTS` constants so that the platform can bill developers transparently with published credit costs and zero Stripe-side endpoint-specific logic.
+As a builder, I need Stripe configured with subscription plans, family-level credit meters, Customer Portal, and matching `PLANS` / `BILLING_ENDPOINTS` constants so that the platform can bill developers transparently with published credit costs and zero Stripe-side endpoint-specific logic.
 
 #### Problem Statement
 
-Stripe billing needs one subscription per organisation with one recurring plan item plus one metered family item per enabled API product. Customers buy credits, not raw requests. Endpoint-level costs live in `BILLING_ENDPOINTS` (for example `address.enrich = 3 credits`), and the auth middleware applies those weights inline before Stripe receives the aggregated family-level credit totals (for example `Address API credits`). The embedded `<stripe-pricing-table>` is configured in the Stripe Dashboard and referenced by ID in the Billing tab.
+Stripe billing needs one subscription per organisation with one recurring plan item plus one metered family item per enabled API product. Customers buy credits, not raw requests. Endpoint-level costs live in `BILLING_ENDPOINTS` (for example `address.enrich = 3 credits`), and the auth middleware applies those weights inline before Stripe receives the aggregated family-level credit totals (for example `Address API credits`). Stripe Pricing Tables are not suitable for this hybrid model, so the catalog must support backend-created Checkout Sessions and Customer Portal instead of relying on `<stripe-pricing-table>`.
 
 #### Definition of Done
 
 ##### Functional
 
-- [ ] Stripe products created: Starter ($29/mo recurring), Growth ($99/mo recurring)
+- [ ] Stripe products created: Pay as you go ($0/mo recurring), Starter ($29/mo recurring), Growth ($99/mo recurring), Max ($299/mo recurring)
   - `Verify:` Stripe dashboard Products section
   - `Evidence:` Product IDs and Price IDs documented
 - [ ] Family-level metered Prices created (address, abn, lei, cve, patents) with credit-based billing semantics
   - `Verify:` Stripe Billing → Prices section, inspect the family meter-backed prices
   - `Evidence:` Price IDs and meter config per product family
-- [ ] `<stripe-pricing-table>` created in Dashboard showing paid plans (Starter / Growth), with Free rendered separately by Prontiq
-  - `Verify:` Stripe dashboard → Pricing tables shows the paid-plan table
-  - `Evidence:` Pricing table ID captured for landing (`P1C.01`) and the billing tab (`P1C.05`), with Free card rendered separately in-app
+- [ ] Stripe Customer Portal configured for payment methods, invoices, cancellation, and supported plan self-service
+  - `Verify:` Stripe dashboard → Settings → Customer Portal
+  - `Evidence:` Portal configuration captured for console billing (`P1C.05`)
+- [ ] Stripe catalog supports backend-created Checkout Sessions for paid plans (Pay as you go / Starter / Growth / Max), with Free rendered separately by Prontiq
+  - `Verify:` Paid plan selection can be mapped to recurring plan Price + metered family Prices without Pricing Tables
+  - `Evidence:` Product IDs, Price IDs, and tier metadata documented for Checkout orchestration (`P1B.13`, `P1C.08`)
 - [ ] `PLANS` and `BILLING_ENDPOINTS` constants added to `packages/shared/src/constants.ts` per ARCHITECTURE.MD §5.6.1 (credits per month, rate limits, product families, published endpoint credit weights)
   - `Verify:` `pnpm typecheck` passes; the shared constants expose both plan-level credits and endpoint-level credit costs
   - `Evidence:` `packages/shared/src/constants.ts` diff
@@ -1251,7 +1254,7 @@ Stripe billing needs one subscription per organisation with one recurring plan i
 
 #### Scope
 
-**In:** Stripe products, meters, tiered metered Prices, Pricing Table, Smart Retries + cancel policy, webhook endpoints, tier/product metadata contract, secrets
+**In:** Stripe products, meters, tiered metered Prices, Customer Portal, Smart Retries + cancel policy, webhook endpoints, tier/product metadata contract, secrets
 
 **Out — Do Not Implement:**
 
@@ -1259,6 +1262,55 @@ Stripe billing needs one subscription per organisation with one recurring plan i
 - Billing cron → P1B.10
 - `/account` Billing tab → P1C.05
 - Enterprise custom pricing → future
+
+---
+
+### Ticket P1B.13 — Stripe Checkout Session Orchestration for Paid Plans
+
+```yaml
+id: P1B.13
+title: Stripe Checkout Session Orchestration for Paid Plans
+status: pending
+priority: p1-high
+epic: P1B
+persona: [builder]
+depends_on: [P1B.03, P1B.06]
+completed: null
+tech_stack:
+  billing: Stripe Checkout
+```
+
+#### User Story
+
+As a builder, I need Prontiq to create the correct Stripe Checkout Session for each paid tier so that hybrid recurring-plus-metered subscriptions can be purchased without relying on Stripe Pricing Tables.
+
+#### Problem Statement
+
+Stripe remains the billing system of record, but Pricing Tables are not compatible with Prontiq's hybrid metered plan model. The platform therefore needs a server-side orchestration path that maps each tier to the correct recurring plan Price plus the required family-level metered Prices, then hands the user into Stripe Checkout.
+
+#### Definition of Done
+
+##### Functional
+
+- [ ] Server-side Checkout Session creation path exists for `payg`, `starter`, `growth`, and `max`
+  - `Verify:` Each tier maps to the correct recurring Price + metered family Price composition
+  - `Evidence:` Server-side handler/service diff + tests
+- [ ] Free remains outside Stripe subscriptions
+  - `Verify:` Free signup does not create a Stripe subscription
+  - `Evidence:` Checkout orchestration only accepts paid tiers
+- [ ] Successful Checkout handoff still converges through `checkout.session.completed`
+  - `Verify:` Existing webhook flow updates tier, quota, and `subscriptionItems`
+  - `Evidence:` integration coverage or service-level tests
+
+#### Scope
+
+**In:** Checkout Session orchestration, tier-to-price mapping, Checkout entry contract
+
+**Out — Do Not Implement:**
+
+- Stripe webhook handler changes beyond required contract alignment
+- Customer Portal itself → P1B.03 / P1C.05
+- Landing or console pricing UI replacement → P1C.08 / P1C.05
 
 ---
 
@@ -2062,9 +2114,9 @@ As a visitor, I see a hero autocomplete demo that works live so that I immediate
 - [x] Demo path chosen and implemented safely
   - `Verify:` Type "9 endeavour" → real suggestions appear through `/api/demo/address/autocomplete` with no client-side API key
   - `Evidence:` landing-side proxy route + app-local rate limiter + `@prontiq/web-component`
-- [x] Pricing table below hero (Prontiq Free card + Stripe embedded paid pricing table)
-  - `Verify:` Free card plus live-or-fallback paid pricing section visible
-  - `Evidence:` Free is rendered by the site config; Stripe pricing table wrapper renders paid plans when env is configured
+- [x] Pricing section below hero (Prontiq Free card + paid-plan section)
+  - `Verify:` Free card plus paid-plan section visible
+  - `Evidence:` Free is rendered by the site config; the original Stripe Pricing Table path shipped as an interim implementation and is now superseded by `P1C.08` + `P1B.13`
 - [x] "Get Started Free" button → Clerk sign-up modal
   - `Verify:` CTA wrappers open Clerk modal when `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` is present; deterministic disabled state otherwise
   - `Evidence:` `apps/landing/components/landing/signup-cta-button.tsx`
@@ -2074,7 +2126,7 @@ As a visitor, I see a hero autocomplete demo that works live so that I immediate
 
 #### Scope
 
-**In:** Landing page, hero demo, pricing table, sign-up CTA, responsive design
+**In:** Landing page, hero demo, pricing section, sign-up CTA, responsive design
 
 **Out — Do Not Implement:**
 
@@ -2284,27 +2336,27 @@ persona: [api-consumer]
 depends_on: [P1C.00, P1B.03, P1C.07]
 completed: null
 tech_stack:
-  billing: Stripe embedded customer portal
+  billing: Stripe Customer Portal + Checkout
 ```
 
 #### User Story
 
-As a developer, I manage my subscription, update payment methods, and view invoices without leaving the dashboard so that billing is self-service with zero support tickets.
+As a developer, I manage my subscription, start paid upgrades, update payment methods, and view invoices without leaving the dashboard so that billing is self-service with zero support tickets.
 
 #### Problem Statement
 
-Stripe's embedded customer portal handles 90% of billing needs out of the box: plan changes, payment method updates, invoice history, cancellation. Building this custom would take weeks and introduce PCI compliance scope. The embedded portal is a single `<stripe-pricing-table>` element plus a "Manage Billing" link to the hosted portal. Total code: ~20 lines.
+Stripe Customer Portal handles payment methods, invoice history, cancellation, and most post-purchase billing self-service out of the box. Stripe Pricing Tables do not fit Prontiq's hybrid metered plans, so the billing page needs Prontiq-rendered upgrade options that launch backend-created Checkout Sessions, plus a "Manage Billing" link to the hosted portal.
 
 #### Definition of Done
 
 ##### Functional
 
-- [ ] Stripe embedded customer portal accessible from "Manage Billing" button
+- [ ] Stripe hosted customer portal accessible from "Manage Billing" button
   - `Verify:` Click "Manage Billing" → Stripe portal opens (same tab or new tab)
   - `Evidence:` Portal shows plan, payment method, invoices
-- [ ] Plan management: upgrade from Free → Starter → Growth
-  - `Verify:` Upgrade in portal → Stripe webhook updates `prontiq-keys` (tier, quota, subscriptionItems); next API request reflects the new limits
-  - `Evidence:` API returns 200 for products previously blocked on free tier
+- [ ] Prontiq-rendered upgrade options for paid plans
+  - `Verify:` Click paid plan CTA → backend-created Checkout Session opens for the selected tier
+  - `Evidence:` Billing page renders plan cards/buttons wired to Checkout-session orchestration
 - [ ] Payment method update
   - `Verify:` Add/change card in portal → card updated in Stripe
   - `Evidence:` Stripe dashboard shows new payment method
@@ -2317,13 +2369,62 @@ Stripe's embedded customer portal handles 90% of billing needs out of the box: p
 
 #### Scope
 
-**In:** Stripe embedded portal, plan changes, invoices, cancellation
+**In:** Prontiq-rendered upgrade options, Stripe Customer Portal, invoices, cancellation
 
 **Out — Do Not Implement:**
 
-- Custom pricing page (Stripe hosted handles this) → use embedded pricing table
+- Pricing Table-based upgrades → superseded by Checkout Sessions
 - Custom invoice generation → Stripe handles this
 - Enterprise custom billing → future
+
+---
+
+### Ticket P1C.08 — Replace Embedded Pricing Table with Prontiq-rendered Paid Plan Cards
+
+```yaml
+id: P1C.08
+title: Replace Embedded Pricing Table with Prontiq-rendered Paid Plan Cards
+status: pending
+priority: p1-high
+epic: P1C
+persona: [visitor, api-consumer]
+depends_on: [P1B.13, P1C.01]
+completed: null
+tech_stack:
+  frontend: Next.js 15 + React 19
+```
+
+#### User Story
+
+As a visitor or logged-in developer, I see Prontiq-rendered paid plan cards that describe the hybrid plan model clearly and launch the correct Checkout flow without relying on Stripe Pricing Tables.
+
+#### Problem Statement
+
+The original Pricing Table integration shipped as an interim path, but Stripe Pricing Tables do not fit Prontiq's hybrid metered pricing model. Both the landing page and the console billing page need first-party pricing UI that preserves Free as an app-rendered tier and hands paid selections to backend-created Stripe Checkout Sessions.
+
+#### Definition of Done
+
+##### Functional
+
+- [ ] Landing pricing section uses Prontiq-rendered paid plan cards instead of `<stripe-pricing-table>`
+  - `Verify:` Landing page shows Free plus paid plan cards for Pay as you go / Starter / Growth / Max
+  - `Evidence:` landing pricing component diff + tests
+- [ ] Paid CTAs launch the Checkout-session path from `P1B.13`
+  - `Verify:` Select paid tier → Checkout Session for the correct plan opens
+  - `Evidence:` CTA wiring + tests
+- [ ] Pricing Table-specific env/documentation is removed from the forward-looking frontend contract
+  - `Verify:` no active landing or console docs require `NEXT_PUBLIC_STRIPE_PRICING_TABLE_ID`
+  - `Evidence:` doc diff + config cleanup
+
+#### Scope
+
+**In:** landing pricing section replacement, paid plan cards, Checkout CTA wiring, console billing upgrade UI alignment
+
+**Out — Do Not Implement:**
+
+- Stripe catalog creation → P1B.03
+- Checkout session orchestration backend → P1B.13
+- Customer Portal itself → P1C.05
 
 ---
 

@@ -194,6 +194,14 @@ panels shown there are illustrative and may be deferred ticket-by-ticket.
 
 The landing hero is now a live product demo. `apps/landing` embeds `@prontiq/web-component` and points it at a constrained landing-side proxy route so browser traffic never carries a privileged API key.
 
+The paid-pricing UX is not expected to stay on Stripe Pricing Tables. Stripe remains the billing system of record, but the forward-looking frontend contract is:
+
+- Prontiq-rendered plan cards on landing and in console billing surfaces
+- backend-created Stripe Checkout Sessions for paid upgrades
+- Stripe Customer Portal for payment methods, invoices, cancellation, and supported subscription management
+
+The Pricing Table path is now treated as a superseded interim implementation rather than canonical frontend architecture.
+
 ## Design Token Contract
 
 `packages/tokens/src/tokens.ts` is the scaffolded authoring source.

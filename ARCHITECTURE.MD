@@ -127,7 +127,7 @@ Nobody else bundles Australian address validation with ABN verification with LEI
 │   │   DynamoDB (API keys)        │  │          Stripe              │       │
 │   │   SHA-256 hash verification  │  │  Metered per-product billing │       │
 │   │   Hot-path gen + verify      │  │  One sub, credit-based lines │       │
-│   │   (~80 LOC, no vendor)       │  │  Embedded pricing table      │       │
+│   │   (~80 LOC, no vendor)       │  │  Checkout + customer portal  │       │
 │   └──────────────────────────────┘  └──────────────────────────────┘       │
 └──────────────────────────────┬──────────────────────────────────────────────┘
                                │
@@ -168,7 +168,7 @@ Nobody else bundles Australian address validation with ABN verification with LEI
 | **Ingestion**             | EventBridge → Step Functions                 | AWS free tier                                             | —                       | S3 manifest trigger → parallel bulk index → health check → alias swap.                                                                                                    |
 | **Auth (portal)**         | Clerk                                        | **50,000 MAUs free**                                      | $20/mo (Pro)            | Sign-up, login, OAuth, orgs, teams. Pre-built Next.js components. Won't hit paid for years.                                                                               |
 | **API keys**              | DynamoDB (+ DAX from Phase 3)                | AWS free tier                                             | —                       | DynamoDB-native: generate, SHA-256 hash, verify. Raw key never stored. ~80 LOC (see §7). No vendor in the hot path. DAX when sub-ms matters at scale.                     |
-| **Billing**               | Stripe (metered)                             | **Processing fees only**                                  | 2.9% + 30¢/txn          | One subscription, family-level credit line items. Embedded pricing table + customer portal. $0 until revenue.                                                             |
+| **Billing**               | Stripe (metered)                             | **Processing fees only**                                  | 2.9% + 30¢/txn          | One subscription, family-level credit line items. Prontiq-rendered pricing cards + Checkout Sessions + customer portal. $0 until revenue.                                 |
 | **Docs**                  | Mintlify                                     | **Free Hobby plan** (1 editor, custom domain, playground) | ~$250-300/mo (Pro)      | Beautiful docs from OpenAPI spec. Free tier covers a solo founder. AI assistant and team collaboration only on paid.                                                      |
 | **SDKs**                  | Speakeasy                                    | **1 SDK, up to 50 API methods, free forever**             | Contact for pricing     | Auto-generated typed SDKs. 50 methods covers entire address + ABN + LEI surface.                                                                                          |
 | **Account page**          | Next.js (`/account`) + Clerk `<UserProfile />` | Deployed to Lambda via SST ($0)                           | —                       | No custom dashboard. Clerk's profile UI with custom tabs (Usage, Billing, API Keys) wired to DynamoDB-backed `/v1/account/*` endpoints. See §5.9.                          |
@@ -1346,21 +1346,37 @@ export const PLANS = {
     maxKeys: 2,
     overagePerThousandCredits: null,    // hard 429, no overage
   },
+  payg: {
+    includedCreditsPerMonth: 0,
+    quotaPerProduct: 0,
+    rateLimit: 25,
+    products: ['address'],
+    maxKeys: 3,
+    overagePerThousandCredits: 1_50,
+  },
   starter: {
-    includedCreditsPerMonth: 10_000,
-    quotaPerProduct: 10_000,
+    includedCreditsPerMonth: 25_000,
+    quotaPerProduct: 25_000,
     rateLimit: 50,
     products: ['address', 'abn', 'lei', 'cve', 'patents'],
     maxKeys: 5,
     overagePerThousandCredits: 1_50,
   },
   growth: {
-    includedCreditsPerMonth: 50_000,
-    quotaPerProduct: 50_000,
+    includedCreditsPerMonth: 100_000,
+    quotaPerProduct: 100_000,
     rateLimit: 100,
     products: ['address', 'abn', 'lei', 'cve', 'patents'],
     maxKeys: 20,
     overagePerThousandCredits: 1_00,
+  },
+  max: {
+    includedCreditsPerMonth: 500_000,
+    quotaPerProduct: 500_000,
+    rateLimit: 250,
+    products: ['address', 'abn', 'lei', 'cve', 'patents'],
+    maxKeys: 50,
+    overagePerThousandCredits: 0_75,
   },
   enterprise: {
     includedCreditsPerMonth: null,
@@ -1435,8 +1451,8 @@ Stripe Dashboard:
     ├── Prontiq LEI API       → metered Price against LEI credits
     └── ... (one per API product)
 
-  Pricing Table (embedded in account page Billing tab via <stripe-pricing-table>)
-    - Paid plans only (Starter / Growth)
+  Checkout entry points (triggered from Prontiq-rendered pricing UI)
+    - Paid plans only (Pay as you go / Starter / Growth / Max)
     - Free is rendered by Prontiq, not created as a Stripe subscription product
 
   Subscription (one per org): one plan item + one metered item per enabled product.
@@ -1456,7 +1472,7 @@ Stripe Dashboard:
 | **Developer cancels** | `cancel_at_period_end: true`. Access continues until period end. `customer.subscription.deleted` fires at period end → downgrade to free. |
 | **Card declines on renewal** | Grace period (§5.6.3). Service continues ~14 days. |
 
-**Customer portal:** linked from the Billing tab. Manages payment methods, plan changes, invoice history, cancellation. Themed with Prontiq branding (§5.10). Configured in Stripe Dashboard → Settings → Customer Portal. The Billing tab can show a Prontiq-rendered Free card alongside the embedded Stripe pricing table for paid upgrades.
+**Customer portal:** linked from the Billing tab. Manages payment methods, invoices, cancellation, and supported subscription self-service. Themed with Prontiq branding (§5.10). Configured in Stripe Dashboard → Settings → Customer Portal. Paid upgrades begin from Prontiq-rendered plan cards that create Stripe Checkout Sessions; Free remains rendered in-app.
 
 **How the plan connects to the middleware:** the upgrade webhook (§5.7) reads `PLANS[tier]` from `constants.ts` and writes `quotaPerProduct`, `rateLimit`, `products`, `maxKeys` to all org keys in `prontiq-keys`. The middleware still enforces family-level entitlement and quota state from DynamoDB on every request, and now applies endpoint credit weights inline before incrementing the family usage row. Plan changes take effect on the next request after the webhook processes.
 
@@ -1843,7 +1859,7 @@ Stripe is configured with `cancel_at_period_end: true` on user-initiated cancell
 1. DISCOVERY
    Developer lands on prontiq.dev
    Hero: proxy-backed live autocomplete demo via <prontiq-address>
-   Below: Prontiq Free card, Stripe paid pricing table, "Get Started Free"
+   Below: Prontiq Free card, Prontiq-rendered paid plan cards, "Get Started Free"
 
 2. SIGN UP
    Clicks "Get Started Free" → Clerk modal (Google/GitHub OAuth or email)
@@ -1874,7 +1890,7 @@ Stripe is configured with `cancel_at_period_end: true` on user-initiated cancell
    + async SES threshold email via `PqQuotaEmailWorker`.
 
 7. UPGRADE
-   Clicks "Upgrade" → Stripe embedded pricing table
+   Clicks "Upgrade" → backend-created Stripe Checkout Session
    Picks Starter or Growth → card details in Stripe's hosted form
    Stripe webhook updates DynamoDB tier/quota; next request reflects new limits
 
@@ -1899,7 +1915,7 @@ The customer-facing frontend is a two-app Next.js architecture, not a single `/a
 - `console.prontiq.dev` is the authenticated application
 - `docs.prontiq.dev` remains the Mintlify docs surface
 
-`apps/landing` is now live as the public conversion surface. It embeds the real `<prontiq-address>` widget behind a constrained landing-side autocomplete proxy, renders the Prontiq Free tier from site config, renders paid plans through Stripe’s embedded pricing table, and opens a real Clerk sign-up modal when the Clerk publishable key is present.
+`apps/landing` is now live as the public conversion surface. It embeds the real `<prontiq-address>` widget behind a constrained landing-side autocomplete proxy, renders the Prontiq Free tier from site config, and opens a real Clerk sign-up modal when the Clerk publishable key is present. The original Stripe Pricing Table approach for paid plans is now treated as a superseded interim implementation; the forward-looking path is Prontiq-rendered paid plan cards plus backend-created Stripe Checkout Sessions.
 
 The console is a client-rendered app below the auth boundary. `P1C.07` established the real console frontend base: Tailwind v3.4, app-local shadcn/ui primitives, dark mode, a responsive console shell, and an env-gated Clerk boundary that enables real sign-in when the Clerk keys are present while preserving deterministic keyless local/CI builds.
 
@@ -1914,7 +1930,7 @@ Initial console pages:
 | **Overview** | DynamoDB-backed account endpoints | Usage summary, plan state, onboarding |
 | **Keys** | `/v1/account/keys*` | First-key flow, create, rotate, revoke, audit |
 | **Usage** | `/v1/account/usage` | Charts, quota visibility, export |
-| **Billing** | Stripe pricing table + customer portal | Subscription management |
+| **Billing** | Prontiq-rendered plan cards + Stripe Checkout + customer portal | Subscription management |
 | **Playground** | `@prontiq/sdk` + public API | Pre-authenticated exploration |
 | **Danger Zone** | dedicated account-management flow | Self-service org deletion |
 

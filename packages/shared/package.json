@@ -26,7 +26,7 @@
   "scripts": {
     "build": "node ../../scripts/ts-package-build.mjs build",
     "typecheck": "tsc --noEmit",
-    "test": "pnpm -w build --filter @prontiq/shared... && node --test 'dist/**/*.test.js'",
+    "test": "pnpm -w build --filter @prontiq/shared... && node ../../scripts/run-node-tests.mjs dist/**/*.test.js",
     "lint": "eslint src/",
     "clean": "node ../../scripts/ts-package-build.mjs clean"
   },

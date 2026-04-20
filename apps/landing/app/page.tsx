@@ -1,5 +1,10 @@
-import { LandingShell } from "../components/landing/landing-shell.js";
+import { headers } from "next/headers";
 
-export default function LandingPage() {
-  return <LandingShell />;
+import { LandingShell } from "../components/landing/landing-shell.js";
+import { resolveLandingAccountUrlFromHeaders } from "../lib/account-url.js";
+
+export default async function LandingPage() {
+  const accountUrl = resolveLandingAccountUrlFromHeaders(await headers());
+
+  return <LandingShell accountUrl={accountUrl} />;
 }

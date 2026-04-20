@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { isIP } from "node:net";
 
 import { createLogger } from "@prontiq/shared";
 
@@ -51,6 +52,11 @@ export type DemoClientIdentity = {
   clientKey: string;
   sessionId: string;
   setCookieHeader?: string;
+  trustedIp?: string;
+};
+
+type ClientIdentifierOptions = {
+  trustProxyHeaders?: boolean;
 };
 
 const rateLimitBuckets = new Map<string, TokenBucket>();
@@ -118,7 +124,87 @@ function buildDemoSessionCookie(sessionId: string, requestUrl?: string): string 
   return parts.join("; ");
 }
 
-export function getClientIdentifier(headers: Headers, requestUrl?: string): DemoClientIdentity {
+function firstTrustedIpCandidate(...candidates: Array<string | null | undefined>): string | undefined {
+  for (const candidate of candidates) {
+    if (!candidate) {
+      continue;
+    }
+
+    const normalized = candidate.trim().replaceAll('"', "");
+    if (isIP(normalized)) {
+      return normalized;
+    }
+  }
+
+  return undefined;
+}
+
+function parseForwardedHeader(forwarded: string | null): string | undefined {
+  if (!forwarded) {
+    return undefined;
+  }
+
+  for (const part of forwarded.split(",")) {
+    const match = /(?:^|;)\s*for=(?<value>[^;]+)/i.exec(part);
+    const candidate = match?.groups?.value?.trim();
+    if (!candidate) {
+      continue;
+    }
+
+    const normalized = candidate.startsWith("[") && candidate.endsWith("]")
+      ? candidate.slice(1, -1)
+      : candidate;
+    const parsed = firstTrustedIpCandidate(normalized);
+    if (parsed) {
+      return parsed;
+    }
+  }
+
+  return undefined;
+}
+
+export function getTrustedDemoClientIp(
+  headers: Headers,
+  { trustProxyHeaders = false }: ClientIdentifierOptions = {},
+): string | undefined {
+  if (!trustProxyHeaders) {
+    return undefined;
+  }
+
+  const forwardedFor = headers.get("x-forwarded-for");
+  const firstForwardedFor = forwardedFor?.split(",")[0];
+  return firstTrustedIpCandidate(
+    firstForwardedFor,
+    headers.get("x-real-ip"),
+    parseForwardedHeader(headers.get("forwarded")),
+  );
+}
+
+export function getClientIdentifier(
+  headers: Headers,
+  requestUrl?: string,
+  options: ClientIdentifierOptions = {},
+): DemoClientIdentity {
+  const trustedIp = getTrustedDemoClientIp(headers, options);
+  if (trustedIp) {
+    const sessionId = parseCookies(headers).get(DEMO_SESSION_COOKIE_NAME);
+    if (sessionId && SESSION_ID_PATTERN.test(sessionId)) {
+      return {
+        clientKey: `ip:${trustedIp}`,
+        sessionId,
+        trustedIp,
+      };
+    }
+
+    const newSessionId = randomUUID();
+    return {
+      clientKey: `ip:${trustedIp}`,
+      sessionId: newSessionId,
+      setCookieHeader: buildDemoSessionCookie(newSessionId, requestUrl),
+      trustedIp,
+    };
+  }
+
   const sessionId = parseCookies(headers).get(DEMO_SESSION_COOKIE_NAME);
   if (sessionId && SESSION_ID_PATTERN.test(sessionId)) {
     return {
@@ -142,6 +228,10 @@ export function applyDemoSessionCookie(response: Response, setCookieHeader?: str
 
   response.headers.append("Set-Cookie", setCookieHeader);
   return response;
+}
+
+export function shouldTrustDemoProxyHeaders(): boolean {
+  return process.env.VERCEL === "1" || typeof process.env.VERCEL_ENV === "string";
 }
 
 export function sanitizeDemoQuery(searchParams: URLSearchParams): SanitizedDemoQuery {

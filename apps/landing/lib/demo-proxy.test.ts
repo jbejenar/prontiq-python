@@ -14,7 +14,9 @@ import {
   consumeDemoRateLimit,
   consumeDemoSharedRateLimit,
   getClientIdentifier,
+  getTrustedDemoClientIp,
   sanitizeDemoQuery,
+  shouldTrustDemoProxyHeaders,
   throttleResponse,
   upstreamFailureResponse,
 } from "./demo-proxy.js";
@@ -57,7 +59,7 @@ test("buildDemoUpstreamUrl forwards only the whitelisted query params", () => {
   expect(url.toString()).toBe("https://api.prontiq.dev/v1/address/autocomplete?q=9+endeavour&limit=5&state=VIC");
 });
 
-test("getClientIdentifier issues a server-side demo session and ignores forwarding headers", () => {
+test("getClientIdentifier ignores forwarding headers when proxy headers are not trusted", () => {
   const headers = new Headers({
     "x-vercel-id": "mel1::abc123",
     "x-forwarded-for": "203.0.113.10, 10.0.0.1",
@@ -70,6 +72,33 @@ test("getClientIdentifier issues a server-side demo session and ignores forwardi
   expect(identity.setCookieHeader).toContain(`${DEMO_SESSION_COOKIE_NAME}=`);
   expect(identity.setCookieHeader).toContain("HttpOnly");
   expect(identity.setCookieHeader).toContain("Secure");
+});
+
+test("getTrustedDemoClientIp extracts a trusted client IP from proxy headers", () => {
+  const trustedIp = getTrustedDemoClientIp(
+    new Headers({
+      "x-forwarded-for": "203.0.113.10, 10.0.0.1",
+      forwarded: 'for="203.0.113.20";proto=https;by=203.0.113.43',
+      "x-real-ip": "198.51.100.4",
+    }),
+    { trustProxyHeaders: true },
+  );
+
+  expect(trustedIp).toBe("203.0.113.10");
+});
+
+test("getClientIdentifier uses a trusted proxy IP as the primary limiter key", () => {
+  const identity = getClientIdentifier(
+    new Headers({
+      "x-forwarded-for": "203.0.113.10, 10.0.0.1",
+    }),
+    "https://landing.prontiq.dev/api/demo/address/autocomplete",
+    { trustProxyHeaders: true },
+  );
+
+  expect(identity.clientKey).toBe("ip:203.0.113.10");
+  expect(identity.trustedIp).toBe("203.0.113.10");
+  expect(identity.setCookieHeader).toContain(`${DEMO_SESSION_COOKIE_NAME}=`);
 });
 
 test("getClientIdentifier reuses an existing server-issued demo session cookie", () => {
@@ -86,7 +115,39 @@ test("getClientIdentifier reuses an existing server-issued demo session cookie",
   });
 });
 
-test("different server-issued demo sessions get isolated rate-limit buckets", () => {
+test("trusted proxy IP keeps the same bucket even when the cookie is rotated or dropped", () => {
+  const firstVisitor = getClientIdentifier(
+    new Headers({
+      "x-forwarded-for": "203.0.113.10",
+    }),
+    undefined,
+    { trustProxyHeaders: true },
+  );
+  const secondVisitor = getClientIdentifier(
+    new Headers({
+      cookie: `${DEMO_SESSION_COOKIE_NAME}=123e4567-e89b-42d3-a456-426614174001`,
+      "x-forwarded-for": "203.0.113.10",
+    }),
+    undefined,
+    { trustProxyHeaders: true },
+  );
+
+  for (let index = 0; index < 12; index += 1) {
+    expect(consumeDemoRateLimit(firstVisitor.clientKey, 1_000 + index)).toEqual({ allowed: true });
+  }
+
+  expect(consumeDemoRateLimit(firstVisitor.clientKey, 1_100)).toEqual({
+    allowed: false,
+    retryAfterSeconds: 1,
+  });
+  expect(secondVisitor.clientKey).toBe(firstVisitor.clientKey);
+  expect(consumeDemoRateLimit(secondVisitor.clientKey, 1_100)).toEqual({
+    allowed: false,
+    retryAfterSeconds: 1,
+  });
+});
+
+test("server-issued demo sessions remain isolated when no trusted proxy IP is available", () => {
   const firstVisitor = getClientIdentifier(
     new Headers({
       cookie: `${DEMO_SESSION_COOKIE_NAME}=123e4567-e89b-42d3-a456-426614174000`,
@@ -98,15 +159,53 @@ test("different server-issued demo sessions get isolated rate-limit buckets", ()
     }),
   );
 
-  for (let index = 0; index < 12; index += 1) {
-    expect(consumeDemoRateLimit(firstVisitor.clientKey, 1_000 + index)).toEqual({ allowed: true });
+  expect(firstVisitor.clientKey).not.toBe(secondVisitor.clientKey);
+  expect(consumeDemoRateLimit(firstVisitor.clientKey, 1_000)).toEqual({ allowed: true });
+  expect(consumeDemoRateLimit(secondVisitor.clientKey, 1_000)).toEqual({ allowed: true });
+});
+
+test("trusted proxy mode falls back to session cookies when no trusted IP header is present", () => {
+  const identity = getClientIdentifier(
+    new Headers({
+      cookie: `${DEMO_SESSION_COOKIE_NAME}=123e4567-e89b-42d3-a456-426614174000`,
+    }),
+    undefined,
+    { trustProxyHeaders: true },
+  );
+
+  expect(identity).toEqual({
+    clientKey: "session:123e4567-e89b-42d3-a456-426614174000",
+    sessionId: "123e4567-e89b-42d3-a456-426614174000",
+  });
+});
+
+test("shouldTrustDemoProxyHeaders enables trusted proxy mode on vercel runtimes", () => {
+  const originalVercel = process.env.VERCEL;
+  const originalVercelEnv = process.env.VERCEL_ENV;
+
+  process.env.VERCEL = "1";
+  delete process.env.VERCEL_ENV;
+  expect(shouldTrustDemoProxyHeaders()).toBe(true);
+
+  delete process.env.VERCEL;
+  process.env.VERCEL_ENV = "preview";
+  expect(shouldTrustDemoProxyHeaders()).toBe(true);
+
+  delete process.env.VERCEL;
+  delete process.env.VERCEL_ENV;
+  expect(shouldTrustDemoProxyHeaders()).toBe(false);
+
+  if (originalVercel === undefined) {
+    delete process.env.VERCEL;
+  } else {
+    process.env.VERCEL = originalVercel;
   }
 
-  expect(consumeDemoRateLimit(firstVisitor.clientKey, 1_100)).toEqual({
-    allowed: false,
-    retryAfterSeconds: 1,
-  });
-  expect(consumeDemoRateLimit(secondVisitor.clientKey, 1_100)).toEqual({ allowed: true });
+  if (originalVercelEnv === undefined) {
+    delete process.env.VERCEL_ENV;
+  } else {
+    process.env.VERCEL_ENV = originalVercelEnv;
+  }
 });
 
 test("inactive demo buckets age out while active buckets are preserved", () => {

@@ -404,6 +404,25 @@ function getRecurringTierMetadata(price: Stripe.Price): string | undefined {
   return typeof fromProduct === "string" && fromProduct.length > 0 ? fromProduct : undefined;
 }
 
+function getTierRank(tier: Tier): number {
+  switch (tier) {
+    case "free":
+      return 0;
+    case "payg":
+      return 1;
+    case "starter":
+      return 2;
+    case "growth":
+      return 3;
+    case "max":
+      return 4;
+    case "enterprise":
+      return 5;
+  }
+
+  throw new Error(`Unhandled tier ${String(tier)}`);
+}
+
 async function resolveTierStateForEvent(
   stripe: Stripe,
   event: Stripe.Event,
@@ -857,9 +876,9 @@ async function processPlanTransition(
     now,
   );
   const oldTier = keys[0]?.tier ?? envelope.tier;
-  const action = oldTier === undefined || oldTier === "free" || oldTier === tierState.tier
+  const action = oldTier === undefined || oldTier === tierState.tier
     ? "UPGRADE"
-    : oldTier === "growth" && tierState.tier === "starter"
+    : getTierRank(tierState.tier) < getTierRank(oldTier)
       ? "DOWNGRADE"
       : "UPGRADE";
   if (shouldWriteAudit === false) {

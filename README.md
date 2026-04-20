@@ -10,7 +10,7 @@ Prontiq is starting with developer-friendly Australian address validation. The b
 | ------------------------------ | --------------- | ----------- | -------------------------- |
 | **Address Validation** (G-NAF) | `/v1/address/*` | data.gov.au | Live — 15M docs, 6 endpoints |
 
-Live at `https://api.prontiq.dev`. Docs at `https://docs.prontiq.dev`. TypeScript SDK auto-generated to `sdks/typescript/` (npm publish pending). The ratified frontend architecture is a two-app model. `prontiq.dev` now has a live landing page with a proxy-backed autocomplete demo, config-owned free-tier pricing card, Stripe-owned paid pricing table, and Clerk sign-up modal; `console.prontiq.dev` carries the env-gated authenticated app shell.
+Live at `https://api.prontiq.dev`. Docs at `https://docs.prontiq.dev`. TypeScript SDK auto-generated to `sdks/typescript/` (npm publish pending). The ratified frontend architecture is a two-app model. `prontiq.dev` now has a live landing page with a proxy-backed autocomplete demo, config-owned free-tier pricing card, an interim paid-pricing surface that is being migrated away from Stripe Pricing Tables, and a Clerk sign-up modal; `console.prontiq.dev` carries the env-gated authenticated app shell.
 
 ### Server-to-server surface
 
@@ -40,10 +40,13 @@ configuration error and fail closed.
 
 `apps/landing` follows the same helper-managed keyless pattern for local/CI, but
 its real runtime needs only `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` for the modal
-sign-up path. The landing demo proxy additionally expects server-only
-`PRONTIQ_LANDING_DEMO_API_KEY`, and the live paid pricing embed expects
-`NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` plus
-`NEXT_PUBLIC_STRIPE_PRICING_TABLE_ID`.
+sign-up path. `NEXT_PUBLIC_ACCOUNT_URL` is an optional public override for the
+console/account origin used by landing redirects and the footer Console link;
+when unset, production keeps `https://console.prontiq.dev`, while preview/local
+stay on their current origin. The landing demo proxy additionally expects
+server-only `PRONTIQ_LANDING_DEMO_API_KEY`. `NEXT_PUBLIC_STRIPE_PRICING_TABLE_ID`
+is now a legacy interim env from the superseded Pricing Table approach and
+should not be treated as the forward-looking billing contract.
 
 ### Local Development
 
@@ -108,7 +111,7 @@ apps/
 | API Keys       | DynamoDB-native (`pq_live_` + SHA-256 hash-based lookup; live in prod) |
 | Auth (portal)  | Clerk — webhook live in prod (`POST /webhooks/clerk`) AND JWT-authenticated `POST /v1/account/setup` recovery endpoint live in prod (P1B.05 complete) |
 | Billing        | Stripe customer creation, subscription webhook, hourly billing cron, and month-close all live; SES quota/billing mail verified against simulator recipients |
-| Frontend       | `apps/landing` live with proxy-backed demo + config-owned free tier + Stripe paid pricing + Clerk modal; `apps/console` has the env-gated Clerk shell base |
+| Frontend       | `apps/landing` live with proxy-backed demo + config-owned free tier + interim paid-pricing surface pending Checkout-session replacement + Clerk modal; `apps/console` has the env-gated Clerk shell base |
 | Docs           | Mintlify at `docs.prontiq.dev` (live)                  |
 | SDKs           | Speakeasy generates `@prontiq/sdk` (TypeScript) — npm publish pending NPM_TOKEN |
 | Observability  | CloudWatch + SNS email + Honeycomb backend traces (`HONEYCOMB_API_KEY` gated) + retained API X-Ray |
@@ -122,8 +125,8 @@ See [`ROADMAP.md`](ROADMAP.md) for the full 78-ticket plan.
 | ------- | ------------------------- | ------- | --------- |
 | **P0**  | Infrastructure Foundation | 6       | 6/6       |
 | **P1A** | API Core (Address)        | 13      | 10/13     |
-| **P1B** | Auth & Billing            | 13      | 11/13     |
-| **P1C** | Frontend Surfaces         | 8       | 3/8       |
+| **P1B** | Auth & Billing            | 14      | 11/14     |
+| **P1C** | Frontend Surfaces         | 9       | 3/9       |
 | **P1D** | Docs & SDK                | 5       | 2/5       |
 | **P1E** | Ingestion                 | 6       | 4/6       |
 | **P1F** | Distribution              | 3       | 3/3       |
@@ -131,7 +134,7 @@ See [`ROADMAP.md`](ROADMAP.md) for the full 78-ticket plan.
 | **P3**  | LEI + Full Dashboard      | 7       | 0/7       |
 | **P4**  | Shopify + WooCommerce     | 5       | 0/5       |
 | **P5**  | CVE/NVD + Patents         | 4       | 0/4       |
-|         |                           | **78**  | **39/78** |
+|         |                           | **80**  | **39/80** |
 
 ## Commands
 

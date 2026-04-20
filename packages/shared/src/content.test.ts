@@ -76,6 +76,7 @@ test("siteSettingsSchema enforces required homepage copy", () => {
       ],
     },
     pricing: {
+      paidPlanLabels: ["Starter", "Growth"],
       freeTier: {
         ctaLabel: "Start Free",
         description: "Build against the live address product with no card up front.",
@@ -89,9 +90,9 @@ test("siteSettingsSchema enforces required homepage copy", () => {
         priceLabel: "$0",
         unitLabel: "/mo",
       },
-      intro: "Usage-based pricing, with Free rendered by Prontiq and paid plans handled by Stripe.",
+      intro: "Usage-based pricing, with Free rendered by Prontiq and the interim paid purchase surface limited to Starter and Growth.",
       kicker: "Pricing",
-      paidPlansFootnote: "Starter and Growth are rendered by the Stripe pricing table.",
+      paidPlansFootnote: "Starter and Growth are rendered by the interim Stripe pricing surface.",
       title: "Usage-based. No seats.",
     },
   });
@@ -144,6 +145,7 @@ test("ContentSource shape is importable from the shared package surface", () => 
           links: [{ href: "https://docs.prontiq.dev", label: "Docs" }],
         },
         pricing: {
+          paidPlanLabels: ["Starter", "Growth"],
           freeTier: {
             ctaLabel: "Start Free",
             description: "Build against the live address product with no card up front.",
@@ -199,6 +201,7 @@ test("siteSettingsSchema rejects a missing free-tier pricing section", () => {
         pricing: {
           intro: "Simple usage-based plans.",
           kicker: "Pricing",
+          paidPlanLabels: ["Starter", "Growth"],
           paidPlansFootnote: "Starter and Growth are rendered by Stripe.",
           title: "Usage-based. No seats.",
         },

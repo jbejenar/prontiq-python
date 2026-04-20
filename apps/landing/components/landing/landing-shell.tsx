@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { ArrowRight, Check, ExternalLink } from "lucide-react";
-import { DEFAULT_ACCOUNT_URL } from "@prontiq/shared/constants";
 
 import { AddressDemo } from "./address-demo.js";
+import { ConsoleLinkButton } from "./console-link-button.js";
 import { PaidPricingTable } from "./paid-pricing-table.js";
 import { SignupCTAButton } from "./signup-cta-button.js";
 import { ThemeToggle } from "../theme-toggle.js";
@@ -15,7 +15,11 @@ import { siteSettings } from "../../lib/content/index.js";
 import { env } from "../../lib/env.js";
 import { serverEnv } from "../../lib/server-env.js";
 
-export function LandingShell() {
+type LandingShellProps = {
+  accountUrl: string;
+};
+
+export function LandingShell({ accountUrl }: LandingShellProps) {
   const clerkRuntime = getLandingClerkRuntime({
     allowKeyless: serverEnv.PRONTIQ_ALLOW_KEYLESS_CLERK === "1",
     publishableKey: env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
@@ -48,7 +52,7 @@ export function LandingShell() {
                 ))}
               </nav>
               <ThemeToggle />
-              <SignupCTAButton mode={clerkRuntime.mode} size="sm">
+              <SignupCTAButton accountUrl={accountUrl} mode={clerkRuntime.mode} size="sm">
                 {siteSettings.nav.ctaLabel}
               </SignupCTAButton>
             </div>
@@ -69,7 +73,7 @@ export function LandingShell() {
               </p>
             </div>
             <div className="flex flex-wrap gap-3">
-              <SignupCTAButton mode={clerkRuntime.mode} size="lg">
+              <SignupCTAButton accountUrl={accountUrl} mode={clerkRuntime.mode} size="lg">
                 {siteSettings.hero.ctaLabel}
               </SignupCTAButton>
               <Button asChild size="lg" variant="outline">
@@ -148,7 +152,7 @@ export function LandingShell() {
                     </li>
                   ))}
                 </ul>
-                <SignupCTAButton className="w-full" mode={clerkRuntime.mode} size="lg">
+                <SignupCTAButton accountUrl={accountUrl} className="w-full" mode={clerkRuntime.mode} size="lg">
                   {siteSettings.pricing.freeTier.ctaLabel}
                 </SignupCTAButton>
               </CardContent>
@@ -159,6 +163,9 @@ export function LandingShell() {
                 pricingTableId={env.NEXT_PUBLIC_STRIPE_PRICING_TABLE_ID}
                 publishableKey={env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY}
               />
+              <p className="text-center text-xs uppercase tracking-[0.22em] text-muted-foreground">
+                {siteSettings.pricing.paidPlanLabels.join(" · ")}
+              </p>
               <p className="text-center text-xs uppercase tracking-[0.22em] text-muted-foreground">
                 {siteSettings.pricing.paidPlansFootnote}
               </p>
@@ -215,9 +222,7 @@ export function LandingShell() {
                 </Button>
               ))}
               <Separator className="hidden h-6 md:block" orientation="vertical" />
-              <Button asChild size="sm" variant="outline">
-                <Link href={DEFAULT_ACCOUNT_URL}>Console</Link>
-              </Button>
+              <ConsoleLinkButton accountUrl={accountUrl} />
             </div>
           </div>
         </footer>

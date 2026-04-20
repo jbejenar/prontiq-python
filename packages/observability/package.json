@@ -14,7 +14,7 @@
   "scripts": {
     "build": "node ../../scripts/ts-package-build.mjs build",
     "typecheck": "node ../../scripts/ts-package-build.mjs typecheck",
-    "test": "pnpm -w build --filter @prontiq/observability... && node --test dist/**/*.test.js",
+    "test": "pnpm -w build --filter @prontiq/observability... && node ../../scripts/run-node-tests.mjs dist/**/*.test.js",
     "lint": "eslint src/",
     "clean": "node ../../scripts/ts-package-build.mjs clean"
   },
