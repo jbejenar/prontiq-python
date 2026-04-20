@@ -1,5 +1,28 @@
 # NEXT-SESSION.md — Session Execution Log
 
+## Session 25 — 2026-04-20
+
+**Focus:** P1C.00 merge/deploy verification and handoff to P1C.07.
+
+### Completed
+
+- **`P1C.00` is now merged to `main`.** The frontend foundations scaffold (`apps/landing`, `apps/console`, `packages/tokens`, shared content contract, workspace wiring) is no longer just branch-local work.
+- **Dev deploy succeeded after merge.** The post-merge deploy path is now proven for the scaffolded frontend foundations work, so `P1C.00` is closed at code + docs + deploy-verification level.
+- **PR review and CI follow-up are closed.** The review-driven fixes for fresh-checkout frontend commands, Turbo/task boundaries, generated-artifact contracts, and `@prontiq/tokens` artifact emission all landed before merge.
+- **The active frontend workstream now moves to `P1C.07`.** Foundations are done; the next implementation step is Tailwind v3.4, shadcn/ui primitives, and the first real shell/component layer on top of the scaffolds.
+
+### Verification evidence
+
+- PR #118 merged
+- dev deploy succeeded after merge
+- Session 24 scaffold/build/test verification remains the baseline proof for the underlying `P1C.00` implementation
+
+### Next session should start with
+
+1. Read `docs/FRONTEND-STRATEGY.md`.
+2. Read `docs/prototypes/console-dashboard-v1.html`.
+3. Implement `P1C.07 — shadcn/ui + Tailwind v3.4 setup`.
+4. Then begin the first real landing/console surface ticket.
 ## Session 24 — 2026-04-19
 
 **Focus:** P1C.00 frontend foundations.
