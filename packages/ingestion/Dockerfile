@@ -6,15 +6,19 @@ WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY scripts/ scripts/
 COPY tsconfig.json ./
+COPY packages/observability/package.json packages/observability/
 COPY packages/shared/package.json packages/shared/
 COPY packages/ingestion/package.json packages/ingestion/
 
 RUN pnpm install --frozen-lockfile
 
+COPY packages/observability/ packages/observability/
 COPY packages/shared/ packages/shared/
 COPY packages/ingestion/ packages/ingestion/
 
-RUN pnpm --filter @prontiq/shared build && pnpm --filter @prontiq/ingestion build
+RUN pnpm --filter @prontiq/shared build \
+  && pnpm --filter @prontiq/observability build \
+  && pnpm --filter @prontiq/ingestion build
 
 # pnpm deploy creates a flat node_modules without workspace symlinks
 RUN pnpm --filter @prontiq/ingestion deploy --prod --legacy /deploy
