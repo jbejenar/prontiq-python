@@ -4,6 +4,7 @@ import { spawn } from "node:child_process";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { rebuildFrontendDeps } from "./ensure-frontend-deps-built.mjs";
+import { getFrontendTaskEnv } from "./run-frontend-task.mjs";
 
 const scriptPath = fileURLToPath(import.meta.url);
 
@@ -36,6 +37,7 @@ export function getDevProcessSpecs(appName) {
         name: "app",
         command: "pnpm",
         args: ["exec", "next", "dev"],
+        env: getFrontendTaskEnv("landing"),
       },
     ];
   }
@@ -68,6 +70,7 @@ export function getDevProcessSpecs(appName) {
         name: "app",
         command: "pnpm",
         args: ["exec", "next", "dev"],
+        env: getFrontendTaskEnv("console"),
       },
     ];
   }
@@ -75,12 +78,12 @@ export function getDevProcessSpecs(appName) {
   throw new Error("Usage: start-frontend-dev.mjs <landing|console>");
 }
 
-function spawnProcess({ command, args, name }, cwd) {
+function spawnProcess({ command, args, env }, cwd) {
   const executable = process.platform === "win32" && command === "pnpm" ? "pnpm.cmd" : command;
   return spawn(executable, args, {
     cwd,
     stdio: "inherit",
-    env: process.env,
+    env: env ?? process.env,
   });
 }
 

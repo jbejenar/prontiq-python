@@ -12,11 +12,13 @@ export interface TokenArtifacts {
 }
 
 export function renderArtifacts(): TokenArtifacts {
+  const dark = tokens.color.dark;
+  const light = tokens.color.light;
   const mintTheme = {
     colors: {
-      primary: tokens.color.accent.dark,
-      background: tokens.color.dark.bg,
-      text: tokens.color.dark.text,
+      primary: dark.primary.hex,
+      background: dark.background.hex,
+      text: dark.foreground.hex,
     },
     fonts: {
       body: tokens.font.body,
@@ -25,8 +27,8 @@ export function renderArtifacts(): TokenArtifacts {
   };
 
   const sesVars = {
-    accentColor: tokens.color.accent.dark,
-    backgroundColor: tokens.color.light.bg,
+    accentColor: dark.primary.hex,
+    backgroundColor: light.background.hex,
     bodyFont: tokens.font.body,
     headingFont: tokens.font.display,
   };
@@ -35,14 +37,53 @@ export function renderArtifacts(): TokenArtifacts {
   theme: {
     extend: {
       colors: {
-        accent: "var(--color-accent)",
-        background: "var(--color-background)",
-        surface: "var(--color-surface)",
-        foreground: "var(--color-foreground)"
+        border: "hsl(var(--border) / <alpha-value>)",
+        input: "hsl(var(--input) / <alpha-value>)",
+        ring: "hsl(var(--ring) / <alpha-value>)",
+        background: "hsl(var(--background) / <alpha-value>)",
+        foreground: "hsl(var(--foreground) / <alpha-value>)",
+        primary: {
+          DEFAULT: "hsl(var(--primary) / <alpha-value>)",
+          foreground: "hsl(var(--primary-foreground) / <alpha-value>)"
+        },
+        secondary: {
+          DEFAULT: "hsl(var(--secondary) / <alpha-value>)",
+          foreground: "hsl(var(--secondary-foreground) / <alpha-value>)"
+        },
+        destructive: {
+          DEFAULT: "hsl(var(--destructive) / <alpha-value>)",
+          foreground: "hsl(var(--destructive-foreground) / <alpha-value>)"
+        },
+        muted: {
+          DEFAULT: "hsl(var(--muted) / <alpha-value>)",
+          foreground: "hsl(var(--muted-foreground) / <alpha-value>)"
+        },
+        accent: {
+          DEFAULT: "hsl(var(--accent) / <alpha-value>)",
+          foreground: "hsl(var(--accent-foreground) / <alpha-value>)"
+        },
+        popover: {
+          DEFAULT: "hsl(var(--popover) / <alpha-value>)",
+          foreground: "hsl(var(--popover-foreground) / <alpha-value>)"
+        },
+        card: {
+          DEFAULT: "hsl(var(--card) / <alpha-value>)",
+          foreground: "hsl(var(--card-foreground) / <alpha-value>)"
+        },
+        surface: "hsl(var(--card) / <alpha-value>)"
       },
       fontFamily: {
         display: ["var(--font-display)"],
         body: ["var(--font-body)"]
+      },
+      borderRadius: {
+        lg: "var(--radius)",
+        md: "calc(var(--radius) - 2px)",
+        sm: "calc(var(--radius) - 4px)"
+      },
+      boxShadow: {
+        base: "var(--shadow-base)",
+        lift: "var(--shadow-lift)"
       }
     }
   }
@@ -52,19 +93,59 @@ export default preset;
 `;
 
   const css = `:root {
-  --color-accent: ${tokens.color.accent.dark};
-  --color-background: ${tokens.color.dark.bg};
-  --color-surface: ${tokens.color.dark.surface};
-  --color-foreground: ${tokens.color.dark.text};
+  --background: ${light.background.hsl};
+  --foreground: ${light.foreground.hsl};
+  --card: ${light.card.hsl};
+  --card-foreground: ${light.cardForeground.hsl};
+  --popover: ${light.popover.hsl};
+  --popover-foreground: ${light.popoverForeground.hsl};
+  --primary: ${light.primary.hsl};
+  --primary-foreground: ${light.primaryForeground.hsl};
+  --secondary: ${light.secondary.hsl};
+  --secondary-foreground: ${light.secondaryForeground.hsl};
+  --muted: ${light.muted.hsl};
+  --muted-foreground: ${light.mutedForeground.hsl};
+  --accent: ${light.accent.hsl};
+  --accent-foreground: ${light.accentForeground.hsl};
+  --destructive: ${light.destructive.hsl};
+  --destructive-foreground: ${light.destructiveForeground.hsl};
+  --border: ${light.border.hsl};
+  --input: ${light.input.hsl};
+  --ring: ${light.ring.hsl};
+  --radius: ${tokens.radius};
+  --shadow-base: ${tokens.shadow.baseLight};
+  --shadow-lift: ${tokens.shadow.liftLight};
+  --color-accent: hsl(var(--accent));
+  --color-background: hsl(var(--background));
+  --color-surface: hsl(var(--card));
+  --color-foreground: hsl(var(--foreground));
   --font-display: ${tokens.font.display};
   --font-body: ${tokens.font.body};
 }
 
-[data-theme="light"] {
-  --color-accent: ${tokens.color.accent.light};
-  --color-background: ${tokens.color.light.bg};
-  --color-surface: ${tokens.color.light.surface};
-  --color-foreground: ${tokens.color.light.text};
+.dark,
+[data-theme="dark"] {
+  --background: ${dark.background.hsl};
+  --foreground: ${dark.foreground.hsl};
+  --card: ${dark.card.hsl};
+  --card-foreground: ${dark.cardForeground.hsl};
+  --popover: ${dark.popover.hsl};
+  --popover-foreground: ${dark.popoverForeground.hsl};
+  --primary: ${dark.primary.hsl};
+  --primary-foreground: ${dark.primaryForeground.hsl};
+  --secondary: ${dark.secondary.hsl};
+  --secondary-foreground: ${dark.secondaryForeground.hsl};
+  --muted: ${dark.muted.hsl};
+  --muted-foreground: ${dark.mutedForeground.hsl};
+  --accent: ${dark.accent.hsl};
+  --accent-foreground: ${dark.accentForeground.hsl};
+  --destructive: ${dark.destructive.hsl};
+  --destructive-foreground: ${dark.destructiveForeground.hsl};
+  --border: ${dark.border.hsl};
+  --input: ${dark.input.hsl};
+  --ring: ${dark.ring.hsl};
+  --shadow-base: ${tokens.shadow.baseDark};
+  --shadow-lift: ${tokens.shadow.liftDark};
 }
 `;
 

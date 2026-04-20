@@ -1,12 +1,17 @@
 # @prontiq/tokens
 
-Scaffolded frontend token package for `apps/landing` and `apps/console`.
+Frontend token package for `apps/landing` and `apps/console`.
 
-`P1C.00` establishes the package shape and emitted artifact contract only:
+`@prontiq/tokens` owns the shared theming contract for the frontend apps. It emits:
 
 - `tokens.css`
 - `tailwind-preset.js`
 - `mint-theme.json`
 - `ses-vars.json`
 
-Final palette authoring, Tailwind integration, and downstream sync work land in later P1C tickets.
+The app-facing contract is:
+
+- `@prontiq/tokens/tokens.css` for CSS variables
+- `@prontiq/tokens/preset` for the Tailwind preset
+
+The CSS output includes both shadcn-compatible semantic HSL variables and compatibility `--color-*` aliases for existing consumers.

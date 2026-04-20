@@ -10,7 +10,7 @@ Prontiq is starting with developer-friendly Australian address validation. The b
 | ------------------------------ | --------------- | ----------- | -------------------------- |
 | **Address Validation** (G-NAF) | `/v1/address/*` | data.gov.au | Live — 15M docs, 6 endpoints |
 
-Live at `https://api.prontiq.dev`. Docs at `https://docs.prontiq.dev`. TypeScript SDK auto-generated to `sdks/typescript/` (npm publish pending). The ratified frontend architecture is a two-app model, and `P1C.00` now scaffolds both `prontiq.dev` (`apps/landing`) and `console.prontiq.dev` (`apps/console`) in-repo.
+Live at `https://api.prontiq.dev`. Docs at `https://docs.prontiq.dev`. TypeScript SDK auto-generated to `sdks/typescript/` (npm publish pending). The ratified frontend architecture is a two-app model, and `P1C.07` now establishes the shared Tailwind/shadcn/theme base for both `prontiq.dev` (`apps/landing`) and `console.prontiq.dev` (`apps/console`) in-repo.
 
 ### Server-to-server surface
 
@@ -30,10 +30,13 @@ pnpm install
 pnpm build
 ```
 
-The scaffolded frontend apps default `NEXT_PUBLIC_API_URL` to
-`https://api.prontiq.dev` for local build/typecheck/dev, so the root commands
-above work from a fresh checkout without extra shell setup. Override the env
-explicitly if you need the apps pointed at a different API host.
+The frontend apps default `NEXT_PUBLIC_API_URL` to `https://api.prontiq.dev`
+for local build, typecheck, dev, and test, so the root commands above work from
+a fresh checkout without extra shell setup. `apps/console` enables real Clerk
+auth only when both `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` and `CLERK_SECRET_KEY`
+are present. Keyless fallback is allowed only through the repo’s local/CI
+frontend helper path; missing Clerk keys in any other runtime are treated as a
+configuration error and fail closed.
 
 ### Local Development
 
@@ -78,14 +81,14 @@ packages/
   ingestion/       @prontiq/ingestion       Step Functions + Lambda indexing
   webhooks/        @prontiq/webhooks        Clerk webhook + Stripe billing webhook
   docs/            @prontiq/docs            Mintlify documentation
-  tokens/          @prontiq/tokens          Scaffolded design-token contract package (P1C.00)
+  tokens/          @prontiq/tokens          Semantic design-token contract package
   plugins/
     shopify/                                Checkout UI Extension
     woocommerce/                            WP plugin
     web-component/                          <prontiq-address> widget
 apps/
-  landing/                                  Scaffolded Next.js app for prontiq.dev (P1C.00)
-  console/                                  Scaffolded Next.js app for console.prontiq.dev (P1C.00)
+  landing/                                  Next.js app for prontiq.dev with Tailwind/shadcn shell base
+  console/                                  Next.js app for console.prontiq.dev with env-gated Clerk shell base
 ```
 
 ## Stack
@@ -98,7 +101,7 @@ apps/
 | API Keys       | DynamoDB-native (`pq_live_` + SHA-256 hash-based lookup; live in prod) |
 | Auth (portal)  | Clerk — webhook live in prod (`POST /webhooks/clerk`) AND JWT-authenticated `POST /v1/account/setup` recovery endpoint live in prod (P1B.05 complete) |
 | Billing        | Stripe customer creation, subscription webhook, hourly billing cron, and month-close all live; SES quota/billing mail verified against simulator recipients |
-| Frontend       | Scaffolded `apps/landing` + `apps/console`; shell/components remain in later P1C tickets |
+| Frontend       | `apps/landing` + `apps/console` with Tailwind v3.4, app-local shadcn/ui, dark mode, frontend Vitest, and env-gated Clerk boundary in console |
 | Docs           | Mintlify at `docs.prontiq.dev` (live)                  |
 | SDKs           | Speakeasy generates `@prontiq/sdk` (TypeScript) — npm publish pending NPM_TOKEN |
 | Observability  | CloudWatch + SNS email + Honeycomb backend traces (`HONEYCOMB_API_KEY` gated) + retained API X-Ray |
@@ -106,22 +109,22 @@ apps/
 
 ## Roadmap Progress
 
-See [`ROADMAP.md`](ROADMAP.md) for the full 77-ticket plan.
+See [`ROADMAP.md`](ROADMAP.md) for the full 78-ticket plan.
 
 | Phase   | Epic                      | Tickets | Done      |
 | ------- | ------------------------- | ------- | --------- |
 | **P0**  | Infrastructure Foundation | 6       | 6/6       |
 | **P1A** | API Core (Address)        | 13      | 10/13     |
 | **P1B** | Auth & Billing            | 13      | 11/13     |
-| **P1C** | Frontend Surfaces         | 8       | 1/8       |
+| **P1C** | Frontend Surfaces         | 8       | 2/8       |
 | **P1D** | Docs & SDK                | 5       | 2/5       |
 | **P1E** | Ingestion                 | 6       | 4/6       |
-| **P1F** | Distribution              | 3       | 2/3       |
+| **P1F** | Distribution              | 3       | 3/3       |
 | **P2**  | ABN/ASIC Verification     | 8       | 0/8       |
 | **P3**  | LEI + Full Dashboard      | 7       | 0/7       |
 | **P4**  | Shopify + WooCommerce     | 5       | 0/5       |
 | **P5**  | CVE/NVD + Patents         | 4       | 0/4       |
-|         |                           | **78**  | **36/78** |
+|         |                           | **78**  | **38/78** |
 
 ## Commands
 

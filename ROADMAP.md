@@ -24,7 +24,7 @@
 | **P0**    | Infrastructure Foundation  | 6       | 6/6 ✅     | Week 1      |
 | **P1A**   | API Core (Address)         | 13      | 10/13      | Weeks 2-3   |
 | **P1B**   | Auth & Billing             | 13      | 11/13      | Weeks 3-4   |
-| **P1C**   | Frontend Surfaces          | 8       | 1/8        | Weeks 4-6   |
+| **P1C**   | Frontend Surfaces          | 8       | 2/8        | Weeks 4-6   |
 | **P1D**   | Docs & SDK                 | 5       | 2/5        | Week 5      |
 | **P1E**   | Ingestion (Phase 1)        | 6       | 4/6        | Week 6      |
 | **P1F**   | Distribution               | 3       | 3/3 ✅     | Week 6      |
@@ -32,7 +32,7 @@
 | **P3**    | GLEIF/LEI + Full Dashboard | 7       | 0/7        | Weeks 11-13 |
 | **P4**    | Shopify + WooCommerce      | 5       | 0/5        | Weeks 14-17 |
 | **P5**    | CVE/NVD + Patents          | 4       | 0/4        | Weeks 18-21 |
-| **Total** |                            | **78**  | **37/78**  |             |
+| **Total** |                            | **78**  | **38/78**  |             |
 
 ---
 
@@ -2415,24 +2415,24 @@ For the console specifically, the initial shell and component vocabulary should 
 
 ##### Functional
 
-- [ ] Tailwind CSS v3.4 configured for both apps via the shared token strategy
+- [x] Tailwind CSS v3.4 configured for both apps via the shared token strategy
   - `Verify:` `pnpm --filter landing dev` and `pnpm --filter console dev` both render styled components
-  - `Evidence:` `apps/*/tailwind.config.ts` imports the shared preset or equivalent token-aware setup
-- [ ] shadcn/ui initialized with core components in the app-local `components/ui/` directories
+  - `Evidence:` `apps/landing/tailwind.config.ts` and `apps/console/tailwind.config.ts` now consume the emitted `@prontiq/tokens/preset` contract; both apps import `@prontiq/tokens/tokens.css` from `app/layout.tsx`.
+- [x] shadcn/ui initialized with core components in the app-local `components/ui/` directories
   - `Verify:` `ls apps/landing/components/ui/` and `ls apps/console/components/ui/` show component files
-  - `Evidence:` Button, Card, Input, Table, Dialog, Sheet, Tabs, Badge, Skeleton present
-- [ ] Dark mode support (system preference + manual toggle)
+  - `Evidence:` Button, Card, Input, Table, Dialog, Sheet, Tabs, Badge, Skeleton plus the shell support primitives now live under both app-local `components/ui/` directories.
+- [x] Dark mode support (system preference + manual toggle)
   - `Verify:` Toggle dark mode → all components switch themes
-  - `Evidence:` `ThemeProvider` wrapper in layout, `class="dark"` applied to `<html>`
-- [ ] Console app shell established
+  - `Evidence:` both apps now wrap layouts with `ThemeProvider`, render a manual theme toggle, and consume semantic token CSS vars from `@prontiq/tokens`.
+- [x] Console app shell established
   - `Verify:` authenticated console route renders sidebar/top-level navigation and protected layout
-  - `Evidence:` `apps/console/app/(dashboard)/layout.tsx`
-- [ ] Landing app shell established
+  - `Evidence:` `apps/console/app/(dashboard)/layout.tsx`, `apps/console/components/console/console-shell.tsx`, and `apps/console/middleware.ts` now establish the responsive shell plus env-gated Clerk boundary.
+- [x] Landing app shell established
   - `Verify:` landing home route renders using the same token-aware component system
-  - `Evidence:` `apps/landing/app/page.tsx`
-- [ ] Responsive: sidebar collapses to bottom nav or hamburger on mobile
+  - `Evidence:` `apps/landing/app/page.tsx` now renders a token-aware landing shell from `apps/landing/components/landing/landing-shell.tsx`.
+- [x] Responsive: sidebar collapses to bottom nav or hamburger on mobile
   - `Verify:` Resize to 375px → sidebar becomes hamburger/bottom nav
-  - `Evidence:` Working at mobile breakpoint
+  - `Evidence:` console mobile navigation now uses a hamburger-triggered `Sheet`; landing and console layouts both render responsively across mobile/desktop breakpoints.
 
 #### Scope
 

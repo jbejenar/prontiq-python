@@ -10,13 +10,13 @@ const scriptPath = fileURLToPath(import.meta.url);
 
 function validateAppName(appName) {
   if (appName !== "landing" && appName !== "console") {
-    throw new Error("Usage: run-frontend-task.mjs <landing|console> <build|typecheck>");
+    throw new Error("Usage: run-frontend-task.mjs <landing|console> <build|typecheck|test>");
   }
 }
 
 function validateTask(taskName) {
-  if (taskName !== "build" && taskName !== "typecheck") {
-    throw new Error("Usage: run-frontend-task.mjs <landing|console> <build|typecheck>");
+  if (taskName !== "build" && taskName !== "typecheck" && taskName !== "test") {
+    throw new Error("Usage: run-frontend-task.mjs <landing|console> <build|typecheck|test>");
   }
 }
 
@@ -33,13 +33,35 @@ export function getFrontendTaskSpec(appName, taskName) {
     };
   }
 
+  if (taskName === "test") {
+    return {
+      name: `${appName}-test`,
+      command: "pnpm",
+      args: ["exec", "vitest", "run"],
+      cleanNext: false,
+    };
+  }
+
   return {
     name: `${appName}-typecheck`,
     command: "pnpm",
     args: ["exec", "next", "typegen"],
-    followUpArgs: ["exec", "tsc", "--noEmit"],
+    followUpArgs: ["exec", "tsc", "-p", "tsconfig.typecheck.json", "--noEmit"],
     cleanNext: false,
   };
+}
+
+export function getFrontendTaskEnv(appName) {
+  validateAppName(appName);
+
+  if (appName === "console") {
+    return {
+      ...process.env,
+      PRONTIQ_ALLOW_KEYLESS_CLERK: "1",
+    };
+  }
+
+  return process.env;
 }
 
 function spawnTask(spec, cwd) {
@@ -49,7 +71,7 @@ function spawnTask(spec, cwd) {
     const child = spawn(executable, spec.args, {
       cwd,
       stdio: "inherit",
-      env: process.env,
+      env: spec.env ?? process.env,
     });
 
     child.on("error", rejectPromise);
@@ -85,11 +107,12 @@ export async function runFrontendTask(
   }
 
   const spec = getFrontendTaskSpec(appName, taskName);
+  const taskEnv = getFrontendTaskEnv(appName);
   if (spec.cleanNext) {
     await rm(".next", { recursive: true, force: true });
   }
 
-  await executeTask(spec, process.cwd());
+  await executeTask({ ...spec, env: taskEnv }, process.cwd());
   if (spec.followUpArgs) {
     await executeTask(
       {
@@ -97,6 +120,7 @@ export async function runFrontendTask(
         command: spec.command,
         args: spec.followUpArgs,
         cleanNext: false,
+        env: taskEnv,
       },
       process.cwd(),
     );

@@ -1,13 +1,5 @@
-import { env } from "../lib/env";
-import { siteSettings } from "../lib/content/index";
+import { LandingShell } from "../components/landing/landing-shell.js";
 
 export default function LandingPage() {
-  return (
-    <main>
-      <p>Landing scaffold</p>
-      <h1>{siteSettings.heroHeadline}</h1>
-      <p>{siteSettings.heroSubheadline}</p>
-      <p>API host: {env.NEXT_PUBLIC_API_URL}</p>
-    </main>
-  );
+  return <LandingShell />;
 }

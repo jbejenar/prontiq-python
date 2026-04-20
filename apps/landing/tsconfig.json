@@ -1,6 +1,8 @@
 {
   "extends": "../../tsconfig.json",
   "compilerOptions": {
+    "baseUrl": ".",
+    "ignoreDeprecations": "6.0",
     "lib": [
       "dom",
       "dom.iterable",
@@ -14,6 +16,16 @@
         "name": "next"
       }
     ],
+    "paths": {
+      "@/*.js": [
+        "./*.ts",
+        "./*.tsx",
+        "./*.js"
+      ],
+      "@/*": [
+        "./*"
+      ]
+    },
     "allowJs": true
   },
   "include": [

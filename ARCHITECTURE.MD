@@ -1899,7 +1899,7 @@ The customer-facing frontend is a two-app Next.js architecture, not a single `/a
 - `console.prontiq.dev` is the authenticated application
 - `docs.prontiq.dev` remains the Mintlify docs surface
 
-The console is a client-rendered app below the auth boundary. It calls `api.prontiq.dev` directly with Clerk-issued JWTs for `/v1/account/*` routes and with user-managed API keys for product exploration flows where appropriate.
+The console is a client-rendered app below the auth boundary. `P1C.07` now establishes the real frontend base: Tailwind v3.4, app-local shadcn/ui primitives, dark mode, a responsive console shell, and an env-gated Clerk boundary that enables real sign-in when the Clerk keys are present while preserving deterministic keyless local/CI builds.
 
 > Canonical frontend strategy: [docs/FRONTEND-STRATEGY.md](docs/FRONTEND-STRATEGY.md). This section is the architecture summary; the strategy doc is the frontend source of truth.
 
@@ -1969,12 +1969,14 @@ Only users with the Clerk role `admin` can create, rotate, or revoke keys. The `
 
 **Source of truth:** `packages/tokens` package.
 
-The token source is `packages/tokens/src/tokens.ts`. It emits the scaffolded contract that later P1C work will fully author:
+The token source is `packages/tokens/src/tokens.ts`. It now emits the semantic token contract consumed by both apps:
 
-- CSS variables for both Next.js apps
+- semantic HSL CSS variables for both Next.js apps
 - Tailwind preset for app styling
 - Mintlify theme payload for docs sync
 - SES variables for transactional email styling
+
+The emitted CSS also preserves compatibility `--color-*` aliases while the apps consume the semantic token names directly through Tailwind/shadcn.
 
 Canonical palette and typography match the shipped `prontiq.dev` visual language:
 
@@ -2047,7 +2049,7 @@ const { entity } = await prontiq.lei.lookup({ lei: "549300MLUDYVRQOOXS22" });
 
 ## 6. Monorepo Structure
 
-Live layout today plus scaffolded frontend foundations. The frontend shape is `apps/landing`, `apps/console`, and `packages/tokens` — not `packages/web` and not a single `/account` page.
+Live layout today plus the shipped frontend base. The frontend shape is `apps/landing`, `apps/console`, and `packages/tokens` — not `packages/web` and not a single `/account` page.
 
 ```
 prontiq-platform/
@@ -2126,7 +2128,7 @@ prontiq-platform/
 └── tsconfig.json
 ```
 
-The frontend foundations are now scaffolded in-repo: `apps/landing`, `apps/console`, `packages/tokens`, and workspace-wired `sdks/typescript`. `control-plane` was added in P1B.05 PR 1/3 to keep `provisionOrg` callable from both `webhooks` (server-to-server) and `api` (user-driven recovery via `/v1/account/setup`, P1B.05 PR 3/3) without an awkward `api → webhooks` dep direction.
+The frontend base is now live in-repo: `apps/landing`, `apps/console`, semantic tokens in `packages/tokens`, and workspace-wired `sdks/typescript`. `control-plane` was added in P1B.05 PR 1/3 to keep `provisionOrg` callable from both `webhooks` (server-to-server) and `api` (user-driven recovery via `/v1/account/setup`, P1B.05 PR 3/3) without an awkward `api → webhooks` dep direction.
 
 ---
 

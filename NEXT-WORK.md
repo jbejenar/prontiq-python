@@ -3,7 +3,7 @@
 > Extracted from ROADMAP.md. This is what agents should work on NOW.
 > Last updated: 2026-04-20 (Session 27)
 
-## Current Phase: P1C.07
+## Current Phase: P1C.01
 
 ### What's Live
 
@@ -30,6 +30,7 @@
 - **P1B.12 complete (2026-04-19).** The auth middleware integration suite is now reconciled to the real post-cutover surface: direct unknown/revoked key failures, REDIRECT success writing usage on `newHash`, no orphan usage on pre-increment failures, and the atomic free-tier quota race are all covered in `packages/api/src/middleware/auth.integration.test.ts`. The roadmap ticket no longer claims webhook idempotency, first-key creation, or a standalone seed script.
 - **P1F.02 complete (2026-04-19).** The prod observability baseline is live and verified: `PqIngestAlerts` prod email subscriptions via `ALERT_EMAILS`, `prontiq-production` dashboard, prod alarms for address API 5xx/Lambda error rate and OpenSearch yellow/red/low-storage, `PqApi` X-Ray tracing with DynamoDB + OpenSearch segments, and structured JSON logs across Lambda execution paths. SNS email delivery was verified by forcing `PqApiLambdaErrorRate` to `ALARM` and confirming receipt on a confirmed subscriber.
 - **P1F.03 complete (2026-04-20).** `@prontiq/observability` is live in `dev` and `prod`, Honeycomb traces are verified for `prontiq-api`, `prontiq-webhooks`, `prontiq-billing`, and `prontiq-ingestion` in both environments, and the deployed-stage rollback path is `HONEYCOMB_ENABLED=false` rather than secret removal.
+- **P1C.07 complete (2026-04-20).** `apps/landing` and `apps/console` now have Tailwind v3.4, app-local shadcn/ui primitives, dark mode, responsive shell foundations, and app-local Vitest + Testing Library. `apps/console` now carries an env-gated real Clerk auth boundary that builds/tests cleanly without Clerk keys and enables real sign-in when they are present.
 - **`@prontiq/control-plane` package** (recovered from prior design + hardened) provides `createProvisioningService()`, `writeAudit()` / `buildAuditTransactItem()`, AND `resolvePrimaryEmail()`. Both ingress paths (Clerk webhook + `/v1/account/setup`) consume the same provisioning service AND the same verified-primary-email helper — invariants enforced once at the package boundary.
 - The legacy raw-key table is retained only for rollback/soak; the old `pq_live_prod_...` seed key has been rotated and revoked.
 - Future prod seed-key rotation now has an operator command:
@@ -91,17 +92,17 @@ POST /v1/account/setup  (Clerk JWT; not API key — recovery provisioning)
 
 - P1C remains effectively a fresh build; the older `packages/web` / `/account` model is retired and should not be treated as partially live.
 - `P1C.00` is now implemented: `apps/landing`, `apps/console`, `packages/tokens`, shared content contracts, and workspace wiring are scaffolded in-repo.
-- Frontend architecture is now ratified around scaffolded `apps/landing`, scaffolded `apps/console`, and scaffolded `packages/tokens`.
+- Frontend architecture is now ratified around live `apps/landing` and `apps/console` shell foundations plus the semantic `@prontiq/tokens` contract.
 
 ## Recommended Next Work
 
 Recommended priority:
 
-1. P1C.07 — shadcn/ui + Tailwind v3.4 setup on top of the scaffolded foundations.
-2. P1C account/landing surface rebuild after `P1C.07`.
+1. P1C.01 — Landing Page with Autocomplete Demo.
+2. P1C.02 / P1C.03 console feature surfaces on top of the live frontend base.
 3. P1E.05 / P1E.06 ingestion hardening if platform work is preferred over frontend work.
 
-Before starting `P1C.07`, read:
+Before starting `P1C.01`, read:
 
 - `docs/FRONTEND-STRATEGY.md`
 - `docs/prototypes/console-dashboard-v1.html`
@@ -110,7 +111,7 @@ Reason:
 
 - P1B auth/billing execution is effectively complete.
 - Honeycomb backend tracing is now implemented and verified in deployed `dev` and `prod`.
-- The next product milestone is the component/tooling base on top of the scaffolded two-app frontend.
+- The next product milestone is the first real landing feature surface on top of the live frontend base.
 - API Gateway caching remains a pragmatic performance/cost option if platform work is preferred over dashboard work.
 
 ### Operator follow-ups (one-time, not blocking next ticket)

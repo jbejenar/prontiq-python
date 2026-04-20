@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { ensureFrontendDepsBuilt, lockDirFor } from "./ensure-frontend-deps-built.mjs";
-import { getFrontendTaskSpec, runFrontendTask } from "./run-frontend-task.mjs";
+import { getFrontendTaskEnv, getFrontendTaskSpec, runFrontendTask } from "./run-frontend-task.mjs";
 import { getDevProcessSpecs, prepareFrontendDev } from "./start-frontend-dev.mjs";
 
 async function makeRepoFixture() {
@@ -142,6 +142,7 @@ test("landing build task builds missing workspace deps before running the app-lo
   assert.deepEqual(builds, ["@prontiq/shared", "@prontiq/tokens"]);
   assert.equal(tasks.length, 1);
   assert.deepEqual(tasks[0].args, ["exec", "next", "build"]);
+  assert.equal(tasks[0].env.PRONTIQ_ALLOW_KEYLESS_CLERK, undefined);
 });
 
 test("console typecheck task rebuilds declared workspace deps and generates Next types before tsc", async () => {
@@ -174,7 +175,9 @@ test("console typecheck task rebuilds declared workspace deps and generates Next
   assert.deepEqual(builds, ["@prontiq/sdk", "@prontiq/tokens"]);
   assert.equal(tasks.length, 2);
   assert.deepEqual(tasks[0].args, ["exec", "next", "typegen"]);
-  assert.deepEqual(tasks[1].args, ["exec", "tsc", "--noEmit"]);
+  assert.deepEqual(tasks[1].args, ["exec", "tsc", "-p", "tsconfig.typecheck.json", "--noEmit"]);
+  assert.equal(tasks[0].env.PRONTIQ_ALLOW_KEYLESS_CLERK, "1");
+  assert.equal(tasks[1].env.PRONTIQ_ALLOW_KEYLESS_CLERK, "1");
 });
 
 test("frontend task skips local dependency rebuilds when turbo already owns the graph", async () => {
@@ -203,14 +206,17 @@ test("frontend task skips local dependency rebuilds when turbo already owns the 
   assert.deepEqual(builds, []);
   assert.equal(tasks.length, 1);
   assert.deepEqual(tasks[0].args, ["exec", "next", "build"]);
+  assert.equal(tasks[0].env.PRONTIQ_ALLOW_KEYLESS_CLERK, undefined);
 });
 
 test("frontend task specs use argv arrays without POSIX-only quoting", () => {
   const tasks = [
     getFrontendTaskSpec("landing", "build"),
     getFrontendTaskSpec("landing", "typecheck"),
+    getFrontendTaskSpec("landing", "test"),
     getFrontendTaskSpec("console", "build"),
     getFrontendTaskSpec("console", "typecheck"),
+    getFrontendTaskSpec("console", "test"),
   ];
 
   for (const task of tasks) {
@@ -219,6 +225,53 @@ test("frontend task specs use argv arrays without POSIX-only quoting", () => {
       assert.ok(task.followUpArgs.every((arg) => !arg.includes("'")));
     }
   }
+});
+
+test("frontend test task rebuilds declared workspace deps before running the app-local test command", async () => {
+  const repoDir = await makeRepoFixture();
+  const builds = [];
+  const tasks = [];
+  const previousCwd = process.cwd();
+  const previousFlag = process.env.PRONTIQ_TURBO_MANAGED;
+  process.chdir(join(repoDir, "apps", "landing"));
+  delete process.env.PRONTIQ_TURBO_MANAGED;
+
+  try {
+    await runFrontendTask("landing", "test", {
+      buildPackage: async (packageName) => {
+        builds.push(packageName);
+      },
+      executeTask: async (spec) => {
+        tasks.push(spec);
+      },
+    });
+  } finally {
+    process.chdir(previousCwd);
+    if (previousFlag === undefined) {
+      delete process.env.PRONTIQ_TURBO_MANAGED;
+    } else {
+      process.env.PRONTIQ_TURBO_MANAGED = previousFlag;
+    }
+  }
+
+  assert.deepEqual(builds, ["@prontiq/shared", "@prontiq/tokens"]);
+  assert.equal(tasks.length, 1);
+  assert.deepEqual(tasks[0].args, ["exec", "vitest", "run"]);
+  assert.equal(tasks[0].env.PRONTIQ_ALLOW_KEYLESS_CLERK, undefined);
+});
+
+test("console frontend task env explicitly enables keyless Clerk mode for local and CI helpers", () => {
+  const env = getFrontendTaskEnv("console");
+
+  assert.equal(env.PRONTIQ_ALLOW_KEYLESS_CLERK, "1");
+});
+
+test("console dev app process explicitly enables keyless Clerk mode for local helper runs", () => {
+  const specs = getDevProcessSpecs("console");
+  const appSpec = specs.find((spec) => spec.name === "app");
+
+  assert.ok(appSpec);
+  assert.equal(appSpec.env?.PRONTIQ_ALLOW_KEYLESS_CLERK, "1");
 });
 
 test("checked-in Next type entrypoints keep the standard Next route-type references", async () => {

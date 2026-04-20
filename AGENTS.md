@@ -32,7 +32,9 @@ unset. Override it explicitly only when pointing `apps/landing` or
 
 **Observability (current state):** CloudWatch alarms/dashboard + SNS email remain the AWS-native operations plane. Honeycomb backend tracing is now live and verified for deployed Lambdas behind `HONEYCOMB_API_KEY`, and `PqApi` X-Ray remains in place as a retained secondary trace path. Browser/frontend telemetry is not part of this ticket.
 
-**Stack (planned — remaining P1C and later):** frontend shell/component work (P1C.07+) plus the later product epics. `P1C.00` foundations are now scaffolded in-repo.
+**Frontend (current state):** `apps/landing` and `apps/console` now have Tailwind v3.4, app-local shadcn/ui primitives, dark mode, responsive shell foundations, and frontend Vitest + Testing Library. `apps/console` carries a real Clerk auth boundary that is enabled only when the Clerk env keys are present; keyless fallback is allowed only through the local/CI frontend helper path, and missing Clerk keys otherwise fail closed.
+
+**Stack (planned — remaining P1C and later):** real landing and console product surfaces on top of the live frontend base.
 
 ## Monorepo Structure
 
@@ -44,14 +46,14 @@ packages/
   ingestion/      -> @prontiq/ingestion       Step Functions + Lambda bulk indexing
   webhooks/       -> @prontiq/webhooks        Clerk webhook handler + Stripe billing webhook
   docs/           -> @prontiq/docs            Mintlify documentation
-  tokens/         -> @prontiq/tokens          Frontend token scaffold + emitted artifact contract
+  tokens/         -> @prontiq/tokens          Semantic HSL token contract + emitted artifact bundle
   plugins/
     shopify/      -> Checkout UI Extension
     woocommerce/  -> WP plugin
     web-component/ -> <prontiq-address> widget
 apps/
-  landing/        -> landing                  Next.js scaffold for prontiq.dev
-  console/        -> console                  Next.js scaffold for console.prontiq.dev
+  landing/        -> landing                  Next.js app for prontiq.dev with Tailwind/shadcn shell base
+  console/        -> console                  Next.js app for console.prontiq.dev with env-gated Clerk shell base
 sdks/
   typescript/     -> @prontiq/sdk            Speakeasy-generated TypeScript SDK
 ```
@@ -71,7 +73,7 @@ sdks/
 
 ## Testing Patterns
 
-- **Framework:** `node:test` is the default for backend, infrastructure, and utility packages. Frontend apps (`apps/landing`, `apps/console`) will use Vitest + Testing Library once UI/component tests are introduced; `P1C.00` does not wire that stack yet. Existing package tests run after a per-package build via `pnpm -w build --filter @prontiq/<pkg>... && node --test dist/<file>.test.js`. See any package's `package.json` `test` script for the canonical invocation.
+- **Framework:** `node:test` is the default for backend, infrastructure, and utility packages. Frontend apps (`apps/landing`, `apps/console`) now use Vitest + Testing Library for unit/component coverage. Existing backend package tests run after a per-package build via `pnpm -w build --filter @prontiq/<pkg>... && node --test dist/<file>.test.js`. See any package's `package.json` `test` script for the canonical invocation.
 - **Test files:** Co-located as `*.test.ts` next to source files. Integration tests use the `*.integration.test.ts` suffix and run separately via the `test:integration` script.
 - **Mocking:** Dependency injection at the service boundary. `createProvisioningService({ ddb, stripe, sleep, logger, sendWelcomeEmail })`, `createClerkHandler({ service, webhookSecret, clerkClient, adminRoles })` — every dependency is overridable for tests. Never mock SDK clients directly.
 - **Integration tests** hit real DynamoDB Local (`amazon/dynamodb-local:2.5.2`) and real OpenSearch via the `integration-test` job's service containers in CI. Locally: `docker run -p 8000:8000 amazon/dynamodb-local:2.5.2` then `pnpm --filter @prontiq/<pkg> test:integration`.

@@ -1,22 +1,24 @@
 # landing
 
-Minimal Next.js scaffold for the future `prontiq.dev` surface.
+Next.js 15 app for `prontiq.dev`.
 
-`P1C.00` establishes:
+`P1C.07` establishes:
 
-- workspace wiring
-- app-router scaffold
-- token CSS import
-- minimal public env validation
-- landing content seam via `@prontiq/shared/content`
+- Tailwind CSS v3.4
+- app-local shadcn/ui primitives
+- dark mode via `next-themes`
+- a token-aware landing shell
+- app-local Vitest + Testing Library
+- continued content wiring through `@prontiq/shared/content`
 
-Tailwind, MDX, and real page implementation land in later P1C tickets.
+This ticket does **not** implement the live autocomplete demo, pricing table, or
+sign-up CTA. Those remain later landing tickets.
 
-`pnpm --filter landing dev`, `build`, and `typecheck` are self-sufficient from a
-fresh checkout: they build `@prontiq/shared` and `@prontiq/tokens` before
-starting the app-local command, and `dev` also watches those workspace
-dependencies for changes during local development.
+`pnpm --filter landing dev`, `build`, `typecheck`, and `test` are
+self-sufficient from a fresh checkout: they build `@prontiq/shared` and
+`@prontiq/tokens` before running the app-local command, and `dev` also watches
+those workspace dependencies for changes during local development.
 
-Local build/typecheck/dev default `NEXT_PUBLIC_API_URL` to
+Local build/typecheck/dev/test default `NEXT_PUBLIC_API_URL` to
 `https://api.prontiq.dev` when the variable is unset. Set the env explicitly to
-point the scaffold at a different API host.
+point the app at a different API host.

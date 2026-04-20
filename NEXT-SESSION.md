@@ -1,5 +1,36 @@
 # NEXT-SESSION.md — Session Execution Log
 
+## Session 28 — 2026-04-20
+
+**Focus:** P1C.07 frontend base implementation and closeout.
+
+### Completed
+
+- **`P1C.07` is now complete.** `apps/landing` and `apps/console` now have Tailwind CSS v3.4, app-local shadcn/ui primitives, dark mode, responsive shell foundations, and app-local Vitest + Testing Library.
+- **The console auth boundary is now real but build-safe.** `apps/console` now carries an env-gated Clerk boundary: when `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` and `CLERK_SECRET_KEY` are present it enables real sign-in and protected dashboard layout; fully keyless mode is allowed only through the repo’s helper-managed local/CI path, and missing Clerk keys otherwise fail closed as configuration errors.
+- **The token contract is now fit for the frontend base.** `@prontiq/tokens` now emits semantic HSL theme variables plus the Tailwind preset surface needed by Tailwind/shadcn, while preserving the Mintlify and SES artifact outputs.
+- **Source-of-truth docs are reconciled.** Roadmap, architecture, frontend strategy, app READMEs/HINTS, and current-work tracking now treat `P1C.07` as shipped work and move the active frontend queue to `P1C.01`.
+
+### Verification evidence
+
+- `pnpm --filter @prontiq/tokens test`
+- `pnpm --filter landing typecheck`
+- `pnpm --filter landing test`
+- `pnpm --filter landing build`
+- `pnpm --filter console typecheck`
+- `pnpm --filter console test`
+- `pnpm --filter console build`
+- `pnpm lint`
+- `pnpm typecheck`
+- `pnpm build`
+- `pnpm test`
+
+### Next session should start with
+
+1. Read `docs/FRONTEND-STRATEGY.md`.
+2. Implement `P1C.01 — Landing Page with Autocomplete Demo`.
+3. Then move to the first real console feature surface on top of the live base.
+
 ## Session 27 — 2026-04-20
 
 **Focus:** P1F.03 Honeycomb rollout verification and closeout.

@@ -217,7 +217,7 @@ Frontend testing stack:
 - Vitest + Testing Library for frontend app unit/component tests
 - Playwright for critical end-to-end flows
 
-`P1C.00` records the frontend test-stack split but does not wire app-level Vitest yet.
+`P1C.07` wires app-level Vitest + Testing Library in both frontend apps.
 
 Critical initial E2E flows:
 
@@ -267,23 +267,18 @@ Historical references may remain in old session logs or completed-ticket evidenc
 
 ## Immediate Follow-on Work
 
-The next frontend tickets should be:
+The base tickets are now implemented:
 
 1. `P1C.00 — Frontend Foundations`
 2. `P1C.07 — shadcn/ui + Tailwind v3.4 setup`
-3. console and landing feature tickets on top of that base
 
-`P1C.00` should establish:
+The next frontend tickets should be:
 
-- `apps/landing`
-- `apps/console`
-- workspace wiring for `apps/*`
-- `packages/tokens`
-- env validation pattern
-- token/docs/email sync contract
-- preserve the visual direction established in `docs/prototypes/console-dashboard-v1.html`
+1. `P1C.01 — Landing Page with Autocomplete Demo`
+2. `P1C.02 — Account Dashboard`
+3. `P1C.03 — API Key Management`
 
-Status: implemented. The next frontend ticket is `P1C.07`.
+Status: implemented. The next frontend ticket is `P1C.01`.
 
 ## Cross References
 

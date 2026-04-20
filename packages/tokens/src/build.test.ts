@@ -6,12 +6,18 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { renderArtifacts } from "./build.js";
+import { tokens } from "./tokens.js";
 
 test("renderArtifacts emits the expected token artifacts", () => {
   const artifacts = renderArtifacts();
 
   assert.match(artifacts.tokensCss, /--color-accent:/);
-  assert.match(artifacts.tailwindPresetJs, /var\(--color-accent\)/);
+  assert.match(artifacts.tokensCss, /--background:/);
+  assert.match(artifacts.tokensCss, /--shadow-lift:/);
+  assert.match(artifacts.tokensCss, new RegExp(`:root \\{[\\s\\S]*--background: ${tokens.color.light.background.hsl};`));
+  assert.match(artifacts.tokensCss, new RegExp(`\\.dark,[\\s\\S]*--background: ${tokens.color.dark.background.hsl};`));
+  assert.match(artifacts.tailwindPresetJs, /hsl\(var\(--accent\) \/ <alpha-value>\)/);
+  assert.match(artifacts.tailwindPresetJs, /borderRadius/);
   assert.match(artifacts.mintThemeJson, /"primary"/);
   assert.match(artifacts.sesVarsJson, /"accentColor"/);
 });
