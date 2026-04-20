@@ -15,11 +15,7 @@ import { siteSettings } from "../../lib/content/index.js";
 import { env } from "../../lib/env.js";
 import { serverEnv } from "../../lib/server-env.js";
 
-type LandingShellProps = {
-  accountUrl: string;
-};
-
-export function LandingShell({ accountUrl }: LandingShellProps) {
+export function LandingShell() {
   const clerkRuntime = getLandingClerkRuntime({
     allowKeyless: serverEnv.PRONTIQ_ALLOW_KEYLESS_CLERK === "1",
     publishableKey: env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
@@ -52,7 +48,7 @@ export function LandingShell({ accountUrl }: LandingShellProps) {
                 ))}
               </nav>
               <ThemeToggle />
-              <SignupCTAButton accountUrl={accountUrl} mode={clerkRuntime.mode} size="sm">
+              <SignupCTAButton mode={clerkRuntime.mode} size="sm">
                 {siteSettings.nav.ctaLabel}
               </SignupCTAButton>
             </div>
@@ -73,7 +69,7 @@ export function LandingShell({ accountUrl }: LandingShellProps) {
               </p>
             </div>
             <div className="flex flex-wrap gap-3">
-              <SignupCTAButton accountUrl={accountUrl} mode={clerkRuntime.mode} size="lg">
+              <SignupCTAButton mode={clerkRuntime.mode} size="lg">
                 {siteSettings.hero.ctaLabel}
               </SignupCTAButton>
               <Button asChild size="lg" variant="outline">
@@ -152,7 +148,7 @@ export function LandingShell({ accountUrl }: LandingShellProps) {
                     </li>
                   ))}
                 </ul>
-                <SignupCTAButton accountUrl={accountUrl} className="w-full" mode={clerkRuntime.mode} size="lg">
+                <SignupCTAButton className="w-full" mode={clerkRuntime.mode} size="lg">
                   {siteSettings.pricing.freeTier.ctaLabel}
                 </SignupCTAButton>
               </CardContent>
@@ -222,7 +218,7 @@ export function LandingShell({ accountUrl }: LandingShellProps) {
                 </Button>
               ))}
               <Separator className="hidden h-6 md:block" orientation="vertical" />
-              <ConsoleLinkButton accountUrl={accountUrl} />
+              <ConsoleLinkButton />
             </div>
           </div>
         </footer>

@@ -42,8 +42,9 @@ configuration error and fail closed.
 its real runtime needs only `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` for the modal
 sign-up path. `NEXT_PUBLIC_ACCOUNT_URL` is an optional public override for the
 console/account origin used by landing redirects and the footer Console link;
-when unset, production keeps `https://console.prontiq.dev`, while preview/local
-stay on their current origin. The landing demo proxy additionally expects
+when unset, production keeps `https://console.prontiq.dev`, Vercel previews map
+the landing preview host to the corresponding console preview host, and
+localhost maps `:3000` to `:3001`. The landing demo proxy additionally expects
 server-only `PRONTIQ_LANDING_DEMO_API_KEY`. `NEXT_PUBLIC_STRIPE_PRICING_TABLE_ID`
 is now a legacy interim env from the superseded Pricing Table approach and
 should not be treated as the forward-looking billing contract.

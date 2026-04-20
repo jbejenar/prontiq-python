@@ -32,11 +32,15 @@ Landing envs:
 
 - `NEXT_PUBLIC_ACCOUNT_URL` optional override for the console/account origin used
   by landing CTA redirects and the footer Console link. When unset, production
-  landing keeps `https://console.prontiq.dev`, while preview/local stay on their
-  current origin instead of jumping to production.
+  landing keeps `https://console.prontiq.dev`, Vercel previews map the landing
+  preview host to the corresponding console preview host, and localhost maps
+  `:3000` to `:3001`.
 - `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`
 - `PRONTIQ_ALLOW_KEYLESS_CLERK=1` only through the helper-managed local/CI path
 - `PRONTIQ_LANDING_DEMO_API_KEY` for the server-side demo proxy
+- `PRONTIQ_LANDING_UNLOCK_TOKEN` optional root-page-only soft gate token. When
+  set, `/` stays black until visited once as `/?unlock=<token>`, which sets a
+  7-day cookie. API routes remain unchanged.
 - `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`
 
 Legacy / superseded interim envs:

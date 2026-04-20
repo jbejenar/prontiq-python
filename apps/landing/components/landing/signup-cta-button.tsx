@@ -3,17 +3,19 @@
 import type { ReactNode } from "react";
 import { SignUpButton } from "@clerk/nextjs";
 
+import { useLandingAccountUrl } from "../../lib/account-url.js";
 import { Button, type ButtonProps } from "../ui/button.js";
 import type { LandingClerkRuntimeMode } from "../../lib/clerk.js";
 
 interface SignupCTAButtonProps extends Omit<ButtonProps, "children"> {
-  accountUrl: string;
   children: ReactNode;
   mode: LandingClerkRuntimeMode;
 }
 
-export function SignupCTAButton({ accountUrl, children, mode, ...buttonProps }: SignupCTAButtonProps) {
-  if (mode === "enabled") {
+export function SignupCTAButton({ children, mode, ...buttonProps }: SignupCTAButtonProps) {
+  const { accountUrl, isResolved } = useLandingAccountUrl();
+
+  if (mode === "enabled" && isResolved && accountUrl) {
     return (
       <SignUpButton
         fallbackRedirectUrl={accountUrl}
@@ -32,7 +34,9 @@ export function SignupCTAButton({ accountUrl, children, mode, ...buttonProps }: 
       aria-disabled
       disabled
       title={
-        mode === "misconfigured"
+        mode === "enabled" && !isResolved
+          ? "Landing signup is resolving the console destination."
+        : mode === "misconfigured"
           ? "Landing signup is misconfigured. Add NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY."
           : "Landing signup is disabled in helper-managed keyless mode."
       }

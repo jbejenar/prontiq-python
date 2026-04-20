@@ -9,6 +9,12 @@ vi.mock("@clerk/nextjs", () => ({
 }));
 
 vi.mock("@prontiq/web-component", () => ({}));
+vi.mock("../../lib/account-url.js", () => ({
+  useLandingAccountUrl: () => ({
+    accountUrl: "https://prontiq-web-console-jqmzq3cip-jbejenar-2089s-projects.vercel.app",
+    isResolved: true,
+  }),
+}));
 
 import { LandingShell } from "./landing-shell.js";
 
@@ -17,7 +23,7 @@ afterEach(() => {
 });
 
 test("landing shell renders the real landing sections", () => {
-  render(<LandingShell accountUrl="https://preview.prontiq.dev" />);
+  render(<LandingShell />);
 
   expect(screen.getByRole("heading", { name: /One address endpoint/i })).toBeInTheDocument();
   expect(screen.getByRole("heading", { name: /Type an address\. Watch it resolve\./i })).toBeInTheDocument();
@@ -28,7 +34,33 @@ test("landing shell renders the real landing sections", () => {
   expect(screen.getByText("Starter · Growth")).toBeInTheDocument();
   expect(screen.queryByText("Pay as you go · Starter · Growth · Max")).not.toBeInTheDocument();
   expect(screen.getAllByText("10,000 credits per month")).toHaveLength(1);
-  expect(screen.getByRole("link", { name: "Console" })).toHaveAttribute("href", "https://preview.prontiq.dev");
+  expect(screen.getByRole("link", { name: "Console" })).toHaveAttribute(
+    "href",
+    "https://prontiq-web-console-jqmzq3cip-jbejenar-2089s-projects.vercel.app",
+  );
+});
+
+test("landing shell does not render a live console link before the account URL resolves", async () => {
+  vi.resetModules();
+  vi.doMock("@clerk/nextjs", () => ({
+    ClerkProvider: ({ children }: { children: ReactNode }) => (
+      <div data-testid="clerk-provider">{children}</div>
+    ),
+    SignUpButton: ({ children }: { children: ReactNode }) => <>{children}</>,
+  }));
+  vi.doMock("@prontiq/web-component", () => ({}));
+  vi.doMock("../../lib/account-url.js", () => ({
+    useLandingAccountUrl: () => ({
+      accountUrl: null,
+      isResolved: false,
+    }),
+  }));
+
+  const { LandingShell: UnresolvedLandingShell } = await import("./landing-shell.js");
+  render(<UnresolvedLandingShell />);
+
+  expect(screen.queryByRole("link", { name: "Console" })).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Console" })).toBeDisabled();
 });
 
 test("landing shell reports Clerk as configured when the publishable key is present", async () => {
@@ -56,7 +88,7 @@ test("landing shell reports Clerk as configured when the publishable key is pres
   }));
 
   const { LandingShell: ConfiguredLandingShell } = await import("./landing-shell.js");
-  render(<ConfiguredLandingShell accountUrl="https://preview.prontiq.dev" />);
+  render(<ConfiguredLandingShell />);
 
   expect(screen.getByText("Landing signup is configured.")).toBeInTheDocument();
 });

@@ -2,13 +2,20 @@
 
 import Link from "next/link";
 
+import { useLandingAccountUrl } from "../../lib/account-url.js";
 import { Button } from "../ui/button.js";
 
-type ConsoleLinkButtonProps = {
-  accountUrl: string;
-};
+export function ConsoleLinkButton() {
+  const { accountUrl, isResolved } = useLandingAccountUrl();
 
-export function ConsoleLinkButton({ accountUrl }: ConsoleLinkButtonProps) {
+  if (!isResolved || !accountUrl) {
+    return (
+      <Button disabled size="sm" variant="outline">
+        Console
+      </Button>
+    );
+  }
+
   return (
     <Button asChild size="sm" variant="outline">
       <Link href={accountUrl}>Console</Link>
