@@ -1,9 +1,9 @@
-import type { Handler } from "aws-lambda";
 import {
   SFNClient,
   StartExecutionCommand,
   ExecutionAlreadyExists,
 } from "@aws-sdk/client-sfn";
+import { SERVICE_NAMES, wrapLambdaHandler } from "@prontiq/observability";
 import { createLogger } from "@prontiq/shared";
 import { readManifestJson, getProductConfig } from "./lib.js";
 
@@ -35,7 +35,7 @@ interface EventBridgeS3Event {
  *
  * Phase 2: add DynamoDB conditional-write lock for strict single-product serialization.
  */
-export const handler: Handler = async (event: EventBridgeS3Event) => {
+async function routerHandler(event: EventBridgeS3Event) {
   if (!STATE_MACHINE_ARN) {
     throw new Error("STATE_MACHINE_ARN environment variable is not set");
   }
@@ -77,4 +77,14 @@ export const handler: Handler = async (event: EventBridgeS3Event) => {
 
   logger.info("Started execution", { executionName });
   return { executionName, status: "started" };
-};
+}
+
+export const handler = wrapLambdaHandler({
+  attributes: () => ({
+    "prontiq.ingestion.step": "router",
+    "prontiq.stage": process.env.PRONTIQ_STAGE ?? "unknown",
+  }),
+  handler: routerHandler,
+  serviceName: SERVICE_NAMES.ingestion,
+  spanName: "prontiq-ingestion.router",
+});

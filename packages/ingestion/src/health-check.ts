@@ -1,4 +1,4 @@
-import type { Handler } from "aws-lambda";
+import { SERVICE_NAMES, wrapLambdaHandler } from "@prontiq/observability";
 import { createLogger, type Manifest } from "@prontiq/shared";
 import { KnownGoodQueryNoHitsError, countDocuments, forceMergeIndex, refreshIndex, runKnownGoodQuery } from "./lib.js";
 
@@ -74,11 +74,28 @@ export async function healthCheck(event: {
   return { ...event, healthy: true };
 }
 
-export const handler: Handler = async (event) =>
-  healthCheck(
-    event as {
+async function healthCheckHandler(event: {
+  manifest: Manifest;
+  indexName: string;
+  skipAliasSwap?: boolean;
+}) {
+  return healthCheck(event);
+}
+
+export const handler = wrapLambdaHandler({
+  attributes: (event) => {
+    const input = event as {
       manifest: Manifest;
       indexName: string;
-      skipAliasSwap?: boolean;
-    },
-  );
+    };
+    return {
+      "prontiq.ingestion.step": "health_check",
+      "prontiq.ingestion.version": input.manifest.version,
+      "prontiq.product": input.manifest.product,
+      "prontiq.stage": process.env.PRONTIQ_STAGE ?? "unknown",
+    };
+  },
+  handler: healthCheckHandler,
+  serviceName: SERVICE_NAMES.ingestion,
+  spanName: "prontiq-ingestion.health-check",
+});

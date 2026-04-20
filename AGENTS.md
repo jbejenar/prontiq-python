@@ -30,6 +30,8 @@ unset. Override it explicitly only when pointing `apps/landing` or
 
 **Stack (live):** burst rate limiting (P1B.09), Stripe webhook (P1B.06), SES bounce/complaint feedback + quota emails (P1B.08), hourly billing cron (P1B.10), and month-close finalisation (P1B.11) are implemented. The architecture source of truth now treats **credits** as the customer-facing billing unit and endpoint weights as the internal rating model.
 
+**Observability (current transition state):** CloudWatch alarms/dashboard + SNS email remain the AWS-native operations plane. Honeycomb backend tracing is now integrated in code for deployed Lambdas behind `HONEYCOMB_API_KEY`, and `PqApi` X-Ray remains in place during the rollout transition. Browser/frontend telemetry is not part of this ticket.
+
 **Stack (planned — remaining P1C and later):** frontend shell/component work (P1C.07+) plus the later product epics. `P1C.00` foundations are now scaffolded in-repo.
 
 ## Monorepo Structure
@@ -79,7 +81,7 @@ sdks/
 - Don't use `any` type — use `unknown` with type narrowing
 - Don't import without `.js` extension (ESM requirement)
 - Don't add `console.log` — use structured logging
-- Don't put secrets in code — secrets flow GitHub Environment secrets → workflow `env:` block → `process.env.X` → `sst.config.ts` reads → wrap with `$util.secret()` before passing to Lambda environment so Pulumi state stores them encrypted. See `docs/runbooks/clerk-webhook.md` § preconditions and the existing `WELCOME_EMAIL_FROM` / `STRIPE_SECRET_KEY` patterns. Do NOT use `sst.Secret()` — it conflicts with the GitHub-Environment pattern (see ADR-002 § hardening contract #4 for rationale)
+- Don't put secrets in code — secrets flow GitHub Environment secrets → workflow `env:` block → `process.env.X` → `sst.config.ts` reads → wrap with `$util.secret()` before passing to Lambda environment so Pulumi state stores them encrypted. This now includes `HONEYCOMB_API_KEY` for deployed-stage backend tracing. See `docs/runbooks/clerk-webhook.md` § preconditions and the existing `WELCOME_EMAIL_FROM` / `STRIPE_SECRET_KEY` patterns. Do NOT use `sst.Secret()` — it conflicts with the GitHub-Environment pattern (see ADR-002 § hardening contract #4 for rationale)
 - Don't query OpenSearch by versioned index name — always use the alias
 - Don't add dependencies to the root package.json unless they're truly shared dev tools
 - Don't modify the manifest contract without updating `ARCHITECTURE.MD` section 5.1.2

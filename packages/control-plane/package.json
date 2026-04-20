@@ -48,6 +48,7 @@
     "@aws-sdk/client-dynamodb": "^3.1030.0",
     "@aws-sdk/lib-dynamodb": "^3.1030.0",
     "@clerk/backend": "^3.2.12",
+    "@prontiq/observability": "workspace:*",
     "@prontiq/shared": "workspace:*",
     "stripe": "^22.0.1",
     "ulid": "^3.0.1"

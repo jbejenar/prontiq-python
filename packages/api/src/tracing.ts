@@ -1,3 +1,4 @@
+import { withActiveSpan } from "@prontiq/observability";
 import AWSXRay from "aws-xray-sdk-core";
 import type { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 
@@ -20,25 +21,34 @@ export async function withOpenSearchSubsegment<T>(
   operation: string,
   fn: () => Promise<T>,
 ): Promise<T> {
-  const segment = getActiveSegment();
-  if (!segment) {
-    return fn();
-  }
+  return withActiveSpan(
+    operation,
+    {
+      "prontiq.route": "opensearch",
+      "prontiq.stage": process.env.PRONTIQ_STAGE ?? "unknown",
+    },
+    async () => {
+      const segment = getActiveSegment();
+      if (!segment) {
+        return fn();
+      }
 
-  const subsegment = segment.addNewSubsegment("OpenSearch");
-  subsegment.addAnnotation("operation", operation);
+      const subsegment = segment.addNewSubsegment("OpenSearch");
+      subsegment.addAnnotation("operation", operation);
 
-  try {
-    const result = await fn();
-    subsegment.close();
-    return result;
-  } catch (error) {
-    if (error instanceof Error) {
-      subsegment.addError(error);
-      subsegment.close(error);
-    } else {
-      subsegment.close();
-    }
-    throw error;
-  }
+      try {
+        const result = await fn();
+        subsegment.close();
+        return result;
+      } catch (error) {
+        if (error instanceof Error) {
+          subsegment.addError(error);
+          subsegment.close(error);
+        } else {
+          subsegment.close();
+        }
+        throw error;
+      }
+    },
+  );
 }

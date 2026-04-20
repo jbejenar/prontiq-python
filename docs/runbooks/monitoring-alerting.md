@@ -9,7 +9,8 @@ Phase 1 observability baseline runbook for Prontiq.
 - CloudWatch alarms
 - `PqIngestAlerts` SNS email delivery
 - CloudWatch dashboard `prontiq-production`
-- X-Ray tracing on `PqApi`
+- Honeycomb backend traces for deployed Lambdas
+- retained X-Ray tracing on `PqApi`
 - structured JSON logs on Lambda execution paths
 
 ## Operator Inputs
@@ -20,6 +21,16 @@ Phase 1 observability baseline runbook for Prontiq.
   - stage: `prod`
   - format: comma-separated email addresses
   - example: `ops@example.com,alerts@example.com`
+- `HONEYCOMB_ENABLED`
+  - stages: `dev`, `prod`
+  - optional kill switch for backend telemetry export
+  - set to `false` to disable Honeycomb export for a redeploy
+
+### GitHub Environment secret
+
+- `HONEYCOMB_API_KEY`
+  - stages: `dev`, `prod`
+  - value: Honeycomb environment-scoped ingest key
 
 This is read in `sst.config.ts` during `prod` deploy. An empty or whitespace-only value fails the deploy.
 
@@ -79,6 +90,20 @@ Widgets:
 - OpenSearch free storage
 - critical Lambda error series
 
+## Honeycomb Verification
+
+Honeycomb is the backend trace-analysis plane once `HONEYCOMB_API_KEY` is set
+for the stage, `HONEYCOMB_ENABLED` is not `false`, and the stack is deployed.
+
+Expected service names:
+
+- `prontiq-api`
+- `prontiq-webhooks`
+- `prontiq-billing`
+- `prontiq-ingestion`
+
+Verify one representative flow for each service family after deploy.
+
 ## X-Ray Verification
 
 Tracing is enabled only on `PqApi`.
@@ -119,10 +144,11 @@ Non-request Lambdas still emit JSON, but `path` / `latency` may be absent when n
 2. confirm SNS email subscriptions
 3. verify `aws cloudwatch describe-alarms` shows the new alarms
 4. open the `prontiq-production` dashboard
-5. make a real authenticated address API call
-6. verify X-Ray trace shape
-7. verify Logs Insights query returns structured fields
-8. force one alarm into `ALARM` and confirm an email is received
+5. make representative backend traffic and verify Honeycomb traces
+6. make a real authenticated address API call
+7. verify X-Ray trace shape
+8. verify Logs Insights query returns structured fields
+9. force one alarm into `ALARM` and confirm an email is received
 
 ## Alarm Drill
 
@@ -150,9 +176,9 @@ aws cloudwatch set-alarm-state \
 
 If the observability rollout itself is faulty:
 
-1. revert the `P1F.02` infra/code changes
-2. redeploy prod
-3. confirm the pre-existing alarms are still present
-4. remove unwanted SNS subscriptions manually if needed
+1. set `HONEYCOMB_ENABLED=false` in the target GitHub Environment
+2. redeploy the affected stage
+3. confirm Honeycomb export is disabled while CloudWatch/SNS/X-Ray remain available
+4. revert infra/code only if the disable-and-redeploy path is insufficient
 
-No data repair is required. Historical CloudWatch logs and X-Ray traces remain until retention expiry.
+No data repair is required. Historical CloudWatch logs, Honeycomb traces, and X-Ray traces remain until retention expiry or vendor retention limits.

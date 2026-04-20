@@ -1,4 +1,4 @@
-import type { Handler } from "aws-lambda";
+import { SERVICE_NAMES, withActiveSpan, wrapLambdaHandler } from "@prontiq/observability";
 import { PRODUCT_REGISTRY } from "@prontiq/shared";
 import type { Manifest } from "@prontiq/shared";
 import {
@@ -22,7 +22,16 @@ export async function createIndex(event: {
   const client = getOpenSearchClient();
   const indexName = indexNameFor(manifest);
   const mappings = await readMappingsJson(bucket, manifest.index.mappings_key);
-  const existsResponse = await client.indices.exists({ index: indexName });
+  const existsResponse = await withActiveSpan(
+    "ingestion.indices.exists",
+    {
+      "prontiq.ingestion.step": "create_index",
+      "prontiq.ingestion.version": manifest.version,
+      "prontiq.product": manifest.product,
+      "prontiq.stage": process.env.PRONTIQ_STAGE ?? "unknown",
+    },
+    () => client.indices.exists({ index: indexName }),
+  );
   const alias = PRODUCT_REGISTRY[manifest.product]?.alias;
 
   if (existsResponse.body === true) {
@@ -41,21 +50,60 @@ export async function createIndex(event: {
       );
     }
 
-    await client.indices.delete({ index: indexName });
+    await withActiveSpan(
+      "ingestion.indices.delete",
+      {
+        "prontiq.ingestion.step": "create_index",
+        "prontiq.ingestion.version": manifest.version,
+        "prontiq.product": manifest.product,
+        "prontiq.stage": process.env.PRONTIQ_STAGE ?? "unknown",
+      },
+      () => client.indices.delete({ index: indexName }),
+    );
   }
 
-  await client.indices.create({
-    index: indexName,
-    body: {
-      settings: {
-        index: resolveIndexSettings(manifest),
-      },
-      mappings,
+  await withActiveSpan(
+    "ingestion.indices.create",
+    {
+      "prontiq.ingestion.step": "create_index",
+      "prontiq.ingestion.version": manifest.version,
+      "prontiq.product": manifest.product,
+      "prontiq.stage": process.env.PRONTIQ_STAGE ?? "unknown",
     },
-  });
+    () =>
+      client.indices.create({
+        index: indexName,
+        body: {
+          settings: {
+            index: resolveIndexSettings(manifest),
+          },
+          mappings,
+        },
+      }),
+  );
 
   return { ...event, indexName };
 }
 
-export const handler: Handler = async (event) =>
-  createIndex(event as { manifest: Manifest; bucket: string; force?: boolean });
+async function createIndexHandler(event: {
+  manifest: Manifest;
+  bucket: string;
+  force?: boolean;
+}) {
+  return createIndex(event);
+}
+
+export const handler = wrapLambdaHandler({
+  attributes: (event) => {
+    const input = event as { manifest: Manifest };
+    return {
+      "prontiq.ingestion.step": "create_index",
+      "prontiq.ingestion.version": input.manifest.version,
+      "prontiq.product": input.manifest.product,
+      "prontiq.stage": process.env.PRONTIQ_STAGE ?? "unknown",
+    };
+  },
+  handler: createIndexHandler,
+  serviceName: SERVICE_NAMES.ingestion,
+  spanName: "prontiq-ingestion.create-index",
+});

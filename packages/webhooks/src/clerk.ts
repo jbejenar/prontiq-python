@@ -1,6 +1,7 @@
 import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2, Context } from "aws-lambda";
 import { Webhook, WebhookVerificationError } from "svix";
 import { createClerkClient, type ClerkClient } from "@clerk/backend";
+import { SERVICE_NAMES, wrapLambdaHandler } from "@prontiq/observability";
 import {
   createProvisioningService,
   getAdminRoles,
@@ -293,4 +294,18 @@ export function createClerkHandler(overrides: HandlerOverrides = {}) {
   };
 }
 
-export const handler = createClerkHandler();
+export const handler = wrapLambdaHandler({
+  attributes: (event) => {
+    const request = event as APIGatewayProxyEventV2;
+    return {
+      "prontiq.method": request.requestContext.http.method,
+      "prontiq.route": request.requestContext.http.path,
+      "prontiq.stage": process.env.PRONTIQ_STAGE ?? "unknown",
+      "prontiq.webhook.provider": "clerk",
+      "prontiq.webhook.event_id": request.headers["svix-id"] ?? request.headers["Svix-Id"] ?? "",
+    };
+  },
+  handler: createClerkHandler(),
+  serviceName: SERVICE_NAMES.webhooks,
+  spanName: "prontiq-webhooks.clerk",
+});

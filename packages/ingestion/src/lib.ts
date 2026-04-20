@@ -1,6 +1,7 @@
 import { GetObjectCommand, HeadObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { Client } from "@opensearch-project/opensearch";
 import { AwsSigv4Signer } from "@opensearch-project/opensearch/aws";
+import { withActiveSpan } from "@prontiq/observability";
 import { PRODUCT_REGISTRY, createLogger, manifestSchema } from "@prontiq/shared";
 import type { Manifest, ManifestFile, ProductConfig } from "@prontiq/shared";
 import { createGunzip } from "node:zlib";
@@ -379,7 +380,14 @@ export async function deleteIndexIfExists(indexName: string): Promise<void> {
 }
 
 export async function countDocuments(indexName: string): Promise<number> {
-  const response = await getOpenSearchClient().count({ index: indexName });
+  const response = await withActiveSpan(
+    "ingestion.count",
+    {
+      "prontiq.ingestion.step": "count_documents",
+      "prontiq.stage": process.env.PRONTIQ_STAGE ?? "unknown",
+    },
+    () => getOpenSearchClient().count({ index: indexName }),
+  );
   return response.body.count;
 }
 
@@ -556,10 +564,18 @@ async function flushBulkBatchWithRetry(
   for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
     let body: BulkResponseBody;
     try {
-      const response = await getOpenSearchClient().bulk({
-        body: currentBatch,
-        refresh: false,
-      });
+      const response = await withActiveSpan(
+        "ingestion.bulk",
+        {
+          "prontiq.ingestion.step": "bulk_ingest",
+          "prontiq.stage": process.env.PRONTIQ_STAGE ?? "unknown",
+        },
+        () =>
+          getOpenSearchClient().bulk({
+            body: currentBatch,
+            refresh: false,
+          }),
+      );
       body = response.body as BulkResponseBody;
     } catch (error) {
       // Retry on transport-level 429 or request timeout (transient errors)
@@ -710,19 +726,42 @@ export function evaluateBulkResponse(
 /** Re-enable refresh and make all bulk-ingested documents searchable. Fast (~seconds). */
 export async function refreshIndex(indexName: string): Promise<void> {
   const client = getOpenSearchClient();
-  await client.indices.putSettings({
-    index: indexName,
-    body: { index: { refresh_interval: "1s" } },
-  });
-  await client.indices.refresh({ index: indexName });
+  await withActiveSpan(
+    "ingestion.indices.put_settings",
+    {
+      "prontiq.ingestion.step": "refresh_index",
+      "prontiq.stage": process.env.PRONTIQ_STAGE ?? "unknown",
+    },
+    () =>
+      client.indices.putSettings({
+        index: indexName,
+        body: { index: { refresh_interval: "1s" } },
+      }),
+  );
+  await withActiveSpan(
+    "ingestion.indices.refresh",
+    {
+      "prontiq.ingestion.step": "refresh_index",
+      "prontiq.stage": process.env.PRONTIQ_STAGE ?? "unknown",
+    },
+    () => client.indices.refresh({ index: indexName }),
+  );
 }
 
 /** Merge index segments for read performance. Slow (~5-15 min on 10GB). */
 export async function forceMergeIndex(indexName: string): Promise<void> {
-  await getOpenSearchClient().indices.forcemerge({
-    index: indexName,
-    max_num_segments: 5,
-  });
+  await withActiveSpan(
+    "ingestion.indices.forcemerge",
+    {
+      "prontiq.ingestion.step": "force_merge",
+      "prontiq.stage": process.env.PRONTIQ_STAGE ?? "unknown",
+    },
+    () =>
+      getOpenSearchClient().indices.forcemerge({
+        index: indexName,
+        max_num_segments: 5,
+      }),
+  );
 }
 
 export async function runKnownGoodQuery(indexName: string, manifest: Manifest): Promise<void> {
@@ -733,24 +772,32 @@ export async function runKnownGoodQuery(indexName: string, manifest: Manifest): 
   }
 
   if (queryConfig.kind === "address_contains") {
-    const response = await getOpenSearchClient().search({
-      index: indexName,
-      body: {
-        size: 5,
-        query: {
-          multi_match: {
-            query: queryConfig.query,
-            type: "bool_prefix",
-            fields: [
-              "addressLabelSearch",
-              "addressLabelSearch._2gram",
-              "addressLabelSearch._3gram",
-            ],
-          },
-        },
-        _source: ["addressLabel", "location"],
+    const response = await withActiveSpan(
+      "ingestion.search",
+      {
+        "prontiq.ingestion.step": "known_good_query",
+        "prontiq.stage": process.env.PRONTIQ_STAGE ?? "unknown",
       },
-    });
+      () =>
+        getOpenSearchClient().search({
+          index: indexName,
+          body: {
+            size: 5,
+            query: {
+              multi_match: {
+                query: queryConfig.query,
+                type: "bool_prefix",
+                fields: [
+                  "addressLabelSearch",
+                  "addressLabelSearch._2gram",
+                  "addressLabelSearch._3gram",
+                ],
+              },
+            },
+            _source: ["addressLabel", "location"],
+          },
+        }),
+    );
 
     const hits = (
       (response.body as { hits?: { hits?: Array<{ _source?: JsonRecord }> } }).hits?.hits ?? []
@@ -774,9 +821,17 @@ export async function runKnownGoodQuery(indexName: string, manifest: Manifest): 
 }
 
 export async function currentAliasIndex(alias: string): Promise<string | null> {
-  const response = await getOpenSearchClient().indices.getAlias(
-    { name: alias },
-    { ignore: [404] },
+  const response = await withActiveSpan(
+    "ingestion.indices.get_alias",
+    {
+      "prontiq.ingestion.step": "current_alias_index",
+      "prontiq.stage": process.env.PRONTIQ_STAGE ?? "unknown",
+    },
+    () =>
+      getOpenSearchClient().indices.getAlias(
+        { name: alias },
+        { ignore: [404] },
+      ),
   );
 
   if (response.statusCode === 404) {

@@ -1,5 +1,30 @@
 # NEXT-SESSION.md — Session Execution Log
 
+## Session 26 — 2026-04-20
+
+**Focus:** P1F.03 Honeycomb backend telemetry implementation.
+
+### Completed
+
+- **Honeycomb backend telemetry is now integrated in code.** `@prontiq/observability` was added, deployed Lambda handlers across API, webhooks, billing/control-plane, and in-scope ingestion paths are wrapped, and central OpenSearch query seams now emit named spans for Honeycomb.
+- **Deployed-stage secret wiring is now in place.** `sst.config.ts` and the deploy workflows now require and pass `HONEYCOMB_API_KEY` for `dev` and `prod`, while local/CI flows remain keyless and run telemetry in no-op mode. If deployed rollback is needed during rollout, use `HONEYCOMB_ENABLED=false` rather than removing the secret.
+- **Observability docs are reconciled to the new transition state.** Roadmap, architecture, README, AGENTS, ADR-004, and the Honeycomb runbook now describe Honeycomb as the backend trace-analysis plane while CloudWatch/SNS and API X-Ray remain in place during rollout.
+- **Rollout is not closed yet.** Honeycomb environments/keys are provisioned, but deployed `dev` and `prod` still need verification before `P1F.03` can be marked complete.
+
+### Verification evidence
+
+- `pnpm lint`
+- `pnpm typecheck`
+- `pnpm build`
+- `pnpm test`
+
+### Next session should start with
+
+1. Deploy `dev` and verify traces for `prontiq-api`, `prontiq-webhooks`, `prontiq-billing`, and `prontiq-ingestion`.
+2. Deploy `prod` and repeat verification.
+3. If rollback is needed during rollout, set `HONEYCOMB_ENABLED=false` for the affected stage and redeploy.
+4. Then return to `P1C.07 — shadcn/ui + Tailwind v3.4 setup`.
+
 ## Session 25 — 2026-04-20
 
 **Focus:** P1C.00 merge/deploy verification and handoff to P1C.07.

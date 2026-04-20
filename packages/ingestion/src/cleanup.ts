@@ -1,4 +1,4 @@
-import type { Handler } from "aws-lambda";
+import { SERVICE_NAMES, wrapLambdaHandler } from "@prontiq/observability";
 import { PRODUCT_REGISTRY, createLogger } from "@prontiq/shared";
 
 /**
@@ -7,7 +7,7 @@ import { PRODUCT_REGISTRY, createLogger } from "@prontiq/shared";
  */
 const logger = createLogger("ingestion-cleanup");
 
-export const handler: Handler = async () => {
+async function cleanupHandler() {
   for (const product of Object.keys(PRODUCT_REGISTRY)) {
     const config = PRODUCT_REGISTRY[product];
     if (!config) {
@@ -28,4 +28,14 @@ export const handler: Handler = async () => {
   // TODO: Verify latest automated snapshot age < 48h, alert if stale
 
   return { cleaned: true };
-};
+}
+
+export const handler = wrapLambdaHandler({
+  attributes: () => ({
+    "prontiq.ingestion.step": "cleanup",
+    "prontiq.stage": process.env.PRONTIQ_STAGE ?? "unknown",
+  }),
+  handler: cleanupHandler,
+  serviceName: SERVICE_NAMES.ingestion,
+  spanName: "prontiq-ingestion.cleanup",
+});

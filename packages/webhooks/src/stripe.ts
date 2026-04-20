@@ -1,4 +1,5 @@
 import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2, Context } from "aws-lambda";
+import { SERVICE_NAMES, wrapLambdaHandler } from "@prontiq/observability";
 import { createStripeBillingService } from "@prontiq/control-plane";
 import { createLogger } from "@prontiq/shared";
 import Stripe from "stripe";
@@ -91,4 +92,17 @@ export function createStripeHandler(overrides: StripeHandlerOverrides = {}) {
   };
 }
 
-export const handler = createStripeHandler();
+export const handler = wrapLambdaHandler({
+  attributes: (event) => {
+    const request = event as APIGatewayProxyEventV2;
+    return {
+      "prontiq.method": request.requestContext.http.method,
+      "prontiq.route": request.requestContext.http.path,
+      "prontiq.stage": process.env.PRONTIQ_STAGE ?? "unknown",
+      "prontiq.webhook.provider": "stripe",
+    };
+  },
+  handler: createStripeHandler(),
+  serviceName: SERVICE_NAMES.webhooks,
+  spanName: "prontiq-webhooks.stripe",
+});

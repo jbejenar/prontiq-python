@@ -4,6 +4,8 @@
 
 Accepted
 
+Superseded in part by [ADR-004](004-honeycomb-application-telemetry.md) for backend trace analysis. CloudWatch alarms/dashboard, SNS email delivery, and structured JSON logging remain in force.
+
 ## Context
 
 `P1F.02` needs a Phase 1 observability baseline that is production-ready without introducing another vendor or a large telemetry rollout. The live platform already has partial CloudWatch alarms on webhook and control-plane failure surfaces, but it is missing:

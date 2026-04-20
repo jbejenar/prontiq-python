@@ -173,7 +173,7 @@ Nobody else bundles Australian address validation with ABN verification with LEI
 | **SDKs**                  | Speakeasy                                    | **1 SDK, up to 50 API methods, free forever**             | Contact for pricing     | Auto-generated typed SDKs. 50 methods covers entire address + ABN + LEI surface.                                                                                          |
 | **Account page**          | Next.js (`/account`) + Clerk `<UserProfile />` | Deployed to Lambda via SST ($0)                           | —                       | No custom dashboard. Clerk's profile UI with custom tabs (Usage, Billing, API Keys) wired to DynamoDB-backed `/v1/account/*` endpoints. See §5.9.                          |
 | **CI/CD**                 | GitHub Actions + OIDC                        | Free tier                                                 | —                       | No stored AWS credentials. Short-lived STS tokens per run.                                                                                                                |
-| **Monitoring**            | CloudWatch + X-Ray                           | Included with AWS                                         | —                       | Per-handler latency, error rates, usage dashboards.                                                                                                                       |
+| **Monitoring**            | CloudWatch + Honeycomb + X-Ray (transition) | Included with AWS + Honeycomb                             | —                       | CloudWatch/SNS remains the ops plane; Honeycomb is the backend trace-analysis plane; `PqApi` X-Ray remains during transition.                                            |
 
 ### 3.3 Monthly Cost Model
 
@@ -2446,7 +2446,7 @@ When adding any of the above codes to `packages/shared/src/constants.ts`, ensure
 
 ## 10. Monitoring & Alerting
 
-Phase 1 observability is CloudWatch-native: CloudWatch metrics/alarms, SNS email delivery, dashboard `prontiq-production`, X-Ray tracing on `PqApi`, and raw JSON application logs emitted to CloudWatch Logs.
+Phase 1 observability is still CloudWatch-native at the operations layer: CloudWatch metrics/alarms, SNS email delivery, dashboard `prontiq-production`, and raw JSON application logs emitted to CloudWatch Logs. Backend trace analysis is moving to Honeycomb for deployed Lambdas via OpenTelemetry and `HONEYCOMB_API_KEY`, while `PqApi` X-Ray remains in place during the transition.
 
 ### 10.1 Key Metrics
 
@@ -2463,6 +2463,17 @@ Phase 1 observability is CloudWatch-native: CloudWatch metrics/alarms, SNS email
 | SES complaint rate | SES/CloudWatch | > 0.05% for 1 hour |
 | Billing cron success/failure | Lambda `Errors` | Any failure |
 
+### 10.1.1 Telemetry Privacy Rules
+
+Honeycomb custom span attributes must stay allow-listed and bounded. The platform must not export:
+
+- raw address query strings
+- request bodies
+- API keys or key hashes
+- JWTs
+- email addresses
+- Stripe secrets
+
 ### 10.2 Alerting Tiers
 
 | Tier | Channel | Response Time | Examples |
@@ -2472,6 +2483,17 @@ Phase 1 observability is CloudWatch-native: CloudWatch metrics/alarms, SNS email
 ### 10.3 Dashboard
 
 CloudWatch dashboard `prontiq-production`: API request count, API latency `p50/p95/p99`, API 5xx rate, API Lambda error rate, OpenSearch cluster status, OpenSearch free storage, and critical Lambda error series.
+
+### 10.4 Trace Analysis
+
+Honeycomb is the primary backend trace-analysis plane for deployed Lambdas once `HONEYCOMB_API_KEY` is configured in the `dev` and `prod` GitHub Environments. Stable service names:
+
+- `prontiq-api`
+- `prontiq-webhooks`
+- `prontiq-billing`
+- `prontiq-ingestion`
+
+X-Ray remains active on `PqApi` during the rollout transition and should be treated as a retained secondary trace path until a later cleanup ticket removes it explicitly.
 
 ---
 

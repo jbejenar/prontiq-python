@@ -143,13 +143,14 @@ jobs:
         env:
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
           CLERK_WEBHOOK_SECRET: ${{ secrets.CLERK_WEBHOOK_SECRET }}
+          HONEYCOMB_API_KEY: ${{ secrets.HONEYCOMB_API_KEY }}
           STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
           STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
         shell: bash
         run: |
           set -euo pipefail
           missing=()
-          for name in CLERK_WEBHOOK_SECRET CLERK_SECRET_KEY STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET; do
+          for name in CLERK_WEBHOOK_SECRET CLERK_SECRET_KEY HONEYCOMB_API_KEY STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET; do
             value="${!name:-}"
             trimmed="${value#"${value%%[![:space:]]*}"}"
             trimmed="${trimmed%"${trimmed##*[![:space:]]}"}"
@@ -259,11 +260,13 @@ jobs:
         env:
           AWS_EC2_METADATA_DISABLED: "true"
           AWS_SKIP_CREDENTIALS_VALIDATION: "true"
+          HONEYCOMB_ENABLED: ${{ vars.HONEYCOMB_ENABLED }}
           CLERK_ADMIN_ROLES: ${{ vars.CLERK_ADMIN_ROLES }}
           CLERK_ISSUER: ${{ vars.CLERK_ISSUER }}
           CLERK_JWKS_URL: ${{ vars.CLERK_JWKS_URL }}
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
           CLERK_WEBHOOK_SECRET: ${{ secrets.CLERK_WEBHOOK_SECRET }}
+          HONEYCOMB_API_KEY: ${{ secrets.HONEYCOMB_API_KEY }}
           PRONTIQ_ACCOUNT_URL: ${{ vars.PRONTIQ_ACCOUNT_URL }}
           PRONTIQ_BILLING_URL: ${{ vars.PRONTIQ_BILLING_URL }}
           PRONTIQ_DOCS_URL: ${{ vars.PRONTIQ_DOCS_URL }}

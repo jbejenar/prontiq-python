@@ -149,7 +149,7 @@ Svix still redelivers, but a real fatal will exhaust retries. Then:
 
 Rare case where Clerk's webhook delivery system loses the event entirely. The user signs in to `/account` and sees no envelope. **Recovery: `POST /v1/account/setup`** — Clerk-JWT-authenticated, runs the same `createProvisioningService().provisionOrg(...)` code path as this webhook. Same idempotency invariant: a delayed webhook + a recovery call collapse to one envelope, one Stripe customer, one audit row.
 
-**Operator preconditions** (BOTH dev and prod tenants — these are not caught by the `REQUIRED_WEBHOOK_SECRETS` deploy guard because they're Clerk-dashboard config, not env vars):
+**Operator preconditions** (BOTH dev and prod tenants — these are not caught by the deployed-stage secret guard because they're Clerk-dashboard config, not env vars):
 
 1. **Clerk session token JWT template must include BOTH `org_id` AND `org_role`.** Clerk Dashboard → Sessions → Customize session token → add `{ "org_id": "{{org.id}}", "org_role": "{{org.role}}" }` to the template. Missing `org_id` → `400 NO_ACTIVE_ORG`. Missing `org_role` → `400 NO_ROLE_CLAIM`.
 2. **Frontend must call `setActive({ organization })`** before invoking `/v1/account/setup`. Even with the JWT template above, `org_id` and `org_role` are only populated when the session has an active organization.

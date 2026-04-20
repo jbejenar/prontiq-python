@@ -1,5 +1,6 @@
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
+import { SERVICE_NAMES, wrapLambdaHandler } from "@prontiq/observability";
 import { createLogger, type UsageCounterRecord } from "@prontiq/shared";
 import Stripe from "stripe";
 import {
@@ -175,6 +176,16 @@ export function createBillingCronService(
   return { handleTick };
 }
 
-export async function handler(): Promise<BillingCronSummary> {
+async function billingCronHandler(): Promise<BillingCronSummary> {
   return createBillingCronService().handleTick();
 }
+
+export const handler = wrapLambdaHandler({
+  attributes: () => ({
+    "prontiq.billing.operation": "billing_cron",
+    "prontiq.stage": process.env.PRONTIQ_STAGE ?? "unknown",
+  }),
+  handler: billingCronHandler,
+  serviceName: SERVICE_NAMES.billing,
+  spanName: "prontiq-billing.billing-cron",
+});

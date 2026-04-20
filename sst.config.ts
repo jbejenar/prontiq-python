@@ -150,6 +150,7 @@ export default $config({
 
     function sharedEmailEnv() {
       return {
+        PRONTIQ_STAGE: $app.stage,
         KEYS_TABLE_NAME: authKeysTable.name,
         USAGE_TABLE_NAME: authUsageTable.name,
         SUPPRESSIONS_TABLE_NAME: suppressionsTable.name,
@@ -171,14 +172,23 @@ export default $config({
       ];
     }
 
+    function observabilityEnv() {
+      return {
+        HONEYCOMB_API_KEY: $util.secret(readGithubSecret("HONEYCOMB_API_KEY")),
+        HONEYCOMB_ENABLED: readGithubVar("HONEYCOMB_ENABLED") || "true",
+        PRONTIQ_STAGE: $app.stage,
+      };
+    }
+
     const sesFeedbackFn = new sst.aws.Function("PqSesFeedback", {
-      handler: "packages/control-plane/src/ses-feedback.handler",
+      handler: "packages/control-plane/src/ses-feedback.bootstrap.handler",
       architecture: "arm64",
       runtime: "nodejs24.x",
       memory: "512 MB",
       timeout: "30 seconds",
       link: [suppressionsTable],
       environment: {
+        ...observabilityEnv(),
         SUPPRESSIONS_TABLE_NAME: suppressionsTable.name,
       },
     });
@@ -197,7 +207,7 @@ export default $config({
     });
 
     const quotaEmailWorkerFn = new sst.aws.Function("PqQuotaEmailWorker", {
-      handler: "packages/control-plane/src/quota-email.handler",
+      handler: "packages/control-plane/src/quota-email.bootstrap.handler",
       architecture: "arm64",
       runtime: "nodejs24.x",
       memory: "512 MB",
@@ -209,7 +219,10 @@ export default $config({
           resources: sharedEmailSendResources(),
         },
       ],
-      environment: sharedEmailEnv(),
+      environment: {
+        ...sharedEmailEnv(),
+        ...observabilityEnv(),
+      },
     });
 
     // -- Required secrets (P1B.05) --
@@ -254,9 +267,10 @@ export default $config({
     // Personal stages (jbejenar etc.) skip the guard so `sst dev`
     // works locally without all secrets configured — handler's runtime
     // guard still catches missing values during local manual testing.
-    const REQUIRED_WEBHOOK_SECRETS = [
+    const REQUIRED_DEPLOY_SECRETS = [
       "CLERK_WEBHOOK_SECRET",
       "CLERK_SECRET_KEY",
+      "HONEYCOMB_API_KEY",
       "STRIPE_SECRET_KEY",
       "STRIPE_WEBHOOK_SECRET",
     ] as const;
@@ -276,7 +290,7 @@ export default $config({
     }
     const isDeployedStage = $app.stage === "dev" || $app.stage === "prod";
     if (isDeployedStage) {
-      const missing = REQUIRED_WEBHOOK_SECRETS.filter(
+      const missing = REQUIRED_DEPLOY_SECRETS.filter(
         (name) => readGithubSecret(name).length === 0,
       );
       if (missing.length > 0) {
@@ -345,7 +359,7 @@ export default $config({
     });
 
     const apiDefaultRoute = api.route("$default", {
-      handler: "packages/api/src/index.handler",
+      handler: "packages/api/src/index.bootstrap.handler",
       architecture: "arm64",
       runtime: "nodejs24.x",
       memory: "512 MB",
@@ -366,6 +380,7 @@ export default $config({
         },
       ],
       environment: {
+        ...observabilityEnv(),
         OPENSEARCH_ENDPOINT: process.env.OPENSEARCH_ENDPOINT ?? OPENSEARCH_ENDPOINT_DEFAULT,
         KEYS_TABLE_NAME: authKeysTable.name,
         QUOTA_EMAIL_WORKER_FUNCTION_NAME: quotaEmailWorkerFn.name,
@@ -415,7 +430,7 @@ export default $config({
       process.env.OPENSEARCH_ENDPOINT ?? OPENSEARCH_ENDPOINT_DEFAULT;
 
     const readManifestFn = new sst.aws.Function("PqIngestReadManifest", {
-      handler: "packages/ingestion/src/read-manifest.handler",
+      handler: "packages/ingestion/src/read-manifest.bootstrap.handler",
       architecture: "arm64",
       runtime: "nodejs24.x",
       memory: "512 MB",
@@ -424,11 +439,14 @@ export default $config({
         { actions: ["s3:GetObject", "s3:HeadObject"], resources: [`${DATA_BUCKET_ARN}/*`] },
         { actions: ["es:ESHttpGet"], resources: [`${OPENSEARCH_DOMAIN_ARN}/*`] },
       ],
-      environment: { OPENSEARCH_ENDPOINT: opensearchEndpoint },
+      environment: {
+        ...observabilityEnv(),
+        OPENSEARCH_ENDPOINT: opensearchEndpoint,
+      },
     });
 
     const createIndexFn = new sst.aws.Function("PqIngestCreateIndex", {
-      handler: "packages/ingestion/src/create-index.handler",
+      handler: "packages/ingestion/src/create-index.bootstrap.handler",
       architecture: "arm64",
       runtime: "nodejs24.x",
       memory: "512 MB",
@@ -440,11 +458,14 @@ export default $config({
           resources: [`${OPENSEARCH_DOMAIN_ARN}/*`],
         },
       ],
-      environment: { OPENSEARCH_ENDPOINT: opensearchEndpoint },
+      environment: {
+        ...observabilityEnv(),
+        OPENSEARCH_ENDPOINT: opensearchEndpoint,
+      },
     });
 
     const healthCheckFn = new sst.aws.Function("PqIngestHealthCheck", {
-      handler: "packages/ingestion/src/health-check.handler",
+      handler: "packages/ingestion/src/health-check.bootstrap.handler",
       architecture: "arm64",
       runtime: "nodejs24.x",
       memory: "512 MB",
@@ -455,11 +476,14 @@ export default $config({
           resources: [`${OPENSEARCH_DOMAIN_ARN}/*`],
         },
       ],
-      environment: { OPENSEARCH_ENDPOINT: opensearchEndpoint },
+      environment: {
+        ...observabilityEnv(),
+        OPENSEARCH_ENDPOINT: opensearchEndpoint,
+      },
     });
 
     const aliasSwapFn = new sst.aws.Function("PqIngestAliasSwap", {
-      handler: "packages/ingestion/src/alias-swap.handler",
+      handler: "packages/ingestion/src/alias-swap.bootstrap.handler",
       architecture: "arm64",
       runtime: "nodejs24.x",
       memory: "512 MB",
@@ -470,11 +494,14 @@ export default $config({
           resources: [`${OPENSEARCH_DOMAIN_ARN}/*`],
         },
       ],
-      environment: { OPENSEARCH_ENDPOINT: opensearchEndpoint },
+      environment: {
+        ...observabilityEnv(),
+        OPENSEARCH_ENDPOINT: opensearchEndpoint,
+      },
     });
 
     const onFailureFn = new sst.aws.Function("PqIngestOnFailure", {
-      handler: "packages/ingestion/src/on-failure.handler",
+      handler: "packages/ingestion/src/on-failure.bootstrap.handler",
       architecture: "arm64",
       runtime: "nodejs24.x",
       memory: "512 MB",
@@ -485,7 +512,10 @@ export default $config({
           resources: [`${OPENSEARCH_DOMAIN_ARN}/*`],
         },
       ],
-      environment: { OPENSEARCH_ENDPOINT: opensearchEndpoint },
+      environment: {
+        ...observabilityEnv(),
+        OPENSEARCH_ENDPOINT: opensearchEndpoint,
+      },
     });
 
     // -- ECS: Fargate bulk ingest --
@@ -795,7 +825,7 @@ export default $config({
 
     // -- Router Lambda: EventBridge → manifest routing → Step Function --
     const routerFn = new sst.aws.Function("PqIngestRouter", {
-      handler: "packages/ingestion/src/router.handler",
+      handler: "packages/ingestion/src/router.bootstrap.handler",
       architecture: "arm64",
       runtime: "nodejs24.x",
       memory: "512 MB",
@@ -808,6 +838,7 @@ export default $config({
         },
       ],
       environment: {
+        ...observabilityEnv(),
         STATE_MACHINE_ARN: stateMachine.arn,
       },
     });
@@ -842,7 +873,7 @@ export default $config({
     new sst.aws.Cron("PqIngestCleanup", {
       schedule: "rate(6 hours)",
       function: {
-        handler: "packages/ingestion/src/cleanup.handler",
+        handler: "packages/ingestion/src/cleanup.bootstrap.handler",
         architecture: "arm64",
         runtime: "nodejs24.x",
         memory: "512 MB",
@@ -854,7 +885,10 @@ export default $config({
           },
           { actions: ["sns:Publish"], resources: [ingestAlerts.arn] },
         ],
-        environment: { OPENSEARCH_ENDPOINT: opensearchEndpoint },
+        environment: {
+          ...observabilityEnv(),
+          OPENSEARCH_ENDPOINT: opensearchEndpoint,
+        },
       },
     });
 
@@ -919,6 +953,7 @@ export default $config({
         // values get normalised consistently with the validation
         // guard above.
         CLERK_SECRET_KEY: $util.secret(readGithubSecret("CLERK_SECRET_KEY")),
+        ...observabilityEnv(),
         STRIPE_SECRET_KEY: $util.secret(readGithubSecret("STRIPE_SECRET_KEY")),
         // Non-secret config — plaintext in state is fine.
         // Consumed by `getAdminRoles()` in `@prontiq/control-plane`,
@@ -939,7 +974,7 @@ export default $config({
     // `prontiq-{stage}-PqApiRoute<hash>HandlerFunction-<rand>` which
     // don't give us a stable handle.
     const clerkWebhookFn = new sst.aws.Function("PqClerkWebhook", {
-      handler: "packages/webhooks/src/clerk.handler",
+      handler: "packages/webhooks/src/clerk.bootstrap.handler",
       architecture: "arm64",
       runtime: "nodejs24.x",
       memory: "512 MB",
@@ -963,7 +998,7 @@ export default $config({
     api.route("POST /webhooks/clerk", clerkWebhookFn.arn);
 
     const stripeWebhookFn = new sst.aws.Function("PqStripeWebhook", {
-      handler: "packages/webhooks/src/stripe.handler",
+      handler: "packages/webhooks/src/stripe.bootstrap.handler",
       architecture: "arm64",
       runtime: "nodejs24.x",
       memory: "512 MB",
@@ -1083,13 +1118,14 @@ export default $config({
     const billingCron = new sst.aws.Cron("PqBillingCron", {
       schedule: "rate(1 hour)",
       function: {
-        handler: "packages/control-plane/src/billing-cron.handler",
+        handler: "packages/control-plane/src/billing-cron.bootstrap.handler",
         architecture: "arm64",
         runtime: "nodejs24.x",
         memory: "512 MB",
         timeout: "2 minutes",
         link: [authKeysTable, authUsageTable],
         environment: {
+          ...observabilityEnv(),
           KEYS_TABLE_NAME: authKeysTable.name,
           STRIPE_SECRET_KEY: $util.secret(readGithubSecret("STRIPE_SECRET_KEY")),
           USAGE_TABLE_NAME: authUsageTable.name,
@@ -1119,13 +1155,14 @@ export default $config({
     const monthClose = new sst.aws.Cron("PqMonthClose", {
       schedule: "cron(30 0 1 * ? *)",
       function: {
-        handler: "packages/control-plane/src/month-close.handler",
+        handler: "packages/control-plane/src/month-close.bootstrap.handler",
         architecture: "arm64",
         runtime: "nodejs24.x",
         memory: "512 MB",
         timeout: "2 minutes",
         link: [authKeysTable, authUsageTable],
         environment: {
+          ...observabilityEnv(),
           KEYS_TABLE_NAME: authKeysTable.name,
           STRIPE_SECRET_KEY: $util.secret(readGithubSecret("STRIPE_SECRET_KEY")),
           USAGE_TABLE_NAME: authUsageTable.name,
@@ -1171,11 +1208,11 @@ export default $config({
     // signature. CLERK_ADMIN_ROLES IS shared (via controlPlaneEnv())
     // so any custom-role override applies uniformly to both this
     // Lambda's clerkAdminOnly() gate and the webhook's role gate.
-    // The existing REQUIRED_WEBHOOK_SECRETS guard above validates the
-    // two secrets this Lambda needs (CLERK_SECRET_KEY +
+    // The existing deployed-stage secret guard above validates the two
+    // secrets this Lambda needs (CLERK_SECRET_KEY +
     // STRIPE_SECRET_KEY) for dev/prod stages.
     const accountFn = new sst.aws.Function("PqAccount", {
-      handler: "packages/api/src/account-handler.handler",
+      handler: "packages/api/src/account-handler.bootstrap.handler",
       architecture: "arm64",
       runtime: "nodejs24.x",
       memory: "512 MB",

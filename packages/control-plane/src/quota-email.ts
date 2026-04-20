@@ -15,6 +15,7 @@ import {
   type UsageCounterRecord,
   getBillingEndpointsForProduct,
 } from "@prontiq/shared";
+import { SERVICE_NAMES, wrapLambdaHandler } from "@prontiq/observability";
 import { isSuppressedEmail, sendSignedSesEmail } from "./email.js";
 
 type Logger = Pick<Console, "error" | "warn" | "info">;
@@ -431,7 +432,22 @@ export function createQuotaEmailService(
   return { processTask };
 }
 
-export async function handler(event: QuotaEmailTask): Promise<void> {
+async function quotaEmailHandler(event: QuotaEmailTask): Promise<void> {
   const service = createQuotaEmailService();
   await service.processTask(event);
 }
+
+export const handler = wrapLambdaHandler({
+  attributes: (event) => {
+    const task = event as QuotaEmailTask;
+    return {
+      "prontiq.billing.operation": "quota_email",
+      "prontiq.org_id": task.orgId,
+      "prontiq.product": task.product,
+      "prontiq.stage": process.env.PRONTIQ_STAGE ?? "unknown",
+    };
+  },
+  handler: quotaEmailHandler,
+  serviceName: SERVICE_NAMES.billing,
+  spanName: "prontiq-billing.quota-email",
+});

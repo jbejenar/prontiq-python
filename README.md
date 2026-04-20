@@ -52,6 +52,12 @@ pnpm deploy:dev     # sst deploy --stage dev (automatic from main in CI)
 pnpm deploy:prod    # sst deploy --stage prod (manual dispatch in CI)
 ```
 
+Deployed-stage observability now also expects `HONEYCOMB_API_KEY` in the GitHub
+Environment secrets for `dev` and `prod`. CI `check` and `integration-test`
+remain keyless and run with telemetry disabled. To disable Honeycomb export in
+`dev` or `prod` without breaking deploy validation, set GitHub Environment
+variable `HONEYCOMB_ENABLED=false` and redeploy the stage.
+
 ## Architecture
 
 ```
@@ -95,6 +101,7 @@ apps/
 | Frontend       | Scaffolded `apps/landing` + `apps/console`; shell/components remain in later P1C tickets |
 | Docs           | Mintlify at `docs.prontiq.dev` (live)                  |
 | SDKs           | Speakeasy generates `@prontiq/sdk` (TypeScript) — npm publish pending NPM_TOKEN |
+| Observability  | CloudWatch + SNS email + Honeycomb backend traces (`HONEYCOMB_API_KEY` gated) + retained API X-Ray |
 | CI/CD          | GitHub Actions + OIDC (no stored credentials)          |
 
 ## Roadmap Progress
@@ -109,12 +116,12 @@ See [`ROADMAP.md`](ROADMAP.md) for the full 77-ticket plan.
 | **P1C** | Frontend Surfaces         | 8       | 1/8       |
 | **P1D** | Docs & SDK                | 5       | 2/5       |
 | **P1E** | Ingestion                 | 6       | 4/6       |
-| **P1F** | Distribution              | 2       | 2/2       |
+| **P1F** | Distribution              | 3       | 2/3       |
 | **P2**  | ABN/ASIC Verification     | 8       | 0/8       |
 | **P3**  | LEI + Full Dashboard      | 7       | 0/7       |
 | **P4**  | Shopify + WooCommerce     | 5       | 0/5       |
 | **P5**  | CVE/NVD + Patents         | 4       | 0/4       |
-|         |                           | **77**  | **36/77** |
+|         |                           | **78**  | **36/78** |
 
 ## Commands
 

@@ -1,5 +1,6 @@
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
+import { SERVICE_NAMES, wrapLambdaHandler } from "@prontiq/observability";
 import { createLogger, type UsageCounterRecord } from "@prontiq/shared";
 import Stripe from "stripe";
 import {
@@ -157,6 +158,16 @@ export function createMonthCloseService(
   return { handleTick };
 }
 
-export async function handler(): Promise<MonthCloseSummary> {
+async function monthCloseHandler(): Promise<MonthCloseSummary> {
   return createMonthCloseService().handleTick();
 }
+
+export const handler = wrapLambdaHandler({
+  attributes: () => ({
+    "prontiq.billing.operation": "month_close",
+    "prontiq.stage": process.env.PRONTIQ_STAGE ?? "unknown",
+  }),
+  handler: monthCloseHandler,
+  serviceName: SERVICE_NAMES.billing,
+  spanName: "prontiq-billing.month-close",
+});

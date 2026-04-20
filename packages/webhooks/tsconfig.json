@@ -9,6 +9,8 @@
     "paths": {
       "@prontiq/control-plane": ["../control-plane/src/index.ts"],
       "@prontiq/control-plane/*": ["../control-plane/src/*"],
+      "@prontiq/observability": ["../observability/src/index.ts"],
+      "@prontiq/observability/*": ["../observability/src/*"],
       "@prontiq/shared": ["../shared/src/index.ts"],
       "@prontiq/shared/*": ["../shared/src/*"]
     }
@@ -16,6 +18,7 @@
   "include": ["src"],
   "references": [
     { "path": "../shared" },
-    { "path": "../control-plane" }
+    { "path": "../control-plane" },
+    { "path": "../observability" }
   ]
 }

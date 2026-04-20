@@ -1,4 +1,4 @@
-import type { Handler } from "aws-lambda";
+import { SERVICE_NAMES, wrapLambdaHandler } from "@prontiq/observability";
 import {
   assertManifestVersionProgression,
   currentAliasIndex,
@@ -29,5 +29,16 @@ export async function readManifest(event: { bucket: string; key: string; force?:
   return { ...event, manifest };
 }
 
-export const handler: Handler = async (event) =>
-  readManifest(event as { bucket: string; key: string; force?: boolean });
+async function readManifestHandler(event: { bucket: string; key: string; force?: boolean }) {
+  return readManifest(event);
+}
+
+export const handler = wrapLambdaHandler({
+  attributes: () => ({
+    "prontiq.ingestion.step": "read_manifest",
+    "prontiq.stage": process.env.PRONTIQ_STAGE ?? "unknown",
+  }),
+  handler: readManifestHandler,
+  serviceName: SERVICE_NAMES.ingestion,
+  spanName: "prontiq-ingestion.read-manifest",
+});

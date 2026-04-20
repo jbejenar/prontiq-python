@@ -2,6 +2,7 @@ import { OpenAPIHono } from "@hono/zod-openapi";
 import { cors } from "hono/cors";
 import { handle } from "hono/aws-lambda";
 import { createMiddleware } from "hono/factory";
+import { SERVICE_NAMES, wrapLambdaHandler } from "@prontiq/observability";
 import { createLogger } from "@prontiq/shared";
 import { requestId } from "./middleware/request-id.js";
 import { auth } from "./middleware/auth.js";
@@ -113,5 +114,22 @@ app.notFound((c) => {
   );
 });
 
-export const handler = handle(app);
+const lambdaHandler = handle(app);
+
+export const handler = wrapLambdaHandler({
+  attributes: (event) => {
+    const request = event as {
+      rawPath?: string;
+      requestContext?: { http?: { method?: string } };
+    };
+    return {
+      "prontiq.method": request.requestContext?.http?.method ?? "UNKNOWN",
+      "prontiq.route": request.rawPath ?? "/",
+      "prontiq.stage": process.env.PRONTIQ_STAGE ?? "unknown",
+    };
+  },
+  handler: lambdaHandler,
+  serviceName: SERVICE_NAMES.api,
+  spanName: "prontiq-api.request",
+});
 export default app;

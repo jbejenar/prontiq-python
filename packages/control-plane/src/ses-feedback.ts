@@ -13,6 +13,7 @@ import {
   createLogger,
   type SesSuppressionRecord,
 } from "@prontiq/shared";
+import { SERVICE_NAMES, wrapLambdaHandler } from "@prontiq/observability";
 import {
   getActiveSuppressionRecord,
   normalizeEmailForSuppression,
@@ -344,7 +345,17 @@ export function createSesFeedbackService(
   return { handleSnsEvent };
 }
 
-export async function handler(event: SnsEvent): Promise<void> {
+async function sesFeedbackHandler(event: SnsEvent): Promise<void> {
   const service = createSesFeedbackService();
   await service.handleSnsEvent(event);
 }
+
+export const handler = wrapLambdaHandler({
+  attributes: () => ({
+    "prontiq.billing.operation": "ses_feedback",
+    "prontiq.stage": process.env.PRONTIQ_STAGE ?? "unknown",
+  }),
+  handler: sesFeedbackHandler,
+  serviceName: SERVICE_NAMES.billing,
+  spanName: "prontiq-billing.ses-feedback",
+});

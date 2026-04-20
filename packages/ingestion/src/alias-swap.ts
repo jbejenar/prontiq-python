@@ -1,4 +1,4 @@
-import type { Handler } from "aws-lambda";
+import { SERVICE_NAMES, withActiveSpan, wrapLambdaHandler } from "@prontiq/observability";
 import { PRODUCT_REGISTRY, createLogger } from "@prontiq/shared";
 import type { Manifest } from "@prontiq/shared";
 import {
@@ -55,19 +55,48 @@ export async function aliasSwap(event: {
 
   const actions = buildAliasSwapActions({ alias, indexName, previousIndex });
 
-  await client.indices.updateAliases({
-    body: { actions },
-  });
+  await withActiveSpan(
+    "ingestion.indices.update_aliases",
+    {
+      "prontiq.ingestion.step": "alias_swap",
+      "prontiq.ingestion.version": manifest.version,
+      "prontiq.product": manifest.product,
+      "prontiq.stage": process.env.PRONTIQ_STAGE ?? "unknown",
+    },
+    () =>
+      client.indices.updateAliases({
+        body: { actions },
+      }),
+  );
 
   return { ...event, alias, previousIndex, swapped: true };
 }
 
-export const handler: Handler = async (event) =>
-  aliasSwap(
-    event as {
+async function aliasSwapHandler(event: {
+  manifest: Manifest;
+  indexName: string;
+  skipAliasSwap?: boolean;
+  force?: boolean;
+}) {
+  return aliasSwap(event);
+}
+
+export const handler = wrapLambdaHandler({
+  attributes: (event) => {
+    const input = event as {
       manifest: Manifest;
       indexName: string;
       skipAliasSwap?: boolean;
       force?: boolean;
-    },
-  );
+    };
+    return {
+      "prontiq.ingestion.step": "alias_swap",
+      "prontiq.ingestion.version": input.manifest.version,
+      "prontiq.product": input.manifest.product,
+      "prontiq.stage": process.env.PRONTIQ_STAGE ?? "unknown",
+    };
+  },
+  handler: aliasSwapHandler,
+  serviceName: SERVICE_NAMES.ingestion,
+  spanName: "prontiq-ingestion.alias-swap",
+});

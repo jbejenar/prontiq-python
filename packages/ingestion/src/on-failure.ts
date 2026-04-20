@@ -1,4 +1,4 @@
-import type { Handler } from "aws-lambda";
+import { SERVICE_NAMES, wrapLambdaHandler } from "@prontiq/observability";
 import { createLogger } from "@prontiq/shared";
 import { currentAliasIndex, deleteIndexIfExists, getProductConfig, indexNameFor } from "./lib.js";
 import type { Manifest } from "@prontiq/shared";
@@ -58,4 +58,18 @@ export async function onFailure(event: {
   }
 }
 
-export const handler: Handler = async (event) => onFailure(event);
+export const handler = wrapLambdaHandler({
+  attributes: (event) => {
+    const input = event as {
+      manifest?: Manifest;
+    };
+    return {
+      "prontiq.ingestion.step": "on_failure",
+      "prontiq.product": input.manifest?.product ?? "unknown",
+      "prontiq.stage": process.env.PRONTIQ_STAGE ?? "unknown",
+    };
+  },
+  handler: async (event) => onFailure(event as Parameters<typeof onFailure>[0]),
+  serviceName: SERVICE_NAMES.ingestion,
+  spanName: "prontiq-ingestion.on-failure",
+});

@@ -1,7 +1,7 @@
 # Prontiq Platform — Roadmap
 
 > A unified data API platform for Australian and global open data.
-> Last updated: 2026-04-19 · v1.4
+> Last updated: 2026-04-20 · v1.5
 >
 > **Reference:** `ARCHITECTURE.MD` is the authoritative design doc. This roadmap is the execution plan.
 
@@ -27,12 +27,12 @@
 | **P1C**   | Frontend Surfaces          | 8       | 1/8        | Weeks 4-6   |
 | **P1D**   | Docs & SDK                 | 5       | 2/5        | Week 5      |
 | **P1E**   | Ingestion (Phase 1)        | 6       | 4/6        | Week 6      |
-| **P1F**   | Distribution               | 2       | 2/2        | Week 6      |
+| **P1F**   | Distribution               | 3       | 2/3        | Week 6      |
 | **P2**    | ABN/ASIC Verification      | 8       | 0/8        | Weeks 7-10  |
 | **P3**    | GLEIF/LEI + Full Dashboard | 7       | 0/7        | Weeks 11-13 |
 | **P4**    | Shopify + WooCommerce      | 5       | 0/5        | Weeks 14-17 |
 | **P5**    | CVE/NVD + Patents          | 4       | 0/4        | Weeks 18-21 |
-| **Total** |                            | **77**  | **36/77**  |             |
+| **Total** |                            | **78**  | **36/78**  |             |
 
 ---
 
@@ -3167,6 +3167,65 @@ Without monitoring, failures are discovered by customer complaints. CloudWatch a
 - Third-party monitoring (Datadog, Sentry) → future (CloudWatch is sufficient for Phase 1)
 - PagerDuty/OpsGenie integration → future
 - Uptime monitoring (external) → future (Pingdom, Better Uptime)
+
+---
+
+### Ticket P1F.03 — Honeycomb Backend Telemetry
+
+```yaml
+id: P1F.03
+title: Honeycomb Backend Telemetry
+status: in_progress
+priority: p1-high
+epic: P1F
+persona: [ops, builder]
+depends_on: [P1F.02]
+completed: null
+tech_stack:
+  tracing: Honeycomb OTLP/HTTP
+  signals: traces only
+  runtime: OpenTelemetry SDK for Node Lambda
+  secret: HONEYCOMB_API_KEY
+```
+
+#### User Story
+
+As a platform operator, I need backend traces in Honeycomb for deployed Lambdas so that request and workflow debugging does not stop at CloudWatch metrics or a single API X-Ray trace surface.
+
+#### Problem Statement
+
+`P1F.02` gave Prontiq a solid AWS-native baseline, but it still leaves trace-level debugging fragmented: X-Ray exists only on `PqApi`, deeper billing/webhook/ingestion flows are not in a shared trace-analysis plane, and production debugging still depends heavily on log reconstruction. Honeycomb is the next layer: backend traces for all deployed Lambdas, stage-scoped by environment, without removing CloudWatch/SNS or the existing X-Ray API path during rollout.
+
+#### Definition of Done
+
+##### Functional
+
+- [ ] `@prontiq/observability` package added and consumed by all in-scope deployed Lambda handlers
+  - `Verify:` `rg -n "wrapLambdaHandler\\(|withActiveSpan\\(" packages/api/src packages/webhooks/src packages/control-plane/src packages/ingestion/src`
+  - `Evidence:` in repo; rollout verification still pending
+- [ ] `HONEYCOMB_API_KEY` required for deployed `dev` and `prod` in both workflow validation and `sst.config.ts`
+  - `Verify:` `rg -n "HONEYCOMB_API_KEY" sst.config.ts .github/workflows/ci.yml .github/workflows/deploy-prod.yml`
+  - `Evidence:` in repo; staged deploy verification still pending
+- [ ] Honeycomb traces visible for all four backend service families in `dev`
+  - `Verify:` Honeycomb shows traces for `prontiq-api`, `prontiq-webhooks`, `prontiq-billing`, and `prontiq-ingestion` in environment `prontiq-dev`
+  - `Evidence:` pending secret creation + deploy
+- [ ] Honeycomb traces visible for all four backend service families in `prod`
+  - `Verify:` Honeycomb shows traces for `prontiq-api`, `prontiq-webhooks`, `prontiq-billing`, and `prontiq-ingestion` in environment `prontiq-prod`
+  - `Evidence:` pending secret creation + deploy
+- [ ] CloudWatch alarms, SNS delivery, dashboard, and `PqApi` X-Ray remain intact
+  - `Verify:` existing P1F.02 validation still passes after rollout
+  - `Evidence:` pending deploy verification
+
+#### Scope
+
+**In:** Honeycomb backend traces for deployed Lambdas, Honeycomb runbook/ADR/docs, stage secret wiring, OpenTelemetry wrapper package
+
+**Out — Do Not Implement:**
+
+- Browser/frontend telemetry → future
+- ECS/Fargate bulk-ingest telemetry → future
+- X-Ray retirement → future
+- Log forwarding to Honeycomb → future
 
 ---
 

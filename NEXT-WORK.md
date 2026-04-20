@@ -1,9 +1,9 @@
 # NEXT-WORK.md — Active Sprint
 
 > Extracted from ROADMAP.md. This is what agents should work on NOW.
-> Last updated: 2026-04-19 (Session 24)
+> Last updated: 2026-04-20 (Session 26)
 
-## Current Phase: P1C foundations -> component base
+## Current Phase: P1F.03 rollout -> P1C.07
 
 ### What's Live
 
@@ -29,6 +29,7 @@
 - **P1B.09 complete (2026-04-19).** Per-key burst limiting is now explicitly extracted into `packages/api/src/middleware/rate-limit.ts`, remains enforced in the live auth path, and is covered by both unit and integration tests for burst exhaustion, refill, key isolation, and no orphan usage increments on `RATE_LIMITED`.
 - **P1B.12 complete (2026-04-19).** The auth middleware integration suite is now reconciled to the real post-cutover surface: direct unknown/revoked key failures, REDIRECT success writing usage on `newHash`, no orphan usage on pre-increment failures, and the atomic free-tier quota race are all covered in `packages/api/src/middleware/auth.integration.test.ts`. The roadmap ticket no longer claims webhook idempotency, first-key creation, or a standalone seed script.
 - **P1F.02 complete (2026-04-19).** The prod observability baseline is live and verified: `PqIngestAlerts` prod email subscriptions via `ALERT_EMAILS`, `prontiq-production` dashboard, prod alarms for address API 5xx/Lambda error rate and OpenSearch yellow/red/low-storage, `PqApi` X-Ray tracing with DynamoDB + OpenSearch segments, and structured JSON logs across Lambda execution paths. SNS email delivery was verified by forcing `PqApiLambdaErrorRate` to `ALARM` and confirming receipt on a confirmed subscriber.
+- **P1F.03 code integration is now in repo (2026-04-20).** `@prontiq/observability` exists, deployed Lambda handlers are wrapped for Honeycomb traces, OpenSearch query seams emit manual spans, deployed-stage secret validation includes `HONEYCOMB_API_KEY`, and the deployed-stage rollback path is `HONEYCOMB_ENABLED=false` rather than secret removal. The Honeycomb GitHub Environment secrets are provisioned; rollout is now waiting only on `dev`/`prod` deploy verification.
 - **`@prontiq/control-plane` package** (recovered from prior design + hardened) provides `createProvisioningService()`, `writeAudit()` / `buildAuditTransactItem()`, AND `resolvePrimaryEmail()`. Both ingress paths (Clerk webhook + `/v1/account/setup`) consume the same provisioning service AND the same verified-primary-email helper — invariants enforced once at the package boundary.
 - The legacy raw-key table is retained only for rollback/soak; the old `pq_live_prod_...` seed key has been rotated and revoked.
 - Future prod seed-key rotation now has an operator command:
@@ -52,7 +53,7 @@ POST /v1/account/setup  (Clerk JWT; not API key — recovery provisioning)
 
 - **P1B.05 PR 3/3 (prod-cutover 2026-04-18)**: `POST /v1/account/setup` recovery endpoint live in dev + prod. Clerk-JWT-authenticated (`@clerk/backend.verifyToken({ secretKey })` with 5s clock skew); reads `sub` + `org_id` from the verified JWT; calls `resolvePrimaryEmail` (shared with the webhook via `@prontiq/control-plane`) then `createProvisioningService().provisionOrg(...)`. New `PqAccount` Lambda separate from address-API `$default` (keeps the hot path bundle minimal: `@clerk/backend` + `@prontiq/control-plane` only land in the new Lambda — verified by adding a doc-comment in `packages/api/src/index.ts` forbidding those imports). Mounted via `api.route("ANY /v1/account/{proxy+}", accountFn.arn)` with explicit-route precedence in front of `$default`. CORS extended on `PqApi` to allow POST + Authorization (additive — no rejection of existing GET / X-Api-Key flows). New `PqAccountErrors` CloudWatch alarm wired to `PqIngestAlerts` SNS topic. Mintlify reference page documents operator preconditions (Clerk dashboard JWT template needs `{ "org_id": "{{org.id}}" }` in BOTH dev and prod tenants; frontend must `setActive({ organization })`). Closes P1B.05 ticket.
 - **P1B.05 PR 3a refactor (prod-cutover 2026-04-18)**: `resolvePrimaryEmail` + `EmailLookupResult` moved from `packages/webhooks/src/clerk.ts` into `packages/control-plane/src/clerk.ts` so the new `/v1/account/setup` endpoint can import the same helper without an `api → webhooks` dep direction. `@clerk/backend` now declared explicitly on `@prontiq/control-plane` (no transitive hoisting). 12 new node:test cases for the helper + ADR-002 contract #6 added. Pure refactor; webhook behaviour identical at runtime. PR #100.
-- **P1B.05 PR 2/3 (prod-cutover 2026-04-18)**: Clerk webhook handler (`POST /webhooks/clerk` on the existing `PqApi`) live in dev + prod. Verifies Svix signature, gates on `role ∈ {org:admin, admin}`, resolves verified primary email via Clerk Backend API (does NOT trust `public_user_data.identifier`), calls `createProvisioningService().provisionOrg(...)`. End-to-end DoD verified on real Svix traffic in dev (1 envelope + 1 audit row across 5 deliveries — idempotency proven). New `PqClerkWebhook` Lambda (separate from address-API `$default`) + 3 GitHub Environment secrets sourced via deploy workflows + `$util.secret()` wrapping in Pulumi state + `REQUIRED_WEBHOOK_SECRETS` fail-fast deploy guard + `PqClerkWebhookErrors` CloudWatch alarm. Operator runbook in `docs/runbooks/clerk-webhook.md`. Welcome emails are now suppression-aware and best-effort through the shared SES helper and configuration-set path.
+- **P1B.05 PR 2/3 (prod-cutover 2026-04-18)**: Clerk webhook handler (`POST /webhooks/clerk` on the existing `PqApi`) live in dev + prod. Verifies Svix signature, gates on `role ∈ {org:admin, admin}`, resolves verified primary email via Clerk Backend API (does NOT trust `public_user_data.identifier`), calls `createProvisioningService().provisionOrg(...)`. End-to-end DoD verified on real Svix traffic in dev (1 envelope + 1 audit row across 5 deliveries — idempotency proven). New `PqClerkWebhook` Lambda (separate from address-API `$default`) + 3 GitHub Environment secrets sourced via deploy workflows + `$util.secret()` wrapping in Pulumi state + deployed-stage fail-fast secret validation + `PqClerkWebhookErrors` CloudWatch alarm. Operator runbook in `docs/runbooks/clerk-webhook.md`. Welcome emails are now suppression-aware and best-effort through the shared SES helper and configuration-set path.
 - **P1B.07**: audit writer helper shipped in `packages/control-plane/src/audit.ts` (location revised from `shared` because the helper needs the AWS SDK DDB clients). Dual API: `buildAuditTransactItem` for atomic grouping inside `TransactWriteItems`; `writeAudit` for standalone callers. Lands as part of the new `@prontiq/control-plane` package alongside the recovered `provisionOrg` service for P1B.05.
 - **P1B.02**: key module shipped (`packages/shared/src/keys.ts` — `generateKey` + `hashKey`)
 - **P1B.04**: DynamoDB auth/billing tables shipped (`prontiq-keys`, `prontiq-usage`, `prontiq-audit`, `prontiq-ses-suppressions`)
@@ -96,23 +97,25 @@ POST /v1/account/setup  (Clerk JWT; not API key — recovery provisioning)
 
 Recommended priority:
 
-1. P1C.07 — shadcn/ui + Tailwind v3.4 setup on top of the scaffolded foundations.
-2. P1C account/landing surface rebuild after `P1C.07`.
-3. P1E.05 / P1E.06 ingestion hardening if platform work is preferred over frontend work.
+1. P1F.03 — deploy `dev`, verify traces, then deploy `prod` and verify traces. If rollback is needed during rollout, set `HONEYCOMB_ENABLED=false` and redeploy.
+2. P1C.07 — shadcn/ui + Tailwind v3.4 setup on top of the scaffolded foundations.
+3. P1C account/landing surface rebuild after `P1C.07`.
+
+Before starting `P1F.03` rollout, read:
+
+- `docs/runbooks/honeycomb.md`
+- `docs/runbooks/monitoring-alerting.md`
 
 Before starting `P1C.07`, read:
 
 - `docs/FRONTEND-STRATEGY.md`
 - `docs/prototypes/console-dashboard-v1.html`
 
-The prototype is the canonical internal visual reference for `apps/console`. Preserve its typography, shell,
-KPI treatment, and component tone, but do not treat every panel in the file as launch scope.
-
 Reason:
 
 - P1B auth/billing execution is effectively complete.
-- P1F observability hardening is now closed.
-- The next milestone is the component/tooling base on top of the scaffolded two-app frontend.
+- Honeycomb backend tracing is implemented in code but not yet verified in deployed stages.
+- The next product milestone remains the component/tooling base on top of the scaffolded two-app frontend once the Honeycomb rollout is closed.
 - API Gateway caching remains a pragmatic performance/cost option if platform work is preferred over dashboard work.
 
 ### Operator follow-ups (one-time, not blocking next ticket)
