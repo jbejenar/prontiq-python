@@ -30,7 +30,7 @@ unset. Override it explicitly only when pointing `apps/landing` or
 
 **Stack (live):** burst rate limiting (P1B.09), Stripe webhook (P1B.06), SES bounce/complaint feedback + quota emails (P1B.08), hourly billing cron (P1B.10), and month-close finalisation (P1B.11) are implemented. The architecture source of truth now treats **credits** as the customer-facing billing unit and endpoint weights as the internal rating model.
 
-**Observability (current transition state):** CloudWatch alarms/dashboard + SNS email remain the AWS-native operations plane. Honeycomb backend tracing is now integrated in code for deployed Lambdas behind `HONEYCOMB_API_KEY`, and `PqApi` X-Ray remains in place during the rollout transition. Browser/frontend telemetry is not part of this ticket.
+**Observability (current state):** CloudWatch alarms/dashboard + SNS email remain the AWS-native operations plane. Honeycomb backend tracing is now live and verified for deployed Lambdas behind `HONEYCOMB_API_KEY`, and `PqApi` X-Ray remains in place as a retained secondary trace path. Browser/frontend telemetry is not part of this ticket.
 
 **Stack (planned — remaining P1C and later):** frontend shell/component work (P1C.07+) plus the later product epics. `P1C.00` foundations are now scaffolded in-repo.
 

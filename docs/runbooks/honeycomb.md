@@ -2,6 +2,10 @@
 
 Backend trace rollout for `P1F.03`.
 
+Status:
+- verified in `dev` on 2026-04-20
+- verified in `prod` on 2026-04-20
+
 ## Scope
 
 - Honeycomb backend traces for deployed Lambdas

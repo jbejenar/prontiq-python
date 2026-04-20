@@ -2446,7 +2446,7 @@ When adding any of the above codes to `packages/shared/src/constants.ts`, ensure
 
 ## 10. Monitoring & Alerting
 
-Phase 1 observability is still CloudWatch-native at the operations layer: CloudWatch metrics/alarms, SNS email delivery, dashboard `prontiq-production`, and raw JSON application logs emitted to CloudWatch Logs. Backend trace analysis is moving to Honeycomb for deployed Lambdas via OpenTelemetry and `HONEYCOMB_API_KEY`, while `PqApi` X-Ray remains in place during the transition.
+Phase 1 observability is still CloudWatch-native at the operations layer: CloudWatch metrics/alarms, SNS email delivery, dashboard `prontiq-production`, and raw JSON application logs emitted to CloudWatch Logs. Backend trace analysis now runs through Honeycomb for deployed Lambdas via OpenTelemetry and `HONEYCOMB_API_KEY`, while `PqApi` X-Ray remains in place as a retained secondary trace path.
 
 ### 10.1 Key Metrics
 
@@ -2486,14 +2486,14 @@ CloudWatch dashboard `prontiq-production`: API request count, API latency `p50/p
 
 ### 10.4 Trace Analysis
 
-Honeycomb is the primary backend trace-analysis plane for deployed Lambdas once `HONEYCOMB_API_KEY` is configured in the `dev` and `prod` GitHub Environments. Stable service names:
+Honeycomb is the primary backend trace-analysis plane for deployed Lambdas. Stable service names:
 
 - `prontiq-api`
 - `prontiq-webhooks`
 - `prontiq-billing`
 - `prontiq-ingestion`
 
-X-Ray remains active on `PqApi` during the rollout transition and should be treated as a retained secondary trace path until a later cleanup ticket removes it explicitly.
+X-Ray remains active on `PqApi` and should be treated as a retained secondary trace path until a later cleanup ticket removes it explicitly.
 
 ---
 

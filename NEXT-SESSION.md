@@ -1,5 +1,42 @@
 # NEXT-SESSION.md — Session Execution Log
 
+## Session 27 — 2026-04-20
+
+**Focus:** P1F.03 Honeycomb rollout verification and closeout.
+
+### Completed
+
+- **Honeycomb backend telemetry is now verified in both stages.** `prontiq-api`, `prontiq-webhooks`, `prontiq-billing`, and `prontiq-ingestion` all emitted traces into Honeycomb `prontiq-dev` and `prontiq-prod`.
+- **Both deployed stages were exercised directly.** `dev` and `prod` were probed through low-risk API, webhook, billing, and ingestion paths to prove the deployed Lambdas actually exported traces rather than merely carrying the env wiring.
+- **Post-merge ingestion image regression was fixed.** The Fargate bulk-ingest Docker image now includes `packages/observability` in its build context and builds `@prontiq/observability` before `@prontiq/ingestion`, unblocking the dev deploy path after the Honeycomb dependency graph change.
+- **`P1F.03` is now closed.** Source-of-truth planning docs now treat Honeycomb backend telemetry as complete work, with rollback remaining `HONEYCOMB_ENABLED=false` if telemetry must be suppressed later.
+
+### Verification evidence
+
+- Honeycomb `prontiq-dev` shows traces for:
+  - `prontiq-api`
+  - `prontiq-webhooks`
+  - `prontiq-billing`
+  - `prontiq-ingestion`
+- Honeycomb `prontiq-prod` shows traces for:
+  - `prontiq-api`
+  - `prontiq-webhooks`
+  - `prontiq-billing`
+  - `prontiq-ingestion`
+- `Deploy to Production` workflow run `24646727123` completed successfully.
+- Direct runtime probes in both stages exercised:
+  - API
+  - Stripe webhook invalid-signature path
+  - SES feedback handler
+  - ingestion cleanup handler
+
+### Next session should start with
+
+1. Read `docs/FRONTEND-STRATEGY.md`.
+2. Read `docs/prototypes/console-dashboard-v1.html`.
+3. Implement `P1C.07 — shadcn/ui + Tailwind v3.4 setup`.
+4. Then begin the first real landing/console surface ticket.
+
 ## Session 26 — 2026-04-20
 
 **Focus:** P1F.03 Honeycomb backend telemetry implementation.

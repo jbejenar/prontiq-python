@@ -32,7 +32,7 @@ Phase 1 observability baseline runbook for Prontiq.
   - stages: `dev`, `prod`
   - value: Honeycomb environment-scoped ingest key
 
-This is read in `sst.config.ts` during `prod` deploy. An empty or whitespace-only value fails the deploy.
+This secret is validated in both deployed stages: GitHub workflow validation checks it before `dev` and `prod` deploys, and `sst.config.ts` rejects missing or whitespace-only values for those same deployed stages.
 
 ## Alarm Inventory
 
@@ -94,6 +94,7 @@ Widgets:
 
 Honeycomb is the backend trace-analysis plane once `HONEYCOMB_API_KEY` is set
 for the stage, `HONEYCOMB_ENABLED` is not `false`, and the stack is deployed.
+This is now verified in both `dev` and `prod`.
 
 Expected service names:
 

@@ -27,12 +27,12 @@
 | **P1C**   | Frontend Surfaces          | 8       | 1/8        | Weeks 4-6   |
 | **P1D**   | Docs & SDK                 | 5       | 2/5        | Week 5      |
 | **P1E**   | Ingestion (Phase 1)        | 6       | 4/6        | Week 6      |
-| **P1F**   | Distribution               | 3       | 2/3        | Week 6      |
+| **P1F**   | Distribution               | 3       | 3/3 ✅     | Week 6      |
 | **P2**    | ABN/ASIC Verification      | 8       | 0/8        | Weeks 7-10  |
 | **P3**    | GLEIF/LEI + Full Dashboard | 7       | 0/7        | Weeks 11-13 |
 | **P4**    | Shopify + WooCommerce      | 5       | 0/5        | Weeks 14-17 |
 | **P5**    | CVE/NVD + Patents          | 4       | 0/4        | Weeks 18-21 |
-| **Total** |                            | **78**  | **36/78**  |             |
+| **Total** |                            | **78**  | **37/78**  |             |
 
 ---
 
@@ -1965,6 +1965,8 @@ Post-migration, auth middleware hashes the incoming key, looks up in `prontiq-ke
 > **Goal:** Ship the customer-facing frontend stack: `apps/landing` for `prontiq.dev`, `apps/console` for `console.prontiq.dev`, and the shared frontend foundations that support both.
 >
 > **Dependency:** P1C.00 lays the foundation. P1C.07 establishes the component/tooling base. Feature tickets build on top of those two anchors.
+>
+> **Observability default:** Browser/frontend telemetry remains deferred unless a ticket explicitly introduces it. Backend routes, handlers, or webhook delivery flows added by Phase 1C tickets should inherit the shipped `CloudWatch + SNS` operations baseline and emit Honeycomb traces through the established backend observability path where they add new Lambda-executed behavior.
 
 ---
 
@@ -3175,12 +3177,12 @@ Without monitoring, failures are discovered by customer complaints. CloudWatch a
 ```yaml
 id: P1F.03
 title: Honeycomb Backend Telemetry
-status: in_progress
+status: complete
 priority: p1-high
 epic: P1F
 persona: [ops, builder]
 depends_on: [P1F.02]
-completed: null
+completed: 2026-04-20
 tech_stack:
   tracing: Honeycomb OTLP/HTTP
   signals: traces only
@@ -3200,21 +3202,21 @@ As a platform operator, I need backend traces in Honeycomb for deployed Lambdas 
 
 ##### Functional
 
-- [ ] `@prontiq/observability` package added and consumed by all in-scope deployed Lambda handlers
+- [x] `@prontiq/observability` package added and consumed by all in-scope deployed Lambda handlers
   - `Verify:` `rg -n "wrapLambdaHandler\\(|withActiveSpan\\(" packages/api/src packages/webhooks/src packages/control-plane/src packages/ingestion/src`
-  - `Evidence:` in repo; rollout verification still pending
-- [ ] `HONEYCOMB_API_KEY` required for deployed `dev` and `prod` in both workflow validation and `sst.config.ts`
+  - `Evidence:` verified in repo and exercised in deployed `dev` + `prod` on 2026-04-20
+- [x] `HONEYCOMB_API_KEY` required for deployed `dev` and `prod` in both workflow validation and `sst.config.ts`
   - `Verify:` `rg -n "HONEYCOMB_API_KEY" sst.config.ts .github/workflows/ci.yml .github/workflows/deploy-prod.yml`
-  - `Evidence:` in repo; staged deploy verification still pending
-- [ ] Honeycomb traces visible for all four backend service families in `dev`
+  - `Evidence:` verified in repo and exercised in deployed `dev` + `prod` on 2026-04-20
+- [x] Honeycomb traces visible for all four backend service families in `dev`
   - `Verify:` Honeycomb shows traces for `prontiq-api`, `prontiq-webhooks`, `prontiq-billing`, and `prontiq-ingestion` in environment `prontiq-dev`
-  - `Evidence:` pending secret creation + deploy
-- [ ] Honeycomb traces visible for all four backend service families in `prod`
+  - `Evidence:` verified 2026-04-20 after direct API/webhook/billing/ingestion probes in `dev`
+- [x] Honeycomb traces visible for all four backend service families in `prod`
   - `Verify:` Honeycomb shows traces for `prontiq-api`, `prontiq-webhooks`, `prontiq-billing`, and `prontiq-ingestion` in environment `prontiq-prod`
-  - `Evidence:` pending secret creation + deploy
-- [ ] CloudWatch alarms, SNS delivery, dashboard, and `PqApi` X-Ray remain intact
+  - `Evidence:` verified 2026-04-20 after production deploy plus direct API/webhook/billing/ingestion probes in `prod`
+- [x] CloudWatch alarms, SNS delivery, dashboard, and `PqApi` X-Ray remain intact
   - `Verify:` existing P1F.02 validation still passes after rollout
-  - `Evidence:` pending deploy verification
+  - `Evidence:` verified 2026-04-20: `dev` and `prod` deploys succeeded, Honeycomb traces landed for all four service families, and the retained CloudWatch/X-Ray paths remained available
 
 #### Scope
 
@@ -3232,6 +3234,8 @@ As a platform operator, I need backend traces in Honeycomb for deployed Lambdas 
 ## Phase 2 — ABN/ASIC Verification (Weeks 7-10)
 
 > **Goal:** Second product. ABN verification + search. EventBridge + Step Functions replaces GitHub Actions cron.
+>
+> **Observability default:** New backend routes, ingestion steps, or scheduled workflows introduced in Phase 2 should preserve `CloudWatch + SNS` for alerting/ops and emit Honeycomb traces for backend execution debugging. Browser/frontend telemetry remains out of scope unless a ticket says otherwise.
 
 ---
 
@@ -3424,6 +3428,9 @@ Phase 1 uses a GitHub Actions cron for ingestion — simple but manual. With two
 - [ ] Step Function: validate → create index → parallel bulk → finalize → health check → alias swap → cache invalidate
 - [ ] Concurrency control: max 1 execution per product (dedup via `ListExecutions`)
 - [ ] Failure handling: SNS alert, cleanup failed index, old alias stays live
+- [ ] Step Function + Lambda execution path visible in Honeycomb for debugging
+  - `Verify:` Trigger one address and one ABN manifest-driven execution → traces appear in Honeycomb for the orchestration + Lambda steps
+  - `Evidence:` Honeycomb traces show manifest validation, index creation, health check, and alias swap path for the new workflow
 - [ ] Works for BOTH address and ABN (manifest-driven, product-agnostic)
 - [ ] GitHub Actions cron ingestion retired
 - [ ] NDJSON content sampling validation (first 500 records per file)
@@ -3607,6 +3614,8 @@ Director data comes from ASIC (separate dataset from ABR). This is a premium end
 ## Phase 3 — GLEIF/LEI + Full Dashboard (Weeks 11-13)
 
 > **Goal:** Third product (international). Full dashboard build-out with team management.
+>
+> **Observability default:** Backend work in Phase 3 should keep CloudWatch/SNS as the ops plane and use Honeycomb for backend trace verification on new API, webhook, background-job, or data-pipeline execution paths. Browser/frontend telemetry remains deferred unless a ticket explicitly adds it.
 
 ---
 
@@ -3936,6 +3945,8 @@ API versioning is needed before the first breaking change ships. The `/v1/` pref
 ## Phase 4 — Shopify + WooCommerce (Weeks 14-17)
 
 > **Goal:** Distribution plugins for e-commerce checkout address validation.
+>
+> **Observability default:** Backend work in Phase 4 should keep CloudWatch/SNS as the ops plane and use Honeycomb for backend trace verification on new OAuth, webhook, API, or background execution paths. Browser/plugin-side telemetry remains out of scope unless a ticket explicitly adds it.
 
 ---
 
@@ -4030,6 +4041,9 @@ The Shopify install flow must be frictionless: click install → OAuth consent �
 - [ ] `app.uninstalled` webhook sets `active: false` on the store-scoped record
   - `Verify:` Uninstall from Shopify → DynamoDB key shows `active: false`
   - `Evidence:` Subsequent API calls with that key return 401
+- [ ] OAuth callback + install/uninstall webhook execution path visible in Honeycomb
+  - `Verify:` Complete one install and one uninstall flow in a non-prod environment → traces appear in Honeycomb for the OAuth callback and webhook handlers
+  - `Evidence:` Honeycomb traces show the store provisioning and deactivation path for the Shopify integration flow
 
 #### Scope
 
@@ -4176,6 +4190,8 @@ As a Shopify/WooCommerce merchant, I find clear integration guides so that I can
 ## Phase 5 — CVE/NVD + Patents (Weeks 18-21)
 
 > **Goal:** Tier 2 products. CVE integrates with ariscan. Patent search leverages OpenSearch fuzzy matching.
+>
+> **Observability default:** New backend APIs, pipelines, and scheduled jobs introduced in Phase 5 should continue to alert through CloudWatch/SNS and emit Honeycomb traces for request, pipeline, and workflow debugging. Browser/frontend telemetry remains out of scope unless explicitly introduced by a future ticket.
 
 ---
 
