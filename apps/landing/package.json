@@ -11,8 +11,10 @@
     "typecheck": "node ../../scripts/run-frontend-task.mjs landing typecheck"
   },
   "dependencies": {
+    "@clerk/nextjs": "^6.34.0",
     "@prontiq/shared": "workspace:*",
     "@prontiq/tokens": "workspace:*",
+    "@prontiq/web-component": "workspace:*",
     "@t3-oss/env-nextjs": "^0.13.8",
     "@radix-ui/react-avatar": "^1.1.10",
     "@radix-ui/react-dialog": "^1.1.15",

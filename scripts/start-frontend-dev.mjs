@@ -34,6 +34,17 @@ export function getDevProcessSpecs(appName) {
         ],
       },
       {
+        name: "web-component",
+        command: "pnpm",
+        args: [
+          "exec",
+          "chokidar",
+          "../../packages/plugins/web-component/src/**/*",
+          "-c",
+          "pnpm --filter @prontiq/web-component build",
+        ],
+      },
+      {
         name: "app",
         command: "pnpm",
         args: ["exec", "next", "dev"],

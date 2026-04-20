@@ -1841,13 +1841,13 @@ Stripe is configured with `cancel_at_period_end: true` on user-initiated cancell
 
 ```
 1. DISCOVERY
-   Developer lands on prontiq.dev/address
-   Hero: live autocomplete demo — types address, sees enriched results
-   Below: pricing table, one-line SDK install, "Get Started Free"
+   Developer lands on prontiq.dev
+   Hero: proxy-backed live autocomplete demo via <prontiq-address>
+   Below: Prontiq Free card, Stripe paid pricing table, "Get Started Free"
 
 2. SIGN UP
    Clicks "Get Started Free" → Clerk modal (Google/GitHub OAuth or email)
-   10 seconds. They land on /account.
+   10 seconds. They land on console.prontiq.dev.
 
 3. ACCOUNT PAGE — first visit
    Org auto-provisioned (Clerk webhook → Stripe customer → ORG#{orgId}).
@@ -1899,7 +1899,9 @@ The customer-facing frontend is a two-app Next.js architecture, not a single `/a
 - `console.prontiq.dev` is the authenticated application
 - `docs.prontiq.dev` remains the Mintlify docs surface
 
-The console is a client-rendered app below the auth boundary. `P1C.07` now establishes the real frontend base: Tailwind v3.4, app-local shadcn/ui primitives, dark mode, a responsive console shell, and an env-gated Clerk boundary that enables real sign-in when the Clerk keys are present while preserving deterministic keyless local/CI builds.
+`apps/landing` is now live as the public conversion surface. It embeds the real `<prontiq-address>` widget behind a constrained landing-side autocomplete proxy, renders the Prontiq Free tier from site config, renders paid plans through Stripe’s embedded pricing table, and opens a real Clerk sign-up modal when the Clerk publishable key is present.
+
+The console is a client-rendered app below the auth boundary. `P1C.07` established the real console frontend base: Tailwind v3.4, app-local shadcn/ui primitives, dark mode, a responsive console shell, and an env-gated Clerk boundary that enables real sign-in when the Clerk keys are present while preserving deterministic keyless local/CI builds.
 
 > Canonical frontend strategy: [docs/FRONTEND-STRATEGY.md](docs/FRONTEND-STRATEGY.md). This section is the architecture summary; the strategy doc is the frontend source of truth.
 

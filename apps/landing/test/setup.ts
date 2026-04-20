@@ -6,6 +6,11 @@ afterEach(() => {
   cleanup();
   document.documentElement.className = "";
   document.documentElement.removeAttribute("data-theme");
+  document.head.querySelectorAll('script[data-prontiq-stripe-pricing-table="true"]').forEach((script) => {
+    script.remove();
+  });
+  delete (window as typeof window & { __prontiqStripePricingTableScript?: Promise<void> })
+    .__prontiqStripePricingTableScript;
   if (typeof window.localStorage?.clear === "function") {
     window.localStorage.clear();
   }

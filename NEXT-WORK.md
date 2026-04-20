@@ -1,9 +1,9 @@
 # NEXT-WORK.md — Active Sprint
 
 > Extracted from ROADMAP.md. This is what agents should work on NOW.
-> Last updated: 2026-04-20 (Session 27)
+> Last updated: 2026-04-20 (Session 29)
 
-## Current Phase: P1C.01
+## Current Phase: P1C.02
 
 ### What's Live
 
@@ -31,6 +31,7 @@
 - **P1F.02 complete (2026-04-19).** The prod observability baseline is live and verified: `PqIngestAlerts` prod email subscriptions via `ALERT_EMAILS`, `prontiq-production` dashboard, prod alarms for address API 5xx/Lambda error rate and OpenSearch yellow/red/low-storage, `PqApi` X-Ray tracing with DynamoDB + OpenSearch segments, and structured JSON logs across Lambda execution paths. SNS email delivery was verified by forcing `PqApiLambdaErrorRate` to `ALARM` and confirming receipt on a confirmed subscriber.
 - **P1F.03 complete (2026-04-20).** `@prontiq/observability` is live in `dev` and `prod`, Honeycomb traces are verified for `prontiq-api`, `prontiq-webhooks`, `prontiq-billing`, and `prontiq-ingestion` in both environments, and the deployed-stage rollback path is `HONEYCOMB_ENABLED=false` rather than secret removal.
 - **P1C.07 complete (2026-04-20).** `apps/landing` and `apps/console` now have Tailwind v3.4, app-local shadcn/ui primitives, dark mode, responsive shell foundations, and app-local Vitest + Testing Library. `apps/console` now carries an env-gated real Clerk auth boundary that builds/tests cleanly without Clerk keys and enables real sign-in when they are present.
+- **P1C.01 complete (2026-04-20).** `apps/landing` now ships the real `prontiq.dev` surface: proxy-backed live hero demo via `@prontiq/web-component`, config-owned Prontiq Free card, Stripe embedded paid pricing wrapper, Clerk modal CTA wrappers, and app-local rate limiting on the landing demo proxy. Helper-managed local/CI flows remain keyless-safe; missing Stripe or Clerk envs degrade to deterministic fallback states without failing open.
 - **`@prontiq/control-plane` package** (recovered from prior design + hardened) provides `createProvisioningService()`, `writeAudit()` / `buildAuditTransactItem()`, AND `resolvePrimaryEmail()`. Both ingress paths (Clerk webhook + `/v1/account/setup`) consume the same provisioning service AND the same verified-primary-email helper — invariants enforced once at the package boundary.
 - The legacy raw-key table is retained only for rollback/soak; the old `pq_live_prod_...` seed key has been rotated and revoked.
 - Future prod seed-key rotation now has an operator command:
@@ -98,11 +99,11 @@ POST /v1/account/setup  (Clerk JWT; not API key — recovery provisioning)
 
 Recommended priority:
 
-1. P1C.01 — Landing Page with Autocomplete Demo.
-2. P1C.02 / P1C.03 console feature surfaces on top of the live frontend base.
+1. P1C.02 — Console Overview Page.
+2. P1C.03 — API Key Management.
 3. P1E.05 / P1E.06 ingestion hardening if platform work is preferred over frontend work.
 
-Before starting `P1C.01`, read:
+Before starting `P1C.02`, read:
 
 - `docs/FRONTEND-STRATEGY.md`
 - `docs/prototypes/console-dashboard-v1.html`
@@ -111,7 +112,7 @@ Reason:
 
 - P1B auth/billing execution is effectively complete.
 - Honeycomb backend tracing is now implemented and verified in deployed `dev` and `prod`.
-- The next product milestone is the first real landing feature surface on top of the live frontend base.
+- The next product milestone is the first real authenticated console feature surface on top of the live frontend base.
 - API Gateway caching remains a pragmatic performance/cost option if platform work is preferred over dashboard work.
 
 ### Operator follow-ups (one-time, not blocking next ticket)

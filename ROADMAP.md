@@ -1235,7 +1235,7 @@ Stripe billing needs one subscription per organisation with one recurring plan i
   - `Evidence:` Price IDs and meter config per product family
 - [ ] `<stripe-pricing-table>` created in Dashboard showing paid plans (Starter / Growth), with Free rendered separately by Prontiq
   - `Verify:` Stripe dashboard → Pricing tables shows the paid-plan table
-  - `Evidence:` Pricing table ID captured for P1C.05 embed, with Free card rendered in-app
+  - `Evidence:` Pricing table ID captured for landing (`P1C.01`) and the billing tab (`P1C.05`), with Free card rendered separately in-app
 - [ ] `PLANS` and `BILLING_ENDPOINTS` constants added to `packages/shared/src/constants.ts` per ARCHITECTURE.MD §5.6.1 (credits per month, rate limits, product families, published endpoint credit weights)
   - `Verify:` `pnpm typecheck` passes; the shared constants expose both plan-level credits and endpoint-level credit costs
   - `Evidence:` `packages/shared/src/constants.ts` diff
@@ -2036,12 +2036,12 @@ The console visual direction should follow `docs/prototypes/console-dashboard-v1
 ```yaml
 id: P1C.01
 title: Landing Page with Autocomplete Demo
-status: pending
+status: complete
 priority: p0-critical
 epic: P1C
 persona: [visitor]
 depends_on: [P1C.00, P1A.02, P1D.05, P1C.07]
-completed: null
+completed: 2026-04-20
 ```
 
 #### User Story
@@ -2050,27 +2050,27 @@ As a visitor, I see a hero autocomplete demo that works live so that I immediate
 
 #### Problem Statement
 
-`apps/landing` is the public marketing and conversion surface for `prontiq.dev`. It needs to demonstrate the product instantly, but the live hero demo depends on a safe demo-path strategy (public endpoint, proxy, or tightly constrained demo key). The page should be SSG-first, fast, mobile-responsive, and built for conversion instead of doubling as the authenticated app shell.
+`apps/landing` is the public marketing and conversion surface for `prontiq.dev`. It needs to demonstrate the product instantly while staying safe: the hero demo must be live without exposing an API key in client code. The page should be SSG-first, fast, mobile-responsive, and built for conversion instead of doubling as the authenticated app shell.
 
 #### Definition of Done
 
 ##### Functional
 
-- [ ] Hero interaction embedded on the landing page
-  - `Verify:` Landing page renders autocomplete input
-  - `Evidence:` Real component or approved static fallback present
-- [ ] Demo path chosen and implemented safely
-  - `Verify:` Type "9 endeavour" → real suggestions appear OR approved static fallback ships with no exposed privileged key
-  - `Evidence:` backend-safe demo path or explicit fallback implementation
-- [ ] Pricing table below hero (Prontiq Free card + Stripe embedded paid pricing table)
-  - `Verify:` Free card plus Starter / Growth plans visible with prices
-  - `Evidence:` Free is rendered by the site; Stripe pricing table renders paid plans correctly
-- [ ] "Get Started Free" button → Clerk sign-up modal
-  - `Verify:` Click button → Clerk modal appears
-  - `Evidence:` Sign-up flow works end-to-end
-- [ ] Mobile-responsive
+- [x] Hero interaction embedded on the landing page
+  - `Verify:` Landing page renders `<prontiq-address>` inside the hero demo section
+  - `Evidence:` `apps/landing/components/landing/address-demo.tsx`
+- [x] Demo path chosen and implemented safely
+  - `Verify:` Type "9 endeavour" → real suggestions appear through `/api/demo/address/autocomplete` with no client-side API key
+  - `Evidence:` landing-side proxy route + app-local rate limiter + `@prontiq/web-component`
+- [x] Pricing table below hero (Prontiq Free card + Stripe embedded paid pricing table)
+  - `Verify:` Free card plus live-or-fallback paid pricing section visible
+  - `Evidence:` Free is rendered by the site config; Stripe pricing table wrapper renders paid plans when env is configured
+- [x] "Get Started Free" button → Clerk sign-up modal
+  - `Verify:` CTA wrappers open Clerk modal when `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` is present; deterministic disabled state otherwise
+  - `Evidence:` `apps/landing/components/landing/signup-cta-button.tsx`
+- [x] Mobile-responsive
   - `Verify:` Test at 375px, 768px, 1280px widths
-  - `Evidence:` Layout adapts correctly at all breakpoints
+  - `Evidence:` responsive landing layout in `apps/landing/components/landing/landing-shell.tsx`
 
 #### Scope
 
@@ -2696,7 +2696,7 @@ The web component is three things: (1) the hero demo on the landing page that co
 
 ##### Functional
 
-- [ ] Custom element: `<prontiq-address api-key="..." on-select="...">`
+- [ ] Custom element: `<prontiq-address autocomplete-endpoint="..." on-select="...">` (proxy-compatible endpoint override required; direct API-key mode is optional)
   - `Verify:` Add to an HTML page → renders input field with autocomplete dropdown
   - `Evidence:` Component visible and functional
 - [ ] Renders autocomplete input with dropdown suggestions

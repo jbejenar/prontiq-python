@@ -54,14 +54,12 @@ export function getFrontendTaskSpec(appName, taskName) {
 export function getFrontendTaskEnv(appName) {
   validateAppName(appName);
 
-  if (appName === "console") {
+  if (appName === "console" || appName === "landing") {
     return {
       ...process.env,
       PRONTIQ_ALLOW_KEYLESS_CLERK: "1",
     };
   }
-
-  return process.env;
 }
 
 function spawnTask(spec, cwd) {

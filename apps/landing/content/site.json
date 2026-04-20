@@ -1,8 +1,76 @@
 {
-  "heroHeadline": "Australian address validation",
-  "heroSubheadline": "Typed, documented, and built for real product teams.",
-  "ctaPrimary": "Get Started Free",
-  "ctaSecondary": "Read the Docs",
-  "pricingIntro": "Simple credits-based pricing.",
-  "featuresIntro": "Fast autocomplete, validation, enrichment, and reverse geocoding."
+  "nav": {
+    "brandLabel": "prontiq",
+    "ctaLabel": "Get Started Free",
+    "links": [
+      {
+        "href": "#pricing",
+        "label": "Pricing"
+      },
+      {
+        "href": "https://docs.prontiq.dev",
+        "label": "Docs"
+      }
+    ]
+  },
+  "hero": {
+    "badge": "Australian address intelligence",
+    "headline": "One address endpoint for every checkout flow.",
+    "subheadline": "Autocomplete, validate, and enrich addresses through one typed API built for teams that ship.",
+    "ctaLabel": "Get Started Free",
+    "ctaSecondaryLabel": "Read the Docs",
+    "ctaSecondaryHref": "https://docs.prontiq.dev"
+  },
+  "demo": {
+    "kicker": "Try it",
+    "heading": "Type an address. Watch it resolve.",
+    "inputLabel": "Live demo · AU",
+    "placeholder": "Try: 9 endeavour",
+    "resultHeading": "Selected address payload",
+    "stateFilter": "VIC",
+    "limit": 5
+  },
+  "pricing": {
+    "kicker": "Pricing",
+    "title": "Usage-based. No seats.",
+    "intro": "Free gets you building immediately. Paid plans are handled by Stripe so upgrades stay self-serve.",
+    "freeTier": {
+      "name": "Free",
+      "priceLabel": "$0",
+      "unitLabel": "/mo",
+      "note": "No card required",
+      "description": "Build against the live address product before you ever talk to sales.",
+      "features": [
+        "10,000 credits per month",
+        "Autocomplete + validate + enrich",
+        "Address API access",
+        "Community support"
+      ],
+      "ctaLabel": "Start Free"
+    },
+    "paidPlansFootnote": "Starter and Growth are rendered by the Stripe pricing table."
+  },
+  "featuresIntro": "Fast autocomplete, validation, enrichment, and reverse geocoding.",
+  "footer": {
+    "brandLabel": "prontiq",
+    "copyrightLabel": "© 2026",
+    "links": [
+      {
+        "href": "https://docs.prontiq.dev",
+        "label": "Docs"
+      },
+      {
+        "href": "https://status.prontiq.dev",
+        "label": "Status"
+      },
+      {
+        "href": "https://prontiq.dev/privacy",
+        "label": "Privacy"
+      },
+      {
+        "href": "https://prontiq.dev/terms",
+        "label": "Terms"
+      }
+    ]
+  }
 }

@@ -12,10 +12,12 @@ async function makeRepoFixture() {
   await mkdir(join(repoDir, "apps", "landing"), { recursive: true });
   await mkdir(join(repoDir, "apps", "console"), { recursive: true });
   await mkdir(join(repoDir, "packages", "shared", "dist"), { recursive: true });
+  await mkdir(join(repoDir, "packages", "plugins", "web-component", "dist"), { recursive: true });
   await mkdir(join(repoDir, "packages", "tokens", "dist"), { recursive: true });
   await mkdir(join(repoDir, "sdks", "typescript", "esm"), { recursive: true });
 
   await writeFile(join(repoDir, "packages", "shared", "dist", "content.js"), "export {};\n", "utf8");
+  await writeFile(join(repoDir, "packages", "plugins", "web-component", "dist", "index.js"), "export {};\n", "utf8");
   await writeFile(join(repoDir, "packages", "tokens", "dist", "tokens.css"), ":root {}\n", "utf8");
   await writeFile(join(repoDir, "sdks", "typescript", "esm", "index.js"), "export {};\n", "utf8");
 
@@ -81,7 +83,7 @@ test("console helper only rebuilds the missing dependency from the app cwd", asy
 test("landing dev process spec uses argv arrays without POSIX-only quoting", () => {
   const specs = getDevProcessSpecs("landing");
 
-  assert.equal(specs.length, 3);
+  assert.equal(specs.length, 4);
   for (const spec of specs) {
     assert.ok(spec.args.every((arg) => !arg.includes("'")));
   }
@@ -106,7 +108,7 @@ test("landing dev bootstrap rebuilds declared workspace deps even when artifacts
     log: () => {},
   });
 
-  assert.deepEqual(builds, ["@prontiq/shared", "@prontiq/tokens"]);
+  assert.deepEqual(builds, ["@prontiq/shared", "@prontiq/tokens", "@prontiq/web-component"]);
 });
 
 test("landing build task builds missing workspace deps before running the app-local command", async () => {
@@ -139,10 +141,10 @@ test("landing build task builds missing workspace deps before running the app-lo
     }
   }
 
-  assert.deepEqual(builds, ["@prontiq/shared", "@prontiq/tokens"]);
+  assert.deepEqual(builds, ["@prontiq/shared", "@prontiq/tokens", "@prontiq/web-component"]);
   assert.equal(tasks.length, 1);
   assert.deepEqual(tasks[0].args, ["exec", "next", "build"]);
-  assert.equal(tasks[0].env.PRONTIQ_ALLOW_KEYLESS_CLERK, undefined);
+  assert.equal(tasks[0].env.PRONTIQ_ALLOW_KEYLESS_CLERK, "1");
 });
 
 test("console typecheck task rebuilds declared workspace deps and generates Next types before tsc", async () => {
@@ -206,7 +208,7 @@ test("frontend task skips local dependency rebuilds when turbo already owns the 
   assert.deepEqual(builds, []);
   assert.equal(tasks.length, 1);
   assert.deepEqual(tasks[0].args, ["exec", "next", "build"]);
-  assert.equal(tasks[0].env.PRONTIQ_ALLOW_KEYLESS_CLERK, undefined);
+  assert.equal(tasks[0].env.PRONTIQ_ALLOW_KEYLESS_CLERK, "1");
 });
 
 test("frontend task specs use argv arrays without POSIX-only quoting", () => {
@@ -254,10 +256,24 @@ test("frontend test task rebuilds declared workspace deps before running the app
     }
   }
 
-  assert.deepEqual(builds, ["@prontiq/shared", "@prontiq/tokens"]);
+  assert.deepEqual(builds, ["@prontiq/shared", "@prontiq/tokens", "@prontiq/web-component"]);
   assert.equal(tasks.length, 1);
   assert.deepEqual(tasks[0].args, ["exec", "vitest", "run"]);
-  assert.equal(tasks[0].env.PRONTIQ_ALLOW_KEYLESS_CLERK, undefined);
+  assert.equal(tasks[0].env.PRONTIQ_ALLOW_KEYLESS_CLERK, "1");
+});
+
+test("landing frontend task env explicitly enables keyless Clerk mode for local and CI helpers", () => {
+  const env = getFrontendTaskEnv("landing");
+
+  assert.equal(env.PRONTIQ_ALLOW_KEYLESS_CLERK, "1");
+});
+
+test("landing dev app process explicitly enables keyless Clerk mode for local helper runs", () => {
+  const specs = getDevProcessSpecs("landing");
+  const appSpec = specs.find((spec) => spec.name === "app");
+
+  assert.ok(appSpec);
+  assert.equal(appSpec.env?.PRONTIQ_ALLOW_KEYLESS_CLERK, "1");
 });
 
 test("console frontend task env explicitly enables keyless Clerk mode for local and CI helpers", () => {

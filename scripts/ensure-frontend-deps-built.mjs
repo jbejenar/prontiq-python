@@ -21,6 +21,10 @@ export const dependencyMap = {
       packageName: "@prontiq/tokens",
       artifacts: ["packages/tokens/dist/tokens.css"],
     },
+    {
+      packageName: "@prontiq/web-component",
+      artifacts: ["packages/plugins/web-component/dist/index.js"],
+    },
   ],
   console: [
     {

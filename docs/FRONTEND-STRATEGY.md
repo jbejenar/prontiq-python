@@ -2,8 +2,8 @@
 
 > Canonical frontend architecture for `prontiq.dev`, `console.prontiq.dev`, docs theming, transactional email styling, and the `<prontiq-address>` widget.
 
-**Version:** 2.3  
-**Ratified:** 19 April 2026  
+**Version:** 2.4
+**Ratified:** 20 April 2026
 **Status:** Canonical
 
 ## Summary
@@ -19,7 +19,7 @@ Both apps share:
 - the existing Speakeasy SDK published from `sdks/typescript` as `@prontiq/sdk`
 - shared schemas and content contracts from `@prontiq/shared`
 
-The console is client-rendered below the auth boundary and calls `api.prontiq.dev` directly with Clerk-issued JWTs. The landing site is SSG-first with MDX content behind a swappable `ContentSource` adapter.
+The console is client-rendered below the auth boundary and calls `api.prontiq.dev` directly with Clerk-issued JWTs. The landing site is SSG-first with repo-owned content config today (`apps/landing/content/site.json`) behind the existing shared content contract.
 
 This document replaces the old `packages/web` / `prontiq.dev/account` / `app.prontiq.dev` planning model. Those assumptions are no longer forward-looking architecture.
 
@@ -93,7 +93,7 @@ OpenAPI remains the API contract. Frontend code consumes `@prontiq/sdk` from `sd
 
 Landing content goes through a `ContentSource` interface in `@prontiq/shared`.
 
-- now: MDX-backed
+- now: repo-backed JSON/config through the shared content schema
 - later: Payload-backed if editorial workflow demands it
 
 ### Identity model
@@ -188,11 +188,11 @@ panels shown there are illustrative and may be deferred ticket-by-ticket.
 `apps/landing` is the marketing site and content surface:
 
 - SSG-first
-- MDX-backed at first
+- repo-backed config at first
 - dynamic OG images later
 - SEO and docs-to-signup conversion matter here, not in the console
 
-The hero should eventually be a live product demo, but that depends on a backend-safe public demo path or proxy model. Until then, static or simulated interaction is acceptable.
+The landing hero is now a live product demo. `apps/landing` embeds `@prontiq/web-component` and points it at a constrained landing-side proxy route so browser traffic never carries a privileged API key.
 
 ## Design Token Contract
 
@@ -274,11 +274,11 @@ The base tickets are now implemented:
 
 The next frontend tickets should be:
 
-1. `P1C.01 — Landing Page with Autocomplete Demo`
-2. `P1C.02 — Account Dashboard`
-3. `P1C.03 — API Key Management`
+1. `P1C.02 — Account Dashboard`
+2. `P1C.03 — API Key Management`
+3. `P1C.05 — Billing`
 
-Status: implemented. The next frontend ticket is `P1C.01`.
+Status: implemented. The next frontend ticket is `P1C.02`.
 
 ## Cross References
 

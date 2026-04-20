@@ -14,6 +14,10 @@
       "import": "./dist/content.js",
       "types": "./dist/content.d.ts"
     },
+    "./constants": {
+      "import": "./dist/constants.js",
+      "types": "./dist/constants.d.ts"
+    },
     "./keys": {
       "import": "./dist/keys.js",
       "types": "./dist/keys.d.ts"
