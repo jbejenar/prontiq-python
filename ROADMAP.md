@@ -30,7 +30,7 @@
 | --------- | -------------------------- | ------- | --------- | ----------- |
 | **P0**    | Infrastructure Foundation  | 6       | 6/6 ✅    | Week 1      |
 | **P1A**   | API Core (Address)         | 13      | 10/13     | Weeks 2-3   |
-| **P1B**   | Auth & Billing             | 20      | 12/20     | Weeks 3-4   |
+| **P1B**   | Auth & Billing             | 19      | 12/19     | Weeks 3-4   |
 | **P1C**   | Frontend Surfaces          | 9       | 3/9       | Weeks 4-6   |
 | **P1D**   | Docs & SDK                 | 5       | 2/5       | Week 5      |
 | **P1E**   | Ingestion (Phase 1)        | 6       | 4/6       | Week 6      |
@@ -39,7 +39,7 @@
 | **P3**    | GLEIF/LEI + Full Dashboard | 7       | 0/7       | Weeks 11-13 |
 | **P4**    | Shopify + WooCommerce      | 5       | 0/5       | Weeks 14-17 |
 | **P5**    | CVE/NVD + Patents          | 4       | 0/4       | Weeks 18-21 |
-| **Total** |                            | **86**  | **40/86** |             |
+| **Total** |                            | **85**  | **40/85** |             |
 
 ---
 
@@ -1079,9 +1079,11 @@ Options:
 >
 > **Current state.** P1B.02, P1B.04, P1B.04b, P1B.05, P1B.06, P1B.07, P1B.08, P1B.09, P1B.10, P1B.11, and P1B.12 are shipped. The DynamoDB-native key model is live in prod, the prod migration was executed on 2026-04-16, the legacy Stripe billing path is live, per-key burst limiting is enforced in the API middleware, SES feedback / quota-email delivery is live in dev + prod, previous-month scopes are now explicitly finalized and closed by the monthly `PqMonthClose` sweep, and the auth integration suite is now reconciled to the real post-cutover middleware contract. The forward commercial direction is now the Lago migration sequence.
 >
+> **Lago migration progress.** `0/7` complete for `P1B.14`–`P1B.20`. The `P1B` epic rollup includes completed historical Stripe-path work, so treat the Lago migration sequence as a separate pending track until the new commercial contract is implemented.
+>
 > **Scope boundary.** The hot-path middleware rewrite (hash-based lookup, REDIRECT fallback, new usage-table writes) ships in **P1B.04b** (cutover), NOT in P1B.02. P1B.02 is pure crypto primitives only — no DDB dependency — which is why it remains parallel-safe. P1B.04b flips schema + code atomically once P1B.02 and P1B.04 are both done.
 >
-> **Dependency graph:** P1B.01/.02/.03/.04 can run in parallel. P1B.04b depends on .02 + .04 (needs the crypto module + the tables to write the code cutover). P1B.05 depends on .01/.02/.03/.04. P1B.06 depends on .03/.04. P1B.07/.08 depend on .04. **P1B.09 depends on .02 + .04b** (the burst limiter middleware reads `record.rateLimit` from context — that context is established by the post-cutover auth middleware in .04b, not by the pure crypto module). P1B.10 depends on .03/.04/.06. P1B.11 depends on .10. P1B.12 depends on .05/.09/.04b (tests the cutover end-to-end).
+> **Dependency graph:** P1B.01/.02/.03/.04 can run in parallel. P1B.04b depends on .02 + .04 (needs the crypto module + the tables to write the code cutover). P1B.05 depends on .01/.02/.03/.04. P1B.06 depends on .03/.04. P1B.07/.08 depend on .04. **P1B.09 depends on .02 + .04b** (the burst limiter middleware reads `record.rateLimit` from context — that context is established by the post-cutover auth middleware in .04b, not by the pure crypto module). P1B.10 depends on .03/.04/.06. P1B.11 depends on .10. P1B.12 depends on .05/.09/.04b (tests the cutover end-to-end). The Lago migration sequence is intentionally linear enough to pin the commercial contract before the console UI builds on it: `P1B.14` → `P1B.15/.16` → `P1B.17/.18` → `P1B.19` → `P1B.20`, with `P1C.05` consuming the backend contract from `P1B.18`.
 >
 > **Repo-wide Unkey removal** completed in PR #68 (`chore(webhooks): remove Unkey code`) — `packages/webhooks/src/unkey.ts`, `unkeyWebhook` export, `lastSyncedFromUnkey` field, and `UNKEY_*` env vars all gone from main. **No P1B ticket owns this cleanup.** Going forward, P1B tickets only need to guarantee no NEW Unkey references are introduced.
 >
@@ -1225,7 +1227,7 @@ tech_stack:
 
 > Legacy shipped path. This ticket describes the current Stripe-centric
 > implementation and is superseded as forward-looking architecture by the Lago
-> migration sequence (`P1B.14`–`P1B.19`).
+> migration sequence (`P1B.14`–`P1B.20`).
 
 #### User Story
 
@@ -1311,14 +1313,15 @@ old commercial model before the architecture pivoted to Lago.
 This ticket is retained only as superseded planning history. The new forward
 path is the Lago migration sequence, not new Stripe purchase orchestration.
 
-#### Definition of Done
+#### Historical Superseded State
 
-##### Functional
-
-- [ ] Historical server-side purchase orchestration path documented for the old
-      Stripe model
-  - `Verify:` superseded planning context remains understandable
-  - `Evidence:` roadmap history retained without steering new work
+- The historical idea was to add more server-side Checkout-session
+  orchestration on top of the Stripe catalog established in `P1B.03`.
+- That work should not be resumed. The forward commercial contract is now:
+  Prontiq-owned customer mapping, SQS billing-event buffering, Lago event
+  forwarding, and Lago-backed billing surfaces.
+- Keep this ticket only as a record of what was intentionally abandoned so
+  future planning does not accidentally reopen Stripe-first purchase work.
 
 #### Scope
 
@@ -1326,11 +1329,9 @@ path is the Lago migration sequence, not new Stripe purchase orchestration.
 
 **Out — Do Not Implement:**
 
-- all new commercial implementation work → `P1B.14`–`P1B.19`
+- all new commercial implementation work → `P1B.14`–`P1B.20`
 
 ---
-
-### Ticket P1B.04 — DynamoDB Tables (4 tables + schema)
 
 ### Ticket P1B.14 — CustomerId + Customer Mapping Contract
 
@@ -1347,9 +1348,69 @@ tech_stack:
   billing: Lago + DynamoDB
 ```
 
-Define the shared org-scoped `customerId` contract across Clerk, Prontiq,
-Lago, and Stripe. This includes the target `customers` mapping model and the
-canonical ownership boundary between customer mapping and commercial state.
+#### User Story
+
+As a builder, I need one stable org-scoped `customerId` contract across Clerk,
+Prontiq, Lago, and the migration-era Stripe records so that every human,
+machine, and billing workflow resolves to the same commercial customer without
+duplication.
+
+#### Problem Statement
+
+The shipped platform still carries Stripe-era customer linkage, while the
+forward architecture makes Lago the target commercial system of record. Without
+a first-class `customerId` contract, the console, billing worker, Lago event
+forwarder, and reconciliation flows would each invent their own identity join
+logic. That would make backfill unsafe and would leave the request path,
+dashboard, and billing system disagreeing about who the customer actually is.
+
+#### Definition of Done
+
+##### Functional
+
+- [ ] Target `customerId` contract is defined as the org-scoped platform
+      customer identifier
+  - `Verify:` `ARCHITECTURE.MD`, roadmap ticket text, and billing guide all use
+    the same identity wording
+  - `Evidence:` merged docs/spec diff showing `customerId` as the shared
+    contract across Clerk orgs, Prontiq, Lago, and migration-era Stripe linkage
+- [ ] `customers` table / mapping row shape is specified
+  - `Verify:` roadmap ticket defines required fields and ownership boundaries
+  - `Evidence:` explicit mapping covers Clerk org id, `customerId`, Lago
+    external customer id, migration-era Stripe customer id, lifecycle status,
+    and audit timestamps
+- [ ] Existing orgs can be backfilled into the new mapping without minting
+      duplicate commercial identities
+  - `Verify:` backfill plan defines deterministic lookup precedence and
+    duplicate-collision handling
+  - `Evidence:` ticket body describes backfill path for already provisioned orgs
+    and rules for conflict detection / operator intervention
+- [ ] Both human auth and API-key auth resolve to the same commercial customer
+      model
+  - `Verify:` ticket explicitly ties Clerk-authenticated console actions and
+    API-key-authenticated usage to the same `customerId`
+  - `Evidence:` user story + DoD describe shared customer resolution model
+
+##### Operational
+
+- [ ] Migration rules are explicit before downstream Lago tickets start
+  - `Verify:` `P1B.15`–`P1B.18` can consume `customerId` without redefining
+    identity semantics
+  - `Evidence:` roadmap dependency chain remains `P1B.14` first
+
+#### Scope
+
+**In:** `customerId` contract, `customers` mapping ownership, backfill rules,
+identity resolution contract across Clerk/orgs/API keys/Lago/legacy Stripe
+
+**Out — Do Not Implement:**
+
+- event buffering → `P1B.15`
+- Lago event forwarding → `P1B.16`
+- webhook reconciliation → `P1B.17`
+- console billing UI → `P1C.05`
+
+---
 
 ### Ticket P1B.15 — SQS Billing Event Buffer + Hot-Path Emitter
 
@@ -1366,9 +1427,66 @@ tech_stack:
   billing: SQS + DynamoDB
 ```
 
-Move billing emission off the API hot path by introducing a durable queue for
-credit events. Prontiq continues to enforce credits synchronously in DynamoDB
-but never calls the billing system directly from request handling.
+#### User Story
+
+As a builder, I need the API hot path to emit durable billing events into SQS
+instead of calling Lago directly so that request handling remains fast and safe
+even when the billing system is degraded.
+
+#### Problem Statement
+
+Prontiq's request path must continue to enforce credits synchronously in
+DynamoDB, but Lago cannot sit on the hot path. The new architecture requires a
+durable queue between synchronous enforcement and asynchronous billing. Without
+that buffer, Lago outages or retries would bleed into request latency and make
+commercial correctness compete with API availability.
+
+#### Definition of Done
+
+##### Functional
+
+- [ ] Billing-event payload emitted from request handling is defined
+  - `Verify:` ticket specifies required fields for downstream Lago forwarding
+  - `Evidence:` payload includes `customerId`, api key identity, product /
+    metric identity, credit delta, timestamp, source request metadata, and a
+    deterministic event identity input
+- [ ] Request handling emits billing events only after synchronous enforcement
+      succeeds
+  - `Verify:` architecture text and ticket wording keep DynamoDB enforcement on
+    the hot path and billing emission asynchronous
+  - `Evidence:` DoD explicitly states "enforce first, enqueue second, never call
+    Lago from the request handler"
+- [ ] Queue retry / DLQ / duplicate-delivery expectations are specified
+  - `Verify:` ticket defines retry posture and how poison messages are handled
+  - `Evidence:` SQS + DLQ behavior and replay assumptions are documented
+- [ ] Event identity is deterministic enough for downstream idempotency
+  - `Verify:` `P1B.16` can derive a stable Lago transaction id from this event
+    contract
+  - `Evidence:` deterministic event-identity inputs described in ticket body
+
+##### Operational
+
+- [ ] Lago unavailability does not break request handling
+  - `Verify:` ticket explicitly states the availability boundary
+  - `Evidence:` acceptance text says requests remain gated only by local
+    enforcement + successful queue write
+- [ ] Queue failure semantics are explicit
+  - `Verify:` ticket defines what happens when SQS write fails after local
+    enforcement
+  - `Evidence:` retry / audit / operator follow-up expectations are spelled out
+
+#### Scope
+
+**In:** SQS billing-event schema, emitter contract, queueing semantics,
+idempotency inputs, hot-path boundary
+
+**Out — Do Not Implement:**
+
+- Lago forwarding worker → `P1B.16`
+- webhook reconciliation → `P1B.17`
+- console-facing billing APIs → `P1B.18`
+
+---
 
 ### Ticket P1B.16 — Lago Event Forwarder Worker + Idempotent Transaction IDs
 
@@ -1385,9 +1503,64 @@ tech_stack:
   billing: Lago
 ```
 
-Consume queued billing events, write any platform-side analytics required, and
-forward the billing event into Lago with deterministic transaction IDs for safe
-replay.
+#### User Story
+
+As a builder, I need a replay-safe worker that consumes queued billing events,
+writes any required platform analytics, and forwards them to Lago with
+deterministic transaction ids so that retries and replays never double-bill the
+customer.
+
+#### Problem Statement
+
+Once billing events are buffered in SQS, Prontiq still needs a safe bridge into
+Lago. If the worker generates ad hoc transaction ids or mixes analytics writes
+and Lago forwarding without a deterministic contract, retries will either lose
+events or double charge. The worker must therefore treat replay-safety as the
+primary invariant.
+
+#### Definition of Done
+
+##### Functional
+
+- [ ] Worker contract is defined from dequeue to Lago forward
+  - `Verify:` roadmap text specifies dequeue, validation, analytics write, Lago
+    payload construction, and ack/retry boundaries
+  - `Evidence:` ticket body documents the ordered worker responsibilities
+- [ ] Lago transaction id generation is deterministic
+  - `Verify:` same billing event always produces the same Lago transaction id
+  - `Evidence:` transaction-id derivation rules are documented against the
+    `P1B.15` event contract
+- [ ] Duplicate processing is safe
+  - `Verify:` worker replay of the same event cannot double-bill in Lago
+  - `Evidence:` ticket explicitly requires duplicate suppression via
+    deterministic transaction ids and idempotent worker behavior
+- [ ] Platform-side analytics write is defined as a side-effect of the worker,
+      not the request path
+  - `Verify:` roadmap makes analytics persistence part of async billing flow
+  - `Evidence:` ticket body describes analytics write responsibility and ordering
+
+##### Operational
+
+- [ ] Worker failure leaves the event retryable
+  - `Verify:` ticket defines failure boundaries before/after Lago acceptance
+  - `Evidence:` retry semantics described for transient Lago/network failures
+- [ ] Replay path is explicit
+  - `Verify:` operators can safely replay queued billing events without manual
+    data surgery
+  - `Evidence:` ticket text references deterministic replay-safety expectations
+
+#### Scope
+
+**In:** worker contract, deterministic transaction ids, Lago event payload
+bridge, analytics side-effects, retry/replay safety
+
+**Out — Do Not Implement:**
+
+- queue emitter semantics → `P1B.15`
+- reconciliation from Lago back into counters → `P1B.17`
+- console billing endpoints → `P1B.18`
+
+---
 
 ### Ticket P1B.17 — Lago Webhook Sync + Credit-Counter Reconciliation
 
@@ -1404,8 +1577,72 @@ tech_stack:
   billing: Lago webhooks
 ```
 
-Reconcile Lago subscription and period-boundary state back into Prontiq's
-`credit_counters` enforcement rows without putting Lago on the hot path.
+#### User Story
+
+As a builder, I need Lago subscription and billing-period events to reconcile
+back into Prontiq's enforcement state so that capped plans reset correctly,
+PAYG stays uncapped but tracked, and the platform can detect drift without
+making Lago authoritative for hot-path enforcement.
+
+#### Problem Statement
+
+The target architecture deliberately splits responsibilities: Lago owns
+commercial truth, while DynamoDB `credit_counters` remains enforcement state.
+That split only works if the platform knows which Lago events it consumes, what
+they are allowed to mutate locally, and how repeated delivery or drift is
+handled. Without explicit reconciliation rules, capped plans will reset
+incorrectly and the console will show stale state.
+
+#### Definition of Done
+
+##### Functional
+
+- [ ] Consumed Lago event set is defined
+  - `Verify:` ticket names the subscription / invoice / billing-boundary events
+    the platform reacts to
+  - `Evidence:` reconciliation contract documents event categories and local
+    side-effects
+- [ ] Authority boundary between Lago and `credit_counters` is explicit
+  - `Verify:` roadmap text states Lago is commercial truth while
+    `credit_counters` remains enforcement state
+  - `Evidence:` ticket body distinguishes plan / invoice / wallet state from
+    request-time local counters
+- [ ] Billing-boundary reset behavior is defined for capped plans
+  - `Verify:` monthly / billing-period reset semantics are described
+  - `Evidence:` ticket states which local counters reset and which audit/history
+    rows remain append-only
+- [ ] PAYG reconciliation behavior is defined separately from capped plans
+  - `Verify:` roadmap text does not pretend PAYG needs hard reset semantics
+  - `Evidence:` ticket says PAYG remains uncapped but tracked and reconciled for
+    visibility / drift only
+- [ ] Drift-detection path is documented
+  - `Verify:` ticket describes what mismatch between Lago state and local
+    counters looks like and how operators recover
+  - `Evidence:` reconciliation section includes drift follow-up expectation
+
+##### Operational
+
+- [ ] Webhook processing is idempotent
+  - `Verify:` repeated Lago delivery does not corrupt counters or duplicate
+    transitions
+  - `Evidence:` ticket text requires idempotent local writes keyed by event
+    identity
+- [ ] Reconciliation remains off the request path
+  - `Verify:` no live request depends on synchronous webhook processing
+  - `Evidence:` ticket preserves async-only reconciliation model
+
+#### Scope
+
+**In:** Lago webhook consumption, authority boundaries, counter resets,
+PAYG-vs-capped reconciliation, drift handling
+
+**Out — Do Not Implement:**
+
+- initial customer mapping → `P1B.14`
+- queue emitter / forwarder implementation → `P1B.15` / `P1B.16`
+- billing UI rendering → `P1C.05`
+
+---
 
 ### Ticket P1B.18 — Console Billing Proxy Surfaces + Plan Changes
 
@@ -1422,10 +1659,64 @@ tech_stack:
   billing: Lago + account APIs
 ```
 
-Define the backend and orchestration contract for Lago-backed billing state,
-plan-change actions, and any migration-era invoice/payment links that the
-console billing page will consume. `P1C.05` renders the page on top of this
-contract; it is not a prerequisite for defining it.
+#### User Story
+
+As an API consumer using the console, I need Prontiq-owned billing/account
+surfaces for current billing state, current plan, invoices, and plan changes so
+that the dashboard is built on a stable platform contract rather than direct
+Stripe-first UX.
+
+#### Problem Statement
+
+The console billing page should consume Prontiq-owned contract surfaces, not
+invent billing logic in the UI and not hard-code a Stripe-hosted user journey
+as the long-term model. This ticket exists to define the backend/orchestration
+contract that `P1C.05` renders. Without this contract, the frontend would again
+be forced to couple itself to migration residue instead of the Lago target
+architecture.
+
+#### Definition of Done
+
+##### Functional
+
+- [ ] Console billing/account contract is defined
+  - `Verify:` roadmap ticket specifies the backend surfaces the console will
+    call
+  - `Evidence:` contract covers current billing state, current plan, invoice /
+    history links, payment-status messaging, and plan-change actions
+- [ ] Plan changes are modeled as Prontiq-owned actions
+  - `Verify:` ticket does not treat Stripe Checkout or Customer Portal as the
+    forward plan-change surface
+  - `Evidence:` contract wording centers on platform-owned proxy/orchestration
+    routes with migration-era hosted links clearly labeled if retained
+- [ ] `P1C.05` boundary is explicit
+  - `Verify:` roadmap shows `P1B.18` defining the contract and `P1C.05`
+    rendering the UI on top of it
+  - `Evidence:` no circular dependency between backend contract and console page
+- [ ] Migration-only legacy links are explicitly constrained
+  - `Verify:` any retained Stripe invoice / payment / portal links are described
+    as temporary compatibility surfaces
+  - `Evidence:` ticket body distinguishes target contract from migration residue
+
+##### Operational
+
+- [ ] Backend contract is stable enough for the console to build against
+  - `Verify:` `NEXT-WORK.md` sequencing remains `P1B.18` before deeper billing
+    UI work
+  - `Evidence:` roadmap dependency chain + ticket wording align
+
+#### Scope
+
+**In:** platform-owned console billing state, migration-aware billing actions,
+invoice/history surfaces, plan-change orchestration contract
+
+**Out — Do Not Implement:**
+
+- billing page UI implementation → `P1C.05`
+- direct Stripe-first self-service UX as the long-term contract
+- custom enterprise/commercial contracting workflows → future
+
+---
 
 ### Ticket P1B.19 — Stripe Legacy Billing Retirement and Cutover
 
@@ -1442,66 +1733,152 @@ tech_stack:
   billing: Lago + Stripe
 ```
 
-Retire the legacy Stripe-centric billing cron/month-close/control-plane path
-once Lago-backed billing is verified end to end.
-
-```yaml
-id: P1B.04
-title: DynamoDB Tables (4 tables + schema)
-status: complete
-priority: p0-critical
-epic: P1B
-persona: [builder]
-depends_on: [P0.02]
-completed: 2026-04-16
-tech_stack:
-  infra: SST v4 + Pulumi
-  data: DynamoDB
-```
-
 #### User Story
 
-As a builder, I need four DynamoDB tables (`prontiq-keys`, `prontiq-usage`, `prontiq-audit`, `prontiq-ses-suppressions`) with the exact schema defined in ARCHITECTURE.MD §5.5.1 so that subsequent tickets (webhook handlers, cron, middleware) have the infra to write to.
+As an operator, I need a controlled cutover that retires the legacy
+Stripe-centric billing path only after the Lago path is verified end to end so
+that no active customer is stranded on the old billing flow and rollback remains
+possible.
 
 #### Problem Statement
 
-v2.2 splits the single legacy `ApiKeyTable` into four purpose-specific tables: hot-path isolation (keys + usage separated), append-only logging (audit), TTL-driven cleanup, hash-only storage. Registry and provisioning-lock are sentinel items in `prontiq-keys` with reserved PKs.
+The legacy Stripe path is real production behavior today: provisioning-era
+customer linkage, Stripe webhooks, billing cron, and month-close. The Lago
+target architecture is not complete until that old path is retired cleanly.
+Without an explicit cutover ticket, the repo would accumulate two parallel
+billing systems with no clear stop point, no migration evidence, and no safe
+rollback plan.
 
 #### Definition of Done
 
 ##### Functional
 
-- [x] `prontiq-keys` table with PK `apiKeyHash` (string), GSI `orgId-index` on `orgId` (sparse — sentinel rows like `ORG#{orgId}` and `REGISTRY#active-keys` deliberately do NOT set an `orgId` attribute, so they are excluded from the index per ARCHITECTURE.MD §5.5.1 "Sentinel record discriminator")
-  - `Verify:` `aws dynamodb describe-table --table-name prontiq-keys` shows `orgId-index` GSI
-  - `Evidence:` `sst.config.ts` `PqAuthKeys` component declares PK `apiKeyHash` + `orgId-index` GSI with default ALL projection; physical AWS name `prontiq-keys` (prod) / `prontiq-keys-{stage}` (non-prod). `describe-table` verification runs against dev after CI deploy post-merge.
-- [x] `prontiq-usage` table with PK `apiKeyHash` (string) + SK `scope` (string); TTL enabled on `ttl` attribute; **GSI `newHash-redirect-index`** on `newHash` (sparse — only REDIRECT items have a `newHash` attribute) with `KEYS_ONLY` projection. Required by P1B.10 billing cron for rotation-chain attribution per ARCHITECTURE.MD §5.5.1 REDIRECT schema + §5.6.2 cron flow.
-  - `Verify:` `aws dynamodb describe-table --table-name prontiq-usage` shows both TTL on `ttl` AND `newHash-redirect-index` GSI with `KEYS_ONLY` projection
-  - `Evidence:` `sst.config.ts` `PqAuthUsage` component declares PK `apiKeyHash` + SK `scope`, `ttl: "ttl"`, `newHash-redirect-index` GSI with `projection: "keys-only"` (SST maps to `KEYS_ONLY`).
-- [x] **REDIRECT GSI smoke test** — seed a REDIRECT item `{apiKeyHash: oldHash, scope: "REDIRECT", newHash: newHash, authValidUntil, ttl}`; query `newHash-redirect-index` where `newHash = newHash`; assert exactly 1 result (the seeded oldHash). Required because P1B.10 will fail without this index.
-  - `Verify:` Integration test against DynamoDB Local
-  - `Evidence:` `packages/api/src/middleware/redirect-gsi.integration.test.ts` (2 tests: indexed-match + sparse-miss) passes against DDB Local 2.5.2. CI runs it in the `integration-test` job alongside OpenSearch.
-- [x] `prontiq-audit` table with PK `orgId` + SK `timestamp#eventId`; TTL enabled on `ttl` (365 days)
-  - `Verify:` `aws dynamodb describe-table --table-name prontiq-audit`
-  - `Evidence:` `sst.config.ts` `PqAuthAudit` component declares PK `orgId` + SK `timestamp#eventId`, `ttl: "ttl"`. The 365-day retention is enforced by writer helper (P1B.07) setting the `ttl` attribute value — DDB TTL is attribute-driven, not schema-driven.
-- [x] `prontiq-ses-suppressions` table with PK `email`; TTL enabled on `ttl` (90 days for bounces)
-  - `Verify:` `aws dynamodb describe-table --table-name prontiq-ses-suppressions`
-  - `Evidence:` `sst.config.ts` `PqSesSuppressions` component declares PK `email`, `ttl: "ttl"`. The 90-day retention for bounces / null TTL for complaints is enforced by the bounce handler (P1B.08) setting the `ttl` attribute value.
-- [x] All tables on-demand (PAY_PER_REQUEST) billing
-  - `Verify:` describe-table shows `BillingModeSummary: PAY_PER_REQUEST`
-  - `Evidence:` `sst.aws.Dynamo` defaults to `billingMode: "PAY_PER_REQUEST"` (confirmed at `.sst/platform/src/components/aws/dynamo.ts:522`). No explicit override needed.
-- [x] Table definitions were deployed successfully in dev and prod as part of the live cutover
-  - `Verify:` `deploy-dev` and `deploy-prod` both succeeded with the v2.2 table definitions live
-  - `Evidence:` Successful deploy runs on 2026-04-16 plus subsequent green CI / deploy passes
+- [ ] Cutover preconditions are defined and satisfied
+  - `Verify:` ticket requires `P1B.14`–`P1B.18` to be shipped and verified
+  - `Evidence:` cutover checklist references customer mapping, event buffer,
+    forwarder, reconciliation, and console billing contract as prerequisites
+- [ ] Retirement scope is explicit
+  - `Verify:` roadmap names the legacy Stripe cron / month-close /
+    control-plane billing path being retired
+  - `Evidence:` ticket body lists the legacy billing components and active
+    operational paths that are retired at cutover, before follow-on config and
+    surface cleanup in `P1B.20`
+- [ ] No active customer remains on the retired path
+  - `Verify:` cutover validation confirms all live customers are mapped to the
+    Lago-backed flow before final retirement
+  - `Evidence:` operator verification checklist / migration evidence referenced
+- [ ] Cutover-time operating posture is switched to the Lago path
+  - `Verify:` operators have one active runbook path for the live commercial
+    system immediately after cutover
+  - `Evidence:` cutover checklist demotes the legacy Stripe billing runbooks
+    from active operations guidance, with deeper config/surface cleanup
+    deferred to `P1B.20`
+
+##### Operational
+
+- [ ] Rollback posture is defined before the cutover starts
+  - `Verify:` ticket describes what evidence is required to continue or revert
+  - `Evidence:` rollback expectations captured in the ticket body
+- [ ] Cutover is observable
+  - `Verify:` operators have clear signals for Lago-forward path success and
+    legacy-path quiescence
+  - `Evidence:` acceptance text references operational checks / monitoring
 
 #### Scope
 
-**In:** 4 tables via SST, TTL config, GSI on keys table
+**In:** cutover criteria, legacy Stripe retirement scope, rollback posture,
+post-cutover documentation and operations cleanup
 
 **Out — Do Not Implement:**
 
-- Data migration from legacy table → P1B.04b
-- Any writes to these tables → later tickets
-- Registry sharding (only needed post-6,250 billable keys, Phase 5)
+- initial customer / event / reconciliation contract work → `P1B.14`–`P1B.18`
+- legacy config / env / frontend-surface cleanup → `P1B.20`
+- future commercial model expansion beyond Free + PAYG
+
+---
+
+### Ticket P1B.20 — Legacy Stripe Config and Surface Cleanup
+
+```yaml
+id: P1B.20
+title: Legacy Stripe Config and Surface Cleanup
+status: pending
+priority: p1-high
+epic: P1B
+persona: [ops, builder]
+depends_on: [P1B.19]
+completed: null
+tech_stack:
+  billing: Lago + Stripe
+  config: SST + Next.js env contracts
+```
+
+#### User Story
+
+As an operator and builder, I need the repo cleaned of retired Stripe-era
+billing configuration and migration-only frontend surfaces after cutover so
+that the codebase, deploy config, and docs reflect the actual Lago target
+architecture instead of preserving dead billing paths indefinitely.
+
+#### Problem Statement
+
+`P1B.19` gets the platform across the commercial cutover, but it is not enough
+to leave legacy Stripe-era configuration hanging around afterward. The repo
+still contains billing-only secrets, env contracts, landing-page pricing-table
+surfaces, and deploy wiring that are valid during migration but should not
+survive as silent permanent debt. If they are not removed explicitly, the repo
+will keep telling future engineers that both billing systems still matter.
+
+#### Definition of Done
+
+##### Functional
+
+- [ ] Billing-only Stripe env and secret contracts are audited and reduced to
+      the post-cutover minimum
+  - `Verify:` every remaining `STRIPE_*` env/secret has an intentional
+    payment-rail consumer in the final architecture
+  - `Evidence:` env contract diff across `sst.config.ts`, app env schemas,
+    deploy docs, and runbooks
+- [ ] Retired landing pricing-table surfaces are removed once no active flow
+      depends on them
+  - `Verify:` `apps/landing` no longer renders or documents the legacy Stripe
+    pricing-table path
+  - `Evidence:` component/env/content/test cleanup removes the pricing-table
+    fallback surface when the post-cutover billing UX is live
+- [ ] Legacy Stripe billing deploy/runtime wiring is removed or explicitly
+      tombstoned
+  - `Verify:` webhook/cron/month-close billing-only paths are no longer treated
+    as active deploy targets after cutover
+  - `Evidence:` code/config/docs diff shows retired Stripe billing surfaces
+    deleted or moved into historical-only context
+- [ ] Operator docs are reconciled to post-cutover reality
+  - `Verify:` canonical docs and runbooks no longer instruct operators to set
+    or maintain retired Stripe billing config
+  - `Evidence:` runbook/doc updates describe only intentional remaining Stripe
+    payment-rail responsibilities
+
+##### Operational
+
+- [ ] Cleanup is verified by search, not just by spot checks
+  - `Verify:` targeted grep over `STRIPE_`, `pricing table`, `PqBillingCron`,
+    and `PqMonthClose` leaves only intentional historical/payment-rail matches
+  - `Evidence:` recorded verification commands / outputs in PR or session notes
+- [ ] Post-cutover deploy contract is simpler than the migration contract
+  - `Verify:` deploy-stage secret inventory shrinks after cleanup
+  - `Evidence:` AGENTS / README / runbooks no longer require migration-only
+    Stripe billing config
+
+#### Scope
+
+**In:** legacy Stripe billing config cleanup, landing pricing-table retirement,
+post-cutover secret/env cleanup, doc/runbook reconciliation, grep-based proof
+
+**Out — Do Not Implement:**
+
+- the Lago cutover itself → `P1B.19`
+- removing Stripe payment-rail responsibilities that still exist in the final
+  Lago architecture
+- broader frontend redesign work beyond removing migration-only surfaces
 
 ---
 
@@ -2560,21 +2937,16 @@ it is not the forward contract. Landing and console pricing surfaces should now
 align to the Lago-target commercial architecture and the current business
 direction of Free + PAYG.
 
-#### Definition of Done
+#### Historical Superseded State
 
-##### Functional
-
-- [ ] Landing pricing section uses Prontiq-rendered plan cards instead of an
-      embedded Stripe widget
-  - `Verify:` Landing page shows Prontiq-owned pricing UI for the active
-    commercial direction
-  - `Evidence:` landing pricing component diff + tests
-- [ ] Paid CTAs align to the active commercial orchestration contract
-  - `Verify:` Select paid tier → supported billing flow opens
-  - `Evidence:` CTA wiring + tests
-- [ ] Pricing Table-specific env/documentation is removed from the forward-looking frontend contract
-  - `Verify:` no active landing or console docs require `NEXT_PUBLIC_STRIPE_PRICING_TABLE_ID`
-  - `Evidence:` doc diff + config cleanup
+- The original plan was to replace the embedded Stripe Pricing Table with
+  Prontiq-rendered cards while keeping Stripe-hosted commercial flows as the
+  forward direction.
+- That is no longer the target model. Future landing and console pricing
+  surfaces should build against Lago-target billing contracts and the current
+  Free + PAYG direction instead.
+- Keep this ticket only as a record of the retired Pricing Table replacement
+  plan so future work does not accidentally revive it.
 
 #### Scope
 
@@ -3764,13 +4136,13 @@ As a platform operator, I retain the historical Stripe-meter planning context fo
 
 This ticket is retained only as a record of the retired Stripe-meter expansion idea. Do not schedule new engineering work from it. When ABN commercialisation resumes under the Lago target architecture, track billable-metric definition, customer/product mapping, and billing-surface visibility in a Lago-target ticket instead.
 
-#### Definition of Done
+#### Historical Superseded State
 
-##### Functional
-
-- [ ] No new work is scheduled from this historical Stripe ticket
-  - `Verify:` Future ABN commercial work is tracked against Lago-target plan/billable-metric tickets instead
-  - `Evidence:` Roadmap references Lago billable metrics, not new Stripe meters
+- The retired idea was to add ABN-specific Stripe usage meters and prices on top
+  of the legacy billing path.
+- That should not be resumed. When ABN commercialisation returns, define Lago
+  billable metrics, product mappings, and billing-surface visibility instead of
+  introducing new Stripe meters.
 
 #### Scope
 
@@ -4131,13 +4503,13 @@ completed: null
 
 As a platform operator, I retain the historical Stripe-meter planning context for LEI while steering future LEI commercialisation toward Lago billable metrics instead.
 
-#### Definition of Done
+#### Historical Superseded State
 
-##### Functional
-
-- [ ] No new work is scheduled from this historical Stripe ticket
-  - `Verify:` Future LEI commercial work is tracked against Lago-target plan/billable-metric tickets instead
-  - `Evidence:` Roadmap references Lago billable metrics, not new Stripe meters
+- The retired idea was to add LEI-specific Stripe usage meters and prices on top
+  of the legacy billing path.
+- That should not be resumed. When LEI commercialisation returns, define Lago
+  billable metrics, product mappings, and billing-surface visibility instead of
+  introducing new Stripe meters.
 
 #### Scope
 
@@ -4587,13 +4959,13 @@ As a platform operator, I retain the historical Stripe-meter planning context fo
 
 This ticket is retained only as a record of the retired Stripe-meter expansion idea for later product families. Do not schedule new engineering work from it. When CVE or Patents commercialisation resumes under the Lago target architecture, track billable-metric definition, customer/product mapping, and billing-surface visibility in Lago-target tickets instead.
 
-#### Definition of Done
+#### Historical Superseded State
 
-##### Functional
-
-- [ ] No new work is scheduled from this historical Stripe ticket
-  - `Verify:` Future CVE/Patents commercial work is tracked against Lago-target plan/billable-metric tickets instead
-  - `Evidence:` Roadmap references Lago billable metrics, not new Stripe meters
+- The retired idea was to add additional Stripe meters and prices for CVE and
+  Patents on top of the legacy billing stack.
+- That should not be resumed. When those product families are commercialised,
+  define Lago billable metrics, product mappings, and billing-surface behavior
+  instead of introducing new Stripe meters.
 
 #### Scope
 

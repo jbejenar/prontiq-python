@@ -41,8 +41,11 @@ Landing envs:
 - `PRONTIQ_LANDING_UNLOCK_TOKEN` optional root-page-only soft gate token. When
   set, `/` stays black until visited once as `/?unlock=<token>`, which sets a
   7-day cookie. API routes remain unchanged.
-- `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`
 
 Legacy / superseded interim envs:
 
+- `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`
 - `NEXT_PUBLIC_STRIPE_PRICING_TABLE_ID`
+
+These two envs belong to the retired Stripe Pricing Table fallback and should
+not be treated as the forward-looking landing billing contract.

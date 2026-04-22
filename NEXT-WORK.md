@@ -89,6 +89,7 @@ POST /v1/account/setup  (Clerk JWT; not API key — recovery provisioning)
 - **P1B.17 — Lago webhook sync + credit-counter reconciliation**
 - **P1B.18 — Console billing proxy surfaces + plan changes**
 - **P1B.19 — Stripe legacy billing retirement and cutover**
+- **P1B.20 — Legacy Stripe config and surface cleanup**
 
 ### 2. Finish ingestion hardening
 
@@ -108,7 +109,8 @@ Recommended priority:
 1. P1B.14 — lock the Lago customer-mapping and `customerId` contract.
 2. P1B.15 / P1B.16 — move billing emission behind SQS and into Lago forwarding.
 3. P1B.17 / P1B.18 — reconcile Lago state back into platform counters and expose the console billing surfaces.
-4. P1C.02 / P1C.03 — continue the console overview and API-key experience after the commercial contract is pinned.
+4. P1B.19 / P1B.20 — cut over the legacy Stripe billing path and remove the retired config/surfaces.
+5. P1C.02 / P1C.03 — continue the console overview and API-key experience after the commercial contract is pinned.
 
 Before starting `P1B.14`, read:
 

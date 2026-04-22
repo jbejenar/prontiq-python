@@ -1,5 +1,9 @@
 # NEXT-SESSION.md — Session Execution Log
 
+> Historical progress/count snapshots in older sessions are archival notes from
+> the time they were written, not the current source of truth. Use
+> `ROADMAP.md`, `NEXT-WORK.md`, and `README.md` for current execution status.
+
 ## Session 30 — 2026-04-22
 
 **Focus:** Lago commercial architecture rewrite and planning reset.
@@ -7,8 +11,11 @@
 ### Completed
 
 - **Canonical commercial architecture direction changed.** `ARCHITECTURE.MD` now presents Lago as the target commercial system of record, while the currently shipped Stripe webhook / billing cron / month-close path is retained only as legacy implementation context.
-- **Roadmap and handoff docs are now migration-oriented.** The forward workstream is no longer Stripe Checkout-session orchestration. It is the Lago migration sequence: `P1B.14` through `P1B.19`.
-- **Repo guidance is being normalized.** README, AGENTS, frontend strategy, Mintlify guides, app README/HINTS, ADRs, and runbooks are being aligned so future agents do not receive a split Stripe-vs-Lago story.
+- **Roadmap and handoff docs are now migration-oriented.** The forward workstream is no longer Stripe Checkout-session orchestration. It is the Lago migration sequence: `P1B.14` through `P1B.20`.
+- **Repo guidance is now normalized.** README, AGENTS, frontend strategy,
+  Mintlify guides, app README/HINTS, ADRs, and runbooks now align to the Lago
+  target architecture, and the absorbed source draft was removed from the repo
+  once its content was captured canonically.
 
 ### Next session should start with
 
@@ -813,7 +820,8 @@ This PR creates 4 new AWS DynamoDB tables on merge-to-main via the dev deploy. D
 - [x] ROADMAP.md created: 69 tickets across 11 epics, 5 phases
 - [x] Planning artifacts: NEXT-WORK.md, NEXT-SESSION.md, CLAUDE.md
 
-**Roadmap progress:** 5/69 tickets (P0.1, P0.2, P0.4, P0.5 done; P0.3 needs CI test, P0.6 needs OpenSearch)
+**Roadmap progress at that time:** 5/69 tickets (P0.1, P0.2, P0.4, P0.5 done;
+P0.3 needs CI test, P0.6 needs OpenSearch)
 
 **Next session should start with:**
 
@@ -860,7 +868,8 @@ This PR creates 4 new AWS DynamoDB tables on merge-to-main via the dev deploy. D
 - [x] Created ROADMAP.md: 69 tickets across 11 epics, 5 phases
 - [x] Created NEXT-WORK.md, NEXT-SESSION.md, CLAUDE.md
 
-**Roadmap progress:** 0/69 tickets (scaffolding complete, P0 ready to start)
+**Roadmap progress at that time:** 0/69 tickets (scaffolding complete, P0 ready
+to start)
 
 **Next session should start with:**
 

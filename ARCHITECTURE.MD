@@ -180,7 +180,7 @@ Nobody else bundles Australian address validation with ABN verification with LEI
 **All figures in this section are USD/month.** The table below is the **current
 shipped runtime cost model** for the live AWS + legacy-Stripe stack. It does
 **not** include the separate Lago infra layer, because the Lago migration
-sequence (`P1B.14`–`P1B.19`) is still pending and is being stood up in the
+sequence (`P1B.14`–`P1B.20`) is still pending and is being stood up in the
 separate `prontiq-lago` repo.
 
 | Stage                     | OpenSearch                                 | Clerk                    | Mintlify                 | Speakeasy | Stripe          | SES        | Total               |
