@@ -1,6 +1,6 @@
 # SES Suppression Runbook
 
-Operating, verifying, and manually recovering the SES bounce / complaint suppression flow used by welcome emails, quota emails, and Stripe `past_due` billing emails.
+Operating, verifying, and manually recovering the SES bounce / complaint suppression flow used by welcome emails, quota emails, and legacy Stripe `past_due` billing emails.
 
 ## Scope
 

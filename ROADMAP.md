@@ -1,7 +1,7 @@
 # Prontiq Platform — Roadmap
 
 > A unified data API platform for Australian and global open data.
-> Last updated: 2026-04-20 · v1.5
+> Last updated: 2026-04-22 · v1.6
 >
 > **Reference:** `ARCHITECTURE.MD` is the authoritative design doc. This roadmap is the execution plan.
 
@@ -11,28 +11,35 @@
 
 **Pattern:** Free open dataset → independent pipeline → S3 (NDJSON + manifest.json) → event-driven indexing → OpenSearch → commercial API → auth / billing / docs / SDKs.
 
-**Stack:** SST v4 + Pulumi · Hono + @hono/zod-openapi · OpenSearch 2.19 · DynamoDB (DDB-native keys, hash-based) · Clerk · Stripe · Next.js 15 · Mintlify · Speakeasy
+**Stack:** SST v4 + Pulumi · Hono + @hono/zod-openapi · OpenSearch 2.19 · DynamoDB (DDB-native keys, hash-based) · Clerk · Lago (target) · Stripe (legacy live path / payment rail) · Next.js 15 · Mintlify · Speakeasy
 
 **Repo:** pnpm monorepo with Turborepo. Frontend foundations are now scaffolded in-repo via `apps/landing`, `apps/console`, `packages/tokens`, and workspace-wired `sdks/typescript`. TypeScript strict. ESM only.
+
+> **Commercial architecture migration note.** The repo currently ships a
+> Stripe-centric billing path (`P1B.03`, `P1B.06`, `P1B.10`, `P1B.11`), but the
+> forward-looking commercial architecture is now Lago-centered. Legacy
+> Stripe-specific billing tickets remain below as historical implementation or
+> superseded planning context until the Lago migration sequence fully replaces
+> them.
 
 ---
 
 ## Summary
 
-| Phase     | Epic                       | Tickets | Done       | Target      |
-| --------- | -------------------------- | ------- | ---------- | ----------- |
-| **P0**    | Infrastructure Foundation  | 6       | 6/6 ✅     | Week 1      |
-| **P1A**   | API Core (Address)         | 13      | 10/13      | Weeks 2-3   |
-| **P1B**   | Auth & Billing             | 14      | 11/14      | Weeks 3-4   |
-| **P1C**   | Frontend Surfaces          | 9       | 3/9        | Weeks 4-6   |
-| **P1D**   | Docs & SDK                 | 5       | 2/5        | Week 5      |
-| **P1E**   | Ingestion (Phase 1)        | 6       | 4/6        | Week 6      |
-| **P1F**   | Distribution               | 3       | 3/3 ✅     | Week 6      |
-| **P2**    | ABN/ASIC Verification      | 8       | 0/8        | Weeks 7-10  |
-| **P3**    | GLEIF/LEI + Full Dashboard | 7       | 0/7        | Weeks 11-13 |
-| **P4**    | Shopify + WooCommerce      | 5       | 0/5        | Weeks 14-17 |
-| **P5**    | CVE/NVD + Patents          | 4       | 0/4        | Weeks 18-21 |
-| **Total** |                            | **80**  | **39/80**  |             |
+| Phase     | Epic                       | Tickets | Done      | Target      |
+| --------- | -------------------------- | ------- | --------- | ----------- |
+| **P0**    | Infrastructure Foundation  | 6       | 6/6 ✅    | Week 1      |
+| **P1A**   | API Core (Address)         | 13      | 10/13     | Weeks 2-3   |
+| **P1B**   | Auth & Billing             | 20      | 12/20     | Weeks 3-4   |
+| **P1C**   | Frontend Surfaces          | 9       | 3/9       | Weeks 4-6   |
+| **P1D**   | Docs & SDK                 | 5       | 2/5       | Week 5      |
+| **P1E**   | Ingestion (Phase 1)        | 6       | 4/6       | Week 6      |
+| **P1F**   | Distribution               | 3       | 3/3 ✅    | Week 6      |
+| **P2**    | ABN/ASIC Verification      | 8       | 0/8       | Weeks 7-10  |
+| **P3**    | GLEIF/LEI + Full Dashboard | 7       | 0/7       | Weeks 11-13 |
+| **P4**    | Shopify + WooCommerce      | 5       | 0/5       | Weeks 14-17 |
+| **P5**    | CVE/NVD + Patents          | 4       | 0/4       | Weeks 18-21 |
+| **Total** |                            | **86**  | **40/86** |             |
 
 ---
 
@@ -580,7 +587,7 @@ As an API consumer, `GET /v1/address/enrich?id=GASA_422206807` returns the full 
 
 #### Problem Statement
 
-Enrichment is the premium feature — boundaries (LGA, electorates, mesh blocks, SA2-SA4, GCCSA) are what no competitor offers at this price point. The enrich endpoint is a simple `GET` by document ID, returning all fields. It's gated to Starter+ tier because it's the upsell driver: free-tier autocomplete gets developers in, boundary enrichment converts them to paid.
+Enrichment is the premium feature — boundaries (LGA, electorates, mesh blocks, SA2-SA4, GCCSA) are what no competitor offers at this price point. The enrich endpoint is a simple `GET` by document ID, returning all fields. It is commercially gated because it's the upsell driver: free-tier autocomplete gets developers in, boundary enrichment converts them to paid.
 
 #### Definition of Done
 
@@ -592,9 +599,9 @@ Enrichment is the premium feature — boundaries (LGA, electorates, mesh blocks,
 - [ ] Returns 404 for unknown ID with proper error format
   - `Verify:` `curl .../v1/address/enrich?id=NONEXISTENT`
   - `Evidence:` `{"error":{"code":"NOT_FOUND","status":404,...}}`
-- [ ] Tier enforcement: Starter+ only (free tier gets 403)
+- [ ] Commercial gating enforced for paid access (free tier gets 403)
   - `Verify:` Request with free-tier key returns 403 `PRODUCT_NOT_ALLOWED`
-  - `Evidence:` Enrich route checks tier in auth middleware; free tier doesn't include "address-enrich" scope
+  - `Evidence:` Enrich route checks the active commercial entitlement in auth middleware
 
 #### Scope
 
@@ -1050,6 +1057,7 @@ With `fuzziness: AUTO`, almost any input scores ≥ 10 against the 15M-doc index
 #### Approach
 
 Options:
+
 - Raise medium threshold (e.g. score > 15)
 - Add minimum match-token-coverage requirement (e.g. ≥ 50% of input tokens must match exactly)
 - Combine both
@@ -1067,9 +1075,9 @@ Options:
 
 ## Phase 1B — Auth & Billing
 
-> **Goal:** Sign-up → DDB-native API key → hash-verified requests → rate-limited with burst limiter → usage tracked per-month → billed hourly via Stripe, with 14-day payment grace period.
+> **Goal:** Sign-up → DDB-native API key → hash-verified requests → rate-limited with burst limiter → usage tracked per-month → migrate the commercial layer from the shipped Stripe path to the Lago target architecture.
 >
-> **Current state.** P1B.02, P1B.04, P1B.04b, P1B.05, P1B.06, P1B.07, P1B.08, P1B.09, P1B.10, P1B.11, and P1B.12 are shipped. The DynamoDB-native key model is live in prod, the prod migration was executed on 2026-04-16, org provisioning + Stripe billing sync are live, per-key burst limiting is enforced in the API middleware, hourly usage now flows into Stripe meters, SES feedback / quota-email delivery is live in dev + prod, previous-month scopes are now explicitly finalized and closed by the monthly `PqMonthClose` sweep, and the auth integration suite is now reconciled to the real post-cutover middleware contract.
+> **Current state.** P1B.02, P1B.04, P1B.04b, P1B.05, P1B.06, P1B.07, P1B.08, P1B.09, P1B.10, P1B.11, and P1B.12 are shipped. The DynamoDB-native key model is live in prod, the prod migration was executed on 2026-04-16, the legacy Stripe billing path is live, per-key burst limiting is enforced in the API middleware, SES feedback / quota-email delivery is live in dev + prod, previous-month scopes are now explicitly finalized and closed by the monthly `PqMonthClose` sweep, and the auth integration suite is now reconciled to the real post-cutover middleware contract. The forward commercial direction is now the Lago migration sequence.
 >
 > **Scope boundary.** The hot-path middleware rewrite (hash-based lookup, REDIRECT fallback, new usage-table writes) ships in **P1B.04b** (cutover), NOT in P1B.02. P1B.02 is pure crypto primitives only — no DDB dependency — which is why it remains parallel-safe. P1B.04b flips schema + code atomically once P1B.02 and P1B.04 are both done.
 >
@@ -1099,11 +1107,11 @@ tech_stack:
 
 #### User Story
 
-As a builder, I need a Clerk application configured with OAuth providers and a webhook so that users can sign up and the provisioning chain (Clerk → Stripe → DynamoDB) is triggered automatically.
+As a builder, I need a Clerk application configured with OAuth providers and an org-membership webhook so that users can sign up and the org provisioning chain is triggered automatically.
 
 #### Problem Statement
 
-Clerk handles human identity: sign-up, login, OAuth (Google/GitHub), organisations, team management. The `/account` page authenticates through Clerk. A webhook on `user.created` triggers the provisioning chain (Stripe customer → DynamoDB key record). Without Clerk, there's no sign-up flow and no user identity for the dashboard.
+Clerk handles human identity: sign-up, login, OAuth (Google/GitHub), organisations, and team management. The console authenticates through Clerk. The shipped provisioning path hangs off `organizationMembership.created`, which creates the org envelope and the current migration-era commercial records idempotently. Without Clerk, there is no sign-up flow, no org context, and no authenticated dashboard path.
 
 #### Definition of Done
 
@@ -1115,8 +1123,8 @@ Clerk handles human identity: sign-up, login, OAuth (Google/GitHub), organisatio
 - [ ] Google and GitHub OAuth configured
   - `Verify:` Sign-up page shows Google + GitHub buttons
   - `Evidence:` Clerk dashboard OAuth providers list
-- [ ] Webhook URL configured for `user.created` event
-  - `Verify:` Clerk dashboard webhooks section shows endpoint URL
+- [ ] Webhook URL configured for the organisation-membership provisioning event
+  - `Verify:` Clerk dashboard webhooks section shows endpoint URL and subscribed membership event
   - `Evidence:` URL points to `{api-url}/webhooks/clerk`
 - [ ] `CLERK_SECRET_KEY` and `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` in SST secrets/env
   - `Verify:` `sst deploy` passes keys to `/account` and webhook Lambda
@@ -1200,77 +1208,87 @@ v2.2 removes Unkey (ADR-001). Key generation and hashing are the foundational pr
 
 ---
 
-### Ticket P1B.03 — Stripe Setup (Products + PLANS + Customer Portal)
+### Ticket P1B.03 — Stripe Setup (Historical Stripe Catalog Baseline)
 
 ```yaml
 id: P1B.03
-title: Stripe Setup (Products + PLANS + Customer Portal)
-status: pending
+title: Stripe Setup (Historical Stripe Catalog Baseline)
+status: complete
 priority: p0-critical
 epic: P1B
 persona: [builder]
 depends_on: []
-completed: null
+completed: 2026-04-18
 tech_stack:
   billing: Stripe (metered, tiered Prices)
 ```
 
+> Legacy shipped path. This ticket describes the current Stripe-centric
+> implementation and is superseded as forward-looking architecture by the Lago
+> migration sequence (`P1B.14`–`P1B.19`).
+
 #### User Story
 
-As a builder, I need Stripe configured with subscription plans, family-level credit meters, Customer Portal, and matching `PLANS` / `BILLING_ENDPOINTS` constants so that the platform can bill developers transparently with published credit costs and zero Stripe-side endpoint-specific logic.
+As a builder, I needed the historical Stripe billing baseline configured so the
+initial shipped commercial path could provision customers, sync usage, and
+invoice through Stripe while the platform still used the pre-Lago model.
 
 #### Problem Statement
 
-Stripe billing needs one subscription per organisation with one recurring plan item plus one metered family item per enabled API product. Customers buy credits, not raw requests. Endpoint-level costs live in `BILLING_ENDPOINTS` (for example `address.enrich = 3 credits`), and the auth middleware applies those weights inline before Stripe receives the aggregated family-level credit totals (for example `Address API credits`). Stripe Pricing Tables are not suitable for this hybrid model, so the catalog must support backend-created Checkout Sessions and Customer Portal instead of relying on `<stripe-pricing-table>`.
+This ticket records the historical Stripe catalog and constants work that
+backed the originally shipped billing path. It is retained as implementation
+history only. The forward path is now the Lago migration sequence.
 
-#### Definition of Done
+#### Historical Shipped State
 
-##### Functional
+This ticket is complete because the legacy Stripe billing baseline was
+implemented and is still present in the shipped migration-era stack.
 
-- [ ] Stripe products created: Pay as you go ($0/mo recurring), Starter ($29/mo recurring), Growth ($99/mo recurring), Max ($299/mo recurring)
-  - `Verify:` Stripe dashboard Products section
-  - `Evidence:` Product IDs and Price IDs documented
-- [ ] Family-level metered Prices created (address, abn, lei, cve, patents) with credit-based billing semantics
+- [x] Historical Stripe catalog and family meters created for the legacy
+      billing path
+  - `Verify:` Stripe dashboard products/prices/meters exist for the old model
+  - `Evidence:` legacy Stripe-backed catalog remains the current shipped path
+    recorded by this ticket
+- [x] Shared billing constants created for the historical Stripe-backed model
   - `Verify:` Stripe Billing → Prices section, inspect the family meter-backed prices
-  - `Evidence:` Price IDs and meter config per product family
-- [ ] Stripe Customer Portal configured for payment methods, invoices, cancellation, and supported plan self-service
-  - `Verify:` Stripe dashboard → Settings → Customer Portal
-  - `Evidence:` Portal configuration captured for console billing (`P1C.05`)
-- [ ] Stripe catalog supports backend-created Checkout Sessions for paid plans (Pay as you go / Starter / Growth / Max), with Free rendered separately by Prontiq
-  - `Verify:` Paid plan selection can be mapped to recurring plan Price + metered family Prices without Pricing Tables
-  - `Evidence:` Product IDs, Price IDs, and tier metadata documented for Checkout orchestration (`P1B.13`, `P1C.08`)
-- [ ] `PLANS` and `BILLING_ENDPOINTS` constants added to `packages/shared/src/constants.ts` per ARCHITECTURE.MD §5.6.1 (credits per month, rate limits, product families, published endpoint credit weights)
-  - `Verify:` `pnpm typecheck` passes; the shared constants expose both plan-level credits and endpoint-level credit costs
-  - `Evidence:` `packages/shared/src/constants.ts` diff
-- [ ] Webhook URL configured for `checkout.session.completed`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.payment_failed`
+  - `Evidence:` historical constants and pricing assumptions remain captured in
+    the repo and legacy Stripe configuration
+- [x] `PLANS` and `BILLING_ENDPOINTS` constants added to `packages/shared/src/constants.ts` for the then-current model
+  - `Verify:` `pnpm typecheck` passes
+  - `Evidence:` current runtime still carries the legacy paid-tier ladder in
+    `packages/shared/src/constants.ts`
+- [x] Webhook URL configured for `checkout.session.completed`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.payment_failed`
   - `Verify:` Stripe dashboard Webhooks section
-  - `Evidence:` URL points to `{api-url}/webhooks/stripe`
-- [ ] Smart Retries configured so all retry attempts complete within 7 days of first failure, AND subscription cancel policy set to "Cancel subscription when all retries exhausted" (required for 14-day grace per §5.6.3)
+  - `Evidence:` legacy Stripe webhook remains deployed at `{api-url}/webhooks/stripe`
+- [x] Historical retry and cancellation settings configured for the Stripe path
   - `Verify:` Stripe dashboard → Settings → Billing → Subscriptions and emails
-  - `Evidence:` Retry schedule screenshot + cancel policy setting
-- [ ] `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` in SST secrets
+  - `Evidence:` current legacy billing path still assumes the configured Stripe
+    retry/cancellation behavior documented in the runbooks
+- [x] `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` in SST secrets
   - `Verify:` Webhook handler Lambda has access
-  - `Evidence:` SST config passes them through
+  - `Evidence:` the shipped legacy Stripe webhook path still depends on these
+    secrets during the Lago migration window
 
 #### Scope
 
-**In:** Stripe products, meters, tiered metered Prices, Customer Portal, Smart Retries + cancel policy, webhook endpoints, tier/product metadata contract, secrets
+**In:** historical Stripe products/prices/meters, retry policy, webhook
+endpoints, constants, secrets
 
 **Out — Do Not Implement:**
 
 - Webhook handler → P1B.06
 - Billing cron → P1B.10
 - `/account` Billing tab → P1C.05
-- Enterprise custom pricing → future
+- Custom commercial contracts → future
 
 ---
 
-### Ticket P1B.13 — Stripe Checkout Session Orchestration for Paid Plans
+### Ticket P1B.13 — Historical Stripe Checkout Orchestration Planning
 
 ```yaml
 id: P1B.13
-title: Stripe Checkout Session Orchestration for Paid Plans
-status: pending
+title: Historical Stripe Checkout Orchestration Planning
+status: superseded
 priority: p1-high
 epic: P1B
 persona: [builder]
@@ -1280,41 +1298,152 @@ tech_stack:
   billing: Stripe Checkout
 ```
 
+> Superseded planning. The forward commercial direction is now Lago-backed
+> billing orchestration rather than new Checkout-session investment.
+
 #### User Story
 
-As a builder, I need Prontiq to create the correct Stripe Checkout Session for each paid tier so that hybrid recurring-plus-metered subscriptions can be purchased without relying on Stripe Pricing Tables.
+As a builder, I planned a server-side Stripe purchase orchestration flow for the
+old commercial model before the architecture pivoted to Lago.
 
 #### Problem Statement
 
-Stripe remains the billing system of record, but Pricing Tables are not compatible with Prontiq's hybrid metered plan model. The platform therefore needs a server-side orchestration path that maps each tier to the correct recurring plan Price plus the required family-level metered Prices, then hands the user into Stripe Checkout.
+This ticket is retained only as superseded planning history. The new forward
+path is the Lago migration sequence, not new Stripe purchase orchestration.
 
 #### Definition of Done
 
 ##### Functional
 
-- [ ] Server-side Checkout Session creation path exists for `payg`, `starter`, `growth`, and `max`
-  - `Verify:` Each tier maps to the correct recurring Price + metered family Price composition
-  - `Evidence:` Server-side handler/service diff + tests
-- [ ] Free remains outside Stripe subscriptions
-  - `Verify:` Free signup does not create a Stripe subscription
-  - `Evidence:` Checkout orchestration only accepts paid tiers
-- [ ] Successful Checkout handoff still converges through `checkout.session.completed`
-  - `Verify:` Existing webhook flow updates tier, quota, and `subscriptionItems`
-  - `Evidence:` integration coverage or service-level tests
+- [ ] Historical server-side purchase orchestration path documented for the old
+      Stripe model
+  - `Verify:` superseded planning context remains understandable
+  - `Evidence:` roadmap history retained without steering new work
 
 #### Scope
 
-**In:** Checkout Session orchestration, tier-to-price mapping, Checkout entry contract
+**In:** superseded historical planning only
 
 **Out — Do Not Implement:**
 
-- Stripe webhook handler changes beyond required contract alignment
-- Customer Portal itself → P1B.03 / P1C.05
-- Landing or console pricing UI replacement → P1C.08 / P1C.05
+- all new commercial implementation work → `P1B.14`–`P1B.19`
 
 ---
 
 ### Ticket P1B.04 — DynamoDB Tables (4 tables + schema)
+
+### Ticket P1B.14 — CustomerId + Customer Mapping Contract
+
+```yaml
+id: P1B.14
+title: CustomerId + Customer Mapping Contract
+status: pending
+priority: p0-critical
+epic: P1B
+persona: [builder]
+depends_on: [P1B.05]
+completed: null
+tech_stack:
+  billing: Lago + DynamoDB
+```
+
+Define the shared org-scoped `customerId` contract across Clerk, Prontiq,
+Lago, and Stripe. This includes the target `customers` mapping model and the
+canonical ownership boundary between customer mapping and commercial state.
+
+### Ticket P1B.15 — SQS Billing Event Buffer + Hot-Path Emitter
+
+```yaml
+id: P1B.15
+title: SQS Billing Event Buffer + Hot-Path Emitter
+status: pending
+priority: p0-critical
+epic: P1B
+persona: [builder]
+depends_on: [P1B.14]
+completed: null
+tech_stack:
+  billing: SQS + DynamoDB
+```
+
+Move billing emission off the API hot path by introducing a durable queue for
+credit events. Prontiq continues to enforce credits synchronously in DynamoDB
+but never calls the billing system directly from request handling.
+
+### Ticket P1B.16 — Lago Event Forwarder Worker + Idempotent Transaction IDs
+
+```yaml
+id: P1B.16
+title: Lago Event Forwarder Worker + Idempotent Transaction IDs
+status: pending
+priority: p0-critical
+epic: P1B
+persona: [builder]
+depends_on: [P1B.15]
+completed: null
+tech_stack:
+  billing: Lago
+```
+
+Consume queued billing events, write any platform-side analytics required, and
+forward the billing event into Lago with deterministic transaction IDs for safe
+replay.
+
+### Ticket P1B.17 — Lago Webhook Sync + Credit-Counter Reconciliation
+
+```yaml
+id: P1B.17
+title: Lago Webhook Sync + Credit-Counter Reconciliation
+status: pending
+priority: p0-critical
+epic: P1B
+persona: [builder]
+depends_on: [P1B.16]
+completed: null
+tech_stack:
+  billing: Lago webhooks
+```
+
+Reconcile Lago subscription and period-boundary state back into Prontiq's
+`credit_counters` enforcement rows without putting Lago on the hot path.
+
+### Ticket P1B.18 — Console Billing Proxy Surfaces + Plan Changes
+
+```yaml
+id: P1B.18
+title: Console Billing Proxy Surfaces + Plan Changes
+status: pending
+priority: p1-high
+epic: P1B
+persona: [api-consumer]
+depends_on: [P1B.17]
+completed: null
+tech_stack:
+  billing: Lago + account APIs
+```
+
+Define the backend and orchestration contract for Lago-backed billing state,
+plan-change actions, and any migration-era invoice/payment links that the
+console billing page will consume. `P1C.05` renders the page on top of this
+contract; it is not a prerequisite for defining it.
+
+### Ticket P1B.19 — Stripe Legacy Billing Retirement and Cutover
+
+```yaml
+id: P1B.19
+title: Stripe Legacy Billing Retirement and Cutover
+status: pending
+priority: p1-high
+epic: P1B
+persona: [ops]
+depends_on: [P1B.18]
+completed: null
+tech_stack:
+  billing: Lago + Stripe
+```
+
+Retire the legacy Stripe-centric billing cron/month-close/control-plane path
+once Lago-backed billing is verified end to end.
 
 ```yaml
 id: P1B.04
@@ -1529,7 +1658,7 @@ This ticket covers only the webhook side. P1C.03 covers the user-driven key crea
 - [x] **Atomic commit via `TransactWriteItems`** — single transaction writes:
   1. `prontiq-keys/ORG#{orgId}` with `{stripeCustomerId, ownerEmail, tier="free", hasFirstKey: false, completedAt}` and `attribute_not_exists(apiKeyHash)`
   2. `prontiq-audit/{orgId}/{ts#ulid}` with `action="ORG_PROVISIONED"` and `attribute_not_exists(orgId) AND attribute_not_exists(SK)`
-  Either both commit or neither does.
+     Either both commit or neither does.
   - `Verify:` Happy path: send webhook → verify both items exist
   - `Evidence:` `buildProvisioningTransactWrite` in `packages/control-plane/src/provisioning.ts` constructs both Put items into a single `TransactWriteCommand`. Integration test asserts the envelope row + audit row exist after a single signed delivery.
 - [x] **TransactionCanceledException handling per ARCHITECTURE.MD §5.7.1** — distinguish cancellation reasons before deciding the response code. The unified `classifyDdbError` walks `error.CancellationReasons[]` and:
@@ -1581,6 +1710,10 @@ persona: [api-consumer]
 depends_on: [P1B.03, P1B.04]
 completed: 2026-04-18
 ```
+
+> Legacy shipped path. This ticket remains implemented in the current platform
+> but is superseded as forward-looking commercial architecture by the Lago
+> migration sequence.
 
 #### Shipped State
 
@@ -1818,6 +1951,10 @@ depends_on: [P1B.03, P1B.04, P1B.06]
 completed: 2026-04-18
 ```
 
+> Legacy shipped path. This ticket remains implemented in the current platform
+> but is superseded as forward-looking commercial architecture by the Lago
+> migration sequence.
+
 #### User Story
 
 As a platform operator, usage data flows from `prontiq-usage` to Stripe every hour via family-level Stripe credit meters so that billing is accurate, replay-safe, and no usage is lost across month boundaries.
@@ -1893,6 +2030,10 @@ persona: [ops]
 depends_on: [P1B.10]
 completed: 2026-04-19
 ```
+
+> Legacy shipped path. This ticket remains implemented in the current platform
+> but is superseded as forward-looking commercial architecture by the Lago
+> migration sequence.
 
 #### User Story
 
@@ -1984,6 +2125,7 @@ Post-migration, auth middleware hashes the incoming key, looks up in `prontiq-ke
   - `Evidence:` final `prontiq-usage[hash][product#month].requestCount === 50`
 
 > The first-key creation idempotency assertions live in **P1C.03** (the ticket that owns `POST /v1/account/keys/create`). Originally drafted here with a fallback "use a temporary endpoint stub" — but that would push the integration test to either (a) build throwaway API surface, or (b) test against a different code path than production. Cleaner: P1C.03 is the natural home, P1B.12 stays focused on auth middleware behavior using seeded post-cutover key records.
+
 - [x] Usage counter increments only on successful quota check (no orphan increments on 4xx responses)
   - `Verify:` unknown-key, revoked-key, product-gating, rate-limit, and free-tier quota assertions all prove no excess usage write on failure paths
   - `Evidence:` integration tests assert missing/no-op usage rows or capped `requestCount` after rejection
@@ -2171,7 +2313,7 @@ As a logged-in developer, I land in `apps/console` and see my API key, usage sum
   - `Evidence:` Copy button works; snippet is runnable
 - [ ] Upgrade nudge banner when > 80% quota used
   - `Verify:` Seed key at 85% usage; banner appears
-  - `Evidence:` "Upgrade to Starter for 10,000 credits/month" message
+  - `Evidence:` "Upgrade to PAYG" or equivalent migration-safe billing message
 
 #### Scope
 
@@ -2253,7 +2395,7 @@ Key rotation must be atomic (TransactWrite swap) with a REDIRECT record per §5.
 - [ ] Audit trail visible on the page (last 10 lifecycle events from `prontiq-audit`)
   - `Verify:` Each action (create, rotate, revoke) appears with actor, timestamp, IP
   - `Evidence:` `prontiq-audit` query
-- [ ] Key limits enforced per tier (Free 2, Starter 5, Growth 20, Enterprise unlimited) — GSI count query against `orgId-index` with **`FilterExpression: "attribute_exists(keyPrefix) AND attribute_exists(active)"`** before PutItem (sentinel guard prevents the ORG envelope from eating one of the user's quota slots)
+- [ ] Key limits enforced for Free and the active paid commercial contract — GSI count query against `orgId-index` with **`FilterExpression: "attribute_exists(keyPrefix) AND attribute_exists(active)"`** before PutItem (sentinel guard prevents the ORG envelope from eating one of the user's quota slots)
   - `Verify:` Two tests: (a) Attempt 3rd key on Free tier → 403 `KEY_LIMIT_EXCEEDED`; (b) Verify the ORG envelope row is NOT counted — sign up + immediately try to create 2 keys on Free tier; both succeed (envelope doesn't count as a key)
   - `Evidence:` Error response on (a); 2 successful creates on (b) proving sentinel filter works
 
@@ -2293,7 +2435,7 @@ As a developer, I see per-product usage over time so that I can understand my co
 
 #### Problem Statement
 
-Usage data lives in DynamoDB as atomic counters (per-key, per-product, per-month). The dashboard needs to query these counters, aggregate across keys (for org-level view), and render time-series charts. Daily granularity requires storing daily snapshots — the current schema only tracks monthly totals. Either add daily counters to DynamoDB or derive daily from hourly Stripe usage records.
+Usage data lives in DynamoDB as atomic counters (per-key, per-product, per-month). The dashboard needs to query these counters, aggregate across keys (for org-level view), and render time-series charts. Daily granularity requires either storing daily snapshots in Prontiq-controlled counters or deriving chart data from the billing-event analytics stream that feeds Lago. The forward path is not Stripe-derived usage.
 
 #### Definition of Done
 
@@ -2333,49 +2475,56 @@ status: pending
 priority: p1-high
 epic: P1C
 persona: [api-consumer]
-depends_on: [P1C.00, P1B.03, P1C.07]
+depends_on: [P1C.00, P1B.18, P1C.07]
 completed: null
 tech_stack:
-  billing: Stripe Customer Portal + Checkout
+  billing: Lago-backed console billing surface
 ```
+
+> Stripe-specific Billing Page planning in this ticket is superseded. The
+> forward path is Lago-backed billing state and plan-management surfaces in
+> `apps/console`.
 
 #### User Story
 
-As a developer, I manage my subscription, start paid upgrades, update payment methods, and view invoices without leaving the dashboard so that billing is self-service with zero support tickets.
+As a developer, I manage my plan, payment details, and invoices through a Prontiq-owned billing surface so that billing is self-service without being routed through Stripe-first UX.
 
 #### Problem Statement
 
-Stripe Customer Portal handles payment methods, invoice history, cancellation, and most post-purchase billing self-service out of the box. Stripe Pricing Tables do not fit Prontiq's hybrid metered plans, so the billing page needs Prontiq-rendered upgrade options that launch backend-created Checkout Sessions, plus a "Manage Billing" link to the hosted portal.
+This ticket originally assumed Stripe-hosted self-service as the destination
+billing UX. That Stripe-specific planning is now superseded. The forward
+direction is a Prontiq-owned billing surface aligned to the Lago architecture,
+using Lago-backed billing state and migration-aware portal or invoice links
+where needed. Any retained Stripe-hosted controls are migration-only behavior,
+not the target design.
 
 #### Definition of Done
 
 ##### Functional
 
-- [ ] Stripe hosted customer portal accessible from "Manage Billing" button
-  - `Verify:` Click "Manage Billing" → Stripe portal opens (same tab or new tab)
-  - `Evidence:` Portal shows plan, payment method, invoices
-- [ ] Prontiq-rendered upgrade options for paid plans
-  - `Verify:` Click paid plan CTA → backend-created Checkout Session opens for the selected tier
-  - `Evidence:` Billing page renders plan cards/buttons wired to Checkout-session orchestration
-- [ ] Payment method update
-  - `Verify:` Add/change card in portal → card updated in Stripe
-  - `Evidence:` Stripe dashboard shows new payment method
-- [ ] Invoice history and receipts
-  - `Verify:` Portal shows past invoices with download links
-  - `Evidence:` PDF invoices downloadable
-- [ ] Cancel subscription flow with confirmation
-  - `Verify:` Cancel → confirmation prompt → subscription cancelled at period end
-  - `Evidence:` Stripe shows "Canceled" status; key downgrades to free tier limits
+- [ ] Console billing page shows platform-owned billing state and plan
+      information
+  - `Verify:` Authenticated developer sees current commercial status in-app
+  - `Evidence:` Console billing page renders without relying on embedded Stripe UI
+- [ ] Upgrade and plan-management controls align to the active commercial
+      backend contract
+  - `Verify:` UI actions route through the current supported orchestration path
+  - `Evidence:` Billing page wiring matches the architecture in `ARCHITECTURE.MD`
+- [ ] Migration-era payment-method or invoice links are clearly labeled if they
+      still point to legacy Stripe-hosted surfaces
+  - `Verify:` No Stripe-hosted surface is presented as the forward-looking UX
+  - `Evidence:` UI copy and docs match the Lago-target posture
 
 #### Scope
 
-**In:** Prontiq-rendered upgrade options, Stripe Customer Portal, invoices, cancellation
+**In:** platform-owned console billing state, migration-aware billing actions,
+legacy-link labeling where needed
 
 **Out — Do Not Implement:**
 
-- Pricing Table-based upgrades → superseded by Checkout Sessions
-- Custom invoice generation → Stripe handles this
-- Enterprise custom billing → future
+- Pricing Table-based upgrades → superseded
+- treating Stripe-hosted controls as the long-term billing UX
+- Custom commercial contracts → future
 
 ---
 
@@ -2384,7 +2533,7 @@ Stripe Customer Portal handles payment methods, invoice history, cancellation, a
 ```yaml
 id: P1C.08
 title: Replace Embedded Pricing Table with Prontiq-rendered Paid Plan Cards
-status: pending
+status: superseded
 priority: p1-high
 epic: P1C
 persona: [visitor, api-consumer]
@@ -2396,21 +2545,32 @@ tech_stack:
 
 #### User Story
 
-As a visitor or logged-in developer, I see Prontiq-rendered paid plan cards that describe the hybrid plan model clearly and launch the correct Checkout flow without relying on Stripe Pricing Tables.
+> Superseded planning. The old Checkout-session replacement path is no longer
+> the forward commercial direction; landing and console pricing work should now
+> align to Lago-backed commercial surfaces.
+
+As a visitor or logged-in developer, I see Prontiq-rendered plan cards that
+reflect the active commercial model and do not depend on embedded Stripe
+widgets.
 
 #### Problem Statement
 
-The original Pricing Table integration shipped as an interim path, but Stripe Pricing Tables do not fit Prontiq's hybrid metered pricing model. Both the landing page and the console billing page need first-party pricing UI that preserves Free as an app-rendered tier and hands paid selections to backend-created Stripe Checkout Sessions.
+The original embedded pricing-table integration shipped as an interim path, but
+it is not the forward contract. Landing and console pricing surfaces should now
+align to the Lago-target commercial architecture and the current business
+direction of Free + PAYG.
 
 #### Definition of Done
 
 ##### Functional
 
-- [ ] Landing pricing section uses Prontiq-rendered paid plan cards instead of `<stripe-pricing-table>`
-  - `Verify:` Landing page shows Free plus paid plan cards for Pay as you go / Starter / Growth / Max
+- [ ] Landing pricing section uses Prontiq-rendered plan cards instead of an
+      embedded Stripe widget
+  - `Verify:` Landing page shows Prontiq-owned pricing UI for the active
+    commercial direction
   - `Evidence:` landing pricing component diff + tests
-- [ ] Paid CTAs launch the Checkout-session path from `P1B.13`
-  - `Verify:` Select paid tier → Checkout Session for the correct plan opens
+- [ ] Paid CTAs align to the active commercial orchestration contract
+  - `Verify:` Select paid tier → supported billing flow opens
   - `Evidence:` CTA wiring + tests
 - [ ] Pricing Table-specific env/documentation is removed from the forward-looking frontend contract
   - `Verify:` no active landing or console docs require `NEXT_PUBLIC_STRIPE_PRICING_TABLE_ID`
@@ -2418,13 +2578,13 @@ The original Pricing Table integration shipped as an interim path, but Stripe Pr
 
 #### Scope
 
-**In:** landing pricing section replacement, paid plan cards, Checkout CTA wiring, console billing upgrade UI alignment
+**In:** landing pricing section replacement, first-party plan cards, active CTA
+wiring, console billing UI alignment
 
 **Out — Do Not Implement:**
 
-- Stripe catalog creation → P1B.03
-- Checkout session orchestration backend → P1B.13
-- Customer Portal itself → P1C.05
+- historical Stripe catalog/orchestration work
+- legacy hosted portal behaviors
 
 ---
 
@@ -2492,12 +2652,12 @@ Mintlify has playgrounds too (P1D.01), but the dashboard playground is pre-authe
 ```yaml
 id: P1C.07
 title: shadcn/ui Component Library Setup
-status: pending
+status: complete
 priority: p0-critical
 epic: P1C
 persona: [builder]
 depends_on: [P1C.00]
-completed: null
+completed: 2026-04-20
 tech_stack:
   ui: shadcn/ui + Tailwind CSS v3.4
   framework: Next.js 15
@@ -2638,8 +2798,8 @@ The Getting Started guide is the highest-traffic page on any API docs site. If a
   - `Verify:` Page explains header format, shows error responses for missing/invalid keys
   - `Evidence:` Code examples for curl, fetch, SDK
 - [ ] Rate limits & quotas page with per-tier breakdown table
-  - `Verify:` Table matches `PLANS` in `packages/shared/src/constants.ts` (per ARCHITECTURE.MD §5.6.1)
-  - `Evidence:` Free: 10K credits/mo, Starter: 10K credits/mo, Growth: 50K credits/mo per family; rate limit rows per tier (10/50/100 req/sec)
+  - `Verify:` Table matches the published business direction and the billing/credits docs
+  - `Evidence:` Free: 10K credits/mo, PAYG: no hard monthly cap; docs distinguish request-time enforcement counters from billing truth
 - [ ] Error handling guide (all error codes per ARCHITECTURE.MD §9, retry logic, request_id tracing)
   - `Verify:` All live-today codes documented; forward-contract codes marked as "introduced in P1C / etc."
   - `Evidence:` Live: `MISSING_API_KEY`, `INVALID_API_KEY`, `PRODUCT_NOT_ALLOWED`, `QUOTA_EXCEEDED`, `RATE_LIMITED`. Forward: `KEY_LIMIT_EXCEEDED`, `UNAUTHORIZED`, `ORG_REQUIRED`, `INVALID_SIGNATURE`, `VALIDATION_ERROR`, `SERVICE_UNAVAILABLE`, `INTERNAL_ERROR`
@@ -3580,12 +3740,12 @@ As an API consumer, I find ABN documentation and SDK methods alongside the exist
 
 ---
 
-### Ticket P2.06 — Stripe ABN Usage Meter
+### Ticket P2.06 — Historical Stripe ABN Usage Meter Planning
 
 ```yaml
 id: P2.06
-title: Stripe ABN Usage Meter
-status: pending
+title: Historical Stripe ABN Usage Meter Planning
+status: superseded
 priority: p1-high
 epic: P2
 persona: [ops]
@@ -3595,36 +3755,30 @@ completed: null
 
 #### User Story
 
-As a platform operator, ABN usage is metered and billed separately from address so that the invoice shows per-product line items.
+> Superseded planning. Future ABN billing work should map ABN usage into Lago
+> billable metrics and product mappings rather than new Stripe meters.
+
+As a platform operator, I retain the historical Stripe-meter planning context for ABN while steering future ABN commercialisation toward Lago billable metrics instead.
 
 #### Problem Statement
 
-The billing cron (P1B.10) already reports address usage to Stripe via the deterministic meter event name `prontiq_address_requests`. Adding ABN requires a Stripe Meter + metered Price for the ABN product, `metadata.prontiqProduct=abn` on the ABN Stripe Product, and no cron code change — the cron already iterates the enabled `key.products` set and derives `event_name = prontiq_${product}_requests`. Under the credits model, the invoice shows "Address API — X credits" and "ABN Verification — Y credits" as separate family-level credit lines.
+This ticket is retained only as a record of the retired Stripe-meter expansion idea. Do not schedule new engineering work from it. When ABN commercialisation resumes under the Lago target architecture, track billable-metric definition, customer/product mapping, and billing-surface visibility in a Lago-target ticket instead.
 
 #### Definition of Done
 
 ##### Functional
 
-- [ ] ABN metered Price created in Stripe (with tiered allocations per plan, same shape as address per ARCHITECTURE.MD §5.6.1)
-  - `Verify:` Stripe dashboard Products → Prontiq ABN API shows metered Price with tiers
-  - `Evidence:` Stripe Product + Meter config documented in the billing runbook
-- [ ] P1B.06 Stripe webhook enables ABN on upgrade from live Stripe metadata (`metadata.prontiqProduct=abn`)
-  - `Verify:` Upgrade a test account to Starter; `aws dynamodb get-item` on prontiq-keys shows `products` includes `abn`
-  - `Evidence:` DDB record diff
-- [ ] Billing cron (P1B.10) reports ABN usage on next hourly run — no code change required; iterates the full enabled product set and emits `prontiq_abn_requests`
-  - `Verify:` Make 10 ABN requests → wait for hourly cron → Stripe usage records appear under ABN meter
-  - `Evidence:` Stripe → Billing → Meter usage
-- [ ] Invoice shows ABN line item alongside address line item
-  - `Verify:` Generate test invoice → shows both product line items
-  - `Evidence:` Invoice PDF with "Address API" and "ABN Verification" lines
+- [ ] No new work is scheduled from this historical Stripe ticket
+  - `Verify:` Future ABN commercial work is tracked against Lago-target plan/billable-metric tickets instead
+  - `Evidence:` Roadmap references Lago billable metrics, not new Stripe meters
 
 #### Scope
 
-**In:** Stripe ABN meter + metered Price, Product metadata `prontiqProduct=abn`, invoice verification (no billing-cron code change — P1B.10 already iterates enabled products)
+**In:** historical context only; explicit reminder not to continue ABN commercialisation through new Stripe-meter work
 
 **Out — Do Not Implement:**
 
-- Per-product overage pricing changes → use existing tier pricing
+- new Stripe meters/prices for ABN
 
 ---
 
@@ -3660,11 +3814,11 @@ Phase 1 runs on a single t3.small with 0 replicas — acceptable pre-revenue. Wi
 
 ---
 
-### Ticket P2.08 — ACN Directors Endpoint (Starter+)
+### Ticket P2.08 — ACN Directors Endpoint (Paid)
 
 ```yaml
 id: P2.08
-title: ACN Directors Endpoint (Starter+)
+title: ACN Directors Endpoint (Paid)
 status: pending
 priority: p2-value
 epic: P2
@@ -3681,7 +3835,7 @@ As an API consumer, `GET /v1/abn/directors?acn=...` returns company director det
 
 #### Problem Statement
 
-Director data comes from ASIC (separate dataset from ABR). This is a premium endpoint (Starter+) because it's high-value for compliance teams. The endpoint takes an ACN (Australian Company Number), looks up the company, and returns current directors with names and appointment dates.
+Director data comes from ASIC (separate dataset from ABR). This is a commercially gated endpoint because it's high-value for compliance teams. The endpoint takes an ACN (Australian Company Number), looks up the company, and returns current directors with names and appointment dates.
 
 #### Definition of Done
 
@@ -3693,9 +3847,9 @@ Director data comes from ASIC (separate dataset from ABR). This is a premium end
 - [ ] `GET /v1/abn/directors?acn=...` returns list of directors
   - `Verify:` `curl .../v1/abn/directors?acn=004085616` returns director list
   - `Evidence:` Response includes director name, appointment date, cessation date (if applicable)
-- [ ] Tier enforcement: Starter+ only (free tier gets 403 `PRODUCT_NOT_ALLOWED`)
-  - `Verify:` Free-tier key → 403; Starter key → 200
-  - `Evidence:` Auth middleware enforces tier check
+- [ ] Commercial gating enforced for paid access (free tier gets 403 `PRODUCT_NOT_ALLOWED`)
+  - `Verify:` Free-tier key → 403; paid key → 200
+  - `Evidence:` Auth middleware enforces the active commercial entitlement
 - [ ] Docs + SDK updated with `prontiq.abn.directors()` method
   - `Verify:` SDK has typed `directors()` method; docs page exists
   - `Evidence:` Speakeasy regenerated
@@ -3930,7 +4084,7 @@ As a developer, I configure webhook URLs, notification preferences, and can dele
 
 #### Problem Statement
 
-Webhook URLs allow developers to receive events (quota warnings, key changes) in their own systems. Notification preferences control email alerts. Account deletion (GDPR Article 17) must cascade: delete Clerk user, cancel Stripe subscription, purge `prontiq-keys` + `prontiq-usage` + `prontiq-audit` + `prontiq-ses-suppressions` for the org (see ARCHITECTURE.MD §11.1). Orchestrated by `scripts/purge-org.ts`.
+Webhook URLs allow developers to receive events (quota warnings, key changes) in their own systems. Notification preferences control email alerts. Account deletion (GDPR Article 17) must cascade: delete the Clerk user, retire the active commercial account in Lago, clean up any still-present legacy Stripe artifacts during migration, and purge `prontiq-keys` + `prontiq-usage` + `prontiq-audit` + `prontiq-ses-suppressions` for the org (see `ARCHITECTURE.MD` §11.1). Orchestrated by `scripts/purge-org.ts`.
 
 #### Definition of Done
 
@@ -3944,7 +4098,7 @@ Webhook URLs allow developers to receive events (quota warnings, key changes) in
   - `Evidence:` Email received with quota details
 - [ ] Account deletion flow (GDPR compliance; requires Clerk step-up + typed confirmation per ARCHITECTURE.MD §5.9.2)
   - `Verify:` Click "Delete Account" → step-up → typed confirmation → all data removed
-  - `Evidence:` Clerk user deleted, Stripe subscription cancelled, all four DynamoDB tables purged for the org
+  - `Evidence:` Clerk user deleted, Lago customer/subscription retired, any migration-era Stripe artifacts cleaned up, all four DynamoDB tables purged for the org
 
 #### Scope
 
@@ -3958,12 +4112,12 @@ Webhook URLs allow developers to receive events (quota warnings, key changes) in
 
 ---
 
-### Ticket P3.06 — Stripe LEI Usage Meter
+### Ticket P3.06 — Historical Stripe LEI Usage Meter Planning
 
 ```yaml
 id: P3.06
-title: Stripe LEI Usage Meter
-status: pending
+title: Historical Stripe LEI Usage Meter Planning
+status: superseded
 priority: p1-high
 epic: P3
 depends_on: [P1B.10]
@@ -3972,29 +4126,26 @@ completed: null
 
 #### User Story
 
-As a platform operator, LEI usage is metered and billed so that the invoice shows three product line items.
+> Superseded planning. Future LEI billing work should map LEI usage into Lago
+> billable metrics and product mappings rather than new Stripe meters.
+
+As a platform operator, I retain the historical Stripe-meter planning context for LEI while steering future LEI commercialisation toward Lago billable metrics instead.
 
 #### Definition of Done
 
 ##### Functional
 
-- [ ] LEI metered Price created in Stripe with tiered allocations
-  - `Verify:` Stripe dashboard shows LEI metered Price with tiers
-  - `Evidence:` Stripe Product + Meter config documented in the billing runbook
-- [ ] P1B.06 Stripe webhook enables LEI on upgrade from live Stripe metadata (`metadata.prontiqProduct=lei`)
-  - `Verify:` Upgrade a test account; `aws dynamodb get-item` shows `products` includes `lei`
-  - `Evidence:` DDB record diff
-- [ ] Invoice shows 3 product line items (address, ABN, LEI) — no cron change required
-  - `Verify:` Generate test invoice with usage across all 3 products
-  - `Evidence:` Invoice PDF shows 3 separate line items with correct quantities
+- [ ] No new work is scheduled from this historical Stripe ticket
+  - `Verify:` Future LEI commercial work is tracked against Lago-target plan/billable-metric tickets instead
+  - `Evidence:` Roadmap references Lago billable metrics, not new Stripe meters
 
 #### Scope
 
-**In:** Stripe LEI meter + metered Price, Product metadata `prontiqProduct=lei`, invoice verification (no cron code changes — P1B.10 already iterates enabled products)
+**In:** historical context only; explicit reminder not to continue LEI commercialisation through new Stripe-meter work
 
 **Out — Do Not Implement:**
 
-- Custom per-product pricing → use tier-based pricing
+- new Stripe meters/prices for LEI
 
 ---
 
@@ -4412,12 +4563,12 @@ Patent search is an expensive niche — commercial providers charge $500-2K per 
 
 ---
 
-### Ticket P5.03 — Stripe Meters for CVE + Patents
+### Ticket P5.03 — Historical Stripe Meter Planning for CVE + Patents
 
 ```yaml
 id: P5.03
-title: Stripe Meters for CVE + Patents
-status: pending
+title: Historical Stripe Meter Planning for CVE + Patents
+status: superseded
 priority: p1-high
 epic: P5
 depends_on: [P5.01, P5.02]
@@ -4426,36 +4577,31 @@ completed: null
 
 #### User Story
 
-As a platform operator, all 5 products are metered and billed so that the invoice shows the full per-product breakdown.
+> Superseded planning. Future CVE/Patents billing work should map usage into
+> Lago billable metrics and product mappings rather than additional Stripe
+> meters.
+
+As a platform operator, I retain the historical Stripe-meter planning context for CVE and Patents while steering future commercialisation toward Lago billable metrics instead.
 
 #### Problem Statement
 
-With 5 products live, the invoice must show 5 separate family-level credit line items. P1B.10 billing cron already iterates the enabled `key.products` set and emits deterministic Stripe meter event names (`prontiq_${product}_requests`) — it just needs the remaining Stripe Product metadata + meters/prices to exist, and the endpoint-weighted credits refinement to land in the usage path. This is the completion of the billing system: one subscription, one invoice, clear product-family credit lines, the Twilio model.
+This ticket is retained only as a record of the retired Stripe-meter expansion idea for later product families. Do not schedule new engineering work from it. When CVE or Patents commercialisation resumes under the Lago target architecture, track billable-metric definition, customer/product mapping, and billing-surface visibility in Lago-target tickets instead.
 
 #### Definition of Done
 
 ##### Functional
 
-- [ ] CVE + Patents metered Prices created in Stripe (tiered allocations per plan)
-  - `Verify:` Stripe dashboard Products shows all 5 product metered Prices with tiers
-  - `Evidence:` 5 Stripe meters/products documented in the billing runbook
-- [ ] P1B.06 Stripe webhook enables `cve` and `patents` via Stripe Product metadata (`metadata.prontiqProduct`)
-  - `Verify:` Upgrade a test account; DDB record `products` includes both
-  - `Evidence:` DDB diff
-- [ ] Invoice shows 5 product line items
-  - `Verify:` Generate test invoice with usage across all 5 products
-  - `Evidence:` Invoice PDF: "Address API — X", "ABN Verification — Y", "LEI Lookup — Z", "CVE Search — W", "Patent Search — V"
-- [ ] Billing cron (P1B.10) reports all 5 products on next hourly run — no code change
-  - `Verify:` Usage across all products → hourly cron → Stripe records for each
-  - `Evidence:` Stripe usage records for all 5 meters
+- [ ] No new work is scheduled from this historical Stripe ticket
+  - `Verify:` Future CVE/Patents commercial work is tracked against Lago-target plan/billable-metric tickets instead
+  - `Evidence:` Roadmap references Lago billable metrics, not new Stripe meters
 
 #### Scope
 
-**In:** Stripe meters + metered Prices for CVE + Patents, Product metadata, invoice verification (no billing-cron code change)
+**In:** historical context only; explicit reminder not to continue CVE/Patents commercialisation through new Stripe-meter work
 
 **Out — Do Not Implement:**
 
-- Per-product pricing tiers → use unified tier pricing
+- new Stripe meters/prices for CVE or Patents
 
 ---
 

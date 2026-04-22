@@ -1,6 +1,7 @@
 # Console App Rules
 
 - This app is the future `console.prontiq.dev` surface.
+- Forward-looking billing and plan-management work in this app should align to the Lago-target commercial architecture; any retained Stripe-hosted behavior is legacy migration context only.
 - `P1C.07` provides the Tailwind/shadcn/theme shell base and the env-gated Clerk boundary.
 - Fully missing Clerk keys are only a valid disabled mode when the helper-managed local/CI opt-in is present.
 - One-key-only Clerk config is a fail-closed misconfiguration, not a valid disabled mode.

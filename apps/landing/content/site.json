@@ -33,11 +33,8 @@
   "pricing": {
     "kicker": "Pricing",
     "title": "Usage-based. No seats.",
-    "intro": "Free gets you building immediately. Starter and Growth are the currently selectable paid plans in the interim Stripe-backed purchase surface while Prontiq replaces it with first-party Checkout flows.",
-    "paidPlanLabels": [
-      "Starter",
-      "Growth"
-    ],
+    "intro": "Free gets you building immediately. Paid pricing is still in migration away from the legacy Stripe-backed purchase surface while Prontiq moves to first-party Lago-backed billing flows.",
+    "paidPlanLabels": ["Paid pricing"],
     "freeTier": {
       "name": "Free",
       "priceLabel": "$0",
@@ -52,7 +49,7 @@
       ],
       "ctaLabel": "Start Free"
     },
-    "paidPlansFootnote": "Starter and Growth are the currently selectable paid plans in the interim Stripe pricing surface. Pay as you go and Max move to Prontiq-rendered plan cards plus Checkout."
+    "paidPlansFootnote": "The current landing page still supports a legacy Stripe-backed paid surface during migration. The forward commercial direction is Prontiq-rendered billing with Free + PAYG."
   },
   "featuresIntro": "Fast autocomplete, validation, enrichment, and reverse geocoding.",
   "footer": {

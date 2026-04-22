@@ -1,5 +1,21 @@
 # NEXT-SESSION.md — Session Execution Log
 
+## Session 30 — 2026-04-22
+
+**Focus:** Lago commercial architecture rewrite and planning reset.
+
+### Completed
+
+- **Canonical commercial architecture direction changed.** `ARCHITECTURE.MD` now presents Lago as the target commercial system of record, while the currently shipped Stripe webhook / billing cron / month-close path is retained only as legacy implementation context.
+- **Roadmap and handoff docs are now migration-oriented.** The forward workstream is no longer Stripe Checkout-session orchestration. It is the Lago migration sequence: `P1B.14` through `P1B.19`.
+- **Repo guidance is being normalized.** README, AGENTS, frontend strategy, Mintlify guides, app README/HINTS, ADRs, and runbooks are being aligned so future agents do not receive a split Stripe-vs-Lago story.
+
+### Next session should start with
+
+1. Start `P1B.14 — CustomerId + customer mapping contract`.
+2. Then move to `P1B.15 — SQS billing event buffer + hot-path emitter`.
+3. Follow with `P1B.16 — Lago event forwarder worker + idempotent transaction IDs`.
+
 ## Session 29 — 2026-04-20
 
 **Focus:** P1C.01 landing page implementation and closeout.
@@ -8,7 +24,7 @@
 
 - **`P1C.01` is now complete.** `apps/landing` now renders the real `prontiq.dev` landing page with sticky nav, hero statement, live demo, pricing section, and footer.
 - **The hero demo is now live and guarded.** The page embeds `@prontiq/web-component`, routes suggestions through `GET /api/demo/address/autocomplete`, and applies app-local per-IP token-bucket rate limiting plus query/limit clamps. No client-side API key is exposed.
-- **Commercial CTA paths are now real but build-safe.** The landing page now renders a config-owned Prontiq Free card and Clerk modal CTA wrappers. The original Stripe Pricing Table integration is now treated as a superseded interim implementation; the forward-looking replacement is Prontiq-rendered paid plan cards plus backend-created Checkout Sessions. Helper-managed local/CI runs remain keyless-safe; absent Clerk or Stripe envs degrade to deterministic fallback states instead of failing open.
+- **Commercial CTA paths are now real but build-safe.** The landing page now renders a config-owned Prontiq Free card and Clerk modal CTA wrappers. The original Stripe Pricing Table integration is now treated as a superseded interim implementation; the forward-looking direction is now Lago-backed pricing and billing surfaces owned by Prontiq. Helper-managed local/CI runs remain keyless-safe; absent Clerk or Stripe envs degrade to deterministic fallback states instead of failing open.
 - **Source-of-truth docs are reconciled.** Roadmap, architecture, frontend strategy, README/HINTS, and current-work tracking now treat `P1C.01` as shipped work and move the active frontend queue to `P1C.02`.
 
 ### Verification evidence
@@ -143,6 +159,7 @@
 2. Read `docs/prototypes/console-dashboard-v1.html`.
 3. Implement `P1C.07 — shadcn/ui + Tailwind v3.4 setup`.
 4. Then begin the first real landing/console surface ticket.
+
 ## Session 24 — 2026-04-19
 
 **Focus:** P1C.00 frontend foundations.
@@ -404,6 +421,7 @@ Integration coverage now includes:
 3. Use `docs/runbooks/ses-suppression.md` as the operator source of truth for SES bounce / complaint handling.
 
 ---
+
 ## Session 15 — 2026-04-19
 
 **Focus:** Post-rollout Stripe verification in dev and prod after the billing webhook + hourly meter push shipped.
@@ -478,7 +496,7 @@ Billing-cron integration coverage now includes:
 ### Shipped to prod
 
 - **PR #100 — `resolvePrimaryEmail` moved to `@prontiq/control-plane` (P1B.05 PR 3a refactor).** Pure refactor; webhook behaviour identical at runtime. `@clerk/backend` declared explicitly on `@prontiq/control-plane` (no transitive hoisting). 12 new node:test cases covering all 4 `EmailLookupResult` variants. ADR-002 amended with hardening contract #6. Merged 2026-04-18, dev verified, prod-deployed via Deploy to Production workflow run 24595460142 (success).
-- **PR #__ — `POST /v1/account/setup` recovery endpoint (P1B.05 PR 3b, the feature).** Clerk-JWT-authenticated endpoint that reuses `createProvisioningService().provisionOrg(...)` from `@prontiq/control-plane`. New `PqAccount` Lambda separate from address-API `$default` (verified isolation: `packages/api/src/index.ts` carries a doc-comment forbidding `@prontiq/control-plane` and `@clerk/backend` imports — bundle stays minimal). Mounted via `api.route("ANY /v1/account/{proxy+}", accountFn.arn)` with explicit-route precedence in front of `$default`. CORS extended on `PqApi` to allow POST + Authorization (additive — no existing-flow rejection). New `PqAccountErrors` CloudWatch alarm. New Mintlify page `packages/docs/api-reference/account-setup.mdx` documents the operator preconditions (Clerk dashboard JWT template needs `{ "org_id": "{{org.id}}" }` in BOTH dev and prod tenants; frontend must `setActive({ organization })` — neither caught by the deploy guard).
+- **PR #\_\_ — `POST /v1/account/setup` recovery endpoint (P1B.05 PR 3b, the feature).** Clerk-JWT-authenticated endpoint that reuses `createProvisioningService().provisionOrg(...)` from `@prontiq/control-plane`. New `PqAccount` Lambda separate from address-API `$default` (verified isolation: `packages/api/src/index.ts` carries a doc-comment forbidding `@prontiq/control-plane` and `@clerk/backend` imports — bundle stays minimal). Mounted via `api.route("ANY /v1/account/{proxy+}", accountFn.arn)` with explicit-route precedence in front of `$default`. CORS extended on `PqApi` to allow POST + Authorization (additive — no existing-flow rejection). New `PqAccountErrors` CloudWatch alarm. New Mintlify page `packages/docs/api-reference/account-setup.mdx` documents the operator preconditions (Clerk dashboard JWT template needs `{ "org_id": "{{org.id}}" }` in BOTH dev and prod tenants; frontend must `setActive({ organization })` — neither caught by the deploy guard).
 - **ROADMAP P1B.05 flipped to `complete`** with `completed: 2026-04-18`. P1B counter 4/13 → 5/13; total 26/76 → 27/76.
 
 ### Verification evidence

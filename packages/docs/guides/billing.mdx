@@ -1,0 +1,80 @@
+---
+title: "Billing"
+description: "How Prontiq is moving to a Lago-centered commercial model."
+---
+
+Prontiq is moving to a **Lago-centered** commercial architecture.
+
+The target model is:
+
+- **Lago** owns plans, pricing, invoicing, and metering truth
+- **Stripe** handles payment processing only
+- **Prontiq** keeps request-time credit enforcement in DynamoDB and emits billing events asynchronously
+
+## What customers see
+
+- Credits remain the public usage unit
+- Free and PAYG are the target commercial direction
+- API response headers still reflect request-time quota state from Prontiq
+
+<Note>
+  The live platform still contains a legacy paid-tier ladder during migration. Public docs in this
+  section describe the target commercial direction and should be read alongside live-runtime notes
+  in the Credits and Rate Limits guides.
+</Note>
+
+## What the platform owns
+
+Prontiq still owns:
+
+- API key lifecycle
+- org-scoped customer mapping
+- real-time credit enforcement
+- per-key usage tracking
+- billing-event emission away from the hot path
+
+## What changes during migration
+
+The live platform still contains a Stripe-centric billing path today. During the
+migration:
+
+- canonical architecture docs describe the **target Lago model**
+- legacy Stripe billing flows remain documented as current implementation only
+- no API usage changes are required for data endpoints
+
+## Customer identity
+
+### Live today
+
+The current live platform does **not** have the full shared `customerId` model
+yet.
+
+Today, commercial/account identity is represented by:
+
+- the Clerk organization
+- the Prontiq org envelope in DynamoDB
+- the current migration-era Stripe customer record
+
+That is the live implementation while the Lago migration is still in progress.
+
+### Target state
+
+The roadmap introduces an org-scoped platform `customerId` in `P1B.14`.
+
+Once that lands, humans signing in with Clerk and machines authenticating with
+API keys will both resolve to the same platform `customerId`, and that
+identifier will bridge:
+
+- Clerk organizations
+- Prontiq account state
+- Lago commercial state
+- Stripe payment records
+
+Until `P1B.14` ships, treat the shared `customerId` model as **target
+architecture**, not current API/runtime behavior.
+
+## Related guides
+
+- [Credits](/guides/credits)
+- [Rate limits](/guides/rate-limits)
+- [Authentication](/guides/authentication)

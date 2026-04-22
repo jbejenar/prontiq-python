@@ -14,10 +14,10 @@ curl "https://api.prontiq.dev/v1/address/autocomplete?q=test" \
 
 ### Key formats
 
-| Prefix | Environment | Use |
-|--------|-------------|-----|
-| `pq_live_` | Production | Real API calls, metered for billing |
-| `pq_test_` | Sandbox | Testing, no billing, same data |
+| Prefix     | Environment | Use                                 |
+| ---------- | ----------- | ----------------------------------- |
+| `pq_live_` | Production  | Real API calls in the live platform |
+| `pq_test_` | Sandbox     | Testing, no billing, same data      |
 
 ### Getting a key
 
@@ -116,3 +116,9 @@ curl -X POST https://api.prontiq.dev/v1/account/setup \
 ```
 
 See [Account setup](/api-reference/account-setup) for the recovery-provisioning endpoint and required JWT claims.
+
+<Note>
+  The current live platform still contains Stripe-linked account provisioning, but Prontiq's target
+  commercial architecture is moving toward Lago. API key authentication for data endpoints does not
+  change as part of that migration.
+</Note>

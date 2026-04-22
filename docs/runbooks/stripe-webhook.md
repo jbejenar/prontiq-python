@@ -1,8 +1,15 @@
 # Stripe Webhook Runbook
 
+> Legacy Stripe billing path.
+>
+> This runbook documents the **currently shipped** Stripe billing-state webhook.
+> It is retained for migration and operational history, not as the target
+> commercial architecture.
+
 `POST /webhooks/stripe` is the billing-state control-plane webhook for Prontiq.
 
 Implemented in P1B.06:
+
 - verifies `stripe-signature`
 - handles `checkout.session.completed`
 - handles `customer.subscription.updated`
@@ -11,10 +18,10 @@ Implemented in P1B.06:
 
 ## Current Endpoints
 
-| Stage | URL | Status |
-|---|---|---|
-| `dev` | `https://59jym47ia1.execute-api.ap-southeast-2.amazonaws.com/webhooks/stripe` | deployed and exercised on real Stripe sandbox deliveries |
-| `prod` | `https://api.prontiq.dev/webhooks/stripe` | deployed and Stripe destination configured |
+| Stage  | URL                                                                           | Status                                                   |
+| ------ | ----------------------------------------------------------------------------- | -------------------------------------------------------- |
+| `dev`  | `https://59jym47ia1.execute-api.ap-southeast-2.amazonaws.com/webhooks/stripe` | deployed and exercised on real Stripe sandbox deliveries |
+| `prod` | `https://api.prontiq.dev/webhooks/stripe`                                     | deployed and Stripe destination configured               |
 
 Current production Stripe destination:
 
@@ -64,6 +71,10 @@ Customer email copy should reflect the same contract: ~14 days total from the fi
 
 Current sandbox catalog aligned to the credits model:
 
+> Historical sandbox snapshot only. These plan names and metadata reflect the
+> legacy Stripe billing path and are not the forward-looking commercial
+> package contract.
+
 - `Prontiq Starter Plan`
   - recurring monthly price
   - metadata: `prontiqTier=starter`, `billingModel=hybrid`, `includedCreditsPerMonth=10000`
@@ -98,7 +109,9 @@ Monthly previous-month finalisation now belongs to `PqMonthClose`, not the webho
 
 Prontiq now derives billing state directly from Stripe API objects, not from repo constants or GitHub Environment vars:
 
-- The recurring subscription Price or its Product must carry `metadata.prontiqTier` with one of `free`, `starter`, `growth`, or `enterprise`.
+- The recurring subscription Price or its Product must carry
+  `metadata.prontiqTier` for the **legacy Stripe plan model** that is still
+  live during migration.
 - Each metered Stripe Product that enables a Prontiq API product must carry `metadata.prontiqProduct`, for example `address`.
 - Each metered Stripe Product should have a Stripe Meter whose event name follows `prontiq_${product}_requests` and whose payload value key is `request_count`. Despite the payload key name, the architecture source of truth now treats this value as the family-level **credit delta** sent to Stripe, not necessarily raw HTTP request count.
 - The webhook expands `items.data.price.product` at runtime and rebuilds the org's enabled product set from the live Stripe subscription on every billing event.

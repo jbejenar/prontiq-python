@@ -29,7 +29,8 @@ import { createLogger } from "@prontiq/shared";
  * a successful webhook delivery + a subsequent dashboard recovery
  * call collapse to the same envelope (same `ORG#{orgId}` key, same
  * Stripe customer via the deterministic idempotency-key, single audit
- * row).
+ * row). The canonical commercial architecture is moving toward Lago,
+ * but that migration has not landed in this endpoint yet.
  *
  * Auth contract is enforced by the upstream `clerkJwt()` middleware
  * mounted on `app.use("/v1/account/*")` in `account-handler.ts`. The
@@ -138,7 +139,10 @@ export function createAccountRoutes(overrides: AccountRouteOverrides = {}) {
     security: clerkJwtSecurity,
     request: {},
     responses: {
-      200: jsonResponse(accountSetupSuccessSchema, "Org envelope already provisioned (replay-safe)"),
+      200: jsonResponse(
+        accountSetupSuccessSchema,
+        "Org envelope already provisioned (replay-safe)",
+      ),
       201: jsonResponse(accountSetupSuccessSchema, "Org envelope freshly created"),
       400: jsonResponse(apiErrorResponseSchema, "JWT missing org_id claim (NO_ACTIVE_ORG)"),
       401: jsonResponse(apiErrorResponseSchema, "Missing/invalid/expired JWT"),

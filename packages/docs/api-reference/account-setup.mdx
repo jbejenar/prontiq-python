@@ -5,12 +5,25 @@ description: "Recover or initialise an org envelope from the dashboard. Clerk-JW
 
 ## `POST /v1/account/setup`
 
-Idempotent recovery endpoint that ensures the caller's org has a Stripe customer + envelope + audit row provisioned. The Clerk webhook normally provisions on org creation; this endpoint is the **manual fallback** when the webhook missed delivery (network blip, Svix queue stuck, brand-new account that hasn't had a webhook fire yet).
+Idempotent recovery endpoint for the **current live provisioning path**. Today
+it ensures the caller's org has a Stripe customer + envelope + audit row
+provisioned. The Clerk webhook normally provisions on org creation; this
+endpoint is the **manual fallback** when the webhook missed delivery (network
+blip, Svix queue stuck, brand-new account that hasn't had a webhook fire yet).
 
-The same `provisionOrg` code path runs for both flows, so a delayed webhook + a recovery call collapse to **one** envelope, **one** Stripe customer, and **one** audit row.
+The same `provisionOrg` code path runs for both flows, so a delayed webhook + a
+recovery call collapse to **one** envelope, **one** Stripe customer, and **one**
+audit row.
+
+<Info>
+  Prontiq's target commercial architecture is moving toward Lago. This page documents the endpoint
+  that is live today; it does not claim that Lago-backed customer provisioning has already landed in
+  the API.
+</Info>
 
 <Note>
-  This endpoint uses Clerk session-token auth, **not** an API key. The data API endpoints (`/v1/address/*`) continue to use `X-Api-Key`.
+  This endpoint uses Clerk session-token auth, **not** an API key. The data API endpoints
+  (`/v1/address/*`) continue to use `X-Api-Key`.
 </Note>
 
 ## Authentication
@@ -30,29 +43,32 @@ const res = await fetch("https://api.prontiq.dev/v1/account/setup", {
 
 ### Required JWT claims
 
-| Claim | Where it comes from | Why we need it |
-|-------|---------------------|----------------|
-| `sub` | Clerk session, automatic | Identifies the user; passed through to `clerkClient.users.getUser(sub)` for primary email lookup |
-| `org_id` | **JWT template — see below** | Identifies the org being provisioned |
+| Claim      | Where it comes from          | Why we need it                                                                                                                                                             |
+| ---------- | ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `sub`      | Clerk session, automatic     | Identifies the user; passed through to `clerkClient.users.getUser(sub)` for primary email lookup                                                                           |
+| `org_id`   | **JWT template — see below** | Identifies the org being provisioned                                                                                                                                       |
 | `org_role` | **JWT template — see below** | Authorisation gate. Only `org:admin` (and operator-configurable additional roles via `CLERK_ADMIN_ROLES`) can call this endpoint — same role policy the Clerk webhook uses |
 
 <Warning>
   **Operator pre-requisite, BOTH dev and prod tenants:** the Clerk session-token JWT template must include BOTH `org_id` AND `org_role`:
 
-  ```json
-  {
-    "org_id": "{{org.id}}",
-    "org_role": "{{org.role}}"
-  }
-  ```
+```json
+{
+  "org_id": "{{org.id}}",
+  "org_role": "{{org.role}}"
+}
+```
 
-  Configure at: Clerk Dashboard → **Sessions** → **Customize session token** → add both fields to the template.
+Configure at: Clerk Dashboard → **Sessions** → **Customize session token** → add both fields to the template.
 
-  Without `org_id` the endpoint returns `400 NO_ACTIVE_ORG`. Without `org_role` it returns `400 NO_ROLE_CLAIM`. Both are operator-side fixes — the JWT itself is valid, but the template doesn't expose the claim the gate needs.
+Without `org_id` the endpoint returns `400 NO_ACTIVE_ORG`. Without `org_role` it returns `400 NO_ROLE_CLAIM`. Both are operator-side fixes — the JWT itself is valid, but the template doesn't expose the claim the gate needs.
+
 </Warning>
 
 <Warning>
-  **Frontend pre-requisite:** the user must have called `setActive({ organization })` before invoking this endpoint. Even with the JWT template above, `org_id` and `org_role` are only populated when the session has an active organization.
+  **Frontend pre-requisite:** the user must have called `setActive({organization})` before invoking
+  this endpoint. Even with the JWT template above, `org_id` and `org_role` are only populated when
+  the session has an active organization.
 </Warning>
 
 ### Authorization
@@ -183,6 +199,7 @@ Distinct from `503 VERIFIER_UNAVAILABLE` below: 401 means **the user's token is 
 **Server-side / upstream outage.** Returned when `verifyToken` couldn't reach Clerk to validate the JWT (network error, Clerk 5xx, rate limit, JWKS endpoint unreachable).
 
 The user's token is fine — **safe to retry the same request**. The dashboard should:
+
 - Honour `details.retryAfter` (seconds) when present (Clerk-supplied rate-limit hint).
 - Otherwise back off with jittered exponential delay (start at 1s, max 30s).
 - Show the user "we're having trouble — try again" UX, NOT a re-auth prompt.

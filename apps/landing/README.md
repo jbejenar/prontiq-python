@@ -6,7 +6,7 @@ Next.js 15 app for `prontiq.dev`.
 
 - proxy-backed live autocomplete demo via `@prontiq/web-component`
 - free-tier pricing card from `content/site.json`
-- paid-plan section currently in transition away from Stripe Pricing Tables
+- paid-plan section currently in migration away from the legacy Stripe Pricing Table path
 - Clerk modal CTA wrappers
 - Tailwind CSS v3.4 + app-local shadcn/ui + dark mode
 - app-local Vitest + Testing Library
@@ -14,9 +14,9 @@ Next.js 15 app for `prontiq.dev`.
 
 Site-owned marketing/config content lives in `apps/landing/content/site.json`.
 That file owns hero/demo/pricing/footer framing copy and the Prontiq Free card.
-Paid-plan copy remains Stripe-owned, but the forward-looking purchase path is
-Prontiq-rendered plan cards plus backend-created Stripe Checkout Sessions. The
-existing Pricing Table integration is a superseded interim implementation.
+Paid-plan copy should follow the Lago-target commercial architecture described in
+`ARCHITECTURE.MD`. The existing Pricing Table integration is a superseded
+interim implementation retained only as migration context.
 
 `pnpm --filter landing dev`, `build`, `typecheck`, and `test` are
 self-sufficient from a fresh checkout: they build `@prontiq/shared` and

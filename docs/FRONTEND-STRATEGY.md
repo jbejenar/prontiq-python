@@ -100,11 +100,19 @@ Landing content goes through a `ContentSource` interface in `@prontiq/shared`.
 
 Use Clerk Organizations, not user-only identity.
 
-This matches the backend contract:
+This matches the live backend contract today:
 
 - org-scoped keys
-- org-scoped Stripe customers
+- org-scoped org-envelope and legacy Stripe customer linkage
 - org-scoped usage and audit
+
+Target state after `P1B.14`:
+
+- org-scoped commercial customers keyed by shared `customerId`
+- shared customer mapping across Clerk, Prontiq, Lago, and Stripe
+
+Until `P1B.14` ships, frontend work should not assume the shared `customerId`
+contract already exists in runtime.
 
 ### Agentic optimization
 
@@ -194,13 +202,16 @@ panels shown there are illustrative and may be deferred ticket-by-ticket.
 
 The landing hero is now a live product demo. `apps/landing` embeds `@prontiq/web-component` and points it at a constrained landing-side proxy route so browser traffic never carries a privileged API key.
 
-The paid-pricing UX is not expected to stay on Stripe Pricing Tables. Stripe remains the billing system of record, but the forward-looking frontend contract is:
+The legacy Stripe Pricing Table path is not the target commercial UX. The
+forward-looking frontend contract is Lago-backed commercial UX:
 
-- Prontiq-rendered plan cards on landing and in console billing surfaces
-- backend-created Stripe Checkout Sessions for paid upgrades
-- Stripe Customer Portal for payment methods, invoices, cancellation, and supported subscription management
+- Prontiq-rendered plan and usage surfaces on landing and in console billing views
+- platform-owned billing proxy/orchestration against Lago-backed commercial state
+- Prontiq-managed explanations of credits, usage, free-tier limits, and PAYG behavior
 
-The Pricing Table path is now treated as a superseded interim implementation rather than canonical frontend architecture.
+The Pricing Table path is now treated as a superseded interim implementation,
+and any remaining Stripe-hosted customer-management surface should be treated as
+legacy migration context rather than canonical frontend architecture.
 
 ## Design Token Contract
 

@@ -6,17 +6,17 @@ Prontiq is starting with developer-friendly Australian address validation. The b
 
 ## Current Product
 
-| Product                        | Endpoint        | Data Source | Status                     |
-| ------------------------------ | --------------- | ----------- | -------------------------- |
+| Product                        | Endpoint        | Data Source | Status                       |
+| ------------------------------ | --------------- | ----------- | ---------------------------- |
 | **Address Validation** (G-NAF) | `/v1/address/*` | data.gov.au | Live — 15M docs, 6 endpoints |
 
-Live at `https://api.prontiq.dev`. Docs at `https://docs.prontiq.dev`. TypeScript SDK auto-generated to `sdks/typescript/` (npm publish pending). The ratified frontend architecture is a two-app model. `prontiq.dev` now has a live landing page with a proxy-backed autocomplete demo, config-owned free-tier pricing card, an interim paid-pricing surface that is being migrated away from Stripe Pricing Tables, and a Clerk sign-up modal; `console.prontiq.dev` carries the env-gated authenticated app shell.
+Live at `https://api.prontiq.dev`. Docs at `https://docs.prontiq.dev`. TypeScript SDK auto-generated to `sdks/typescript/` (npm publish pending). The ratified frontend architecture is a two-app model. `prontiq.dev` now has a live landing page with a proxy-backed autocomplete demo, config-owned free-tier pricing card, and a Clerk sign-up modal; `console.prontiq.dev` carries the env-gated authenticated app shell. The current live billing path is still Stripe-centric, but the target commercial architecture is now Lago-centered. See `ARCHITECTURE.MD` for the canonical target state.
 
 ### Server-to-server surface
 
-| Endpoint | Purpose | Auth |
-|---|---|---|
-| `POST /webhooks/clerk` | Clerk `organizationMembership.created` → ORG envelope provisioning (Stripe customer + DDB record + audit row + best-effort welcome email). See `docs/runbooks/clerk-webhook.md`. | Svix signature (no API key) |
+| Endpoint                 | Purpose                                                                                                                                                                                                                                        | Auth                                                |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
+| `POST /webhooks/clerk`   | Clerk `organizationMembership.created` → ORG envelope provisioning for the current live billing path (Stripe customer + DDB record + audit row + best-effort welcome email). See `docs/runbooks/clerk-webhook.md`.                             | Svix signature (no API key)                         |
 | `POST /v1/account/setup` | Dashboard recovery for org provisioning when the Clerk webhook missed delivery. Idempotent — runs the same `provisionOrg` code path as the webhook. See [`api-reference/account-setup`](https://docs.prontiq.dev/api-reference/account-setup). | Clerk session token (`Authorization: Bearer <jwt>`) |
 
 Future products are roadmap items, not active docs/API surfaces yet.
@@ -45,9 +45,9 @@ console/account origin used by landing redirects and the footer Console link;
 when unset, production keeps `https://console.prontiq.dev`, Vercel previews map
 the landing preview host to the corresponding console preview host, and
 localhost maps `:3000` to `:3001`. The landing demo proxy additionally expects
-server-only `PRONTIQ_LANDING_DEMO_API_KEY`. `NEXT_PUBLIC_STRIPE_PRICING_TABLE_ID`
-is now a legacy interim env from the superseded Pricing Table approach and
-should not be treated as the forward-looking billing contract.
+server-only `PRONTIQ_LANDING_DEMO_API_KEY`. Stripe pricing-table envs are now
+legacy migration artifacts only and should not be treated as the forward-looking
+commercial contract.
 
 ### Local Development
 
@@ -90,7 +90,7 @@ packages/
   control-plane/   @prontiq/control-plane   provisionOrg service + writeAudit helpers (consumed by webhooks + api)
   api/             @prontiq/api             Hono API on Lambda (ARM64)
   ingestion/       @prontiq/ingestion       Step Functions + Lambda indexing
-  webhooks/        @prontiq/webhooks        Clerk webhook + Stripe billing webhook
+  webhooks/        @prontiq/webhooks        Clerk webhook + legacy/current Stripe billing webhook during Lago migration
   docs/            @prontiq/docs            Mintlify documentation
   tokens/          @prontiq/tokens          Semantic design-token contract package
   plugins/
@@ -104,29 +104,29 @@ apps/
 
 ## Stack
 
-| Layer          | Tool                                                   |
-| -------------- | ------------------------------------------------------ |
-| Infrastructure | SST v4 + Pulumi                                        |
-| API            | Hono + @hono/zod-openapi on Lambda (ARM64, Node.js 24) |
-| Search         | OpenSearch 2.19 (managed)                              |
-| API Keys       | DynamoDB-native (`pq_live_` + SHA-256 hash-based lookup; live in prod) |
-| Auth (portal)  | Clerk — webhook live in prod (`POST /webhooks/clerk`) AND JWT-authenticated `POST /v1/account/setup` recovery endpoint live in prod (P1B.05 complete) |
-| Billing        | Stripe customer creation, subscription webhook, hourly billing cron, and month-close all live; SES quota/billing mail verified against simulator recipients |
-| Frontend       | `apps/landing` live with proxy-backed demo + config-owned free tier + interim paid-pricing surface pending Checkout-session replacement + Clerk modal; `apps/console` has the env-gated Clerk shell base |
-| Docs           | Mintlify at `docs.prontiq.dev` (live)                  |
-| SDKs           | Speakeasy generates `@prontiq/sdk` (TypeScript) — npm publish pending NPM_TOKEN |
-| Observability  | CloudWatch + SNS email + Honeycomb backend traces (`HONEYCOMB_API_KEY` gated) + retained API X-Ray |
-| CI/CD          | GitHub Actions + OIDC (no stored credentials)          |
+| Layer          | Tool                                                                                                                                                                                                       |
+| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Infrastructure | SST v4 + Pulumi                                                                                                                                                                                            |
+| API            | Hono + @hono/zod-openapi on Lambda (ARM64, Node.js 24)                                                                                                                                                     |
+| Search         | OpenSearch 2.19 (managed)                                                                                                                                                                                  |
+| API Keys       | DynamoDB-native (`pq_live_` + SHA-256 hash-based lookup; live in prod)                                                                                                                                     |
+| Auth (portal)  | Clerk — webhook live in prod (`POST /webhooks/clerk`) AND JWT-authenticated `POST /v1/account/setup` recovery endpoint live in prod (P1B.05 complete)                                                      |
+| Billing        | Current live path: Stripe customer creation, subscription webhook, hourly billing cron, and month-close; target v-next path: Lago as commercial system of record with Stripe reduced to payment processing |
+| Frontend       | `apps/landing` live with proxy-backed demo + config-owned free tier + Clerk modal; `apps/console` has the env-gated Clerk shell base and is the future human billing surface                               |
+| Docs           | Mintlify at `docs.prontiq.dev` (live)                                                                                                                                                                      |
+| SDKs           | Speakeasy generates `@prontiq/sdk` (TypeScript) — npm publish pending NPM_TOKEN                                                                                                                            |
+| Observability  | CloudWatch + SNS email + Honeycomb backend traces (`HONEYCOMB_API_KEY` gated) + retained API X-Ray                                                                                                         |
+| CI/CD          | GitHub Actions + OIDC (no stored credentials)                                                                                                                                                              |
 
 ## Roadmap Progress
 
-See [`ROADMAP.md`](ROADMAP.md) for the full 78-ticket plan.
+See [`ROADMAP.md`](ROADMAP.md) for the current execution plan.
 
 | Phase   | Epic                      | Tickets | Done      |
 | ------- | ------------------------- | ------- | --------- |
 | **P0**  | Infrastructure Foundation | 6       | 6/6       |
 | **P1A** | API Core (Address)        | 13      | 10/13     |
-| **P1B** | Auth & Billing            | 14      | 11/14     |
+| **P1B** | Auth & Billing            | 20      | 12/20     |
 | **P1C** | Frontend Surfaces         | 9       | 3/9       |
 | **P1D** | Docs & SDK                | 5       | 2/5       |
 | **P1E** | Ingestion                 | 6       | 4/6       |
@@ -135,7 +135,7 @@ See [`ROADMAP.md`](ROADMAP.md) for the full 78-ticket plan.
 | **P3**  | LEI + Full Dashboard      | 7       | 0/7       |
 | **P4**  | Shopify + WooCommerce     | 5       | 0/5       |
 | **P5**  | CVE/NVD + Patents         | 4       | 0/4       |
-|         |                           | **80**  | **39/80** |
+|         |                           | **86**  | **40/86** |
 
 ## Commands
 

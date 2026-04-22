@@ -20,6 +20,7 @@
               "guides/quickstart",
               "guides/authentication",
               "guides/credits",
+              "guides/billing",
               "guides/rate-limits"
             ]
           },
@@ -36,10 +37,7 @@
           },
           {
             "group": "SDKs",
-            "pages": [
-              "guides/sdks/typescript",
-              "guides/sdks/python"
-            ]
+            "pages": ["guides/sdks/typescript", "guides/sdks/python"]
           }
         ]
       },
@@ -59,9 +57,7 @@
           },
           {
             "group": "Account",
-            "pages": [
-              "api-reference/account-setup"
-            ]
+            "pages": ["api-reference/account-setup"]
           }
         ]
       }

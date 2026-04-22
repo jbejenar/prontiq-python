@@ -1,55 +1,49 @@
 # ADR-007: Stripe Pricing Tables are not used for Prontiq's hybrid billing UX
 
+> Superseded on 2026-04-22 by the Lago commercial architecture direction.
+>
+> This ADR is retained as a record of the **legacy Stripe-forward** billing UX
+> decision. It is not the forward-looking commercial architecture.
+
 ## Status
 
-Accepted
+Superseded
 
 ## Context
 
-Prontiq's billing model is hybrid:
-
-- a recurring plan item for the base monthly fee
-- one metered family item per enabled API product
-- Free rendered and managed by Prontiq outside Stripe subscriptions
-
-Stripe remains the billing system of record, but Stripe Pricing Tables do not fit this purchase flow cleanly for Prontiq's hybrid metered plans. The original landing integration shipped as an interim implementation, but it is not the forward-looking contract.
+This ADR records a historical decision made while the commercial architecture
+was still Stripe-forward. The repo has since pivoted to a Lago-centered target
+architecture, but the earlier Stripe pricing-table decision is retained here so
+future readers can understand why the interim embedded pricing-table path was
+retired.
 
 ## Decision
 
-Do not use Stripe Pricing Tables for Prontiq's paid-plan purchase UX.
-
-Use this pattern instead:
-
-- Prontiq-rendered plan cards on landing and billing surfaces
-- backend-created Stripe Checkout Sessions for paid upgrades
-- existing Stripe webhooks to reconcile entitlements after `checkout.session.completed`
-- Stripe Customer Portal for payment methods, invoices, cancellation, and supported subscription self-service
+Do not use embedded Stripe Pricing Tables for Prontiq's paid-plan purchase UX.
+Keep pricing UI first-party and platform-owned instead of treating a hosted
+Stripe widget as the long-term contract.
 
 ## Consequences
 
 ### Positive
 
-- Keeps Stripe as the billing platform without forcing an ill-fitting low-code purchase surface.
-- Lets Prontiq explain hybrid pricing clearly instead of flattening it into a Pricing Table.
-- Preserves the existing webhook-driven entitlement model.
-- Keeps Free as an app-rendered tier rather than trying to force it into Stripe subscription UX.
+- Keeps pricing UI first-party rather than bound to a hosted widget.
+- Preserves Prontiq control over how Free and paid commercial messaging are
+  explained.
 
 ### Negative
 
-- Requires first-party pricing UI instead of a drop-in Stripe component.
-- Requires a server-side Checkout Session orchestration path.
-- The interim Pricing Table integration has to be retired and documented as superseded.
+- Requires platform-owned pricing UI instead of a drop-in component.
+- The interim pricing-table integration had to be retired and documented as
+  superseded.
 
 ## Alternatives Considered
 
 ### 1. Keep Stripe Pricing Tables and patch around the gaps
 
-Rejected. The limitations are structural, not just cosmetic configuration issues.
+Rejected. The limitations were structural, not cosmetic.
 
-### 2. Replace Stripe entirely
+### 2. Keep commercial UX platform-owned
 
-Rejected. Stripe still fits subscriptions, metering, invoicing, tax, Checkout, Customer Portal, and webhook-driven entitlement sync.
-
-### 3. Build a fully custom billing UI without Checkout or Customer Portal
-
-Rejected. That would expand scope and discard the strongest parts of Stripe's hosted billing surface without a clear benefit.
+Accepted at the time. That intent survives even though the broader commercial
+system-of-record decision has since moved to Lago.

@@ -4,7 +4,9 @@ import { afterEach } from "vitest";
 import { vi } from "vitest";
 
 vi.mock("@clerk/nextjs", () => ({
-  ClerkProvider: ({ children }: { children: ReactNode }) => <div data-testid="clerk-provider">{children}</div>,
+  ClerkProvider: ({ children }: { children: ReactNode }) => (
+    <div data-testid="clerk-provider">{children}</div>
+  ),
   SignUpButton: ({ children }: { children: ReactNode }) => <>{children}</>,
 }));
 
@@ -26,13 +28,15 @@ test("landing shell renders the real landing sections", () => {
   render(<LandingShell />);
 
   expect(screen.getByRole("heading", { name: /One address endpoint/i })).toBeInTheDocument();
-  expect(screen.getByRole("heading", { name: /Type an address\. Watch it resolve\./i })).toBeInTheDocument();
+  expect(
+    screen.getByRole("heading", { name: /Type an address\. Watch it resolve\./i }),
+  ).toBeInTheDocument();
   expect(screen.getByRole("heading", { name: /Usage-based\. No seats\./i })).toBeInTheDocument();
   expect(screen.getByText("Try it")).toBeInTheDocument();
   expect(screen.getByText("prontiq.dev")).toBeInTheDocument();
   expect(screen.getByText("Stripe pricing unavailable")).toBeInTheDocument();
-  expect(screen.getByText("Starter · Growth")).toBeInTheDocument();
-  expect(screen.queryByText("Pay as you go · Starter · Growth · Max")).not.toBeInTheDocument();
+  expect(screen.getByText("Paid pricing")).toBeInTheDocument();
+  expect(screen.queryByText("Starter · Growth")).not.toBeInTheDocument();
   expect(screen.getAllByText("10,000 credits per month")).toHaveLength(1);
   expect(screen.getByRole("link", { name: "Console" })).toHaveAttribute(
     "href",

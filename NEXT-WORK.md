@@ -1,29 +1,29 @@
 # NEXT-WORK.md — Active Sprint
 
 > Extracted from ROADMAP.md. This is what agents should work on NOW.
-> Last updated: 2026-04-20 (Session 29)
+> Last updated: 2026-04-22 (Lago commercial architecture rewrite)
 
-## Current Phase: P1C.02
+## Current Phase: P1B.14
 
 ### What's Live
 
-| Surface | URL | Status |
-|---------|-----|--------|
-| API | `https://api.prontiq.dev` | ✅ 6 endpoints, 15M docs, custom domain |
-| Docs | `https://docs.prontiq.dev` | ✅ Mintlify Luma theme, OpenAPI playground |
-| Clerk webhook | `https://api.prontiq.dev/webhooks/clerk` | ✅ verifies Svix sig, provisions ORG envelope on `organizationMembership.created` (admin role) |
-| Stripe webhook | `https://api.prontiq.dev/webhooks/stripe` | ✅ deployed; prod destination configured, dev exercised on real Stripe sandbox deliveries |
-| Account setup | `POST https://api.prontiq.dev/v1/account/setup` | ✅ Clerk-JWT recovery endpoint; same `provisionOrg` code path as the webhook; idempotent |
-| TypeScript SDK | `sdks/typescript/` (`@prontiq/sdk` v0.1.0) | ✅ Auto-generated; npm publish pending NPM_TOKEN secret |
-| OpenAPI spec | `/openapi.json` (committed in `packages/docs/`) | ✅ Generated from Zod, CI verifies freshness |
-| Ingestion | EventBridge → Step Function → Fargate → OpenSearch | ✅ Automated, alias swap, blue-green |
+| Surface        | URL                                                | Status                                                                                         |
+| -------------- | -------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| API            | `https://api.prontiq.dev`                          | ✅ 6 endpoints, 15M docs, custom domain                                                        |
+| Docs           | `https://docs.prontiq.dev`                         | ✅ Mintlify Luma theme, OpenAPI playground                                                     |
+| Clerk webhook  | `https://api.prontiq.dev/webhooks/clerk`           | ✅ verifies Svix sig, provisions ORG envelope on `organizationMembership.created` (admin role) |
+| Stripe webhook | `https://api.prontiq.dev/webhooks/stripe`          | ✅ deployed on the legacy billing path; retained during Lago migration                         |
+| Account setup  | `POST https://api.prontiq.dev/v1/account/setup`    | ✅ Clerk-JWT recovery endpoint; same `provisionOrg` code path as the webhook; idempotent       |
+| TypeScript SDK | `sdks/typescript/` (`@prontiq/sdk` v0.1.0)         | ✅ Auto-generated; npm publish pending NPM_TOKEN secret                                        |
+| OpenAPI spec   | `/openapi.json` (committed in `packages/docs/`)    | ✅ Generated from Zod, CI verifies freshness                                                   |
+| Ingestion      | EventBridge → Step Function → Fargate → OpenSearch | ✅ Automated, alias swap, blue-green                                                           |
 
 ### Platform State
 
 - Hash-based API key auth (`prontiq-keys` + `prontiq-usage`) is live in production.
 - The P1B.04/P1B.04b cutover shipped on 2026-04-16 and has been exercised in prod.
 - **P1B.05 complete (2026-04-18).** Clerk webhook handler (`POST /webhooks/clerk`) AND `POST /v1/account/setup` recovery endpoint both live in dev + prod. Webhook dev verified end-to-end with real Svix traffic on 2026-04-18: `org_3CTU4Oh1XTqVdEGcyTBGqRWujCm` provisioned (Stripe customer `cus_UM5zw8xl8HgS9n`, ORG envelope, audit row, all atomic via `TransactWriteItems`); 4 subsequent Svix retries returned `already_exists` with zero side effects. Account-setup endpoint runs the same `createProvisioningService().provisionOrg(...)` code path as the webhook, so a delayed/missed webhook is recoverable from the dashboard. Three Lambdas now serve `PqApi`: address-API `$default` (hot path), `PqClerkWebhook` (Svix-signed), `PqAccount` (Clerk-JWT-authenticated `/v1/account/*`).
-- **P1B.06 + P1B.10 complete (2026-04-18; rollout verified 2026-04-19).** Stripe webhook + hourly billing cron are live in dev + prod. Dev Stripe webhook verification has been exercised end to end on real sandbox deliveries across tier reconciliation, `past_due`, recovery, cancellation, and `invoice.payment_failed` log-only. Prod is deployed, the Stripe destination is configured correctly, and the first real production billing event is now the final live confirmation point.
+- **Legacy billing path remains live.** `P1B.06`, `P1B.10`, and `P1B.11` are implemented in the current platform, but they are no longer the forward commercial direction. Canonical architecture now treats them as migration-era Stripe infrastructure.
 - **P1B.08 complete (2026-04-19; rollout verified 2026-04-19).** SES feedback ingestion, suppression-aware welcome / `past_due` / quota emails, and 80% / 100% quota notifications are live in dev + prod. `prontiq.dev` is verified in SES with DKIM active, simulator-based positive-send plus bounce / complaint flows were exercised in both stages, and the post-merge config-set IAM/send-path fixes are deployed. SES is still in sandbox, so simulator validation is complete but normal-recipient delivery remains blocked until AWS production access is enabled.
 - **P1B.11 complete (2026-04-19).** `PqMonthClose` is live in dev + prod on `cron(30 0 1 * ? *)`. It reuses the same replay-safe pending meter identifier model as `PqBillingCron`, finalizes previous-month deltas exactly once, and marks the current-hash previous-month scope `closed=true` so the hourly cron stops revisiting it permanently. Dev integration and manual service verification proved: remaining previous-month delta push, zero-delta close, predecessor-only chain finalization, rerun idempotency, and hourly-cron skip on closed prior-month scopes.
 - **P1B.09 complete (2026-04-19).** Per-key burst limiting is now explicitly extracted into `packages/api/src/middleware/rate-limit.ts`, remains enforced in the live auth path, and is covered by both unit and integration tests for burst exhaustion, refill, key isolation, and no orphan usage increments on `RATE_LIMITED`.
@@ -31,7 +31,7 @@
 - **P1F.02 complete (2026-04-19).** The prod observability baseline is live and verified: `PqIngestAlerts` prod email subscriptions via `ALERT_EMAILS`, `prontiq-production` dashboard, prod alarms for address API 5xx/Lambda error rate and OpenSearch yellow/red/low-storage, `PqApi` X-Ray tracing with DynamoDB + OpenSearch segments, and structured JSON logs across Lambda execution paths. SNS email delivery was verified by forcing `PqApiLambdaErrorRate` to `ALARM` and confirming receipt on a confirmed subscriber.
 - **P1F.03 complete (2026-04-20).** `@prontiq/observability` is live in `dev` and `prod`, Honeycomb traces are verified for `prontiq-api`, `prontiq-webhooks`, `prontiq-billing`, and `prontiq-ingestion` in both environments, and the deployed-stage rollback path is `HONEYCOMB_ENABLED=false` rather than secret removal.
 - **P1C.07 complete (2026-04-20).** `apps/landing` and `apps/console` now have Tailwind v3.4, app-local shadcn/ui primitives, dark mode, responsive shell foundations, and app-local Vitest + Testing Library. `apps/console` now carries an env-gated real Clerk auth boundary that builds/tests cleanly without Clerk keys and enables real sign-in when they are present.
-- **P1C.01 complete (2026-04-20).** `apps/landing` now ships the real `prontiq.dev` surface: proxy-backed live hero demo via `@prontiq/web-component`, config-owned Prontiq Free card, Clerk modal CTA wrappers, and app-local rate limiting on the landing demo proxy. The original Stripe Pricing Table integration is now treated as a superseded interim implementation; the replacement path is Prontiq-rendered paid plan cards plus backend-created Checkout Sessions. Helper-managed local/CI flows remain keyless-safe; missing Stripe or Clerk envs degrade to deterministic fallback states without failing open.
+- **P1C.01 complete (2026-04-20).** `apps/landing` now ships the real `prontiq.dev` surface: proxy-backed live hero demo via `@prontiq/web-component`, config-owned Prontiq Free card, Clerk modal CTA wrappers, and app-local rate limiting on the landing demo proxy. The old Stripe Pricing Table integration is now treated as a superseded interim implementation. Forward-looking billing UX now aligns to the Lago commercial architecture.
 - **`@prontiq/control-plane` package** (recovered from prior design + hardened) provides `createProvisioningService()`, `writeAudit()` / `buildAuditTransactItem()`, AND `resolvePrimaryEmail()`. Both ingress paths (Clerk webhook + `/v1/account/setup`) consume the same provisioning service AND the same verified-primary-email helper — invariants enforced once at the package boundary.
 - The legacy raw-key table is retained only for rollback/soak; the old `pq_live_prod_...` seed key has been rotated and revoked.
 - Future prod seed-key rotation now has an operator command:
@@ -74,15 +74,21 @@ POST /v1/account/setup  (Clerk JWT; not API key — recovery provisioning)
 
 ## Next Candidates
 
-### 1. Finish auth/billing control plane
+### 1. Commercial architecture migration
 
 - ~~P1B.05 — Clerk webhook handler + recovery endpoint~~ ✅ shipped (2026-04-18)
-- ~~P1B.06 — Stripe webhook handler~~ ✅ shipped (2026-04-18) — `POST /webhooks/stripe` now handles `checkout.session.completed`, `customer.subscription.updated`, `customer.subscription.deleted`, and `invoice.payment_failed` log-only with replay-safe claim/finalize webhook markers, strict metered-item validation, full same-tier subscription reconciliation, usage-flag resets on paid-plan transitions, and best-effort `past_due` email delivery.
-- ~~P1B.10 — billing cron~~ ✅ shipped (2026-04-18) — hourly `PqBillingCron` now reads `REGISTRY#active-keys` plus `REGISTRY#retired-billing-keys`, walks the `newHash-redirect-index` chain, sums accumulated credits per product family/month, and emits replay-safe Stripe meter events using deterministic `pendingMeterEventIdentifier` / `pendingMeterTargetCumulativeCount` state on the current hash usage row before advancing `lastPushedCumulativeCount`. Scope discovery now uses current entitlements plus outstanding/pending usage rows, and full downgrade/cancellation keeps hashes in the retired registry until their final billable deltas are drained instead of under-billing. Retirement eligibility always checks both current and previous month so a lingering prior-month delta cannot make a retired hash disappear outside the day-1 grace window, and revoked keys (`active=false`) still flush final retired-billing deltas because request auth activity is intentionally separate from billing finalisation.
-- **P1B.06 / P1B.10 rollout status (2026-04-19):** dev Stripe webhook verification is complete on real sandbox deliveries across tier reconciliation, `past_due`, recovery, cancellation, and `invoice.payment_failed`. Prod is deployed and the Stripe destination is configured correctly, but the first real production billing delivery is still the final live confirmation point.
+- ~~P1B.06 — Stripe webhook handler~~ ✅ shipped, but now legacy migration context
+- ~~P1B.10 — billing cron~~ ✅ shipped, but now legacy migration context
+- ~~P1B.11 — month-close~~ ✅ shipped, but now legacy migration context
 - ~~P1B.07 — `prontiq-audit` writer helper~~ ✅ shipped
 - ~~P1B.08 — SES suppression / bounce handling~~ ✅ shipped (2026-04-19)
 - ~~P1B.09 — burst rate limiter middleware~~ ✅ shipped (2026-04-19)
+- **P1B.14 — CustomerId + customer mapping contract** → next
+- **P1B.15 — SQS billing event buffer + hot-path emitter**
+- **P1B.16 — Lago event forwarder worker + idempotent transaction IDs**
+- **P1B.17 — Lago webhook sync + credit-counter reconciliation**
+- **P1B.18 — Console billing proxy surfaces + plan changes**
+- **P1B.19 — Stripe legacy billing retirement and cutover**
 
 ### 2. Finish ingestion hardening
 
@@ -99,27 +105,34 @@ POST /v1/account/setup  (Clerk JWT; not API key — recovery provisioning)
 
 Recommended priority:
 
-1. P1C.02 — Console Overview Page.
-2. P1C.03 — API Key Management.
-3. P1C.08 / P1B.13 — replace the superseded Pricing Table path with Prontiq-rendered plan cards + Checkout-session orchestration.
-4. P1E.05 / P1E.06 ingestion hardening if platform work is preferred over frontend work.
+1. P1B.14 — lock the Lago customer-mapping and `customerId` contract.
+2. P1B.15 / P1B.16 — move billing emission behind SQS and into Lago forwarding.
+3. P1B.17 / P1B.18 — reconcile Lago state back into platform counters and expose the console billing surfaces.
+4. P1C.02 / P1C.03 — continue the console overview and API-key experience after the commercial contract is pinned.
 
-Before starting `P1C.02`, read:
+Before starting `P1B.14`, read:
 
+- `ARCHITECTURE.MD` (commercial implementation-status section + Lago target flow)
 - `docs/FRONTEND-STRATEGY.md`
 - `docs/prototypes/console-dashboard-v1.html`
 
 Reason:
 
-- P1B auth/billing execution is effectively complete.
+- The legacy Stripe auth/billing path is effectively complete, but the forward
+  commercial workstream is now the Lago migration sequence.
 - Honeycomb backend tracing is now implemented and verified in deployed `dev` and `prod`.
-- The next product milestone is the first real authenticated console feature surface on top of the live frontend base.
+- The next product milestone is pinning the Lago customer and event contract so
+  console billing, usage, and plan-management work does not build on a stale
+  Stripe-era model.
+- `P1C.02` and `P1C.03` still matter, but they should follow the commercial
+  contract work instead of preceding it.
 - API Gateway caching remains a pragmatic performance/cost option if platform work is preferred over dashboard work.
 
 ### Operator follow-ups (one-time, not blocking next ticket)
 
 - **SES production-access posture** for `prontiq.dev` in `ap-southeast-2`. Domain verification and DKIM are complete; the remaining operator action is AWS SES sandbox exit so welcome, quota, and billing emails can reach normal recipients. Operate via `docs/runbooks/ses-suppression.md`.
-- **Stripe metadata contract** for `dev` and `prod`: the recurring plan Price must carry `metadata.prontiqTier`, and each metered Stripe Product must carry `metadata.prontiqProduct`. `STRIPE_WEBHOOK_SECRET` / `STRIPE_SECRET_KEY` remain the only required Stripe GitHub Environment secrets.
+- **Legacy Stripe metadata contract** remains relevant only while the migration
+  is in progress. Do not treat it as the forward commercial design.
 
 ### Backlog (not blocking auth)
 
@@ -130,18 +143,18 @@ Reason:
 
 ## Reference Files
 
-| File | Purpose | When to Read |
-|------|---------|--------------|
-| `ARCHITECTURE.MD` | Full platform design | When you need design context |
-| `ROADMAP.md` | Master plan (77 tickets) | When you need the full scope |
-| `docs/FRONTEND-STRATEGY.md` | Canonical frontend architecture | Before any P1C implementation |
-| `docs/decisions/001-remove-unkey.md` | ADR — why Unkey was removed | When auditing architecture decisions |
-| `sst.config.ts` | Infrastructure definition | When working on infra |
-| `packages/shared/src/constants.ts` | Product registry, tier limits | When working on auth/billing |
-| `packages/api/src/index.ts` | API entry point | When working on routes |
-| `packages/api/src/scripts/rotate-prod-key.ts` | Prod key rotation operator command | When rotating the seed key |
-| `packages/api/src/search/queries.ts` | OpenSearch queries | When tuning search |
-| `packages/docs/openapi.json` | Committed OpenAPI spec | Source of truth for SDK/docs |
-| `.speakeasy/workflow.yaml` | SDK generation config | When adding SDK languages |
-| `docs/operations/ingestion-runbook.md` | Ingestion operator guide | When running ingestion |
-| `docs/runbooks/p1b04b-cutover.md` | Auth/billing cutover + rotation runbook | When operating the v2.2 key model |
+| File                                          | Purpose                                 | When to Read                         |
+| --------------------------------------------- | --------------------------------------- | ------------------------------------ |
+| `ARCHITECTURE.MD`                             | Full platform design                    | When you need design context         |
+| `ROADMAP.md`                                  | Master plan                             | When you need the full scope         |
+| `docs/FRONTEND-STRATEGY.md`                   | Canonical frontend architecture         | Before any P1C implementation        |
+| `docs/decisions/001-remove-unkey.md`          | ADR — why Unkey was removed             | When auditing architecture decisions |
+| `sst.config.ts`                               | Infrastructure definition               | When working on infra                |
+| `packages/shared/src/constants.ts`            | Product registry, tier limits           | When working on auth/billing         |
+| `packages/api/src/index.ts`                   | API entry point                         | When working on routes               |
+| `packages/api/src/scripts/rotate-prod-key.ts` | Prod key rotation operator command      | When rotating the seed key           |
+| `packages/api/src/search/queries.ts`          | OpenSearch queries                      | When tuning search                   |
+| `packages/docs/openapi.json`                  | Committed OpenAPI spec                  | Source of truth for SDK/docs         |
+| `.speakeasy/workflow.yaml`                    | SDK generation config                   | When adding SDK languages            |
+| `docs/operations/ingestion-runbook.md`        | Ingestion operator guide                | When running ingestion               |
+| `docs/runbooks/p1b04b-cutover.md`             | Auth/billing cutover + rotation runbook | When operating the v2.2 key model    |

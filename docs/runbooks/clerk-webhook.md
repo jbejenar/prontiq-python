@@ -2,14 +2,14 @@
 
 ## Scope
 
-Operating, debugging, and recovering the `POST /webhooks/clerk` endpoint that consumes Clerk's `organizationMembership.created` events and provisions the ORG envelope (Stripe customer + DDB record + audit row + best-effort welcome email). Per ARCHITECTURE.MD §5.7.1, this handler does NOT mint API keys — that's the user-driven `POST /v1/account/keys/create` (P1C.03).
+Operating, debugging, and recovering the `POST /webhooks/clerk` endpoint that consumes Clerk's `organizationMembership.created` events and provisions the ORG envelope for the **current live provisioning path** (Stripe customer + DDB record + audit row + best-effort welcome email). Per ARCHITECTURE.MD §5.7.1, this handler does NOT mint API keys — that's the user-driven `POST /v1/account/keys/create` (P1C.03).
 
 ## Endpoint
 
-| Stage | URL |
-|---|---|
+| Stage                 | URL                                                                          |
+| --------------------- | ---------------------------------------------------------------------------- |
 | dev (`dev` SST stage) | `https://59jym47ia1.execute-api.ap-southeast-2.amazonaws.com/webhooks/clerk` |
-| prod | `https://api.prontiq.dev/webhooks/clerk` |
+| prod                  | `https://api.prontiq.dev/webhooks/clerk`                                     |
 
 The Clerk dashboard's webhook configuration points at the dev URL today. The prod URL must be configured separately on the production Clerk application.
 
@@ -32,6 +32,7 @@ The Clerk dashboard's webhook configuration points at the dev URL today. The pro
    Personal stages (e.g. `jbejenar`) skip the validation guard so `sst dev` works locally without all secrets configured.
 
    **Do NOT use `sst secret set`** for these — the codebase's convention is GitHub Environment vars/secrets exported via the deploy workflow. `sst.Secret` (SSM-backed) was tried in an earlier iteration of this PR and conflicted with the env-var pattern.
+
 4. **Clerk dashboard configured**: `organizationMembership.created` event subscribed; signing secret matches the GitHub Environment value.
 5. **Optional — `CLERK_ADMIN_ROLES` GitHub Environment variable** (NOT a secret): Defaults to `"org:admin,admin"`. Override only if your Clerk app uses custom organization roles for the creator. Comma-separated list, e.g. `owner,principal`. Same end-to-end configuration path as the secrets above (Settings → Environments → `dev` / `prod` → Variables).
 
@@ -51,6 +52,7 @@ The Clerk dashboard's webhook configuration points at the dev URL today. The pro
    ```
 
    Both should print the same value (or both empty for the default).
+
 6. **User email requirement**: This handler requires the org creator's Clerk user to have a verified primary email address. Phone-only / OAuth-only users without a primary email return 500 `fatal_failure` with `reason: "user_has_no_primary_email"`. Operator fix is to add a primary email in the Clerk dashboard, then "Resend" the failed message.
 
 ## Healthy delivery (golden path)
@@ -81,11 +83,13 @@ When a user accepts an invite (not the org creator), Clerk fires `organizationMe
 ### 401 invalid signature
 
 Causes:
+
 - Wrong `CLERK_WEBHOOK_SECRET` in the GitHub Environment vs the Clerk dashboard's signing secret.
 - Clock skew > 5 min between Clerk and AWS (Svix's tolerance).
 - Body mutation by a proxy / CDN before the Lambda receives it.
 
 Recovery:
+
 1. **Verify the deployed Lambda's env value matches Clerk:**
    ```sh
    # Show the value baked into the deployed Lambda (not the GitHub Environment secret directly — GitHub doesn't expose secret values back):
@@ -108,12 +112,14 @@ Logged as `ORG envelope provisioning retryable failure`. The Stripe customer was
 Svix retry schedule (default): 5s, 5min, 30min, 2h, 5h, 10h, 16h, 24h, 48h. The next retry should succeed.
 
 If the alarm `PqClerkWebhookErrors` fires (>5 errors in 15min), check:
+
 - DDB ProvisionedThroughputExceededException on `prontiq-keys` or `prontiq-audit` (tables are PAY_PER_REQUEST so this should be rare; if it happens, AWS hot-partition behaviour is the cause).
 - Lambda IAM lapse — verify the deploy role's IAM policy hasn't drifted.
 
 ### 5xx fatal_failure with `reason: "user_has_no_primary_email"`
 
 The org creator's Clerk user has no primary email at all (phone-first / OAuth-only signup, or operator deleted the email post-signup). The handler refuses to proceed because:
+
 - Stripe `customers.create` requires `email` for receipts and dunning.
 - The welcome email path can't run without a target.
 
@@ -126,6 +132,7 @@ The user has a primary email set, but it hasn't completed verification (`status:
 **No fallback policy:** even if the user has another verified email, the handler does NOT fall back. The primary is the user's explicit identity choice, and falling back would make Stripe customer email unpredictable from the operator's view.
 
 Recovery options (the `verificationStatus` from CloudWatch logs tells you which case applies):
+
 - `unverified`: ask the user to complete email verification (Clerk usually sends a link automatically; user clicks to confirm)
 - `failed` / `expired`: trigger a fresh verification from the Clerk dashboard or have the user request a new link
 - `transferable`: the user is mid-signup; usually self-heals when they finish
@@ -135,11 +142,13 @@ After the primary is verified, click "Resend" on the failed message in the Clerk
 ### 5xx fatal_failure (other)
 
 Logged as `ORG envelope provisioning fatal failure` with classification `fatal`. Causes:
+
 - Stripe `StripeInvalidRequestError` (e.g. malformed email — won't fix on retry).
 - DDB `ValidationException` (item too large, bad shape — code bug).
 - DDB `ResourceNotFoundException` (table missing — schema drift, IAM problem).
 
 Svix still redelivers, but a real fatal will exhaust retries. Then:
+
 1. Capture the failing message from the Clerk dashboard (the `svix-id`).
 2. Check CloudWatch Logs for the corresponding `request_id`.
 3. Fix the underlying issue (code, IAM, schema).
@@ -180,11 +189,11 @@ The classifier lives in `packages/api/src/middleware/clerk-jwt.ts` (`classifyVer
 
 ## CloudWatch references
 
-| Resource | Path |
-|---|---|
-| Handler logs | `/aws/lambda/prontiq-<stage>-PqClerkWebhookFunction-<rand>` |
-| Error alarm | `PqClerkWebhookErrors` (region `ap-southeast-2`). Tracks `AWS/ApiGateway 5xx` on the `POST /webhooks/clerk` route (covers both unhandled Lambda exceptions AND handler-returned 500s). |
-| Alarm SNS topic | `PqIngestAlerts` |
+| Resource        | Path                                                                                                                                                                                   |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Handler logs    | `/aws/lambda/prontiq-<stage>-PqClerkWebhookFunction-<rand>`                                                                                                                            |
+| Error alarm     | `PqClerkWebhookErrors` (region `ap-southeast-2`). Tracks `AWS/ApiGateway 5xx` on the `POST /webhooks/clerk` route (covers both unhandled Lambda exceptions AND handler-returned 500s). |
+| Alarm SNS topic | `PqIngestAlerts`                                                                                                                                                                       |
 
 See also: `docs/runbooks/monitoring-alerting.md` for the shared Phase 1 alerting and dashboard baseline.
 

@@ -40,13 +40,10 @@ export default $config({
   },
   async run() {
     const pulumi = await import("@pulumi/pulumi");
-    const {
-      DEFAULT_ACCOUNT_URL,
-      DEFAULT_BILLING_URL,
-    } = await import("./packages/shared/src/constants.js");
-    const { calculateOpenSearchLowFreeStorageThresholdMiB } = await import(
-      "./packages/shared/src/observability.js"
-    );
+    const { DEFAULT_ACCOUNT_URL, DEFAULT_BILLING_URL } =
+      await import("./packages/shared/src/constants.js");
+    const { calculateOpenSearchLowFreeStorageThresholdMiB } =
+      await import("./packages/shared/src/observability.js");
 
     // ═══════════════════════════════════════════════════════════════════════
     // EXISTING INFRASTRUCTURE
@@ -154,10 +151,8 @@ export default $config({
         KEYS_TABLE_NAME: authKeysTable.name,
         USAGE_TABLE_NAME: authUsageTable.name,
         SUPPRESSIONS_TABLE_NAME: suppressionsTable.name,
-        WELCOME_EMAIL_FROM:
-          process.env.WELCOME_EMAIL_FROM ?? "noreply@prontiq.dev",
-        PRONTIQ_BILLING_URL:
-          process.env.PRONTIQ_BILLING_URL ?? DEFAULT_BILLING_URL,
+        WELCOME_EMAIL_FROM: process.env.WELCOME_EMAIL_FROM ?? "noreply@prontiq.dev",
+        PRONTIQ_BILLING_URL: process.env.PRONTIQ_BILLING_URL ?? DEFAULT_BILLING_URL,
         PRONTIQ_DOCS_URL: process.env.PRONTIQ_DOCS_URL ?? "https://docs.prontiq.dev",
         SES_CONFIGURATION_SET_NAME: sesConfigurationSet.configurationSetName,
       };
@@ -290,9 +285,7 @@ export default $config({
     }
     const isDeployedStage = $app.stage === "dev" || $app.stage === "prod";
     if (isDeployedStage) {
-      const missing = REQUIRED_DEPLOY_SECRETS.filter(
-        (name) => readGithubSecret(name).length === 0,
-      );
+      const missing = REQUIRED_DEPLOY_SECRETS.filter((name) => readGithubSecret(name).length === 0);
       if (missing.length > 0) {
         throw new Error(
           `Missing or whitespace-only GitHub Environment secrets for stage "${$app.stage}": ` +
@@ -426,8 +419,7 @@ export default $config({
     }
 
     // -- Ingestion Lambdas (Step Function tasks) --
-    const opensearchEndpoint =
-      process.env.OPENSEARCH_ENDPOINT ?? OPENSEARCH_ENDPOINT_DEFAULT;
+    const opensearchEndpoint = process.env.OPENSEARCH_ENDPOINT ?? OPENSEARCH_ENDPOINT_DEFAULT;
 
     const readManifestFn = new sst.aws.Function("PqIngestReadManifest", {
       handler: "packages/ingestion/src/read-manifest.bootstrap.handler",
@@ -522,10 +514,14 @@ export default $config({
     const ingestCluster = new aws.ecs.Cluster("PqIngestCluster");
 
     const ecrRepoName = isProd ? "prontiq-ingest-bulk" : `prontiq-ingest-bulk-${$app.stage}`;
-    const ingestRepo = new aws.ecr.Repository("PqIngestBulkRepo", {
-      name: ecrRepoName,
-      forceDelete: true,
-    }, isProd ? { import: "prontiq-ingest-bulk" } : undefined);
+    const ingestRepo = new aws.ecr.Repository(
+      "PqIngestBulkRepo",
+      {
+        name: ecrRepoName,
+        forceDelete: true,
+      },
+      isProd ? { import: "prontiq-ingest-bulk" } : undefined,
+    );
 
     const defaultVpc = aws.ec2.getVpcOutput({ default: true });
     const publicSubnets = aws.ec2.getSubnetsOutput({
@@ -546,9 +542,7 @@ export default $config({
           },
         ],
       }),
-      managedPolicyArns: [
-        "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy",
-      ],
+      managedPolicyArns: ["arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"],
     });
 
     // The managed ECS execution policy has CreateLogStream + PutLogEvents
@@ -812,8 +806,7 @@ export default $config({
                 Resource: "arn:aws:states:::sns:publish",
                 Parameters: {
                   TopicArn: alertsArn,
-                  "Message.$":
-                    "States.Format('Ingestion failed for {}/{}', $.product, $.version)",
+                  "Message.$": "States.Format('Ingestion failed for {}/{}', $.product, $.version)",
                 },
                 Next: "Fail",
               },
@@ -913,6 +906,9 @@ export default $config({
     // before the welcome email path goes live in prod.
 
     // ─── Shared env contract for ALL control-plane Lambdas ───
+    // Current shipped state is still Stripe-centric. The target commercial
+    // architecture is Lago-centered, but that migration has not landed in this
+    // runtime wiring yet.
     //
     // Both `PqClerkWebhook` (Svix-signed `POST /webhooks/clerk`) and
     // `PqAccount` (Clerk-JWT-authenticated `POST /v1/account/setup`)
@@ -1463,7 +1459,16 @@ export default $config({
                       stat: "Sum",
                       period: 300,
                       metrics: [
-                        ["AWS/ApiGateway", "Count", "ApiId", apiId, "Stage", "$default", "Route", "$default"],
+                        [
+                          "AWS/ApiGateway",
+                          "Count",
+                          "ApiId",
+                          apiId,
+                          "Stage",
+                          "$default",
+                          "Route",
+                          "$default",
+                        ],
                       ],
                     },
                   },
@@ -1479,7 +1484,17 @@ export default $config({
                       region: AWS_REGION,
                       period: 300,
                       metrics: [
-                        ["AWS/ApiGateway", "Latency", "ApiId", apiId, "Stage", "$default", "Route", "$default", { stat: "p50" }],
+                        [
+                          "AWS/ApiGateway",
+                          "Latency",
+                          "ApiId",
+                          apiId,
+                          "Stage",
+                          "$default",
+                          "Route",
+                          "$default",
+                          { stat: "p50" },
+                        ],
                         ["...", { stat: "p95" }],
                         ["...", { stat: "p99" }],
                       ],
@@ -1497,8 +1512,24 @@ export default $config({
                       region: AWS_REGION,
                       period: 300,
                       metrics: [
-                        [{ expression: "IF(m1 > 0, (m2 / m1) * 100, 0)", id: "e1", label: "5xx rate %" }],
-                        ["AWS/ApiGateway", "Count", "ApiId", apiId, "Stage", "$default", "Route", "$default", { id: "m1", stat: "Sum" }],
+                        [
+                          {
+                            expression: "IF(m1 > 0, (m2 / m1) * 100, 0)",
+                            id: "e1",
+                            label: "5xx rate %",
+                          },
+                        ],
+                        [
+                          "AWS/ApiGateway",
+                          "Count",
+                          "ApiId",
+                          apiId,
+                          "Stage",
+                          "$default",
+                          "Route",
+                          "$default",
+                          { id: "m1", stat: "Sum" },
+                        ],
                         [".", "5xx", ".", ".", ".", ".", ".", ".", { id: "m2", stat: "Sum" }],
                       ],
                     },
@@ -1515,8 +1546,20 @@ export default $config({
                       region: AWS_REGION,
                       period: 300,
                       metrics: [
-                        [{ expression: "IF(m1 > 0, (m2 / m1) * 100, 0)", id: "e1", label: "Lambda error rate %" }],
-                        ["AWS/Lambda", "Invocations", "FunctionName", apiFunctionName, { id: "m1", stat: "Sum" }],
+                        [
+                          {
+                            expression: "IF(m1 > 0, (m2 / m1) * 100, 0)",
+                            id: "e1",
+                            label: "Lambda error rate %",
+                          },
+                        ],
+                        [
+                          "AWS/Lambda",
+                          "Invocations",
+                          "FunctionName",
+                          apiFunctionName,
+                          { id: "m1", stat: "Sum" },
+                        ],
                         [".", "Errors", ".", ".", { id: "m2", stat: "Sum" }],
                       ],
                     },
@@ -1534,7 +1577,14 @@ export default $config({
                       period: 300,
                       stat: "Maximum",
                       metrics: [
-                        ["AWS/ES", "ClusterStatus.yellow", "DomainName", OPENSEARCH_DOMAIN_NAME, "ClientId", AWS_ACCOUNT_ID],
+                        [
+                          "AWS/ES",
+                          "ClusterStatus.yellow",
+                          "DomainName",
+                          OPENSEARCH_DOMAIN_NAME,
+                          "ClientId",
+                          AWS_ACCOUNT_ID,
+                        ],
                         [".", "ClusterStatus.red", ".", ".", ".", "."],
                       ],
                     },
@@ -1552,7 +1602,14 @@ export default $config({
                       period: 300,
                       stat: "Minimum",
                       metrics: [
-                        ["AWS/ES", "FreeStorageSpace", "DomainName", OPENSEARCH_DOMAIN_NAME, "ClientId", AWS_ACCOUNT_ID],
+                        [
+                          "AWS/ES",
+                          "FreeStorageSpace",
+                          "DomainName",
+                          OPENSEARCH_DOMAIN_NAME,
+                          "ClientId",
+                          AWS_ACCOUNT_ID,
+                        ],
                       ],
                     },
                   },

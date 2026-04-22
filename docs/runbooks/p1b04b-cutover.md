@@ -24,7 +24,7 @@ This runbook covers the internal-only cutover from the legacy raw-key `ApiKeyTab
 8. Smoke the API with a migrated key and confirm:
    - valid request succeeds
    - free-tier quota reaches zero cleanly
-   - growth-tier overage returns `X-RateLimit-Over: true`
+   - a paid legacy-model key can still return `X-RateLimit-Over: true`
 
 ## Prod Cutover
 

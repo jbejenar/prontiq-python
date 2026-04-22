@@ -19,7 +19,9 @@ function loadStripePricingTableScript() {
     return window.__prontiqStripePricingTableScript;
   }
 
-  const existingScript = document.querySelector<HTMLScriptElement>('script[data-prontiq-stripe-pricing-table="true"]');
+  const existingScript = document.querySelector<HTMLScriptElement>(
+    'script[data-prontiq-stripe-pricing-table="true"]',
+  );
   if (existingScript) {
     window.__prontiqStripePricingTableScript = Promise.resolve();
     return window.__prontiqStripePricingTableScript;
@@ -62,7 +64,8 @@ export function PaidPricingTable({ pricingTableId, publishableKey }: PaidPricing
         <CardHeader>
           <CardTitle className="text-2xl">Stripe pricing unavailable</CardTitle>
           <CardDescription>
-            Add `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` and `NEXT_PUBLIC_STRIPE_PRICING_TABLE_ID` to render the live paid-plan table.
+            Add `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` and `NEXT_PUBLIC_STRIPE_PRICING_TABLE_ID` to
+            render the live paid-plan table.
           </CardDescription>
         </CardHeader>
       </Card>
@@ -72,16 +75,14 @@ export function PaidPricingTable({ pricingTableId, publishableKey }: PaidPricing
   return (
     <Card className="border-primary/20 bg-card/75">
       <CardHeader>
-        <CardTitle className="text-2xl">Starter and Growth</CardTitle>
+        <CardTitle className="text-2xl">Legacy paid pricing</CardTitle>
         <CardDescription>
-          Paid plan pricing is rendered directly from Stripe so the landing page does not become a second pricing authority.
+          This Stripe-hosted paid surface is retained only as migration-era behavior while Prontiq
+          moves to first-party Lago-backed billing.
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <stripe-pricing-table
-          pricing-table-id={pricingTableId}
-          publishable-key={publishableKey}
-        />
+        <stripe-pricing-table pricing-table-id={pricingTableId} publishable-key={publishableKey} />
       </CardContent>
     </Card>
   );

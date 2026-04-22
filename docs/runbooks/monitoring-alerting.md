@@ -43,8 +43,8 @@ Existing alarms retained:
 - `PqAccountErrors`
 - `PqSesFeedbackErrors`
 - `PqQuotaEmailWorkerErrors`
-- `PqBillingCronErrors`
-- `PqMonthCloseErrors`
+- `PqBillingCronErrors` (legacy Stripe billing path)
+- `PqMonthCloseErrors` (legacy Stripe billing path)
 
 New Phase 1 alarms:
 

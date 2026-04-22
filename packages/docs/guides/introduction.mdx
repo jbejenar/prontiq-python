@@ -5,12 +5,14 @@ description: "15 million Australian addresses. One API call."
 ---
 
 <Note>
-  The Address API is live with full G-NAF coverage. [Contact us](mailto:hello@prontiq.dev) to get your API key and start building.
+  The Address API is live with full G-NAF coverage. [Contact us](mailto:hello@prontiq.dev) to get
+  your API key and start building.
 </Note>
 
 ## What is Prontiq?
 
-Prontiq is a unified data API for Australian open datasets. One subscription, one API key, one SDK — every product under one roof.
+Prontiq is a unified data API for Australian open datasets. One account, one
+API key model, one SDK — every product under one roof.
 
 We're starting with **address validation** powered by the G-NAF (Geocoded National Address File) — the authoritative database of every physical address in Australia.
 
@@ -75,13 +77,22 @@ curl "https://api.prontiq.dev/v1/address/autocomplete?q=9+endeavour+cou" \
 Prontiq uses credits as the API usage model.
 
 - Free includes **10,000 credits/month**
+- Free + PAYG is the target commercial direction
 - Address API endpoints consume fixed credits per request
 - Remaining quota is exposed in response headers
+
+<Note>
+  The live platform still carries a legacy paid-tier ladder during migration. See the [Rate Limits
+  guide](/guides/rate-limits) for live quota behavior and the [Billing guide](/guides/billing) for
+  the target commercial architecture.
+</Note>
 
 See the [Credits guide](/guides/credits) for the endpoint scoring model.
 
 <Info>
-  Pricing and plan packaging live on the Prontiq homepage. Mintlify docs focus on API usage, quotas, and credits.
+  Pricing and plan packaging live on the Prontiq homepage. Mintlify docs focus on API usage, quotas,
+  and credits. See the [Billing guide](/guides/billing) for the target commercial architecture
+  posture.
 </Info>
 
 ## Coming soon

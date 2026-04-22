@@ -1,5 +1,11 @@
 # Month-Close Runbook
 
+> Legacy Stripe billing path.
+>
+> This runbook documents the **currently shipped** Stripe month-close flow. It
+> is retained for migration and operational history, not as the forward-looking
+> commercial operating model.
+
 `PqMonthClose` performs the final previous-month billing sweep for Prontiq.
 
 ## Purpose
