@@ -18,7 +18,7 @@
     "@prontiq/control-plane": "workspace:*",
     "@prontiq/observability": "workspace:*",
     "@prontiq/shared": "workspace:*",
-    "stripe": "^22.0.1",
+    "stripe": "^22.0.2",
     "svix": "^1.60.0"
   },
   "devDependencies": {

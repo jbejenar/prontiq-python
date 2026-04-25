@@ -41,6 +41,6 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
-    "stripe": "^22.0.1"
+    "stripe": "^22.0.2"
   }
 }

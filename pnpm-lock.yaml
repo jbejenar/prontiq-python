@@ -321,8 +321,8 @@ importers:
         version: 4.3.6
     devDependencies:
       stripe:
-        specifier: ^22.0.1
-        version: 22.0.1(@types/node@25.6.0)
+        specifier: ^22.0.2
+        version: 22.0.2(@types/node@25.6.0)
 
   packages/control-plane:
     dependencies:
@@ -345,8 +345,8 @@ importers:
         specifier: workspace:*
         version: link:../shared
       stripe:
-        specifier: ^22.0.1
-        version: 22.0.1(@types/node@25.6.0)
+        specifier: ^22.0.2
+        version: 22.0.2(@types/node@25.6.0)
       ulid:
         specifier: ^3.0.1
         version: 3.0.2
@@ -459,8 +459,8 @@ importers:
         specifier: workspace:*
         version: link:../shared
       stripe:
-        specifier: ^22.0.1
-        version: 22.0.1(@types/node@25.6.0)
+        specifier: ^22.0.2
+        version: 22.0.2(@types/node@25.6.0)
       svix:
         specifier: ^1.60.0
         version: 1.90.0
@@ -4073,8 +4073,8 @@ packages:
   strip-literal@3.1.0:
     resolution: {integrity: sha512-8r3mkIM/2+PpjHoOtiAW8Rg3jJLHaV7xPwG+YRGrv6FP0wwk/toTpATxWYOW0BKdWwl82VT2tFYi5DlROa0Mxg==}
 
-  stripe@22.0.1:
-    resolution: {integrity: sha512-Yw764pZ6s8Xu4CtUZdD5uWOkw6gc9xzO9OKylCuj1gMhMDLbyGbDtaPNNSFE4mB6njYSHESYIVbF1iIzUfAl2g==}
+  stripe@22.0.2:
+    resolution: {integrity: sha512-2/BLrQ3oB1zlNfeL/LfHFjTGx6EQn0j+ztrrTJHuDjV5VVIpk92oSDaxyKLUr3pG3dnee2LZqhFUv2Bf0G1/3g==}
     engines: {node: '>=18'}
     peerDependencies:
       '@types/node': '>=18'
@@ -8640,7 +8640,7 @@ snapshots:
     dependencies:
       js-tokens: 9.0.1
 
-  stripe@22.0.1(@types/node@25.6.0):
+  stripe@22.0.2(@types/node@25.6.0):
     optionalDependencies:
       '@types/node': 25.6.0
 

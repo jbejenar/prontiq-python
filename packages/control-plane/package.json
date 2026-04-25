@@ -50,7 +50,7 @@
     "@clerk/backend": "^3.2.12",
     "@prontiq/observability": "workspace:*",
     "@prontiq/shared": "workspace:*",
-    "stripe": "^22.0.1",
+    "stripe": "^22.0.2",
     "ulid": "^3.0.1"
   },
   "devDependencies": {
