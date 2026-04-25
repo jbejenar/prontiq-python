@@ -148,9 +148,11 @@ the Phase 1B section of [`ROADMAP.md`](ROADMAP.md).
 
 P1B.16 adds the Lago event-forwarder worker. It consumes the standard SQS
 billing-event queue, records delivery state in `prontiq-billing-event-deliveries`,
-and sends minimal Lago usage events with deterministic transaction IDs. Do not
-enable `BILLING_EVENTS_ENABLED` in an environment until its canonical Lago org,
-metric, customer, subscription, and replay smoke checks are verified.
+and sends minimal Lago usage events with deterministic transaction IDs. The
+worker is deployed in dev and prod, but the producer flag remains a separate
+rollout control. Do not enable `BILLING_EVENTS_ENABLED` in an environment until
+its canonical Lago org, metric, customer, subscription, and replay smoke checks
+are verified.
 
 ## Commands
 

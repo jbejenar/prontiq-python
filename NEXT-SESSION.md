@@ -13,9 +13,14 @@
 - **P1B.16 is complete.** `PqLagoEventForwarder` consumes queued
   `BillingUsageEventV1` records, validates deterministic `eventId`, records
   local delivery evidence, and forwards minimal credit-delta events to Lago.
+- **P1B.16 is deployed.** PR #144 shipped the worker, PR #145 moved the throttle
+  from Lambda reserved concurrency to SQS event-source maximum concurrency, and
+  both `deploy-dev` and `deploy-prod` passed on `c054245`.
 - **Replay safety is explicit.** The worker uses `eventId` as Lago
   `transaction_id`, derives `external_subscription_id` from `customerId`, skips
-  accepted duplicates, and treats payload-hash conflicts as invalid evidence.
+  accepted duplicates, confirms ambiguous Lago `422` responses through
+  `GET /api/v1/events/{transaction_id}`, and treats payload-hash conflicts as
+  invalid evidence.
 - **Producer rollout is still gated.** Keep `BILLING_EVENTS_ENABLED=false` until
   each environment has canonical Lago metric/customer/subscription setup and a
   replay smoke check.

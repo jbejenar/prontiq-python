@@ -38,14 +38,14 @@
   `backfill:customers` can dry-run/apply legacy envelope/API-key
   denormalization, and the address API can emit `BillingUsageEventV1` to
   standard SQS behind `BILLING_EVENTS_ENABLED`. Default remains `false` until
-  the P1B.16 Lago forwarder is deployed and Lago setup/replay smoke checks pass.
+  Lago setup/replay smoke checks pass in the target environment.
 - **P1B.16 complete (2026-04-25).** `PqLagoEventForwarder` consumes queued
   billing events, validates deterministic event IDs, stores delivery evidence in
   `prontiq-billing-event-deliveries`, and sends minimal Lago usage events with
   `transaction_id = eventId`, derived `external_subscription_id`, and
-  `properties.credits = creditDelta`. `BILLING_EVENTS_ENABLED` still stays
-  false until canonical Lago metrics/subscriptions and replay smoke checks pass
-  per environment.
+  `properties.credits = creditDelta`. The worker is deployed in dev and prod;
+  `BILLING_EVENTS_ENABLED` still stays false until canonical Lago
+  metrics/subscriptions and replay smoke checks pass per environment.
 - **P1F.02 complete (2026-04-19).** The prod observability baseline is live and verified: `PqIngestAlerts` prod email subscriptions via `ALERT_EMAILS`, `prontiq-production` dashboard, prod alarms for address API 5xx/Lambda error rate and OpenSearch yellow/red/low-storage, `PqApi` X-Ray tracing with DynamoDB + OpenSearch segments, and structured JSON logs across Lambda execution paths. SNS email delivery was verified by forcing `PqApiLambdaErrorRate` to `ALARM` and confirming receipt on a confirmed subscriber.
 - **P1F.03 complete (2026-04-20).** `@prontiq/observability` is live in `dev` and `prod`, Honeycomb traces are verified for `prontiq-api`, `prontiq-webhooks`, `prontiq-billing`, and `prontiq-ingestion` in both environments, and the deployed-stage rollback path is `HONEYCOMB_ENABLED=false` rather than secret removal.
 - **P1C.07 complete (2026-04-20).** `apps/landing` and `apps/console` now have Tailwind v3.4, app-local shadcn/ui primitives, dark mode, responsive shell foundations, and app-local Vitest + Testing Library. `apps/console` now carries an env-gated real Clerk auth boundary that builds/tests cleanly without Clerk keys and enables real sign-in when they are present.
@@ -54,7 +54,11 @@
 - The legacy raw-key table is retained only for rollback/soak; the old `pq_live_prod_...` seed key has been rotated and revoked.
 - Future prod seed-key rotation now has an operator command:
   `PRONTIQ_API=https://api.prontiq.dev pnpm --filter @prontiq/api rotate:prod-key`
-- CI, `deploy-dev`, and `deploy-prod` are green. SST secrets sourced from GitHub Environment secrets/vars (per the existing `WELCOME_EMAIL_FROM` convention) — `sst.Secret` / SSM-backed pattern was tried in PR 2 and reverted because it conflicted with the GitHub-Environment pattern (see `docs/runbooks/clerk-webhook.md`).
+- CI, `deploy-dev`, and `deploy-prod` are green as of `c054245` on 2026-04-25.
+  SST secrets sourced from GitHub Environment secrets/vars (per the existing
+  `WELCOME_EMAIL_FROM` convention) — `sst.Secret` / SSM-backed pattern was tried
+  in PR 2 and reverted because it conflicted with the GitHub-Environment pattern
+  (see `docs/runbooks/clerk-webhook.md`).
 
 ### Live Endpoints (all require `X-Api-Key` header except where noted)
 

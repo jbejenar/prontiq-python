@@ -1569,10 +1569,9 @@ idempotency inputs, hot-path boundary
 - `@prontiq/control-plane` writes `customerId` for new org provisioning and
   provides `backfill:customers` for legacy envelopes/API keys.
 - The API producer is feature-flagged by `BILLING_EVENTS_ENABLED`; default is
-  `false` until the `P1B.16` consumer is deployed and the environment passes
-  Lago setup plus replay smoke checks.
+  `false` until the environment passes Lago setup plus replay smoke checks.
 - Queue type is standard SQS; deterministic event ids provide replay
-  idempotency for the future Lago worker.
+  idempotency for the Lago worker.
 
 ---
 
