@@ -14,7 +14,7 @@
     "clean": "node ../../scripts/ts-package-build.mjs clean"
   },
   "dependencies": {
-    "@clerk/backend": "^3.2.12",
+    "@clerk/backend": "^3.3.0",
     "@prontiq/control-plane": "workspace:*",
     "@prontiq/observability": "workspace:*",
     "@prontiq/shared": "workspace:*",
