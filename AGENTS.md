@@ -32,6 +32,8 @@ unset. Override it explicitly only when pointing `apps/landing` or
 
 **Observability (current state):** CloudWatch alarms/dashboard + SNS email remain the AWS-native operations plane. Honeycomb backend tracing is now live and verified for deployed Lambdas behind `HONEYCOMB_API_KEY`, and `PqApi` X-Ray remains in place as a retained secondary trace path. Browser/frontend telemetry is not part of this ticket.
 
+**SES deliverability (current state):** suppression handling and simulator-verified SES flows are live, but normal-recipient production readiness is owned by `P1B.08a`. Do not treat DKIM alone as complete; custom MAIL FROM on `bounce.prontiq.dev`, DMARC relaxed SPF alignment, SES production-access approval, and a normal-recipient test send are required.
+
 **Frontend (current state):** `apps/landing` and `apps/console` now have Tailwind v3.4, app-local shadcn/ui primitives, dark mode, responsive shell foundations, and frontend Vitest + Testing Library. `apps/landing` is now a real conversion surface: proxy-backed live autocomplete demo, config-owned free tier, and Clerk modal CTA. The old Stripe Pricing Table path is a superseded interim implementation. Forward-looking commercial UX should assume Lago-backed billing surfaces in `apps/landing` and `apps/console`, with any remaining Stripe-hosted behavior treated as legacy migration context. `apps/console` carries a real Clerk auth boundary that is enabled only when the Clerk env keys are present; keyless fallback is allowed only through the local/CI frontend helper path, and missing Clerk keys otherwise fail closed.
 
 **Stack (planned — remaining P1C and later):** real landing and console product surfaces on top of the live frontend base.

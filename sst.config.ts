@@ -118,13 +118,22 @@ export default $config({
     });
 
     const sesSenderDomain = "prontiq.dev";
+    const sesMailFromDomain = "bounce.prontiq.dev";
     const sesConfigurationSetName = isProd
       ? "prontiq-transactional"
       : `prontiq-transactional-${$app.stage}`;
     const sesFeedbackTopic = new aws.sns.Topic("PqSesFeedbackTopic");
     if (isProd) {
-      new aws.sesv2.EmailIdentity("PqTransactionalEmailIdentity", {
-        emailIdentity: sesSenderDomain,
+      const transactionalEmailIdentity = new aws.sesv2.EmailIdentity(
+        "PqTransactionalEmailIdentity",
+        {
+          emailIdentity: sesSenderDomain,
+        },
+      );
+      new aws.sesv2.EmailIdentityMailFromAttributes("PqTransactionalMailFrom", {
+        emailIdentity: transactionalEmailIdentity.emailIdentity,
+        mailFromDomain: sesMailFromDomain,
+        behaviorOnMxFailure: "USE_DEFAULT_VALUE",
       });
     }
     const sesConfigurationSet = new aws.sesv2.ConfigurationSet("PqSesConfigurationSet", {

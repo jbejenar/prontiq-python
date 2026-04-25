@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **SES deliverability hardening tracked as P1B.08a.** The prod SST
+  configuration now declares custom MAIL FROM for `bounce.prontiq.dev` with
+  `USE_DEFAULT_VALUE` fallback, and the docs/roadmap now require SPF, DMARC
+  relaxed SPF alignment, custom MAIL FROM verification, SES production-access
+  approval, and one normal-recipient transactional send before email delivery
+  is considered production-ready.
+
 - **Commercial architecture pivot documented.** `ARCHITECTURE.MD`, roadmap docs, runbooks, public docs, app guidance, and ADRs now describe Lago as the **target** commercial system of record, while the current Stripe-centric webhook / billing cron / month-close path is explicitly retained as legacy shipped implementation during migration.
 
 - **Landing page with live autocomplete demo** (`P1C.01`) **implemented.** `apps/landing` now renders the real `prontiq.dev` surface: sticky nav, hero statement, proxy-backed live autocomplete demo via `@prontiq/web-component`, config-owned Prontiq Free tier, Stripe embedded paid pricing wrapper, footer/legal links, and Clerk sign-up modal CTA wrappers. The live demo uses a constrained landing-side proxy route (`/api/demo/address/autocomplete`) with per-IP token-bucket throttling, query/limit clamps, and no client-side API key exposure. Helper-managed local/CI runs remain keyless-safe; missing real Clerk or Stripe envs degrade to deterministic non-crashing fallback states instead of failing open.

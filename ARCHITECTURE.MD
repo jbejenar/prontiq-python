@@ -2405,7 +2405,7 @@ Diff these shapes against `packages/docs/openapi.json` before any doc update —
 | **Application** (Hono) | Clerk JWT verify, API key hash+verify, CORS enforcement, burst rate limiting, input validation (Zod), circuit breaker, audit logging |
 | **Data** (DynamoDB)    | Encryption at rest (AES-256), hash-only key storage, TTL auto-expire                                                                 |
 | **Webhook**            | Svix/Stripe signature verify, idempotency locks, 400 on invalid                                                                      |
-| **Email** (SES)        | DKIM + SPF + DMARC, suppression list, bounce/complaint handler                                                                       |
+| **Email** (SES)        | DKIM + SPF + DMARC, custom MAIL FROM, suppression list, bounce/complaint handler                                                     |
 
 ### 8.2 Threat Model
 
@@ -2613,7 +2613,7 @@ Circuit breaker: CLOSED (normal) → OPEN (> 50% failures in 60s → return 503 
 
 AWS suspends SES at > 5% bounce rate or > 0.1% complaint rate. A dedicated SES configuration set publishes `BOUNCE` and `COMPLAINT` events to SNS, and `PqSesFeedback` maintains `prontiq-ses-suppressions`. Before every SES send, check the suppression list. Hard bounces suppress immediately. Soft bounces suppress after the third bounce inside a 30-day rolling window. Complaints are permanent. All current SES sends use the same suppression-aware helper: welcome email, `past_due` billing email, and the 80% / 100% quota emails. Quota notifications are sent to the org-envelope owner email, not to individual API-key owners.
 
-Prerequisite: SES production-access exit from the AWS sandbox (verified sending domain, DKIM+SPF+DMARC, production-access request approved by AWS — typically 24-48h review).
+Prerequisite: SES production-access exit from the AWS sandbox. Production readiness requires a verified sender domain, DKIM, SPF, DMARC with the intended alignment policy, custom MAIL FROM on `bounce.prontiq.dev`, active bounce/complaint suppression handling, and AWS production-access approval.
 
 ### 12.6 Registry Sharding
 

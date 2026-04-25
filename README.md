@@ -12,6 +12,11 @@ Prontiq is starting with developer-friendly Australian address validation. The b
 
 Live at `https://api.prontiq.dev`. Docs at `https://docs.prontiq.dev`. TypeScript SDK auto-generated to `sdks/typescript/` (npm publish pending). The ratified frontend architecture is a two-app model. `prontiq.dev` now has a live landing page with a proxy-backed autocomplete demo, config-owned free-tier pricing card, and a Clerk sign-up modal; `console.prontiq.dev` carries the env-gated authenticated app shell. The current live billing path is still Stripe-centric, but the target commercial architecture is now Lago-centered. See `ARCHITECTURE.MD` for the canonical target state.
 
+SES suppression handling is live, but full transactional-email production
+readiness is tracked by `P1B.08a`: custom MAIL FROM on `bounce.prontiq.dev`,
+DMARC alignment, SES production-access approval, and one normal-recipient send
+verification.
+
 ### Server-to-server surface
 
 | Endpoint                 | Purpose                                                                                                                                                                                                                                        | Auth                                                |
@@ -126,7 +131,7 @@ See [`ROADMAP.md`](ROADMAP.md) for the current execution plan.
 | ------- | ------------------------- | ------- | --------- |
 | **P0**  | Infrastructure Foundation | 6       | 6/6       |
 | **P1A** | API Core (Address)        | 13      | 10/13     |
-| **P1B** | Auth & Billing            | 19      | 12/19     |
+| **P1B** | Auth & Billing            | 22      | 12/22     |
 | **P1C** | Frontend Surfaces         | 9       | 3/9       |
 | **P1D** | Docs & SDK                | 5       | 2/5       |
 | **P1E** | Ingestion                 | 6       | 4/6       |
@@ -135,7 +140,7 @@ See [`ROADMAP.md`](ROADMAP.md) for the current execution plan.
 | **P3**  | LEI + Full Dashboard      | 7       | 0/7       |
 | **P4**  | Shopify + WooCommerce     | 5       | 0/5       |
 | **P5**  | CVE/NVD + Patents         | 4       | 0/4       |
-|         |                           | **85**  | **40/85** |
+|         |                           | **88**  | **40/88** |
 
 `P1B` includes completed legacy Stripe-path work. The pending Lago migration
 sequence is `P1B.14`–`P1B.20`, currently `0/7`, and is called out separately in

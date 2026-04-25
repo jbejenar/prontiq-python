@@ -15,7 +15,7 @@ The Clerk dashboard's webhook configuration points at the dev URL today. The pro
 
 ## Preconditions (one-time per stage)
 
-1. **SES sender posture healthy** for `prontiq.dev` in `ap-southeast-2`. The welcome email path now uses the shared suppression-aware SES helper and the stage-specific SES configuration set for this stack. Domain verification / DKIM / sandbox status should be managed via `docs/runbooks/ses-suppression.md`.
+1. **SES sender posture healthy** for `prontiq.dev` in `ap-southeast-2`. The welcome email path now uses the shared suppression-aware SES helper and the stage-specific SES configuration set for this stack. Domain verification, DKIM, SPF, DMARC, custom MAIL FROM, and sandbox / production-access status should be managed via `docs/runbooks/ses-suppression.md`.
 2. **SES recipients may still be skipped intentionally.** `emailSent: false` no longer means only "SES is not configured"; it can also mean the recipient is currently suppressed because of an SES bounce or complaint record. Provisioning durability is unaffected in all of those cases.
 3. **GitHub Environment secrets set per environment** (Settings → Environments → `dev` / `prod` → Environment secrets) — ALL THREE are required by the webhook Lambda. CLERK_SECRET_KEY is no longer PR-3-only; the handler resolves the verified primary email via the Clerk Backend API.
    - `CLERK_WEBHOOK_SECRET` — Svix signing secret. Clerk dashboard → Webhooks → endpoint detail → Signing Secret. Format: `whsec_...`.

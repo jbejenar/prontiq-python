@@ -4,6 +4,28 @@
 > the time they were written, not the current source of truth. Use
 > `ROADMAP.md`, `NEXT-WORK.md`, and `README.md` for current execution status.
 
+## Session 31 — 2026-04-25
+
+**Focus:** SES deliverability hardening planning and repo alignment.
+
+### Completed
+
+- **SES deliverability gap identified.** `prontiq.dev` is verified in SES and
+  DKIM is successful, but custom MAIL FROM and SES production access are not
+  complete.
+- **P1B.08a added as the owner.** The roadmap now separates shipped SES
+  suppression work from pending custom MAIL FROM, DMARC alignment,
+  production-access approval, and normal-recipient verification.
+- **Runbooks and architecture aligned.** SES production readiness now means
+  DKIM, SPF, DMARC, custom MAIL FROM, suppression handling, and AWS production
+  access, not only DKIM plus sandbox exit.
+
+### Next session should start with
+
+1. Add the Vercel DNS records for `bounce.prontiq.dev` and updated DMARC.
+2. Deploy prod SST and verify SES custom MAIL FROM status.
+3. Resubmit SES production access after simulator checks pass.
+
 ## Session 30 — 2026-04-22
 
 **Focus:** Lago commercial architecture rewrite and planning reset.

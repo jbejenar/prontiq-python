@@ -30,7 +30,7 @@
 | --------- | -------------------------- | ------- | --------- | ----------- |
 | **P0**    | Infrastructure Foundation  | 6       | 6/6 ✅    | Week 1      |
 | **P1A**   | API Core (Address)         | 13      | 10/13     | Weeks 2-3   |
-| **P1B**   | Auth & Billing             | 19      | 12/19     | Weeks 3-4   |
+| **P1B**   | Auth & Billing             | 22      | 12/22     | Weeks 3-4   |
 | **P1C**   | Frontend Surfaces          | 9       | 3/9       | Weeks 4-6   |
 | **P1D**   | Docs & SDK                 | 5       | 2/5       | Week 5      |
 | **P1E**   | Ingestion (Phase 1)        | 6       | 4/6       | Week 6      |
@@ -39,7 +39,7 @@
 | **P3**    | GLEIF/LEI + Full Dashboard | 7       | 0/7       | Weeks 11-13 |
 | **P4**    | Shopify + WooCommerce      | 5       | 0/5       | Weeks 14-17 |
 | **P5**    | CVE/NVD + Patents          | 4       | 0/4       | Weeks 18-21 |
-| **Total** |                            | **85**  | **40/85** |             |
+| **Total** |                            | **88**  | **40/88** |             |
 
 ---
 
@@ -1077,13 +1077,13 @@ Options:
 
 > **Goal:** Sign-up → DDB-native API key → hash-verified requests → rate-limited with burst limiter → usage tracked per-month → migrate the commercial layer from the shipped Stripe path to the Lago target architecture.
 >
-> **Current state.** P1B.02, P1B.04, P1B.04b, P1B.05, P1B.06, P1B.07, P1B.08, P1B.09, P1B.10, P1B.11, and P1B.12 are shipped. The DynamoDB-native key model is live in prod, the prod migration was executed on 2026-04-16, the legacy Stripe billing path is live, per-key burst limiting is enforced in the API middleware, SES feedback / quota-email delivery is live in dev + prod, previous-month scopes are now explicitly finalized and closed by the monthly `PqMonthClose` sweep, and the auth integration suite is now reconciled to the real post-cutover middleware contract. The forward commercial direction is now the Lago migration sequence.
+> **Current state.** P1B.02, P1B.04, P1B.04b, P1B.05, P1B.06, P1B.07, P1B.08, P1B.09, P1B.10, P1B.11, and P1B.12 are shipped. The DynamoDB-native key model is live in prod, the prod migration was executed on 2026-04-16, the legacy Stripe billing path is live, per-key burst limiting is enforced in the API middleware, SES feedback / quota-email delivery is live in dev + prod, previous-month scopes are now explicitly finalized and closed by the monthly `PqMonthClose` sweep, and the auth integration suite is now reconciled to the real post-cutover middleware contract. SES deliverability hardening is tracked separately in P1B.08a. The forward commercial direction is now the Lago migration sequence.
 >
 > **Lago migration progress.** `0/7` complete for `P1B.14`–`P1B.20`. The `P1B` epic rollup includes completed historical Stripe-path work, so treat the Lago migration sequence as a separate pending track until the new commercial contract is implemented.
 >
 > **Scope boundary.** The hot-path middleware rewrite (hash-based lookup, REDIRECT fallback, new usage-table writes) ships in **P1B.04b** (cutover), NOT in P1B.02. P1B.02 is pure crypto primitives only — no DDB dependency — which is why it remains parallel-safe. P1B.04b flips schema + code atomically once P1B.02 and P1B.04 are both done.
 >
-> **Dependency graph:** P1B.01/.02/.03/.04 can run in parallel. P1B.04b depends on .02 + .04 (needs the crypto module + the tables to write the code cutover). P1B.05 depends on .01/.02/.03/.04. P1B.06 depends on .03/.04. P1B.07/.08 depend on .04. **P1B.09 depends on .02 + .04b** (the burst limiter middleware reads `record.rateLimit` from context — that context is established by the post-cutover auth middleware in .04b, not by the pure crypto module). P1B.10 depends on .03/.04/.06. P1B.11 depends on .10. P1B.12 depends on .05/.09/.04b (tests the cutover end-to-end). The Lago migration sequence is intentionally linear enough to pin the commercial contract before the console UI builds on it: `P1B.14` → `P1B.15/.16` → `P1B.17/.18` → `P1B.19` → `P1B.20`, with `P1C.05` consuming the backend contract from `P1B.18`.
+> **Dependency graph:** P1B.01/.02/.03/.04 can run in parallel. P1B.04b depends on .02 + .04 (needs the crypto module + the tables to write the code cutover). P1B.05 depends on .01/.02/.03/.04. P1B.06 depends on .03/.04. P1B.07/.08 depend on .04. P1B.08a depends on .08. **P1B.09 depends on .02 + .04b** (the burst limiter middleware reads `record.rateLimit` from context — that context is established by the post-cutover auth middleware in .04b, not by the pure crypto module). P1B.10 depends on .03/.04/.06. P1B.11 depends on .10. P1B.12 depends on .05/.09/.04b (tests the cutover end-to-end). The Lago migration sequence is intentionally linear enough to pin the commercial contract before the console UI builds on it: `P1B.14` → `P1B.15/.16` → `P1B.17/.18` → `P1B.19` → `P1B.20`, with `P1C.05` consuming the backend contract from `P1B.18`.
 >
 > **Repo-wide Unkey removal** completed in PR #68 (`chore(webhooks): remove Unkey code`) — `packages/webhooks/src/unkey.ts`, `unkeyWebhook` export, `lastSyncedFromUnkey` field, and `UNKEY_*` env vars all gone from main. **No P1B ticket owns this cleanup.** Going forward, P1B tickets only need to guarantee no NEW Unkey references are introduced.
 >
@@ -1282,6 +1282,61 @@ endpoints, constants, secrets
 - Billing cron → P1B.10
 - `/account` Billing tab → P1C.05
 - Custom commercial contracts → future
+
+---
+
+### Ticket P1B.04 — DynamoDB Tables (4 tables + schema)
+
+```yaml
+id: P1B.04
+title: DynamoDB Tables (4 tables + schema)
+status: complete
+priority: p0-critical
+epic: P1B
+persona: [builder]
+depends_on: [P0.02]
+completed: 2026-04-16
+tech_stack:
+  infra: SST v4 + Pulumi
+  data: DynamoDB
+```
+
+#### User Story
+
+As a builder, I need four DynamoDB tables (`prontiq-keys`,
+`prontiq-usage`, `prontiq-audit`, `prontiq-ses-suppressions`) with the exact
+schema defined in ARCHITECTURE.MD §5.5.1 so that subsequent tickets have the
+infra they need to write auth, usage, audit, and suppression state.
+
+#### Problem Statement
+
+v2.2 splits the single legacy `ApiKeyTable` into four purpose-specific tables:
+hot-path isolation, append-only audit logging, TTL-driven cleanup, and
+hash-only API-key storage. Registry and provisioning-lock records are sentinel
+items in `prontiq-keys` with reserved PKs.
+
+#### Historical Shipped State
+
+- [x] `prontiq-keys` table shipped with PK `apiKeyHash` and sparse
+      `orgId-index`
+- [x] `prontiq-usage` table shipped with PK `apiKeyHash`, SK `scope`, TTL, and
+      sparse `newHash-redirect-index`
+- [x] `prontiq-audit` table shipped with PK `orgId`, SK `timestamp#eventId`,
+      and TTL
+- [x] `prontiq-ses-suppressions` table shipped with PK `email` and TTL
+- [x] all tables use on-demand billing
+- [x] table definitions deployed successfully in `dev` and `prod` as part of
+      the live v2.2 cutover
+
+#### Scope
+
+**In:** four DynamoDB tables via SST, TTL config, required GSIs
+
+**Out — Do Not Implement:**
+
+- Data migration from legacy table → P1B.04b
+- Table writes → later tickets
+- Registry sharding → Phase 5 trigger
 
 ---
 
@@ -2242,6 +2297,84 @@ completed: 2026-04-19
   - suppressed welcome email skips without blocking durable provisioning
 - `packages/webhooks/src/stripe.integration.test.ts`
   - Stripe plan-change reset clears warning/limit email sent state and pending lease state
+
+---
+
+### Ticket P1B.08a — SES Deliverability Hardening: Production Access + Custom MAIL FROM
+
+```yaml
+id: P1B.08a
+title: SES Deliverability Hardening: Production Access + Custom MAIL FROM
+status: pending
+priority: p1-high
+epic: P1B
+persona: [ops]
+depends_on: [P1B.08]
+completed: null
+tech_stack:
+  email: SES + Vercel DNS
+```
+
+#### User Story
+
+As an operator, I need SES sender authentication and account production access
+completed so Prontiq transactional emails can reach normal recipients with a
+verified custom return-path domain.
+
+#### Problem Statement
+
+P1B.08 shipped suppression handling and simulator-verified SES flows, but the
+account is still sandboxed and the SES identity does not yet use a custom MAIL
+FROM domain. That leaves normal-recipient delivery blocked and leaves SPF
+alignment dependent on default SES return-path behavior. Production readiness
+requires the custom MAIL FROM subdomain, DMARC alignment policy, and AWS
+production-access approval to be tracked explicitly.
+
+#### Definition of Done
+
+##### Functional
+
+- [ ] `prontiq.dev` SES identity remains verified in `ap-southeast-2`
+  - `Verify:` `aws sesv2 get-email-identity --email-identity prontiq.dev --region ap-southeast-2`
+  - `Evidence:` `VerifiedForSendingStatus=true`
+- [ ] DKIM remains enabled and successful
+  - `Verify:` SES identity DKIM status and all three public CNAMEs
+  - `Evidence:` `DkimAttributes.Status=SUCCESS`
+- [ ] custom MAIL FROM is configured as `bounce.prontiq.dev`
+  - `Verify:` SES identity reports `MailFromDomain=bounce.prontiq.dev`
+  - `Evidence:` `MailFromStatus=SUCCESS`
+- [ ] Vercel DNS contains required MAIL FROM records
+  - `Verify:` `dig +short MX bounce.prontiq.dev` and `dig +short TXT bounce.prontiq.dev`
+  - `Evidence:` MX points to `feedback-smtp.ap-southeast-2.amazonses.com`; TXT includes `amazonses.com`
+- [ ] DMARC policy intentionally supports subdomain SPF alignment
+  - `Verify:` `dig +short TXT _dmarc.prontiq.dev`
+  - `Evidence:` record includes `aspf=r`
+- [ ] SES production access is approved
+  - `Verify:` `aws sesv2 get-account --region ap-southeast-2`
+  - `Evidence:` `ProductionAccessEnabled=true`
+
+##### Operational
+
+- [ ] SES simulator success, bounce, and complaint flows still pass after
+      custom MAIL FROM is configured
+  - `Verify:` run existing simulator checks from `docs/runbooks/ses-suppression.md`
+  - `Evidence:` `PqSesFeedback` and `PqQuotaEmailWorker` behavior remains healthy
+- [ ] one normal-recipient transactional test send succeeds after production
+      access approval
+  - `Verify:` send to a non-simulator recipient from `noreply@prontiq.dev`
+  - `Evidence:` recipient receives the email and SES accepts the send
+
+#### Scope
+
+**In:** SES custom MAIL FROM, Vercel DNS records, DMARC alignment, production
+access resubmission, post-approval normal-recipient verification
+
+**Out — Do Not Implement:**
+
+- Email content/template changes
+- Suppression semantics changes
+- New marketing email flows
+- Public API changes
 
 ---
 

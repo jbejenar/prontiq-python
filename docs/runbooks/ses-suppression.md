@@ -44,13 +44,18 @@ Current rollout state as of 2026-04-19:
 
 - `prontiq.dev` is verified in SES in `ap-southeast-2`
 - DKIM status is `SUCCESS`
+- apex SPF is present on `prontiq.dev`
+- DMARC is present; production hardening updates it to relaxed SPF alignment
+  (`aspf=r`) so the custom MAIL FROM subdomain aligns with `prontiq.dev`
+- custom MAIL FROM is configured as `bounce.prontiq.dev` once P1B.08a ships
 - SES simulator positive-send, bounce, and complaint flows have been exercised in both `dev` and `prod`
 - both `PqQuotaEmailWorker` roles now include the SES configuration-set ARN in `ses:SendEmail` / `ses:SendRawEmail` permissions
 - the AWS SES account is still in sandbox, so simulator validation is complete but normal-recipient delivery is still blocked until production access is enabled
 
 ## DNS Records
 
-Because DNS is hosted in Vercel, SST creates the SES identity with `dns: false` and does not write DNS automatically.
+Because DNS is hosted in Vercel, SST creates the SES identity but does not
+write DNS automatically.
 
 After the prod stack creates the SES identity, fetch the records with:
 
@@ -58,14 +63,21 @@ After the prod stack creates the SES identity, fetch the records with:
 aws sesv2 get-email-identity --email-identity prontiq.dev --region ap-southeast-2
 ```
 
-Add the returned verification / DKIM records in Vercel DNS.
+Add or verify these records in Vercel DNS.
 
 Expected record classes:
 
 - SES domain verification TXT
 - DKIM CNAME records
-- SPF TXT if not already present
-- DMARC TXT if not already present
+- apex SPF TXT: `prontiq.dev TXT "v=spf1 include:amazonses.com ~all"`
+- DMARC TXT: `_dmarc.prontiq.dev TXT "v=DMARC1; p=quarantine; adkim=s; aspf=r"`
+- custom MAIL FROM MX:
+  `bounce.prontiq.dev MX 10 feedback-smtp.ap-southeast-2.amazonses.com`
+- custom MAIL FROM SPF:
+  `bounce.prontiq.dev TXT "v=spf1 include:amazonses.com ~all"`
+
+`bounce.prontiq.dev` is the SES return-path domain. The visible From address
+stays on `prontiq.dev`, for example `noreply@prontiq.dev`.
 
 ## Tables and Records
 
@@ -119,7 +131,46 @@ Important behavior:
 2. Confirm bounce and complaint events publish to the SES feedback SNS topic.
 3. Confirm `PqSesFeedback` has recent successful invocations.
 4. Confirm `PqQuotaEmailWorker` is invoked by the API Lambda when thresholds are crossed.
-5. Confirm the SES account is out of sandbox before treating normal-recipient delivery as production-ready.
+5. Confirm custom MAIL FROM is healthy on the sender identity.
+6. Confirm the SES account is out of sandbox before treating normal-recipient delivery as production-ready.
+
+Core identity and account checks:
+
+```bash
+aws sesv2 get-email-identity \
+  --email-identity prontiq.dev \
+  --region ap-southeast-2
+
+aws sesv2 get-account --region ap-southeast-2
+```
+
+DNS checks:
+
+```bash
+dig +short TXT prontiq.dev
+dig +short TXT _dmarc.prontiq.dev
+dig +short MX bounce.prontiq.dev
+dig +short TXT bounce.prontiq.dev
+```
+
+Production-ready evidence:
+
+- `VerifiedForSendingStatus=true`
+- `DkimAttributes.Status=SUCCESS`
+- `MailFromAttributes.MailFromDomain=bounce.prontiq.dev`
+- `MailFromAttributes.MailFromStatus=SUCCESS`
+- `ProductionAccessEnabled=true`
+
+SES production access resubmission checklist:
+
+- verified sender domain: `prontiq.dev`
+- DKIM status: `SUCCESS`
+- SPF and DMARC records present
+- custom MAIL FROM configured and verified
+- SES configuration set publishes `BOUNCE` and `COMPLAINT` events
+- `PqSesFeedback` writes suppressions
+- use case is transactional only
+- initial volume is low and bounded by application events
 
 ### DynamoDB checks
 
