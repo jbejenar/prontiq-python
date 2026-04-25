@@ -101,6 +101,13 @@ export interface ApiKeyRecord {
   stripeCustomerId: string | null;
   stripeSubscriptionId: string | null;
   subscriptionItems: ApiKeySubscriptionItems;
+  lagoPlanCode?: string;
+  lagoSubscriptionExternalId?: string | null;
+  lagoSubscriptionStatus?: string | null;
+  billingPeriodStartedAt?: string | null;
+  billingPeriodEndingAt?: string | null;
+  billingPeriodKey?: string | null;
+  lagoPaymentOverdueInvoiceId?: string | null;
   createdAt: string;
   lastUsedAt: string | null;
 }
@@ -171,6 +178,13 @@ export interface OrgEnvelopeRecord {
   paymentOverdue: boolean;
   stripeSubscriptionId: string | null;
   subscriptionItems: ApiKeySubscriptionItems;
+  lagoPlanCode?: string;
+  lagoSubscriptionExternalId?: string | null;
+  lagoSubscriptionStatus?: string | null;
+  billingPeriodStartedAt?: string | null;
+  billingPeriodEndingAt?: string | null;
+  billingPeriodKey?: string | null;
+  lagoPaymentOverdueInvoiceId?: string | null;
   hasFirstKey: boolean;
   completedAt: string;
 }

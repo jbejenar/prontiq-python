@@ -62,6 +62,18 @@ export {
 export type { BillingEventIdInput, BillingUsageEventV1 } from "./billing-events.js";
 
 export {
+  LAGO_WEBHOOK_EVENT_TYPES,
+  hashLagoWebhookPayload,
+  isConsumedLagoWebhookEventType,
+  lagoWebhookEventTypeSchema,
+} from "./lago-webhooks.js";
+export type {
+  LagoWebhookEventType,
+  LagoWebhookLedgerRecord,
+  LagoWebhookProcessingStatus,
+} from "./lago-webhooks.js";
+
+export {
   manifestV1Schema,
   manifestV2Schema,
   manifestSchema,

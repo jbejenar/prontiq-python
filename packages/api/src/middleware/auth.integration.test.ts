@@ -1,6 +1,11 @@
 import test, { after, before, beforeEach } from "node:test";
 import assert from "node:assert/strict";
-import { DynamoDBClient, CreateTableCommand, DeleteTableCommand, DescribeTableCommand } from "@aws-sdk/client-dynamodb";
+import {
+  DynamoDBClient,
+  CreateTableCommand,
+  DeleteTableCommand,
+  DescribeTableCommand,
+} from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, GetCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
 import { Hono } from "hono";
 import type { ExecutionContext } from "hono";
@@ -11,7 +16,13 @@ import {
   __setDdbForTesting,
   __setQuotaEmailEnqueuerForTesting,
 } from "./auth.js";
-import type { ApiKeyRecord, BillingUsageEventV1, QuotaEmailTask, RedirectRecord, UsageCounterRecord } from "@prontiq/shared";
+import type {
+  ApiKeyRecord,
+  BillingUsageEventV1,
+  QuotaEmailTask,
+  RedirectRecord,
+  UsageCounterRecord,
+} from "@prontiq/shared";
 import { hashKey } from "@prontiq/shared";
 
 const DDB_URL = process.env.DYNAMODB_TEST_URL ?? "http://localhost:8000";
@@ -111,7 +122,10 @@ async function createTables(): Promise<void> {
   }
 }
 
-async function seedKey(rawKey: string, overrides: Partial<ApiKeyRecord> = {}): Promise<ApiKeyRecord> {
+async function seedKey(
+  rawKey: string,
+  overrides: Partial<ApiKeyRecord> = {},
+): Promise<ApiKeyRecord> {
   const record = makeKeyRecord({
     apiKeyHash: hashKey(rawKey),
     ...overrides,
@@ -165,7 +179,10 @@ async function seedUsage(record: UsageCounterRecord): Promise<void> {
   );
 }
 
-async function getUsage(apiKeyHash: string, scope: string): Promise<UsageCounterRecord | undefined> {
+async function getUsage(
+  apiKeyHash: string,
+  scope: string,
+): Promise<UsageCounterRecord | undefined> {
   const result = await docClient.send(
     new GetCommand({
       TableName: USAGE_TABLE,
@@ -214,6 +231,7 @@ after(async () => {
   delete process.env.USAGE_TABLE_NAME;
   delete process.env.BILLING_EVENTS_ENABLED;
   delete process.env.BILLING_EVENTS_QUEUE_URL;
+  delete process.env.COUNTER_PERIOD_SOURCE;
   delete process.env.PRONTIQ_STAGE;
   await client.send(new DeleteTableCommand({ TableName: KEYS_TABLE }));
   await client.send(new DeleteTableCommand({ TableName: USAGE_TABLE }));
@@ -225,6 +243,7 @@ beforeEach(async () => {
   __setQuotaEmailEnqueuerForTesting(undefined);
   delete process.env.BILLING_EVENTS_ENABLED;
   delete process.env.BILLING_EVENTS_QUEUE_URL;
+  delete process.env.COUNTER_PERIOD_SOURCE;
   delete process.env.PRONTIQ_STAGE;
 });
 
@@ -249,7 +268,12 @@ test("unknown API key returns INVALID_API_KEY", async () => {
 
 test("revoked key returns INVALID_API_KEY", async () => {
   const rawKey = "pq_test_revoked_key_123";
-  const record = await seedKey(rawKey, { active: false, quotaPerProduct: 10, rateLimit: 10, tier: "starter" });
+  const record = await seedKey(rawKey, {
+    active: false,
+    quotaPerProduct: 10,
+    rateLimit: 10,
+    tier: "starter",
+  });
 
   const response = await request("/v1/address/autocomplete", rawKey);
   const body = (await response.json()) as { error: { code: string } };
@@ -298,6 +322,47 @@ test("growth-tier key can exceed quota and gets the overage header", async () =>
   const second = await request("/v1/address/autocomplete", rawKey);
   assert.equal(second.status, 200);
   assert.equal(second.headers.get("X-RateLimit-Over"), "true");
+});
+
+test("payg key is uncapped but still writes usage counters", async () => {
+  const rawKey = "pq_test_payg_key_123";
+  const record = await seedKey(rawKey, {
+    products: ["address"],
+    quotaPerProduct: null,
+    rateLimit: 10,
+    tier: "payg",
+  });
+
+  const first = await request("/v1/address/autocomplete", rawKey);
+  const second = await request("/v1/address/enrich", rawKey);
+
+  assert.equal(first.status, 200);
+  assert.equal(second.status, 200);
+  assert.equal(first.headers.get("X-RateLimit-Limit"), null);
+  assert.equal(first.headers.get("X-RateLimit-Remaining"), null);
+  assert.equal(second.headers.get("X-RateLimit-Over"), null);
+
+  const usage = await getUsage(record.apiKeyHash, `address#${CURRENT_MONTH}`);
+  assert.equal(usage?.requestCount, 4);
+});
+
+test("lago counter-period source uses denormalized billing period fields", async () => {
+  process.env.COUNTER_PERIOD_SOURCE = "lago";
+  const rawKey = "pq_test_lago_period_key_123";
+  const record = await seedKey(rawKey, {
+    billingPeriodEndingAt: "2026-05-17T00:00:00.000Z",
+    billingPeriodKey: "2026-04-17_2026-05-17",
+    quotaPerProduct: 10,
+    rateLimit: 10,
+    tier: "free",
+  });
+
+  const response = await request("/v1/address/autocomplete", rawKey);
+
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("X-RateLimit-Reset"), "2026-05-17T00:00:00.000Z");
+  const usage = await getUsage(record.apiKeyHash, "address#period#2026-04-17_2026-05-17");
+  assert.equal(usage?.requestCount, 1);
 });
 
 test("weighted address endpoint consumes multiple credits from the family quota", async () => {
@@ -415,7 +480,12 @@ test("product gating rejects disallowed products", async () => {
 
 test("enabled products without billing weights fail closed", async () => {
   const rawKey = "pq_test_abn_unrated_key_123";
-  await seedKey(rawKey, { products: ["address", "abn"], tier: "starter", quotaPerProduct: 10, rateLimit: 10 });
+  await seedKey(rawKey, {
+    products: ["address", "abn"],
+    tier: "starter",
+    quotaPerProduct: 10,
+    rateLimit: 10,
+  });
 
   const response = await request("/v1/abn/ping", rawKey);
   const body = (await response.json()) as {
@@ -429,7 +499,12 @@ test("enabled products without billing weights fail closed", async () => {
 
 test("unknown route inside a rated product fails closed", async () => {
   const rawKey = "pq_test_unknown_address_route_123";
-  await seedKey(rawKey, { products: ["address"], tier: "starter", quotaPerProduct: 10, rateLimit: 10 });
+  await seedKey(rawKey, {
+    products: ["address"],
+    tier: "starter",
+    quotaPerProduct: 10,
+    rateLimit: 10,
+  });
 
   const response = await request("/v1/address/ping", rawKey);
   const body = (await response.json()) as {
@@ -478,7 +553,8 @@ test("redirect fallback authenticates with the new active key", async () => {
 
 test("billing event emission enqueues after usage enforcement succeeds", async () => {
   process.env.BILLING_EVENTS_ENABLED = "true";
-  process.env.BILLING_EVENTS_QUEUE_URL = "https://sqs.ap-southeast-2.amazonaws.com/123/billing-events";
+  process.env.BILLING_EVENTS_QUEUE_URL =
+    "https://sqs.ap-southeast-2.amazonaws.com/123/billing-events";
   process.env.PRONTIQ_STAGE = "test";
   const enqueued: BillingUsageEventV1[] = [];
   __setBillingEventEnqueuerForTesting(async (event) => {
@@ -507,7 +583,8 @@ test("billing event emission enqueues after usage enforcement succeeds", async (
 
 test("billing event enqueue failure returns 500 after the local usage increment", async () => {
   process.env.BILLING_EVENTS_ENABLED = "true";
-  process.env.BILLING_EVENTS_QUEUE_URL = "https://sqs.ap-southeast-2.amazonaws.com/123/billing-events";
+  process.env.BILLING_EVENTS_QUEUE_URL =
+    "https://sqs.ap-southeast-2.amazonaws.com/123/billing-events";
   __setBillingEventEnqueuerForTesting(async () => {
     throw new Error("sqs unavailable");
   });
@@ -521,7 +598,9 @@ test("billing event enqueue failure returns 500 after the local usage increment"
   });
 
   const response = await request("/v1/address/autocomplete", rawKey);
-  const body = (await response.json()) as { error: { code: string; details?: { reason?: string } } };
+  const body = (await response.json()) as {
+    error: { code: string; details?: { reason?: string } };
+  };
 
   assert.equal(response.status, 500);
   assert.equal(body.error.code, "INTERNAL_ERROR");
@@ -532,7 +611,8 @@ test("billing event enqueue failure returns 500 after the local usage increment"
 
 test("billing event emission fails closed before usage increment when customerId is missing", async () => {
   process.env.BILLING_EVENTS_ENABLED = "true";
-  process.env.BILLING_EVENTS_QUEUE_URL = "https://sqs.ap-southeast-2.amazonaws.com/123/billing-events";
+  process.env.BILLING_EVENTS_QUEUE_URL =
+    "https://sqs.ap-southeast-2.amazonaws.com/123/billing-events";
   const rawKey = "pq_test_billing_event_missing_customer_key_123";
   const record = await seedKey(rawKey, {
     quotaPerProduct: 10,
@@ -541,7 +621,9 @@ test("billing event emission fails closed before usage increment when customerId
   });
 
   const response = await request("/v1/address/autocomplete", rawKey);
-  const body = (await response.json()) as { error: { code: string; details?: { reason?: string } } };
+  const body = (await response.json()) as {
+    error: { code: string; details?: { reason?: string } };
+  };
 
   assert.equal(response.status, 500);
   assert.equal(body.error.code, "INTERNAL_ERROR");
@@ -775,7 +857,11 @@ test("threshold crossing response does not await quota worker enqueue", async ()
     lastPushedCumulativeCount: 3,
   });
 
-  const response = await requestWithExecutionContext("/v1/address/autocomplete", executionCtx, rawKey);
+  const response = await requestWithExecutionContext(
+    "/v1/address/autocomplete",
+    executionCtx,
+    rawKey,
+  );
   assert.equal(response.status, 200);
   assert.equal(enqueued.length, 1);
   assert.equal(backgroundPromises.length, 1);

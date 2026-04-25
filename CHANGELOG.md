@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Lago webhook reconciliation** (`P1B.17`) **implemented behind a dedicated
+  rollout gate.** Added `POST /webhooks/lago`, HMAC signature verification,
+  `prontiq-lago-webhook-events` idempotency ledger, consumed subscription /
+  invoice event set, Lago plan/subscription/billing-period denormalization onto
+  local key records, `COUNTER_PERIOD_SOURCE` support for Lago-period counter
+  scopes, `PqLagoWebhookErrors` alarm, and docs/runbooks/ADRs for drift and
+  rollout. PAYG is now explicitly uncapped but tracked.
+
 - **Lago event forwarder** (`P1B.16`) **implemented behind the existing producer
   rollout gate.** Added `PqLagoEventForwarder`, deterministic Lago
   `transaction_id = eventId`, derived `external_subscription_id = pq_sub_<ulid>`,

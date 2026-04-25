@@ -4,6 +4,37 @@
 > the time they were written, not the current source of truth. Use
 > `ROADMAP.md`, `NEXT-WORK.md`, and `README.md` for current execution status.
 
+## Session 34 — 2026-04-25
+
+**Focus:** P1B.17 Lago webhook sync + credit-counter reconciliation; next up P1B.18 console billing proxy surfaces.
+
+### Completed
+
+- **P1B.17 is complete.** `POST /webhooks/lago` verifies Lago HMAC signatures,
+  requires `X-Lago-Unique-Key`, and dispatches to
+  `@prontiq/control-plane` reconciliation.
+- **Inbound replay safety is explicit.** `prontiq-lago-webhook-events` stores
+  payload hashes and statuses so duplicate completed/ignored events are no-op,
+  in-flight duplicates retry, and same-key/different-payload delivery is drift.
+- **Local enforcement state is reconciled asynchronously.** Lago subscription
+  and invoice events update denormalized plan, subscription, billing-period, and
+  payment-overdue fields on local key records. The API hot path still does not
+  call Lago.
+- **Counter semantics are corrected for PAYG.** PAYG is uncapped but tracked
+  (`quotaPerProduct = null`), while Free remains hard-capped and legacy paid
+  tiers remain soft-overage migration values.
+- **Rollout remains gated.** Keep `LAGO_WEBHOOK_RECONCILIATION_ENABLED=false`
+  until the Lago endpoint and canonical org/customer/subscription setup are
+  verified; keep `COUNTER_PERIOD_SOURCE=calendar` until reconciliation has
+  populated billing periods.
+
+### Next session should start with
+
+1. Start `P1B.18 — Console Billing Proxy Surfaces + Plan Changes`.
+2. Use the P1B.17 local-state contract; do not call Lago directly from browser
+   clients or address API request auth.
+3. Keep legacy Stripe surfaces treated as migration context, not target UX.
+
 ## Session 33 — 2026-04-25
 
 **Focus:** P1B.16 Lago event forwarder worker + idempotent transaction IDs; next up P1B.17 reconciliation.

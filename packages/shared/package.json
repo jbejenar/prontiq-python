@@ -22,6 +22,10 @@
       "import": "./dist/billing-events.js",
       "types": "./dist/billing-events.d.ts"
     },
+    "./lago-webhooks": {
+      "import": "./dist/lago-webhooks.js",
+      "types": "./dist/lago-webhooks.d.ts"
+    },
     "./keys": {
       "import": "./dist/keys.js",
       "types": "./dist/keys.d.ts"

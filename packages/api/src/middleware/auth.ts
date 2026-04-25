@@ -7,6 +7,7 @@ import { createMiddleware } from "hono/factory";
 import {
   BILLING_ENDPOINTS,
   ERROR_CODES,
+  PLANS,
   PRODUCT_REGISTRY,
   QUOTA_EMAIL_PENDING_LEASE_MINUTES,
   QUOTA_WARNING_THRESHOLD_FRACTION,
@@ -24,7 +25,10 @@ import type {
   RedirectRecord,
   UsageCounterRecord,
 } from "@prontiq/shared";
-import { __resetRateLimiterForTesting as resetBurstRateLimiterForTesting, applyBurstRateLimit } from "./rate-limit.js";
+import {
+  __resetRateLimiterForTesting as resetBurstRateLimiterForTesting,
+  applyBurstRateLimit,
+} from "./rate-limit.js";
 import { captureDynamoClient } from "../tracing.js";
 
 type UsageUpdateResult = {
@@ -98,6 +102,10 @@ function billingEventsEnabled(): boolean {
   return process.env.BILLING_EVENTS_ENABLED === "true";
 }
 
+function counterPeriodSource(): "calendar" | "lago" {
+  return process.env.COUNTER_PERIOD_SOURCE === "lago" ? "lago" : "calendar";
+}
+
 function getMonthKey(now: Date): string {
   return now.toISOString().slice(0, 7);
 }
@@ -105,6 +113,39 @@ function getMonthKey(now: Date): string {
 function getResetAt(now: Date): string {
   const nextMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
   return nextMonth.toISOString();
+}
+
+function getUsageScope(record: ApiKeyRecord, product: string, now: Date): string {
+  if (counterPeriodSource() === "lago" && record.billingPeriodKey) {
+    return `${product}#period#${record.billingPeriodKey}`;
+  }
+  return `${product}#${getMonthKey(now)}`;
+}
+
+function getUsageResetAt(record: ApiKeyRecord, now: Date): string {
+  if (counterPeriodSource() === "lago" && record.billingPeriodEndingAt) {
+    const parsed = new Date(record.billingPeriodEndingAt);
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed.toISOString();
+    }
+  }
+  return getResetAt(now);
+}
+
+function getPlanEnforcementMode(
+  record: ApiKeyRecord,
+): "hard_cap" | "soft_overage" | "uncapped_tracked" {
+  return (
+    PLANS[record.tier]?.enforcementMode ?? (record.tier === "free" ? "hard_cap" : "soft_overage")
+  );
+}
+
+function isHardCapped(record: ApiKeyRecord): boolean {
+  return getPlanEnforcementMode(record) === "hard_cap";
+}
+
+function isSoftOverage(record: ApiKeyRecord): boolean {
+  return getPlanEnforcementMode(record) === "soft_overage";
 }
 
 function getUsageTtl(now: Date): number {
@@ -142,7 +183,10 @@ function productHasBillingDefinitions(product: string): boolean {
   return getBillingEndpointsForProduct(product).length > 0;
 }
 
-function getBillingEndpoint(path: string, product: string): {
+function getBillingEndpoint(
+  path: string,
+  product: string,
+): {
   billingEndpointKey: string;
   definition: BillingEndpointDefinition;
 } | null {
@@ -408,12 +452,12 @@ async function incrementUsage(
   product: string,
   now: Date,
 ): Promise<UsageUpdateResult> {
-  const monthKey = getMonthKey(now);
-  const resetAt = getResetAt(now);
-  const usageScope = `${product}#${monthKey}`;
+  const resetAt = getUsageResetAt(record, now);
+  const usageScope = getUsageScope(record, product, now);
   const limit = record.quotaPerProduct;
+  const hardCapped = isHardCapped(record);
 
-  if (record.tier === "free" && limit != null && creditCost > limit) {
+  if (hardCapped && limit != null && creditCost > limit) {
     return {
       creditCost,
       overage: false,
@@ -442,11 +486,11 @@ async function incrementUsage(
       ":now": now.toISOString(),
       ":ttl": getUsageTtl(now),
       ":zero": 0,
-      ...(record.tier === "free" && limit != null
+      ...(hardCapped && limit != null
         ? { ":maxBeforeIncrement": Math.max(0, limit - creditCost) }
         : {}),
     },
-    ...(record.tier === "free" && limit != null
+    ...(hardCapped && limit != null
       ? {
           ConditionExpression:
             "attribute_not_exists(#requestCount) OR #requestCount <= :maxBeforeIncrement",
@@ -467,7 +511,7 @@ async function incrementUsage(
       creditCost,
       limitEmailPendingAt: attributes?.limitEmailPendingAt,
       limitEmailSent: attributes?.limitEmailSent,
-      overage: limit != null && record.tier !== "free" && requestCount > limit,
+      overage: limit != null && isSoftOverage(record) && requestCount > limit,
       quotaExceeded: false,
       requestCount,
       resetAt,
@@ -617,8 +661,13 @@ export function auth() {
       }
     }
 
-    const usageResult = await incrementUsage(record, billingEndpoint.definition.creditCost, product, now);
-    const usageScope = `${product}#${getMonthKey(now)}`;
+    const usageResult = await incrementUsage(
+      record,
+      billingEndpoint.definition.creditCost,
+      product,
+      now,
+    );
+    const usageScope = getUsageScope(record, product, now);
     if (usageResult.quotaExceeded && record.quotaPerProduct != null) {
       setRateLimitHeaders(
         record.quotaPerProduct,

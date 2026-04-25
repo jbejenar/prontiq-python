@@ -1077,7 +1077,7 @@ Options:
 
 > **Goal:** Sign-up → DDB-native API key → hash-verified requests → rate-limited with burst limiter → usage tracked per-month → migrate the commercial layer from the shipped Stripe path to the Lago target architecture.
 >
-> **Current state.** P1B.02, P1B.04, P1B.04b, P1B.05, P1B.06, P1B.07, P1B.08, P1B.09, P1B.10, P1B.11, P1B.12, P1B.14, P1B.15, and P1B.16 are shipped. The DynamoDB-native key model is live in prod, the prod migration was executed on 2026-04-16, the legacy Stripe billing path is live, per-key burst limiting is enforced in the API middleware, SES feedback / quota-email delivery is live in dev + prod, previous-month scopes are now explicitly finalized and closed by the monthly `PqMonthClose` sweep, the auth integration suite is reconciled to the real post-cutover middleware contract, and the Lago migration now has a platform-owned `customerId` contract, feature-flagged SQS billing-event buffer, and replay-safe Lago event forwarder. SES deliverability hardening is tracked separately in P1B.08a. The next Lago migration ticket is P1B.17.
+> **Current state.** P1B.02, P1B.04, P1B.04b, P1B.05, P1B.06, P1B.07, P1B.08, P1B.09, P1B.10, P1B.11, P1B.12, P1B.14, P1B.15, P1B.16, and P1B.17 are shipped. The DynamoDB-native key model is live in prod, the prod migration was executed on 2026-04-16, the legacy Stripe billing path is live, per-key burst limiting is enforced in the API middleware, SES feedback / quota-email delivery is live in dev + prod, previous-month scopes are now explicitly finalized and closed by the monthly `PqMonthClose` sweep, the auth integration suite is reconciled to the real post-cutover middleware contract, and the Lago migration now has a platform-owned `customerId` contract, feature-flagged SQS billing-event buffer, replay-safe Lago event forwarder, and Lago webhook reconciliation into local enforcement state. SES deliverability hardening is tracked separately in P1B.08a. The next Lago migration ticket is P1B.18.
 >
 > **Lago migration progress.** `3/7` complete for `P1B.14`–`P1B.20`. The `P1B` epic rollup includes completed historical Stripe-path work, so treat the Lago migration sequence as a separate track until the new commercial runtime is implemented.
 >
@@ -1673,12 +1673,12 @@ bridge, delivery-ledger side effects, retry/replay safety
 ```yaml
 id: P1B.17
 title: Lago Webhook Sync + Credit-Counter Reconciliation
-status: pending
+status: completed
 priority: p0-critical
 epic: P1B
 persona: [builder]
 depends_on: [P1B.16]
-completed: null
+completed: 2026-04-25
 tech_stack:
   billing: Lago webhooks
 ```
@@ -1703,37 +1703,37 @@ incorrectly and the console will show stale state.
 
 ##### Functional
 
-- [ ] Consumed Lago event set is defined
+- [x] Consumed Lago event set is defined
   - `Verify:` ticket names the subscription / invoice / billing-boundary events
     the platform reacts to
   - `Evidence:` reconciliation contract documents event categories and local
     side-effects
-- [ ] Authority boundary between Lago and `credit_counters` is explicit
+- [x] Authority boundary between Lago and `credit_counters` is explicit
   - `Verify:` roadmap text states Lago is commercial truth while
     `credit_counters` remains enforcement state
   - `Evidence:` ticket body distinguishes plan / invoice / wallet state from
     request-time local counters
-- [ ] Billing-boundary reset behavior is defined for capped plans
+- [x] Billing-boundary reset behavior is defined for capped plans
   - `Verify:` monthly / billing-period reset semantics are described
   - `Evidence:` ticket states which local counters reset and which audit/history
     rows remain append-only
-- [ ] PAYG reconciliation behavior is defined separately from capped plans
+- [x] PAYG reconciliation behavior is defined separately from capped plans
   - `Verify:` roadmap text does not pretend PAYG needs hard reset semantics
   - `Evidence:` ticket says PAYG remains uncapped but tracked and reconciled for
     visibility / drift only
-- [ ] Drift-detection path is documented
+- [x] Drift-detection path is documented
   - `Verify:` ticket describes what mismatch between Lago state and local
     counters looks like and how operators recover
   - `Evidence:` reconciliation section includes drift follow-up expectation
 
 ##### Operational
 
-- [ ] Webhook processing is idempotent
+- [x] Webhook processing is idempotent
   - `Verify:` repeated Lago delivery does not corrupt counters or duplicate
     transitions
   - `Evidence:` ticket text requires idempotent local writes keyed by event
     identity
-- [ ] Reconciliation remains off the request path
+- [x] Reconciliation remains off the request path
   - `Verify:` no live request depends on synchronous webhook processing
   - `Evidence:` ticket preserves async-only reconciliation model
 
@@ -1741,6 +1741,21 @@ incorrectly and the console will show stale state.
 
 **In:** Lago webhook consumption, authority boundaries, counter resets,
 PAYG-vs-capped reconciliation, drift handling
+
+#### Implementation Notes
+
+- `POST /webhooks/lago` verifies Lago HMAC headers and requires
+  `X-Lago-Unique-Key`.
+- `prontiq-lago-webhook-events` stores idempotency evidence, payload hashes,
+  terminal status, and drift errors.
+- Consumed event set is `subscription.started`, `subscription.terminated`,
+  `invoice.created`, `invoice.payment_overdue`, and
+  `invoice.payment_status_updated`.
+- Reconciliation mutates local `prontiq-keys` org/key rows only; request-time
+  auth still reads local DynamoDB state and never calls Lago.
+- `COUNTER_PERIOD_SOURCE=calendar` remains the default. `lago` mode uses
+  denormalized billing-period keys written by reconciliation.
+- PAYG is explicitly `uncapped_tracked` with `quotaPerProduct = null`.
 
 **Out — Do Not Implement:**
 

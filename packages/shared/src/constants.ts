@@ -60,6 +60,7 @@ export const PRODUCT_REGISTRY: Record<string, ProductConfig> = {
 
 export interface PlanDefinition {
   includedCreditsPerMonth: number | null;
+  enforcementMode: "hard_cap" | "soft_overage" | "uncapped_tracked";
   quotaPerProduct: number | null;
   rateLimit: number | null;
   products: string[];
@@ -70,6 +71,7 @@ export interface PlanDefinition {
 export const PLANS: Record<Tier, PlanDefinition> = {
   free: {
     includedCreditsPerMonth: 10_000,
+    enforcementMode: "hard_cap",
     quotaPerProduct: 10_000,
     rateLimit: 10,
     products: ["address"],
@@ -78,7 +80,8 @@ export const PLANS: Record<Tier, PlanDefinition> = {
   },
   payg: {
     includedCreditsPerMonth: 0,
-    quotaPerProduct: 0,
+    enforcementMode: "uncapped_tracked",
+    quotaPerProduct: null,
     rateLimit: 25,
     products: ["address"],
     maxKeys: 3,
@@ -86,6 +89,7 @@ export const PLANS: Record<Tier, PlanDefinition> = {
   },
   starter: {
     includedCreditsPerMonth: 25_000,
+    enforcementMode: "soft_overage",
     quotaPerProduct: 25_000,
     rateLimit: 50,
     products: ["address", "abn", "lei", "cve", "patents"],
@@ -94,6 +98,7 @@ export const PLANS: Record<Tier, PlanDefinition> = {
   },
   growth: {
     includedCreditsPerMonth: 100_000,
+    enforcementMode: "soft_overage",
     quotaPerProduct: 100_000,
     rateLimit: 100,
     products: ["address", "abn", "lei", "cve", "patents"],
@@ -102,6 +107,7 @@ export const PLANS: Record<Tier, PlanDefinition> = {
   },
   max: {
     includedCreditsPerMonth: 500_000,
+    enforcementMode: "soft_overage",
     quotaPerProduct: 500_000,
     rateLimit: 250,
     products: ["address", "abn", "lei", "cve", "patents"],
@@ -110,6 +116,7 @@ export const PLANS: Record<Tier, PlanDefinition> = {
   },
   enterprise: {
     includedCreditsPerMonth: null,
+    enforcementMode: "uncapped_tracked",
     quotaPerProduct: null,
     rateLimit: null,
     products: ["address", "abn", "lei", "cve", "patents"],
@@ -175,7 +182,9 @@ export function getMeterEventNameForProduct(product: string): string | null {
 
   const meterEventNames = new Set(endpoints.map((definition) => definition.meterEventName));
   if (meterEventNames.size !== 1) {
-    throw new Error(`Product ${product} has inconsistent meterEventName values in BILLING_ENDPOINTS`);
+    throw new Error(
+      `Product ${product} has inconsistent meterEventName values in BILLING_ENDPOINTS`,
+    );
   }
 
   return endpoints[0]?.meterEventName ?? null;

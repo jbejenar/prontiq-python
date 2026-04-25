@@ -22,6 +22,7 @@ verification.
 | Endpoint                 | Purpose                                                                                                                                                                                                                                        | Auth                                                |
 | ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
 | `POST /webhooks/clerk`   | Clerk `organizationMembership.created` → ORG envelope provisioning for the current live billing path (Stripe customer + DDB record + audit row + best-effort welcome email). See `docs/runbooks/clerk-webhook.md`.                             | Svix signature (no API key)                         |
+| `POST /webhooks/lago`    | Lago subscription/invoice events → local enforcement-state reconciliation during the Lago migration. Default deployed but disabled by `LAGO_WEBHOOK_RECONCILIATION_ENABLED=false`. See `docs/runbooks/lago-webhook-reconciliation.md`.         | Lago HMAC signature (no API key)                    |
 | `POST /v1/account/setup` | Dashboard recovery for org provisioning when the Clerk webhook missed delivery. Idempotent — runs the same `provisionOrg` code path as the webhook. See [`api-reference/account-setup`](https://docs.prontiq.dev/api-reference/account-setup). | Clerk session token (`Authorization: Bearer <jwt>`) |
 
 Future products are roadmap items, not active docs/API surfaces yet.
@@ -109,19 +110,19 @@ apps/
 
 ## Stack
 
-| Layer          | Tool                                                                                                                                                                                                                                                                                                                                                     |
-| -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Infrastructure | SST v4 + Pulumi                                                                                                                                                                                                                                                                                                                                          |
-| API            | Hono + @hono/zod-openapi on Lambda (ARM64, Node.js 24)                                                                                                                                                                                                                                                                                                   |
-| Search         | OpenSearch 2.19 (managed)                                                                                                                                                                                                                                                                                                                                |
-| API Keys       | DynamoDB-native (`pq_live_` + SHA-256 hash-based lookup; live in prod)                                                                                                                                                                                                                                                                                   |
-| Auth (portal)  | Clerk — webhook live in prod (`POST /webhooks/clerk`) AND JWT-authenticated `POST /v1/account/setup` recovery endpoint live in prod (P1B.05 complete)                                                                                                                                                                                                    |
-| Billing        | Current live path: Stripe customer creation, subscription webhook, hourly billing cron, and month-close; target v-next path: Lago as commercial system of record with Stripe reduced to payment processing; SQS billing-event buffer and Lago forwarder are implemented but producer enablement remains feature-flagged pending environment smoke checks |
-| Frontend       | `apps/landing` live with proxy-backed demo + config-owned free tier + Clerk modal; `apps/console` has the env-gated Clerk shell base and is the future human billing surface                                                                                                                                                                             |
-| Docs           | Mintlify at `docs.prontiq.dev` (live)                                                                                                                                                                                                                                                                                                                    |
-| SDKs           | Speakeasy generates `@prontiq/sdk` (TypeScript) — npm publish pending NPM_TOKEN                                                                                                                                                                                                                                                                          |
-| Observability  | CloudWatch + SNS email + Honeycomb backend traces (`HONEYCOMB_API_KEY` gated) + retained API X-Ray                                                                                                                                                                                                                                                       |
-| CI/CD          | GitHub Actions + OIDC (no stored credentials)                                                                                                                                                                                                                                                                                                            |
+| Layer          | Tool                                                                                                                                                                                                                                                                                                                                                  |
+| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Infrastructure | SST v4 + Pulumi                                                                                                                                                                                                                                                                                                                                       |
+| API            | Hono + @hono/zod-openapi on Lambda (ARM64, Node.js 24)                                                                                                                                                                                                                                                                                                |
+| Search         | OpenSearch 2.19 (managed)                                                                                                                                                                                                                                                                                                                             |
+| API Keys       | DynamoDB-native (`pq_live_` + SHA-256 hash-based lookup; live in prod)                                                                                                                                                                                                                                                                                |
+| Auth (portal)  | Clerk — webhook live in prod (`POST /webhooks/clerk`) AND JWT-authenticated `POST /v1/account/setup` recovery endpoint live in prod (P1B.05 complete)                                                                                                                                                                                                 |
+| Billing        | Current live path: Stripe customer creation, subscription webhook, hourly billing cron, and month-close; target v-next path: Lago as commercial system of record with Stripe reduced to payment processing; SQS billing-event buffer, Lago forwarder, and Lago webhook reconciliation are implemented but rollout flags remain environment-controlled |
+| Frontend       | `apps/landing` live with proxy-backed demo + config-owned free tier + Clerk modal; `apps/console` has the env-gated Clerk shell base and is the future human billing surface                                                                                                                                                                          |
+| Docs           | Mintlify at `docs.prontiq.dev` (live)                                                                                                                                                                                                                                                                                                                 |
+| SDKs           | Speakeasy generates `@prontiq/sdk` (TypeScript) — npm publish pending NPM_TOKEN                                                                                                                                                                                                                                                                       |
+| Observability  | CloudWatch + SNS email + Honeycomb backend traces (`HONEYCOMB_API_KEY` gated) + retained API X-Ray                                                                                                                                                                                                                                                    |
+| CI/CD          | GitHub Actions + OIDC (no stored credentials)                                                                                                                                                                                                                                                                                                         |
 
 ## Roadmap Progress
 
@@ -131,7 +132,7 @@ See [`ROADMAP.md`](ROADMAP.md) for the current execution plan.
 | ------- | ------------------------- | ------- | --------- |
 | **P0**  | Infrastructure Foundation | 6       | 6/6       |
 | **P1A** | API Core (Address)        | 13      | 10/13     |
-| **P1B** | Auth & Billing            | 22      | 16/22     |
+| **P1B** | Auth & Billing            | 22      | 17/22     |
 | **P1C** | Frontend Surfaces         | 9       | 3/9       |
 | **P1D** | Docs & SDK                | 5       | 2/5       |
 | **P1E** | Ingestion                 | 6       | 4/6       |
@@ -143,16 +144,16 @@ See [`ROADMAP.md`](ROADMAP.md) for the current execution plan.
 |         |                           | **88**  | **43/88** |
 
 `P1B` includes completed legacy Stripe-path work. The Lago migration sequence is
-`P1B.14`–`P1B.20`, currently `3/7`, and is called out separately in
+`P1B.14`–`P1B.20`, currently `4/7`, and is called out separately in
 the Phase 1B section of [`ROADMAP.md`](ROADMAP.md).
 
-P1B.16 adds the Lago event-forwarder worker. It consumes the standard SQS
-billing-event queue, records delivery state in `prontiq-billing-event-deliveries`,
-and sends minimal Lago usage events with deterministic transaction IDs. The
-worker is deployed in dev and prod, but the producer flag remains a separate
-rollout control. Do not enable `BILLING_EVENTS_ENABLED` in an environment until
-its canonical Lago org, metric, customer, subscription, and replay smoke checks
-are verified.
+P1B.17 adds Lago webhook reconciliation. `POST /webhooks/lago` verifies Lago HMAC
+signatures, records idempotency in `prontiq-lago-webhook-events`, reconciles
+subscription/invoice state into local key records, and keeps PAYG uncapped but
+tracked. The route deploys with `LAGO_WEBHOOK_RECONCILIATION_ENABLED=false` by
+default; do not enable Lago webhooks or `COUNTER_PERIOD_SOURCE=lago` until the
+environment has canonical Lago org, metric, customer, subscription, and replay
+checks verified.
 
 ## Commands
 

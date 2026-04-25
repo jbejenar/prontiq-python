@@ -156,7 +156,11 @@ Before setting `BILLING_EVENTS_ENABLED=true` in a deployed stage:
 10. verify the Lago customer and subscription external IDs match
     `pq_cust_<ulid>` and `pq_sub_<ulid>`
 11. run a replay smoke check and prove the second replay does not double-count
-12. enable `BILLING_EVENTS_ENABLED=true` and redeploy
+12. configure Lago webhook reconciliation per
+    `docs/runbooks/lago-webhook-reconciliation.md`
+13. keep `COUNTER_PERIOD_SOURCE=calendar` until webhook reconciliation has
+    populated billing-period fields
+14. enable `BILLING_EVENTS_ENABLED=true` and redeploy
 
 ## Verification
 
@@ -170,6 +174,7 @@ Before setting `BILLING_EVENTS_ENABLED=true` in a deployed stage:
   without ledger rows, while schema-valid deterministic-ID mismatches create
   `invalid` ledger evidence
 - confirm `PqLagoEventForwarderErrors` is alarmed for worker crashes
+- confirm `PqLagoWebhookErrors` is alarmed for inbound reconciliation failures
 - confirm source queue age and DLQ alarms are the primary signal for per-record
   Lago delivery failures
 - confirm accepted rows appear in `prontiq-billing-event-deliveries`

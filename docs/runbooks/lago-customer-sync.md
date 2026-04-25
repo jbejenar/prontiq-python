@@ -38,7 +38,9 @@ customer primary key.
 
 1. Customer is created or resolved from `prontiq-customers` by Clerk `orgId`.
 2. Lago customer exists with `external_id = customerId`.
-3. Subscription changes reconcile back into Prontiq enforcement counters.
+3. Lago subscription exists with `external_id = pq_sub_<same ulid as customerId>`.
+4. Subscription changes reconcile back into Prontiq enforcement counters through
+   `POST /webhooks/lago`.
 
 ## Backfill procedure
 
@@ -75,6 +77,7 @@ customer primary key.
 
 - confirm Clerk org resolves to one active `prontiq-customers` row
 - confirm Lago customer exists with `external_id = customerId`
+- confirm Lago subscription external id is derived from the same customer ULID
 - confirm Lago `lago_id` is cached only as `lagoCustomerId`
 - confirm no customer-table read is required by API-key request auth
 - confirm Prontiq counters reconcile after plan changes or period resets

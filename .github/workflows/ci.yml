@@ -146,13 +146,14 @@ jobs:
           HONEYCOMB_API_KEY: ${{ secrets.HONEYCOMB_API_KEY }}
           LAGO_API_KEY: ${{ secrets.LAGO_API_KEY }}
           LAGO_API_URL: ${{ vars.LAGO_API_URL }}
+          LAGO_WEBHOOK_HMAC_SECRET: ${{ secrets.LAGO_WEBHOOK_HMAC_SECRET }}
           STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
           STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
         shell: bash
         run: |
           set -euo pipefail
           missing=()
-          for name in CLERK_WEBHOOK_SECRET CLERK_SECRET_KEY HONEYCOMB_API_KEY LAGO_API_KEY LAGO_API_URL STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET; do
+          for name in CLERK_WEBHOOK_SECRET CLERK_SECRET_KEY HONEYCOMB_API_KEY LAGO_API_KEY LAGO_API_URL LAGO_WEBHOOK_HMAC_SECRET STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET; do
             value="${!name:-}"
             trimmed="${value#"${value%%[![:space:]]*}"}"
             trimmed="${trimmed%"${trimmed##*[![:space:]]}"}"
@@ -263,6 +264,7 @@ jobs:
           AWS_EC2_METADATA_DISABLED: "true"
           AWS_SKIP_CREDENTIALS_VALIDATION: "true"
           BILLING_EVENTS_ENABLED: ${{ vars.BILLING_EVENTS_ENABLED }}
+          COUNTER_PERIOD_SOURCE: ${{ vars.COUNTER_PERIOD_SOURCE }}
           HONEYCOMB_ENABLED: ${{ vars.HONEYCOMB_ENABLED }}
           CLERK_ADMIN_ROLES: ${{ vars.CLERK_ADMIN_ROLES }}
           CLERK_ISSUER: ${{ vars.CLERK_ISSUER }}
@@ -272,6 +274,8 @@ jobs:
           HONEYCOMB_API_KEY: ${{ secrets.HONEYCOMB_API_KEY }}
           LAGO_API_KEY: ${{ secrets.LAGO_API_KEY }}
           LAGO_API_URL: ${{ vars.LAGO_API_URL }}
+          LAGO_WEBHOOK_HMAC_SECRET: ${{ secrets.LAGO_WEBHOOK_HMAC_SECRET }}
+          LAGO_WEBHOOK_RECONCILIATION_ENABLED: ${{ vars.LAGO_WEBHOOK_RECONCILIATION_ENABLED }}
           PRONTIQ_ACCOUNT_URL: ${{ vars.PRONTIQ_ACCOUNT_URL }}
           PRONTIQ_BILLING_URL: ${{ vars.PRONTIQ_BILLING_URL }}
           PRONTIQ_DOCS_URL: ${{ vars.PRONTIQ_DOCS_URL }}

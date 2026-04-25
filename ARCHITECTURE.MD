@@ -1002,7 +1002,7 @@ Rate limiting operates at three levels:
 
 2. **Burst rate limiting (per-key, per-second, application-level).** In-memory token bucket per `apiKeyHash` in Hono middleware. Prevents a single key from overwhelming OpenSearch in one second. See §5.4.1 below.
 
-3. **Monthly quota enforcement (per-key, per-product family, application-level).** The DynamoDB key record includes `quotaPerProduct`; usage counts live in the `prontiq-usage` table (per-month row per product family). Checked in the auth middleware. Each request is rated into credits via `BILLING_ENDPOINTS` before the family row is atomically incremented. Free tier → hard `429 QUOTA_EXCEEDED`. Paid tier → request proceeds with `X-RateLimit-Over: true` header; Stripe bills overage at month end.
+3. **Billing-period quota enforcement (per-key, per-product family, application-level).** The DynamoDB key record includes `quotaPerProduct` plus plan enforcement mode. Usage counts live in `prontiq-usage`; calendar-month scopes remain the default, while `COUNTER_PERIOD_SOURCE=lago` uses denormalized Lago billing-period keys populated by webhook reconciliation. Each request is rated into credits via `BILLING_ENDPOINTS` before the family row is atomically incremented. Hard-capped plans (Free) return `429 QUOTA_EXCEEDED`; soft-overage plans proceed with `X-RateLimit-Over: true`; PAYG and Enterprise are uncapped but still tracked.
 
 #### 5.4.1 Burst Rate Limiting
 
@@ -1063,18 +1063,20 @@ API keys are generated, hashed, verified, and stored entirely in DynamoDB. No ve
 
 #### 5.5.1 DynamoDB Schema
 
-Current runtime uses five tables plus registry items. The Lago migration added
-the `prontiq-customers` mapping table in P1B.15. All are on-demand
+Current runtime uses six tables plus registry items. The Lago migration added
+the `prontiq-customers` mapping table in P1B.15 and the Lago webhook ledger in
+P1B.17. All are on-demand
 (pay-per-request). Only `prontiq-keys` and `prontiq-usage` serve the request
 hot path.
 
-| Table                      | Purpose                                                                                       |
-| -------------------------- | --------------------------------------------------------------------------------------------- |
-| `prontiq-keys`             | API key metadata + billing registry + org-envelope record + Stripe webhook completion markers |
-| `prontiq-usage`            | Usage counters + email flags + billing push state + REDIRECT records                          |
-| `prontiq-customers`        | Customer mapping across Clerk orgs, Prontiq `customerId`, Lago, and Stripe                    |
-| `prontiq-audit`            | Append-only lifecycle audit log                                                               |
-| `prontiq-ses-suppressions` | Email bounce/complaint suppression                                                            |
+| Table                         | Purpose                                                                                       |
+| ----------------------------- | --------------------------------------------------------------------------------------------- |
+| `prontiq-keys`                | API key metadata + billing registry + org-envelope record + Stripe webhook completion markers |
+| `prontiq-usage`               | Local enforcement counters + email flags + billing push state + REDIRECT records              |
+| `prontiq-customers`           | Customer mapping across Clerk orgs, Prontiq `customerId`, Lago, and Stripe                    |
+| `prontiq-lago-webhook-events` | Lago webhook idempotency ledger keyed by `X-Lago-Unique-Key`                                  |
+| `prontiq-audit`               | Append-only lifecycle audit log                                                               |
+| `prontiq-ses-suppressions`    | Email bounce/complaint suppression                                                            |
 
 **Design principles:** hot-path isolation (keys + usage separated), append-only logging (audit), TTL-driven cleanup, hash-only key storage. The customer mapping table is control-plane state; it must not be read by request-time API-key auth.
 
@@ -1092,7 +1094,7 @@ PK:   apiKeyHash           string    SHA-256 of the raw key
                                      `free` plus historical paid-plan ladder
                                      values during the Lago migration window.
       products             list      Enabled products: ["address", "abn", "lei"]
-      quotaPerProduct      number    Monthly credit limit per product family
+      quotaPerProduct      number?   Credit limit per product family. null = uncapped tracked.
       rateLimit            number    Requests per second (burst limit, used by §5.4.1)
       active               boolean   false = revoked, all requests rejected
       paymentOverdue       boolean   Set true by past_due webhook; cleared on recovery / downgrade / deletion
@@ -1102,6 +1104,13 @@ PK:   apiKeyHash           string    SHA-256 of the raw key
                                      from the last successful webhook reconciliation.
                                      Useful for support/debugging; meter-based billing
                                      no longer depends on these IDs directly.
+      lagoPlanCode         string?   Lago plan code; must map directly to Prontiq tier
+      lagoSubscriptionExternalId string?  Derived `pq_sub_<ulid>` subscription id
+      lagoSubscriptionStatus string? Last reconciled Lago subscription status
+      billingPeriodStartedAt string? Lago current billing-period start
+      billingPeriodEndingAt string?  Lago current billing-period end
+      billingPeriodKey     string?   "{start-date}_{end-date}" used when COUNTER_PERIOD_SOURCE=lago
+      lagoPaymentOverdueInvoiceId string? Invoice id currently holding paymentOverdue=true
       createdAt            string    ISO 8601
       lastUsedAt           string    ISO 8601
 
@@ -1117,6 +1126,8 @@ Per-key, per-product monthly counters. Atomic increment on every request.
 ```
 PK:   apiKeyHash           string    Same hash as prontiq-keys
 SK:   scope                string    "{product}#{yearMonth}" e.g. "address#2026-04"
+                            or "{product}#period#{billingPeriodKey}" when
+                            COUNTER_PERIOD_SOURCE=lago
 
       requestCount         number    Atomically incremented credit total (legacy field name retained)
       warningEmailSent     boolean   True once the 80% threshold email sent
@@ -1137,6 +1148,26 @@ SK:   scope                string    "{product}#{yearMonth}" e.g. "address#2026-
                                                 API call succeeded but the DDB finalize write failed.
       closed               boolean   True once month-close Lambda finalised this scope
       ttl                  number    Unix timestamp — auto-expire after 90 days
+```
+
+##### Table: `prontiq-lago-webhook-events`
+
+Replay-safe ledger for Lago webhook processing. It is control-plane state and is
+never read by request-time API-key auth.
+
+```
+PK:   uniqueKey            string    Lago `X-Lago-Unique-Key`
+
+      eventType            string    Lago webhook type observed
+      payloadHash          string    SHA-256 of normalized webhook payload
+      status               string    processing | completed | ignored | drift
+      customerId           string?   Prontiq `pq_cust_...` resolved from Lago external_id
+      orgId                string?   Resolved Clerk org id after reconciliation
+      firstSeenAt          string    ISO timestamp
+      lastSeenAt           string    ISO timestamp
+      completedAt          string?   ISO timestamp for terminal states
+      lastError            string?   Truncated drift/error detail for operators
+      ttl                  number    Unix timestamp — auto-expire after 30 days
 ```
 
 ##### Table: `prontiq-audit`
@@ -1439,7 +1470,7 @@ Prontiq is in a migration window:
   hourly billing cron, and month-close finalisation.
 - **Target v-next path:** Lago-centered commercial architecture with
   org-scoped `customerId`, SQS billing-event buffering, Lago event forwarding,
-  and reconciliation back into Prontiq enforcement state.
+  and webhook reconciliation back into Prontiq enforcement state.
 
 The subsections below retain the **legacy shipped Stripe path** for migration
 and operational history. They are not the forward-looking commercial source of
@@ -1592,6 +1623,79 @@ canonical Lago organization, metric, customer, subscription, and replay smoke
 checks in place. Existing non-canonical Lago organizations are not migration
 targets for this repo; they are left untouched unless explicitly created as
 P1B.16-only test fixtures.
+
+#### 5.6.0.4 Lago Webhook Reconciliation Contract
+
+`P1B.17` implements `POST /webhooks/lago` as the async reconciliation path from
+Lago commercial state back into Prontiq local enforcement state. The API hot
+path still does not call Lago.
+
+Webhook authentication:
+
+- endpoint signature algorithm is HMAC, not Lago's legacy JWT option
+- required headers: `X-Lago-Signature-Algorithm: hmac`,
+  `X-Lago-Signature`, and `X-Lago-Unique-Key`
+- signature verification compares Lago's base64 HMAC-SHA256 of the raw body
+  against `X-Lago-Signature` using `LAGO_WEBHOOK_HMAC_SECRET`
+- invalid signatures or missing unique keys return 400 and are not claimed
+
+Consumed event set:
+
+- `subscription.started`
+- `subscription.terminated`
+- `invoice.created`
+- `invoice.payment_overdue`
+- `invoice.payment_status_updated`
+
+All other Lago webhook types are acknowledged as ignored after a ledger claim so
+Lago does not retry noise events. Consumed events resolve the Lago customer
+`external_id` as Prontiq `customerId`, load the customer through
+`prontiq-customers.customerId-index`, and require the Lago subscription external
+id to match `pq_sub_<same ulid as customerId>`.
+
+Local mutation boundary:
+
+- plan code maps directly to Prontiq `Tier` (`free`, `payg`, etc.); unknown
+  plan codes are drift and return 500 so Lago retries while operators fix config
+- Lago subscription lifecycle status gates entitlements. Only `active` grants
+  paid/local plan access. `subscription.terminated`, `terminated`, `canceled`,
+  and `pending` snapshots downgrade local entitlements to Free even when Lago
+  still returns the historical paid `plan_code`.
+- `prontiq-keys` org envelope and API-key rows receive denormalized Lago plan,
+  subscription, billing-period, and payment-overdue fields
+- `prontiq-usage` remains the request-time enforcement counter store; Lago never
+  becomes a synchronous read dependency
+- prior Lago-period usage rows are marked `closed=true` when a new billing
+  period key is observed or when an inactive subscription clears the local
+  billing-period key
+- PAYG is `uncapped_tracked`: no hard quota reset is needed, but counters still
+  move to the current billing-period scope for visibility and reconciliation
+- Free is `hard_cap`; Starter/Growth/Max are retained as legacy
+  `soft_overage` migration values; Enterprise is uncapped tracked
+
+Rollout flags:
+
+- `LAGO_WEBHOOK_RECONCILIATION_ENABLED=false` returns 503 after signature
+  verification and before ledger claim. Operators must not configure the Lago
+  endpoint while this flag is false, because Lago will retry valid events.
+- `COUNTER_PERIOD_SOURCE=calendar` is the safe default. Set
+  `COUNTER_PERIOD_SOURCE=lago` only after webhook reconciliation is enabled and
+  current billing-period fields are populated for the environment.
+
+Drift and idempotency:
+
+- `prontiq-lago-webhook-events` is keyed by `X-Lago-Unique-Key` and stores a
+  payload hash so same-key/different-body delivery is treated as drift
+- completed and ignored events return 200 on replay without mutating state
+- fresh in-flight duplicates return 500 so Lago retries after the active worker
+  finishes
+- stale `processing` rows are reclaimable after the Lambda timeout plus a small
+  buffer, using an atomic condition on `status` and `lastSeenAt`; this prevents
+  one crashed invocation from burning Lago's retry budget for minutes
+- retryable `drift` and `failed_retryable` rows can reopen to `processing` on
+  replay once the upstream configuration or dependency issue is fixed
+- reconciliation failures finalize the ledger as `drift`, write an error, and
+  return 500 so the Lago retry/log surface remains the operator work queue
 
 #### 5.6.1 Legacy Stripe Billing Model (Current Shipped Path)
 
@@ -2473,12 +2577,17 @@ Endpoint URLs reflect live prod (query-param form). Path-param migration is a v2
 
 #### Webhook Endpoints
 
-| Method | Endpoint           | Auth Headers                                  | Verification                       | On Invalid              |
-| ------ | ------------------ | --------------------------------------------- | ---------------------------------- | ----------------------- |
-| POST   | `/webhooks/clerk`  | `svix-id`, `svix-timestamp`, `svix-signature` | HMAC against Clerk webhook secret  | 400 `INVALID_SIGNATURE` |
-| POST   | `/webhooks/stripe` | `stripe-signature`                            | `stripe.webhooks.constructEvent()` | 400 `INVALID_SIGNATURE` |
+| Method | Endpoint           | Auth Headers                                                          | Verification                       | On Invalid              |
+| ------ | ------------------ | --------------------------------------------------------------------- | ---------------------------------- | ----------------------- |
+| POST   | `/webhooks/clerk`  | `svix-id`, `svix-timestamp`, `svix-signature`                         | HMAC against Clerk webhook secret  | 400 `INVALID_SIGNATURE` |
+| POST   | `/webhooks/stripe` | `stripe-signature`                                                    | `stripe.webhooks.constructEvent()` | 400 `INVALID_SIGNATURE` |
+| POST   | `/webhooks/lago`   | `x-lago-signature`, `x-lago-signature-algorithm`, `x-lago-unique-key` | HMAC-SHA256 base64 over raw body   | 400 `INVALID_SIGNATURE` |
 
 **Handled Stripe events:** `checkout.session.completed` (initial upgrade), `customer.subscription.updated` (plan changes + past_due + recovery — §5.6.3), `customer.subscription.deleted` (cancel / downgrade), `invoice.payment_failed` (log only).
+
+**Handled Lago events:** `subscription.started`, `subscription.terminated`,
+`invoice.created`, `invoice.payment_overdue`, and
+`invoice.payment_status_updated` (§5.6.0.4).
 
 ### 7.4 Response Headers
 
@@ -2591,24 +2700,24 @@ Diff these shapes against `packages/docs/openapi.json` before any doc update —
 | **Edge** (API Gateway) | WAF rules, IP throttle 100/s, TLS termination, geographic blocking (optional)                                                        |
 | **Application** (Hono) | Clerk JWT verify, API key hash+verify, CORS enforcement, burst rate limiting, input validation (Zod), circuit breaker, audit logging |
 | **Data** (DynamoDB)    | Encryption at rest (AES-256), hash-only key storage, TTL auto-expire                                                                 |
-| **Webhook**            | Svix/Stripe signature verify, idempotency locks, 400 on invalid                                                                      |
+| **Webhook**            | Svix/Stripe/Lago signature verify, idempotency locks, 400 on invalid                                                                 |
 | **Email** (SES)        | DKIM + SPF + DMARC, custom MAIL FROM, suppression list, bounce/complaint handler                                                     |
 
 ### 8.2 Threat Model
 
-| Threat                          | Layer              | Control                                                            |
-| ------------------------------- | ------------------ | ------------------------------------------------------------------ |
-| Stolen API key                  | Application        | Rotation, hash-only storage, revocation                            |
-| Brute-force key guessing        | Edge + Application | IP throttle + 192-bit keyspace                                     |
-| DDoS on API                     | Edge               | API Gateway throttle, WAF, per-IP limits                           |
-| Session hijack                  | Application        | HttpOnly/Secure/SameSite cookies                                   |
-| CSRF on account actions         | Application        | SameSite=Lax + Auth header + CORS restrict                         |
-| Spoofed webhooks                | Webhook            | Signature verification                                             |
-| Duplicate webhook processing    | Webhook            | Idempotency: ORG#{orgId} for Clerk; per-event-id dedupe for Stripe |
-| SES reputation damage           | Email              | Suppression list, bounce handler                                   |
-| Billing fraud (upgrade cycling) | Application        | No counter reset on upgrade                                        |
-| Unauthorised key mutation       | Application        | Clerk role enforcement + re-auth step-up                           |
-| Org ID manipulation             | Application        | orgId from Clerk session, never URL                                |
+| Threat                          | Layer              | Control                                                                                                 |
+| ------------------------------- | ------------------ | ------------------------------------------------------------------------------------------------------- |
+| Stolen API key                  | Application        | Rotation, hash-only storage, revocation                                                                 |
+| Brute-force key guessing        | Edge + Application | IP throttle + 192-bit keyspace                                                                          |
+| DDoS on API                     | Edge               | API Gateway throttle, WAF, per-IP limits                                                                |
+| Session hijack                  | Application        | HttpOnly/Secure/SameSite cookies                                                                        |
+| CSRF on account actions         | Application        | SameSite=Lax + Auth header + CORS restrict                                                              |
+| Spoofed webhooks                | Webhook            | Signature verification                                                                                  |
+| Duplicate webhook processing    | Webhook            | Idempotency: ORG#{orgId} for Clerk; per-event-id dedupe for Stripe; `X-Lago-Unique-Key` ledger for Lago |
+| SES reputation damage           | Email              | Suppression list, bounce handler                                                                        |
+| Billing fraud (upgrade cycling) | Application        | No counter reset on upgrade                                                                             |
+| Unauthorised key mutation       | Application        | Clerk role enforcement + re-auth step-up                                                                |
+| Org ID manipulation             | Application        | orgId from Clerk session, never URL                                                                     |
 
 ### 8.3 Input Validation
 
@@ -2760,12 +2869,13 @@ On account deletion, purge: `prontiq-customers`, `prontiq-keys` (all org keys + 
 
 ### 12.2 Webhook Reliability
 
-**Signature verification.** Clerk: Svix headers. Stripe: `stripe.webhooks.constructEvent()`. Invalid → 400 `INVALID_SIGNATURE`.
+**Signature verification.** Clerk: Svix headers. Stripe: `stripe.webhooks.constructEvent()`. Lago: `X-Lago-Signature-Algorithm=hmac` plus base64 HMAC-SHA256 over the raw body. Invalid → 400 `INVALID_SIGNATURE`.
 
 **Idempotency.**
 
 - **Clerk provisioning** (`organizationMembership.created`): writes the `ORG#{orgId}` envelope record after creating the Stripe customer (§5.7.1). A retry that hits an existing `ORG#{orgId}` returns 200 immediately. Stripe customer creation uses `Idempotency-Key: clerk-provision-{orgId}` so retries reuse the same `cus_...`. **The webhook does NOT mint API keys** — those are user-driven via `/v1/account/keys/create` after sign-in, which puts the raw key in a user-visible HTTP response (the only safe place for hash-only-stored secrets).
 - **Stripe webhooks**: dedupe on `event.id` via a claim/finalize reserved item in `prontiq-keys` (`WEBHOOK#stripe#{eventId}`). The handler claims the item as `processing`, applies replay-safe target-state writes, then finalizes it as `completed`. Stripe duplicates that arrive while a fresh `processing` claim exists return 500 so Stripe retries later; completed markers return 200 no-op.
+- **Lago webhooks**: dedupe on `X-Lago-Unique-Key` via `prontiq-lago-webhook-events`. Same unique key plus same payload hash replays completed/ignored events as 200 no-op. Same unique key plus a different payload hash is drift and returns 500. Fresh in-flight duplicates return 500 so Lago retries after the active worker finishes.
 
 **Clerk webhook failure → manual recovery.** Two independent failure cases, both fully recoverable from the user side:
 
@@ -2775,6 +2885,13 @@ On account deletion, purge: `prontiq-customers`, `prontiq-keys` (all org keys + 
 In both cases, the user owns recovery. No operator paging required for SES outages or single-shot webhook misses.
 
 **Stripe webhook failure.** Stripe redelivers failed webhooks for 3 days. If processing fails persistently, the event lands in DLQ and pages oncall. Common cause: `subscriptionItems` validation failure (§5.7.2) — usually a Stripe Dashboard misconfiguration where a Prontiq product is missing its metered Price.
+
+**Lago webhook failure.** Lago retries non-2xx webhook responses and exposes
+the event in its webhook logs. Persistent 5xx from `/webhooks/lago` means either
+the reconciliation flag is intentionally disabled, Lago plan/subscription config
+does not match Prontiq's contract, or the local customer mapping is missing.
+Operators inspect `prontiq-lago-webhook-events`, CloudWatch logs, and Lago
+webhook logs before replaying.
 
 ### 12.3 Key Rotation Safety
 

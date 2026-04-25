@@ -40,6 +40,7 @@ Existing alarms retained:
 
 - `PqClerkWebhookErrors`
 - `PqStripeWebhookErrors`
+- `PqLagoWebhookErrors`
 - `PqAccountErrors`
 - `PqSesFeedbackErrors`
 - `PqQuotaEmailWorkerErrors`
@@ -92,6 +93,7 @@ Widgets:
 - OpenSearch free storage
 - billing events source queue age / visible messages / DLQ visible messages
 - Lago event forwarder Lambda runtime errors
+- Lago webhook route 5xx responses
 - billing-event source queue age / DLQ depth for per-record Lago delivery
   failures
 - critical Lambda error series

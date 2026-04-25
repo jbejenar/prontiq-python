@@ -72,6 +72,9 @@ export default $config({
     const billingEventDeliveriesTableName = isProd
       ? "prontiq-billing-event-deliveries"
       : `prontiq-billing-event-deliveries-${$app.stage}`;
+    const lagoWebhookEventsTableName = isProd
+      ? "prontiq-lago-webhook-events"
+      : `prontiq-lago-webhook-events-${$app.stage}`;
     const suppressionsName = isProd
       ? "prontiq-ses-suppressions"
       : `prontiq-ses-suppressions-${$app.stage}`;
@@ -136,6 +139,15 @@ export default $config({
       },
       ttl: "ttl",
       transform: { table: { name: billingEventDeliveriesTableName } },
+    });
+
+    const lagoWebhookEventsTable = new sst.aws.Dynamo("PqLagoWebhookEvents", {
+      fields: {
+        uniqueKey: "string",
+      },
+      primaryIndex: { hashKey: "uniqueKey" },
+      ttl: "ttl",
+      transform: { table: { name: lagoWebhookEventsTableName } },
     });
 
     const suppressionsTable = new sst.aws.Dynamo("PqSesSuppressions", {
@@ -330,6 +342,7 @@ export default $config({
       "CLERK_SECRET_KEY",
       "HONEYCOMB_API_KEY",
       "LAGO_API_KEY",
+      "LAGO_WEBHOOK_HMAC_SECRET",
       "STRIPE_SECRET_KEY",
       "STRIPE_WEBHOOK_SECRET",
     ] as const;
@@ -454,6 +467,7 @@ export default $config({
         ...observabilityEnv(),
         BILLING_EVENTS_ENABLED: readGithubVar("BILLING_EVENTS_ENABLED") || "false",
         BILLING_EVENTS_QUEUE_URL: billingEventsQueue.url,
+        COUNTER_PERIOD_SOURCE: readGithubVar("COUNTER_PERIOD_SOURCE") || "calendar",
         OPENSEARCH_ENDPOINT: process.env.OPENSEARCH_ENDPOINT ?? OPENSEARCH_ENDPOINT_DEFAULT,
         KEYS_TABLE_NAME: authKeysTable.name,
         QUOTA_EMAIL_WORKER_FUNCTION_NAME: quotaEmailWorkerFn.name,
@@ -1187,6 +1201,30 @@ export default $config({
 
     api.route("POST /webhooks/stripe", stripeWebhookFn.arn);
 
+    const lagoWebhookFn = new sst.aws.Function("PqLagoWebhook", {
+      handler: "packages/webhooks/src/lago.bootstrap.handler",
+      architecture: "arm64",
+      runtime: "nodejs24.x",
+      memory: "512 MB",
+      timeout: "30 seconds",
+      link: [authKeysTable, authUsageTable, auditTable, customersTable, lagoWebhookEventsTable],
+      environment: {
+        ...observabilityEnv(),
+        AUDIT_TABLE_NAME: auditTable.name,
+        CUSTOMERS_TABLE_NAME: customersTable.name,
+        KEYS_TABLE_NAME: authKeysTable.name,
+        LAGO_API_KEY: $util.secret(readGithubSecret("LAGO_API_KEY")),
+        LAGO_API_URL: readGithubVar("LAGO_API_URL"),
+        LAGO_WEBHOOK_EVENTS_TABLE_NAME: lagoWebhookEventsTable.name,
+        LAGO_WEBHOOK_HMAC_SECRET: $util.secret(readGithubSecret("LAGO_WEBHOOK_HMAC_SECRET")),
+        LAGO_WEBHOOK_RECONCILIATION_ENABLED:
+          readGithubVar("LAGO_WEBHOOK_RECONCILIATION_ENABLED") || "false",
+        USAGE_TABLE_NAME: authUsageTable.name,
+      },
+    });
+
+    api.route("POST /webhooks/lago", lagoWebhookFn.arn);
+
     // CloudWatch alarm: > 5 5xx responses in 15 minutes on the Clerk
     // webhook route fires the existing ingestAlerts SNS topic.
     //
@@ -1243,6 +1281,27 @@ export default $config({
         ApiId: api.nodes.api.id,
         Stage: "$default",
         Route: "POST /webhooks/stripe",
+      },
+    });
+
+    new aws.cloudwatch.MetricAlarm("PqLagoWebhookErrors", {
+      comparisonOperator: "GreaterThanThreshold",
+      evaluationPeriods: 1,
+      datapointsToAlarm: 1,
+      metricName: "5xx",
+      namespace: "AWS/ApiGateway",
+      period: 900,
+      statistic: "Sum",
+      threshold: 5,
+      treatMissingData: "notBreaching",
+      alarmDescription:
+        "Lago webhook route returned more than 5 5xx responses in 15 minutes. Check CloudWatch Logs, the Lago webhook logs, and the prontiq-lago-webhook-events ledger before replaying.",
+      alarmActions: [ingestAlerts.arn],
+      okActions: [ingestAlerts.arn],
+      dimensions: {
+        ApiId: api.nodes.api.id,
+        Stage: "$default",
+        Route: "POST /webhooks/lago",
       },
     });
 

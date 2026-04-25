@@ -10,6 +10,12 @@
 - Lago event forwarding must remain replay-safe: use `eventId` as Lago
   `transaction_id`, derive `external_subscription_id` from `customerId`, and
   write delivery evidence before/after send attempts.
+- Lago webhook reconciliation must remain replay-safe: verify HMAC before
+  claiming, use `X-Lago-Unique-Key` as the ledger key, and treat same-key /
+  different-payload delivery as drift.
+- Lago plan codes map directly to Prontiq tiers. Unknown plan codes must fail
+  closed; do not silently downgrade to Free or grant PAYG.
+- Do not mutate Stripe registries from Lago webhook reconciliation.
 - Do not mutate existing non-canonical Lago organizations during platform
   tests. Create P1B.16-specific test orgs only when a live Lago smoke test needs
   isolation.
