@@ -1,10 +1,7 @@
 {
   "Statement": [
     {
-      "Action": [
-        "s3:ListAllMyBuckets",
-        "s3:GetAccountPublicAccessBlock"
-      ],
+      "Action": ["s3:ListAllMyBuckets", "s3:GetAccountPublicAccessBlock"],
       "Effect": "Allow",
       "Resource": "*",
       "Sid": "S3AccountLevelReadOnly"
@@ -77,17 +74,13 @@
       "Sid": "DynamoDBInfraTableManagement"
     },
     {
-      "Action": [
-        "lambda:*"
-      ],
+      "Action": ["lambda:*"],
       "Effect": "Allow",
       "Resource": "*",
       "Sid": "LambdaManagement"
     },
     {
-      "Action": [
-        "apigateway:*"
-      ],
+      "Action": ["apigateway:*"],
       "Effect": "Allow",
       "Resource": "*",
       "Sid": "APIGateway"
@@ -114,21 +107,13 @@
       "Sid": "IAMPassRole"
     },
     {
-      "Action": [
-        "logs:*",
-        "cloudwatch:*",
-        "xray:*"
-      ],
+      "Action": ["logs:*", "cloudwatch:*", "xray:*"],
       "Effect": "Allow",
       "Resource": "*",
       "Sid": "CloudWatch"
     },
     {
-      "Action": [
-        "es:ESHttp*",
-        "es:Describe*",
-        "es:ListTags"
-      ],
+      "Action": ["es:ESHttp*", "es:Describe*", "es:ListTags"],
       "Effect": "Allow",
       "Resource": [
         "arn:aws:es:ap-southeast-2:493712557159:domain/flat-white",
@@ -137,10 +122,7 @@
       "Sid": "OpenSearch"
     },
     {
-      "Action": [
-        "s3:GetObject",
-        "s3:ListBucket"
-      ],
+      "Action": ["s3:GetObject", "s3:ListBucket"],
       "Effect": "Allow",
       "Resource": [
         "arn:aws:s3:::flat-white-address-493712557159-ap-southeast-2-an",
@@ -149,23 +131,22 @@
       "Sid": "DataBucketAccess"
     },
     {
-      "Action": [
-        "wafv2:*"
-      ],
+      "Action": ["wafv2:*"],
       "Effect": "Allow",
       "Resource": "*",
       "Sid": "WAF"
     },
     {
-      "Action": [
-        "events:*",
-        "states:*",
-        "sns:*",
-        "sqs:*"
-      ],
+      "Action": ["events:*", "states:*", "sns:*", "sqs:*"],
       "Effect": "Allow",
       "Resource": "*",
       "Sid": "EventBridgeAndStepFunctions"
+    },
+    {
+      "Action": ["ses:GetEmailIdentity", "ses:PutEmailIdentityMailFromAttributes"],
+      "Effect": "Allow",
+      "Resource": "arn:aws:ses:ap-southeast-2:493712557159:identity/prontiq.dev",
+      "Sid": "SESMailFromManagement"
     },
     {
       "Action": [
@@ -179,34 +160,25 @@
       "Sid": "SSM"
     },
     {
-      "Action": [
-        "cloudfront:*"
-      ],
+      "Action": ["cloudfront:*"],
       "Effect": "Allow",
       "Resource": "*",
       "Sid": "CloudFrontForNextjs"
     },
     {
-      "Action": [
-        "ecr:*"
-      ],
+      "Action": ["ecr:*"],
       "Effect": "Allow",
       "Resource": "*",
       "Sid": "ECRForDockerImages"
     },
     {
-      "Action": [
-        "sts:GetCallerIdentity",
-        "sts:AssumeRole"
-      ],
+      "Action": ["sts:GetCallerIdentity", "sts:AssumeRole"],
       "Effect": "Allow",
       "Resource": "*",
       "Sid": "STSForPulumi"
     },
     {
-      "Action": [
-        "ecs:*"
-      ],
+      "Action": ["ecs:*"],
       "Effect": "Allow",
       "Resource": "*",
       "Sid": "ECSForFargate"
