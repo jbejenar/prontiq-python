@@ -13,8 +13,8 @@
     "clean": "node ../../scripts/ts-package-build.mjs clean"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.1030.0",
-    "@aws-sdk/client-sfn": "^3.1030.0",
+    "@aws-sdk/client-s3": "^3.1037.0",
+    "@aws-sdk/client-sfn": "^3.1037.0",
     "@opensearch-project/opensearch": "^3.2.0",
     "@prontiq/observability": "workspace:*",
     "@prontiq/shared": "workspace:*",

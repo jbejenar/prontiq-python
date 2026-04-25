@@ -44,9 +44,9 @@
     "clean": "node ../../scripts/ts-package-build.mjs clean"
   },
   "dependencies": {
-    "@aws-sdk/client-sesv2": "^3.1030.0",
-    "@aws-sdk/client-dynamodb": "^3.1030.0",
-    "@aws-sdk/lib-dynamodb": "^3.1030.0",
+    "@aws-sdk/client-sesv2": "^3.1037.0",
+    "@aws-sdk/client-dynamodb": "^3.1037.0",
+    "@aws-sdk/lib-dynamodb": "^3.1037.0",
     "@clerk/backend": "^3.3.0",
     "@prontiq/observability": "workspace:*",
     "@prontiq/shared": "workspace:*",
