@@ -288,9 +288,10 @@ Integration:
 - Replay after a Lago duplicate-transaction `422`, including an ambiguous `422`
   confirmed by `GET /api/v1/events/{transaction_id}`, marks the delivery ledger
   accepted.
-- SQS batch size, 10 second Lago HTTP timeout, and 45 second Lambda timeout keep
-  the sequential batch within the Lambda deadline with at least 15 seconds of
-  response margin.
+- SQS batch size 3, event-source maximum concurrency 2, 10 second Lago HTTP
+  timeout, and 45 second Lambda timeout keep the sequential batch within the
+  Lambda deadline with at least 15 seconds of response margin while avoiding
+  Lambda reserved concurrency reservations.
 
 Contract:
 

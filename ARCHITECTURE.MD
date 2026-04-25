@@ -1580,6 +1580,9 @@ Timeout budget:
 
 - Lago HTTP timeout is 10 seconds per record
 - SQS subscription batch size is 3
+- SQS event-source maximum concurrency is 2; this caps Lago worker fan-out
+  without using Lambda reserved concurrency, which can fail deploys in small AWS
+  accounts that must preserve the 10-execution unreserved floor
 - Lambda timeout is 45 seconds
 - invariant: `batch_size * lago_timeout` leaves at least 15 seconds for DynamoDB
   writes, logging, and returning partial batch responses before Lambda deadline

@@ -500,6 +500,9 @@ export default $config({
 
     // Budget invariant: 3 records * 10s Lago HTTP timeout leaves >=15s inside
     // the 45s Lambda timeout for DynamoDB writes, logging, and partial response.
+    // Throttle the SQS poller through the event source mapping instead of
+    // Lambda reserved concurrency; small AWS accounts must keep at least 10
+    // executions unreserved, and PutFunctionConcurrency can fail deployments.
     const lagoEventForwarder = billingEventsQueue.subscribe(
       {
         handler: "packages/control-plane/src/lago-event-forwarder.bootstrap.handler",
@@ -507,9 +510,6 @@ export default $config({
         runtime: "nodejs24.x",
         memory: "512 MB",
         timeout: "45 seconds",
-        concurrency: {
-          reserved: 2,
-        },
         link: [billingEventDeliveriesTable],
         environment: {
           ...observabilityEnv(),
@@ -522,6 +522,13 @@ export default $config({
         batch: {
           size: 3,
           partialResponses: true,
+        },
+        transform: {
+          eventSourceMapping: (args) => {
+            args.scalingConfig = {
+              maximumConcurrency: 2,
+            };
+          },
         },
       },
     );

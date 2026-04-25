@@ -101,10 +101,12 @@ customer, or subscription setup, replay the source/DLQ message normally; the
 matching retryable ledger row does not block the resend.
 
 The worker processes batches sequentially with a 10 second Lago HTTP timeout,
-SQS batch size 3, and Lambda timeout 45 seconds. Keep that invariant unless the
-worker is redesigned for bounded concurrency: `3 * 10s` leaves at least 15
-seconds for DynamoDB writes, logging, and partial batch response before the
-Lambda deadline.
+SQS batch size 3, event-source maximum concurrency 2, and Lambda timeout 45
+seconds. Keep that invariant unless the worker is redesigned for bounded
+concurrency: `3 * 10s` leaves at least 15 seconds for DynamoDB writes, logging,
+and partial batch response before the Lambda deadline. The concurrency cap is on
+the SQS event source mapping, not Lambda reserved concurrency, so deploys do not
+consume the account's required unreserved concurrency floor.
 `attempts` counts worker attempts that reached the Lago-send phase; marking a
 failed send does not increment it a second time. Treat it as local worker
 evidence, not as a provider-side accepted-event counter.
