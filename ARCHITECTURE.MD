@@ -180,7 +180,7 @@ Nobody else bundles Australian address validation with ABN verification with LEI
 **All figures in this section are USD/month.** The table below is the **current
 shipped runtime cost model** for the live AWS + legacy-Stripe stack. It does
 **not** include the separate Lago infra layer, because the Lago migration
-sequence (`P1B.14`–`P1B.20`) is still pending and is being stood up in the
+sequence (`P1B.14`–`P1B.20`) is underway and is being stood up in the
 separate `prontiq-lago` repo.
 
 | Stage                     | OpenSearch                                 | Clerk                    | Mintlify                 | Speakeasy | Stripe          | SES        | Total               |
@@ -1063,16 +1063,20 @@ API keys are generated, hashed, verified, and stored entirely in DynamoDB. No ve
 
 #### 5.5.1 DynamoDB Schema
 
-Four tables plus one registry item. All on-demand (pay-per-request). The first two serve the hot path. The third is append-only audit. The fourth handles SES bounce suppression.
+Current runtime uses four tables plus one registry item. The Lago migration adds
+the target `prontiq-customers` mapping table. All are on-demand
+(pay-per-request). Only `prontiq-keys` and `prontiq-usage` serve the request
+hot path.
 
 | Table                      | Purpose                                                                                       |
 | -------------------------- | --------------------------------------------------------------------------------------------- |
 | `prontiq-keys`             | API key metadata + billing registry + org-envelope record + Stripe webhook completion markers |
 | `prontiq-usage`            | Usage counters + email flags + billing push state + REDIRECT records                          |
+| `prontiq-customers`        | Target customer mapping across Clerk orgs, Prontiq `customerId`, Lago, and Stripe             |
 | `prontiq-audit`            | Append-only lifecycle audit log                                                               |
 | `prontiq-ses-suppressions` | Email bounce/complaint suppression                                                            |
 
-**Design principles:** hot-path isolation (keys + usage separated), append-only logging (audit), TTL-driven cleanup, hash-only key storage.
+**Design principles:** hot-path isolation (keys + usage separated), append-only logging (audit), TTL-driven cleanup, hash-only key storage. The customer mapping table is control-plane state; it must not be read by request-time API-key auth.
 
 ##### Table: `prontiq-keys`
 
@@ -1283,6 +1287,40 @@ GSI:  newHash-redirect-index
 
 > **Why 5 minutes?** Long enough to drain genuinely in-flight requests (Lambda 15-min max + DDB eventual-consistency window). Short enough that a leaked + rotated key has a tightly bounded exposure window. Tunable via `REDIRECT_AUTH_GRACE_SECONDS` env var if dev-mode needs longer.
 
+##### Table: `prontiq-customers` (target Lago migration)
+
+The target customer mapping table is introduced by the Lago migration sequence,
+not by the current legacy Stripe runtime. It is the canonical platform-owned
+join between Clerk organizations, Prontiq customer identity, Lago customer
+records, and migration-era Stripe payment linkage.
+
+```text
+PK:   orgId                  string    Clerk organization id
+GSI:  customerId-index       string    Prontiq customer id reverse lookup
+
+attrs:
+      customerId             string    Opaque platform id: pq_cust_<ulid>
+      lagoExternalCustomerId string    Equal to customerId; sent as Lago external_id
+      lagoCustomerId         string?   Lago provider-owned lago_id cache only
+      stripeCustomerId       string?   Migration/payment-rail linkage only
+      ownerEmail             string    Current account owner email for ops contact
+      status                 string    active | archived | migration_conflict
+      createdAt              string    ISO timestamp
+      updatedAt              string    ISO timestamp
+      backfilledAt           string?   Set when created from existing org envelope
+      archivedAt             string?   Set when customer is retired/deleted
+      conflictReason         string?   Operator-readable migration conflict detail
+```
+
+`customerId` is the durable Prontiq commercial identity. It is not derived from
+Clerk `orgId`, Stripe `cus_...`, or Lago `lago_id`. Provider identifiers are
+linkage fields and may be absent during rollout, provider outage, or migration.
+
+Hot-path invariant: API-key-authenticated requests must not read
+`prontiq-customers`. Later runtime tickets must denormalize `customerId` onto
+`ORG#{orgId}` envelopes and API key records so queued billing events can carry
+the customer identifier after the existing `prontiq-keys` hot-path read.
+
 #### 5.5.2 Key Operations
 
 Five operations. Every mutation writes to `prontiq-audit`.
@@ -1405,6 +1443,49 @@ Prontiq is in a migration window:
 The subsections below retain the **legacy shipped Stripe path** for migration
 and operational history. They are not the forward-looking commercial source of
 truth.
+
+#### 5.6.0.1 Target Customer Identity Contract
+
+`customerId` is the canonical Prontiq commercial customer identifier. It is
+opaque, platform-generated, org-scoped, and formatted as `pq_cust_<ulid>`.
+
+Resolution rules:
+
+1. Clerk-authenticated console flows resolve `orgId` from the Clerk session,
+   then resolve the `prontiq-customers` row by `orgId`.
+2. API-key-authenticated request flows read `prontiq-keys` only. The key record
+   must already carry denormalized `orgId` and `customerId` before billing-event
+   emission ships.
+3. Lago customer creation uses `external_id = customerId`. Lago's provider-owned
+   `lago_id` is stored only as nullable `lagoCustomerId` cache data.
+4. Migration-era Stripe customer IDs are retained as nullable `stripeCustomerId`
+   payment-rail linkage. They are never the Prontiq customer primary key.
+
+Backfill rules for existing orgs:
+
+1. If a `prontiq-customers` row already exists for `orgId`, preserve its
+   `customerId` and update linkage fields only when the provider relationship is
+   unambiguous.
+2. Otherwise read the `ORG#{orgId}` envelope from `prontiq-keys`, preserve
+   `ownerEmail` and `stripeCustomerId`, and create exactly one
+   `pq_cust_<ulid>` for that org.
+3. If duplicate `orgId`, duplicate `stripeCustomerId`, or mismatched existing
+   `customerId` evidence appears, write `status = "migration_conflict"` with
+   `conflictReason` and stop automated Lago customer creation for that org.
+4. Operator review resolves conflicts before any Lago customer or subscription
+   mutation is attempted.
+
+Status values describe customer-mapping lifecycle only:
+
+- `active`: the customer mapping is valid for normal operations.
+- `archived`: the customer was retired or deleted and must not receive new Lago
+  mutations.
+- `migration_conflict`: automated backfill/reconciliation found ambiguous
+  provider linkage and requires operator action.
+
+Billing delinquency remains separate state (`paymentOverdue` and later
+Lago-derived enforcement state). Do not overload customer lifecycle status for
+payment status.
 
 #### 5.6.1 Legacy Stripe Billing Model (Current Shipped Path)
 
@@ -1645,8 +1726,8 @@ Two Lambda handlers, five event types. All verify signatures. All write to the a
 **orgId resolution in Stripe handlers:** Stripe webhook events carry a `customer` field as a string ID (e.g., `"cus_abc123"`), not an expanded customer object. The provisioning flow stores `orgId` in the Stripe customer's `metadata` at creation time. Every Stripe webhook handler retrieves the full customer to read it:
 
 ```typescript
-const customerId = event.data.object.customer; // "cus_abc123"
-const customer = await stripe.customers.retrieve(customerId); // full object
+const stripeCustomerId = event.data.object.customer; // "cus_abc123"
+const customer = await stripe.customers.retrieve(stripeCustomerId); // full object
 const orgId = customer.metadata.orgId; // "org_clerk_xyz"
 ```
 
@@ -2543,6 +2624,7 @@ DynamoDB TTL handles automatic expiration. No manual cleanup.
 | Revoked key metadata     | `prontiq-keys`             | Indefinite (`active=false`) | Prevents hash reuse                    |
 | Billing registry         | `prontiq-keys`             | Indefinite                  | Updated on lifecycle events            |
 | Provisioning locks       | `prontiq-keys`             | Indefinite                  | Permanent idempotency                  |
+| Customer mapping         | `prontiq-customers`        | Indefinite while active     | Canonical Lago/customer identity       |
 | Usage counters           | `prontiq-usage`            | 90 days (TTL)               | Billing needs current + previous month |
 | Email flags + push state | `prontiq-usage`            | 90 days (same item)         | Expire with usage item                 |
 | REDIRECT records         | `prontiq-usage`            | 90 days (TTL)               | Match usage lifetime                   |
@@ -2554,7 +2636,7 @@ DynamoDB TTL handles automatic expiration. No manual cleanup.
 
 ### 11.1 GDPR / Privacy
 
-On account deletion, purge: `prontiq-keys` (all org keys + `ORG#{orgId}` envelope + remove from billing registry), `prontiq-usage` (all scopes including REDIRECT records), `prontiq-audit` (all org events), `prontiq-ses-suppressions` (owner email). Retire the active commercial account in Lago, clean up any still-present legacy Stripe customer/subscription artifacts during migration, and delete the Clerk identity. Orchestrated by `scripts/purge-org.ts`.
+On account deletion, purge: `prontiq-customers`, `prontiq-keys` (all org keys + `ORG#{orgId}` envelope + remove from billing registry), `prontiq-usage` (all scopes including REDIRECT records), `prontiq-audit` (all org events), and `prontiq-ses-suppressions` (owner email). Retire the active commercial account in Lago, clean up any still-present legacy Stripe customer/subscription artifacts during migration, and delete the Clerk identity. Orchestrated by `scripts/purge-org.ts`.
 
 ---
 

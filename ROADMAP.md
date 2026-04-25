@@ -1,7 +1,7 @@
 # Prontiq Platform — Roadmap
 
 > A unified data API platform for Australian and global open data.
-> Last updated: 2026-04-22 · v1.6
+> Last updated: 2026-04-25 · v1.7
 >
 > **Reference:** `ARCHITECTURE.MD` is the authoritative design doc. This roadmap is the execution plan.
 
@@ -30,7 +30,7 @@
 | --------- | -------------------------- | ------- | --------- | ----------- |
 | **P0**    | Infrastructure Foundation  | 6       | 6/6 ✅    | Week 1      |
 | **P1A**   | API Core (Address)         | 13      | 10/13     | Weeks 2-3   |
-| **P1B**   | Auth & Billing             | 22      | 12/22     | Weeks 3-4   |
+| **P1B**   | Auth & Billing             | 22      | 13/22     | Weeks 3-4   |
 | **P1C**   | Frontend Surfaces          | 9       | 3/9       | Weeks 4-6   |
 | **P1D**   | Docs & SDK                 | 5       | 2/5       | Week 5      |
 | **P1E**   | Ingestion (Phase 1)        | 6       | 4/6       | Week 6      |
@@ -39,7 +39,7 @@
 | **P3**    | GLEIF/LEI + Full Dashboard | 7       | 0/7       | Weeks 11-13 |
 | **P4**    | Shopify + WooCommerce      | 5       | 0/5       | Weeks 14-17 |
 | **P5**    | CVE/NVD + Patents          | 4       | 0/4       | Weeks 18-21 |
-| **Total** |                            | **88**  | **40/88** |             |
+| **Total** |                            | **88**  | **41/88** |             |
 
 ---
 
@@ -1077,9 +1077,9 @@ Options:
 
 > **Goal:** Sign-up → DDB-native API key → hash-verified requests → rate-limited with burst limiter → usage tracked per-month → migrate the commercial layer from the shipped Stripe path to the Lago target architecture.
 >
-> **Current state.** P1B.02, P1B.04, P1B.04b, P1B.05, P1B.06, P1B.07, P1B.08, P1B.09, P1B.10, P1B.11, and P1B.12 are shipped. The DynamoDB-native key model is live in prod, the prod migration was executed on 2026-04-16, the legacy Stripe billing path is live, per-key burst limiting is enforced in the API middleware, SES feedback / quota-email delivery is live in dev + prod, previous-month scopes are now explicitly finalized and closed by the monthly `PqMonthClose` sweep, and the auth integration suite is now reconciled to the real post-cutover middleware contract. SES deliverability hardening is tracked separately in P1B.08a. The forward commercial direction is now the Lago migration sequence.
+> **Current state.** P1B.02, P1B.04, P1B.04b, P1B.05, P1B.06, P1B.07, P1B.08, P1B.09, P1B.10, P1B.11, P1B.12, and P1B.14 are shipped. The DynamoDB-native key model is live in prod, the prod migration was executed on 2026-04-16, the legacy Stripe billing path is live, per-key burst limiting is enforced in the API middleware, SES feedback / quota-email delivery is live in dev + prod, previous-month scopes are now explicitly finalized and closed by the monthly `PqMonthClose` sweep, the auth integration suite is reconciled to the real post-cutover middleware contract, and the Lago migration now has a platform-owned `customerId` contract. SES deliverability hardening is tracked separately in P1B.08a. The next Lago migration ticket is P1B.15.
 >
-> **Lago migration progress.** `0/7` complete for `P1B.14`–`P1B.20`. The `P1B` epic rollup includes completed historical Stripe-path work, so treat the Lago migration sequence as a separate pending track until the new commercial contract is implemented.
+> **Lago migration progress.** `1/7` complete for `P1B.14`–`P1B.20`. The `P1B` epic rollup includes completed historical Stripe-path work, so treat the Lago migration sequence as a separate track until the new commercial runtime is implemented.
 >
 > **Scope boundary.** The hot-path middleware rewrite (hash-based lookup, REDIRECT fallback, new usage-table writes) ships in **P1B.04b** (cutover), NOT in P1B.02. P1B.02 is pure crypto primitives only — no DDB dependency — which is why it remains parallel-safe. P1B.04b flips schema + code atomically once P1B.02 and P1B.04 are both done.
 >
@@ -1393,12 +1393,12 @@ path is the Lago migration sequence, not new Stripe purchase orchestration.
 ```yaml
 id: P1B.14
 title: CustomerId + Customer Mapping Contract
-status: pending
+status: complete
 priority: p0-critical
 epic: P1B
 persona: [builder]
 depends_on: [P1B.05]
-completed: null
+completed: 2026-04-25
 tech_stack:
   billing: Lago + DynamoDB
 ```
@@ -1423,35 +1423,43 @@ dashboard, and billing system disagreeing about who the customer actually is.
 
 ##### Functional
 
-- [ ] Target `customerId` contract is defined as the org-scoped platform
+- [x] Target `customerId` contract is defined as the org-scoped platform
       customer identifier
   - `Verify:` `ARCHITECTURE.MD`, roadmap ticket text, and billing guide all use
     the same identity wording
-  - `Evidence:` merged docs/spec diff showing `customerId` as the shared
-    contract across Clerk orgs, Prontiq, Lago, and migration-era Stripe linkage
-- [ ] `customers` table / mapping row shape is specified
+  - `Evidence:` `ARCHITECTURE.MD` §5.6.0.1 and `packages/docs/guides/billing.mdx`
+    define `customerId` as opaque `pq_cust_<ulid>` shared across Clerk orgs,
+    Prontiq, Lago `external_id`, and migration-era Stripe linkage
+- [x] `customers` table / mapping row shape is specified
   - `Verify:` roadmap ticket defines required fields and ownership boundaries
-  - `Evidence:` explicit mapping covers Clerk org id, `customerId`, Lago
-    external customer id, migration-era Stripe customer id, lifecycle status,
-    and audit timestamps
-- [ ] Existing orgs can be backfilled into the new mapping without minting
+  - `Evidence:` `ARCHITECTURE.MD` §5.5.1 defines target
+    `prontiq-customers` with `orgId`, `customerId`,
+    `lagoExternalCustomerId`, nullable `lagoCustomerId`, nullable
+    `stripeCustomerId`, lifecycle status, timestamps, and conflict metadata
+- [x] Existing orgs can be backfilled into the new mapping without minting
       duplicate commercial identities
   - `Verify:` backfill plan defines deterministic lookup precedence and
     duplicate-collision handling
-  - `Evidence:` ticket body describes backfill path for already provisioned orgs
-    and rules for conflict detection / operator intervention
-- [ ] Both human auth and API-key auth resolve to the same commercial customer
+  - `Evidence:` `ARCHITECTURE.MD` §5.6.0.1 and
+    `docs/runbooks/lago-customer-sync.md` require preserving existing mapping by
+    `orgId`, creating exactly one `customerId` from `ORG#{orgId}`, and marking
+    ambiguous duplicate/mismatch cases as `migration_conflict`
+- [x] Both human auth and API-key auth resolve to the same commercial customer
       model
   - `Verify:` ticket explicitly ties Clerk-authenticated console actions and
     API-key-authenticated usage to the same `customerId`
-  - `Evidence:` user story + DoD describe shared customer resolution model
+  - `Evidence:` `ARCHITECTURE.MD` §5.6.0.1 requires Clerk console flows to
+    resolve by `orgId`, while API-key request flows use denormalized
+    `customerId` from `prontiq-keys` without reading `prontiq-customers`
 
 ##### Operational
 
-- [ ] Migration rules are explicit before downstream Lago tickets start
+- [x] Migration rules are explicit before downstream Lago tickets start
   - `Verify:` `P1B.15`–`P1B.18` can consume `customerId` without redefining
     identity semantics
-  - `Evidence:` roadmap dependency chain remains `P1B.14` first
+  - `Evidence:` ADR-013, ADR-014, ADR-015, architecture docs, and Lago runbooks
+    define the identity, table, external-id mapping, backfill, conflict, and
+    hot-path denormalization contracts
 
 #### Scope
 
@@ -1464,6 +1472,19 @@ identity resolution contract across Clerk/orgs/API keys/Lago/legacy Stripe
 - Lago event forwarding → `P1B.16`
 - webhook reconciliation → `P1B.17`
 - console billing UI → `P1C.05`
+
+#### Shipped Evidence
+
+- `docs/decisions/013-platform-owned-customer-id.md` chooses platform-owned
+  `pq_cust_<ulid>` values and rejects Clerk, Stripe, Lago, and `ORG#{orgId}` as
+  canonical commercial identity.
+- `docs/decisions/014-dedicated-customers-table.md` defines the target
+  `prontiq-customers` table and no-hot-path-read invariant.
+- `docs/decisions/015-lago-external-id-equals-customer-id.md` pins
+  `lagoExternalCustomerId = customerId` and treats Lago `lago_id` as nullable
+  provider cache data.
+- `ARCHITECTURE.MD`, Lago runbooks, public billing docs, frontend strategy, and
+  handoff docs now align on the same customer mapping and migration contract.
 
 ---
 
@@ -4589,7 +4610,7 @@ As a developer, I configure webhook URLs, notification preferences, and can dele
 
 #### Problem Statement
 
-Webhook URLs allow developers to receive events (quota warnings, key changes) in their own systems. Notification preferences control email alerts. Account deletion (GDPR Article 17) must cascade: delete the Clerk user, retire the active commercial account in Lago, clean up any still-present legacy Stripe artifacts during migration, and purge `prontiq-keys` + `prontiq-usage` + `prontiq-audit` + `prontiq-ses-suppressions` for the org (see `ARCHITECTURE.MD` §11.1). Orchestrated by `scripts/purge-org.ts`.
+Webhook URLs allow developers to receive events (quota warnings, key changes) in their own systems. Notification preferences control email alerts. Account deletion (GDPR Article 17) must cascade: delete the Clerk user, retire the active commercial account in Lago, clean up any still-present legacy Stripe artifacts during migration, and purge `prontiq-customers` + `prontiq-keys` + `prontiq-usage` + `prontiq-audit` + `prontiq-ses-suppressions` for the org (see `ARCHITECTURE.MD` §11.1). Orchestrated by `scripts/purge-org.ts`.
 
 #### Definition of Done
 
@@ -4603,7 +4624,7 @@ Webhook URLs allow developers to receive events (quota warnings, key changes) in
   - `Evidence:` Email received with quota details
 - [ ] Account deletion flow (GDPR compliance; requires Clerk step-up + typed confirmation per ARCHITECTURE.MD §5.9.2)
   - `Verify:` Click "Delete Account" → step-up → typed confirmation → all data removed
-  - `Evidence:` Clerk user deleted, Lago customer/subscription retired, any migration-era Stripe artifacts cleaned up, all four DynamoDB tables purged for the org
+  - `Evidence:` Clerk user deleted, Lago customer/subscription retired, any migration-era Stripe artifacts cleaned up, all customer/key/usage/audit/suppression DynamoDB state purged for the org
 
 #### Scope
 
@@ -5178,4 +5199,4 @@ At completion of Phase 5:
 - **Zero-downtime** data updates via manifest-driven ingestion
 - **Full dashboard** with key management, usage, billing, team, playground
 - **Comprehensive docs** auto-generated from OpenAPI spec
-- **69 tickets completed**
+- **88 tickets completed**

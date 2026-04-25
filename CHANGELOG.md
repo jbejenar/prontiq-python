@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **P1B.14 customer identity contract defined.** The target Lago migration now
+  has a platform-owned `customerId` contract (`pq_cust_<ulid>`), a documented
+  future `prontiq-customers` mapping table, Lago `external_id = customerId`
+  semantics, backfill/conflict rules, and a no-customer-table-read invariant for
+  the API hot path. Runtime table creation and backfill remain in later Lago
+  migration tickets.
+
 - **SES deliverability hardening tracked as P1B.08a.** The prod SST
   configuration now declares custom MAIL FROM for `bounce.prontiq.dev` with
   `USE_DEFAULT_VALUE` fallback, and the docs/roadmap now require SPF, DMARC

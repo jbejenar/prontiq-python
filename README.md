@@ -131,7 +131,7 @@ See [`ROADMAP.md`](ROADMAP.md) for the current execution plan.
 | ------- | ------------------------- | ------- | --------- |
 | **P0**  | Infrastructure Foundation | 6       | 6/6       |
 | **P1A** | API Core (Address)        | 13      | 10/13     |
-| **P1B** | Auth & Billing            | 22      | 12/22     |
+| **P1B** | Auth & Billing            | 22      | 13/22     |
 | **P1C** | Frontend Surfaces         | 9       | 3/9       |
 | **P1D** | Docs & SDK                | 5       | 2/5       |
 | **P1E** | Ingestion                 | 6       | 4/6       |
@@ -140,10 +140,10 @@ See [`ROADMAP.md`](ROADMAP.md) for the current execution plan.
 | **P3**  | LEI + Full Dashboard      | 7       | 0/7       |
 | **P4**  | Shopify + WooCommerce     | 5       | 0/5       |
 | **P5**  | CVE/NVD + Patents         | 4       | 0/4       |
-|         |                           | **88**  | **40/88** |
+|         |                           | **88**  | **41/88** |
 
-`P1B` includes completed legacy Stripe-path work. The pending Lago migration
-sequence is `P1B.14`–`P1B.20`, currently `0/7`, and is called out separately in
+`P1B` includes completed legacy Stripe-path work. The Lago migration sequence is
+`P1B.14`–`P1B.20`, currently `1/7`, and is called out separately in
 the Phase 1B section of [`ROADMAP.md`](ROADMAP.md).
 
 ## Commands

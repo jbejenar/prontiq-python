@@ -106,13 +106,16 @@ This matches the live backend contract today:
 - org-scoped org-envelope and legacy Stripe customer linkage
 - org-scoped usage and audit
 
-Target state after `P1B.14`:
+Target commercial identity contract:
 
-- org-scoped commercial customers keyed by shared `customerId`
-- shared customer mapping across Clerk, Prontiq, Lago, and Stripe
+- org-scoped commercial customers keyed by platform-owned `customerId`
+- `customerId` format is opaque: `pq_cust_<ulid>`
+- `customerId` maps across Clerk orgs, Prontiq, Lago `external_id`, and
+  migration-era Stripe linkage
 
-Until `P1B.14` ships, frontend work should not assume the shared `customerId`
-contract already exists in runtime.
+Frontend work may rely on `customerId` as the target contract, but must not
+assume every runtime API exposes it until the later Lago migration tickets ship
+the customer table, backfill, and console billing endpoints.
 
 ### Agentic optimization
 

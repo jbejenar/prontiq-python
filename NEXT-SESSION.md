@@ -4,6 +4,31 @@
 > the time they were written, not the current source of truth. Use
 > `ROADMAP.md`, `NEXT-WORK.md`, and `README.md` for current execution status.
 
+## Session 32 — 2026-04-25
+
+**Focus:** P1B.14 customer identity contract.
+
+### Completed
+
+- **P1B.14 is complete as a docs/contract ticket.** The target Lago migration
+  now has platform-owned `customerId` values (`pq_cust_<ulid>`), a documented
+  `prontiq-customers` mapping table, and ADRs for customer-id ownership,
+  customer-table ownership, and Lago `external_id = customerId`.
+- **Hot-path boundary is explicit.** API-key-authenticated requests must not read
+  `prontiq-customers`; later runtime tickets must denormalize `customerId` onto
+  org envelopes and key records before billing-event emission.
+- **Backfill and conflict behavior is documented.** Existing orgs backfill from
+  `ORG#{orgId}` without creating duplicate Lago identities; ambiguous mappings
+  enter `migration_conflict` for operator review.
+
+### Next session should start with
+
+1. Start `P1B.15 — SQS Billing Event Buffer + Hot-Path Emitter`.
+2. Use the P1B.14 contract: queued events carry `customerId`; request auth does
+   not read `prontiq-customers`.
+3. Keep SES production-access approval as a background operator follow-up until
+   AWS responds.
+
 ## Session 31 — 2026-04-25
 
 **Focus:** SES deliverability hardening planning and repo alignment.

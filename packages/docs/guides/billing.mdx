@@ -57,21 +57,28 @@ Today, commercial/account identity is represented by:
 
 That is the live implementation while the Lago migration is still in progress.
 
-### Target state
+### Target contract
 
-The roadmap introduces an org-scoped platform `customerId` in `P1B.14`.
+The platform customer contract is now defined by `P1B.14`.
 
-Once that lands, humans signing in with Clerk and machines authenticating with
+Prontiq-owned customer IDs are opaque, org-scoped identifiers formatted as
+`pq_cust_<ulid>`. Humans signing in with Clerk and machines authenticating with
 API keys will both resolve to the same platform `customerId`, and that
-identifier will bridge:
+identifier bridges:
 
 - Clerk organizations
 - Prontiq account state
 - Lago commercial state
 - Stripe payment records
 
-Until `P1B.14` ships, treat the shared `customerId` model as **target
-architecture**, not current API/runtime behavior.
+For Lago, Prontiq sends `customerId` as the Lago customer `external_id`. Lago's
+provider-owned `lago_id` and migration-era Stripe `cus_...` IDs are linkage
+fields only; they are not Prontiq customer identity.
+
+<Note>
+  The contract is defined, but runtime customer table creation, backfill, billing event emission,
+  Lago forwarding, and webhook reconciliation still land in later Lago migration tickets.
+</Note>
 
 ## Related guides
 
