@@ -9,21 +9,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Lago event forwarder** (`P1B.16`) **implemented behind the existing producer
+  rollout gate.** Added `PqLagoEventForwarder`, deterministic Lago
+  `transaction_id = eventId`, derived `external_subscription_id = pq_sub_<ulid>`,
+  minimal credit-delta payloads, the `prontiq-billing-event-deliveries`
+  delivery ledger, CloudWatch forwarder runtime-error alarm/dashboard metric, and
+  GitHub environment deploy config for `LAGO_API_URL` / `LAGO_API_KEY`.
+  `BILLING_EVENTS_ENABLED` remains default-off until canonical Lago
+  metrics/subscriptions and replay smoke checks pass per environment.
+
 - **SQS billing-event buffer** (`P1B.15`) **implemented behind a feature flag.**
   Added `BillingUsageEventV1`, deterministic `bevt_...` event ids, standard SQS
   source queue + DLQ, CloudWatch queue alarms/dashboard metrics,
   `prontiq-customers` infra, provisioning-time `customerId` writes for new
   orgs, and a `backfill:customers` dry-run/apply utility for legacy org/API-key
   records. The API emits only after DynamoDB enforcement succeeds and never
-  calls Lago; `BILLING_EVENTS_ENABLED` defaults to `false` until the P1B.16 Lago
-  forwarder lands.
+  calls Lago; `BILLING_EVENTS_ENABLED` defaults to `false` until the deployed
+  environment passes Lago setup and replay smoke checks.
 
 - **P1B.14 customer identity contract defined.** The target Lago migration now
   has a platform-owned `customerId` contract (`pq_cust_<ulid>`), a documented
   `prontiq-customers` mapping table, Lago `external_id = customerId` semantics,
   backfill/conflict rules, and a no-customer-table-read invariant for the API
   hot path. Runtime table creation and backfill landed in `P1B.15`; Lago
-  forwarding and reconciliation remain in later Lago migration tickets.
+  forwarding landed in `P1B.16`; reconciliation remains in a later Lago
+  migration ticket.
 
 - **SES deliverability hardening tracked as P1B.08a.** The prod SST
   configuration now declares custom MAIL FROM for `bounce.prontiq.dev` with

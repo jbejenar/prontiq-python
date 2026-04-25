@@ -1,9 +1,9 @@
 # NEXT-WORK.md — Active Sprint
 
 > Extracted from ROADMAP.md. This is what agents should work on NOW.
-> Last updated: 2026-04-25 (P1B.15 SQS billing-event buffer shipped)
+> Last updated: 2026-04-25 (P1B.16 Lago event forwarder shipped)
 
-## Current Phase: P1B.16
+## Current Phase: P1B.17
 
 ### What's Live
 
@@ -38,7 +38,14 @@
   `backfill:customers` can dry-run/apply legacy envelope/API-key
   denormalization, and the address API can emit `BillingUsageEventV1` to
   standard SQS behind `BILLING_EVENTS_ENABLED`. Default remains `false` until
-  the P1B.16 Lago forwarder consumes the queue.
+  the P1B.16 Lago forwarder is deployed and Lago setup/replay smoke checks pass.
+- **P1B.16 complete (2026-04-25).** `PqLagoEventForwarder` consumes queued
+  billing events, validates deterministic event IDs, stores delivery evidence in
+  `prontiq-billing-event-deliveries`, and sends minimal Lago usage events with
+  `transaction_id = eventId`, derived `external_subscription_id`, and
+  `properties.credits = creditDelta`. `BILLING_EVENTS_ENABLED` still stays
+  false until canonical Lago metrics/subscriptions and replay smoke checks pass
+  per environment.
 - **P1F.02 complete (2026-04-19).** The prod observability baseline is live and verified: `PqIngestAlerts` prod email subscriptions via `ALERT_EMAILS`, `prontiq-production` dashboard, prod alarms for address API 5xx/Lambda error rate and OpenSearch yellow/red/low-storage, `PqApi` X-Ray tracing with DynamoDB + OpenSearch segments, and structured JSON logs across Lambda execution paths. SNS email delivery was verified by forcing `PqApiLambdaErrorRate` to `ALARM` and confirming receipt on a confirmed subscriber.
 - **P1F.03 complete (2026-04-20).** `@prontiq/observability` is live in `dev` and `prod`, Honeycomb traces are verified for `prontiq-api`, `prontiq-webhooks`, `prontiq-billing`, and `prontiq-ingestion` in both environments, and the deployed-stage rollback path is `HONEYCOMB_ENABLED=false` rather than secret removal.
 - **P1C.07 complete (2026-04-20).** `apps/landing` and `apps/console` now have Tailwind v3.4, app-local shadcn/ui primitives, dark mode, responsive shell foundations, and app-local Vitest + Testing Library. `apps/console` now carries an env-gated real Clerk auth boundary that builds/tests cleanly without Clerk keys and enables real sign-in when they are present.
@@ -96,7 +103,7 @@ POST /v1/account/setup  (Clerk JWT; not API key — recovery provisioning)
 - ~~P1B.09 — burst rate limiter middleware~~ ✅ shipped (2026-04-19)
 - ~~P1B.14 — CustomerId + customer mapping contract~~ ✅ shipped (2026-04-25)
 - ~~P1B.15 — SQS billing event buffer + hot-path emitter~~ ✅ shipped (2026-04-25)
-- **P1B.16 — Lago event forwarder worker + idempotent transaction IDs**
+- ~~P1B.16 — Lago event forwarder worker + idempotent transaction IDs~~ ✅ shipped (2026-04-25)
 - **P1B.17 — Lago webhook sync + credit-counter reconciliation**
 - **P1B.18 — Console billing proxy surfaces + plan changes**
 - **P1B.19 — Stripe legacy billing retirement and cutover**
@@ -117,18 +124,22 @@ POST /v1/account/setup  (Clerk JWT; not API key — recovery provisioning)
 
 Recommended priority:
 
-1. P1B.16 — forward queued events into Lago with deterministic transaction IDs.
-2. P1B.17 / P1B.18 — reconcile Lago state back into platform counters and expose the console billing surfaces.
+1. P1B.17 — reconcile Lago subscription/billing-period state back into platform counters.
+2. P1B.18 — expose console billing surfaces on top of the Lago-backed contract.
 3. P1B.19 / P1B.20 — cut over the legacy Stripe billing path and remove the retired config/surfaces.
 4. P1C.02 / P1C.03 — continue the console overview and API-key experience after the commercial event path is underway.
 
-Before starting `P1B.16`, read:
+Before starting `P1B.17`, read:
 
 - `ARCHITECTURE.MD` (commercial implementation-status section + Lago target flow)
 - `docs/decisions/013-platform-owned-customer-id.md`
 - `docs/decisions/014-dedicated-customers-table.md`
 - `docs/decisions/015-lago-external-id-equals-customer-id.md`
 - `docs/decisions/016-standard-sqs-for-billing-events.md`
+- `docs/decisions/017-lago-default-subscription-id.md`
+- `docs/decisions/018-lago-credit-delta-sum-metering.md`
+- `docs/decisions/019-billing-event-delivery-ledger.md`
+- `docs/decisions/020-lago-usage-event-minimal-payload.md`
 - `docs/runbooks/lago-billing-events.md`
 - `docs/FRONTEND-STRATEGY.md`
 - `docs/prototypes/console-dashboard-v1.html`
@@ -138,9 +149,8 @@ Reason:
 - The legacy Stripe auth/billing path is effectively complete, but the forward
   commercial workstream is now the Lago migration sequence.
 - Honeycomb backend tracing is now implemented and verified in deployed `dev` and `prod`.
-- The next product milestone is forwarding queued billing events to Lago with
-  deterministic transaction IDs, without adding Lago or customer-table reads to
-  the API request path.
+- The next product milestone is reconciling Lago state back into Prontiq without
+  making Lago authoritative for request-time enforcement.
 - `P1C.02` and `P1C.03` still matter, but they should follow the commercial
   contract work instead of preceding it.
 - API Gateway caching remains a pragmatic performance/cost option if platform work is preferred over dashboard work.

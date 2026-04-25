@@ -16,7 +16,7 @@ This runbook documents the **target Lago billing-event path**:
 - Prontiq hot path emits billing events when `BILLING_EVENTS_ENABLED=true`
 - SQS buffers them in `prontiq-billing-events` / `prontiq-billing-events-<stage>`
 - DLQ is `prontiq-billing-events-dlq` / `prontiq-billing-events-dlq-<stage>`
-- worker forwards them to Lago with deterministic transaction IDs in P1B.16
+- worker forwards them to Lago with deterministic transaction IDs
 
 ## Customer identity requirement
 
@@ -30,6 +30,12 @@ the API request. Runtime implementation tickets therefore need to denormalize
 Lago forwarding uses `customerId` as the Lago customer `external_id`. It must not
 use `orgId`, `stripeCustomerId`, or Lago `lago_id` as the billing-event customer
 identity.
+
+The worker derives the Lago subscription external ID from the same customer ULID:
+
+```text
+pq_cust_<ulid> -> pq_sub_<ulid>
+```
 
 ## Event contract
 
@@ -59,6 +65,77 @@ When event emission is enabled:
 Do not purge source or DLQ messages without operator approval; once event
 emission is enabled they are billing evidence.
 
+## Worker behavior
+
+`PqLagoEventForwarder` consumes SQS batches with partial batch responses. For
+each record it:
+
+1. parses and validates `BillingUsageEventV1`
+2. recomputes the deterministic `eventId`
+3. records a delivery attempt in `prontiq-billing-event-deliveries` for
+   schema-valid events
+4. sends a minimal usage event to Lago at `/api/v1/events`
+5. marks the delivery row accepted only after Lago returns success
+
+If Lago returns an event-contract rejection (`400` or a specific non-duplicate
+`422` validation error such as invalid metric, subscription, properties,
+timestamp, or transaction fields), the worker records `failed_permanent`, leaves
+the SQS record failed for DLQ/evidence handling, and does not call Lago again on
+later redeliveries of the same event hash. Preserve the DLQ record and fix the
+event contract before any manual remediation.
+
+If Lago returns `422` because the same `transaction_id` was already received,
+the worker treats that response as idempotent success and marks the local ledger
+accepted. This covers the replay case where Lago accepted the original request
+but the Lambda crashed or timed out before `markAccepted`. If the `422` body is
+ambiguous, the worker calls `GET /api/v1/events/{transaction_id}` and only marks
+the row accepted when Lago confirms the same transaction and external
+subscription. Unconfirmed ambiguous `422` responses stay retryable rather than
+becoming permanent local failure evidence.
+
+If Lago returns a recoverable auth/setup/provider failure (`401`, `403`, `404`,
+`409`, `429`, `5xx`, ambiguous `422`, another ambiguous `4xx`, or a
+network/timeout failure), the worker records `failed_retryable` and leaves the
+SQS record failed. After fixing the Lago API key, organization, metric,
+customer, or subscription setup, replay the source/DLQ message normally; the
+matching retryable ledger row does not block the resend.
+
+The worker processes batches sequentially with a 10 second Lago HTTP timeout,
+SQS batch size 3, and Lambda timeout 45 seconds. Keep that invariant unless the
+worker is redesigned for bounded concurrency: `3 * 10s` leaves at least 15
+seconds for DynamoDB writes, logging, and partial batch response before the
+Lambda deadline.
+`attempts` counts worker attempts that reached the Lago-send phase; marking a
+failed send does not increment it a second time. Treat it as local worker
+evidence, not as a provider-side accepted-event counter.
+Delivery-ledger transitions are terminal-state aware: later failure writes do
+not downgrade `accepted` or `failed_permanent`, and later success writes do not
+overwrite `failed_permanent` or `invalid`. If a duplicate worker sends to Lago
+successfully after another worker has already recorded a terminal local
+rejection, the worker preserves the terminal row and acknowledges the SQS record
+to avoid a retry loop; operators must reconcile the local evidence against Lago
+before replaying related DLQ records.
+
+Lago payload:
+
+```json
+{
+  "event": {
+    "transaction_id": "bevt_...",
+    "external_subscription_id": "pq_sub_...",
+    "code": "prontiq_address_requests",
+    "timestamp": 1777075200,
+    "properties": {
+      "credits": 3
+    }
+  }
+}
+```
+
+The worker never sends raw API keys, API-key hashes, key prefixes, query
+strings, request headers, IP addresses, user agents, or response payloads to
+Lago.
+
 ## Backfill and rollout
 
 Before setting `BILLING_EVENTS_ENABLED=true` in a deployed stage:
@@ -69,7 +146,15 @@ Before setting `BILLING_EVENTS_ENABLED=true` in a deployed stage:
 4. resolve `migration_conflict` customers manually
 5. run `CUSTOMERS_TABLE_NAME=<table> KEYS_TABLE_NAME=<table> pnpm --filter @prontiq/control-plane backfill:customers -- --apply`
 6. verify every active API key has `customerId`
-7. enable `BILLING_EVENTS_ENABLED=true` and redeploy
+7. deploy `PqLagoEventForwarder` with `LAGO_API_URL` and `LAGO_API_KEY`
+8. verify the canonical Lago organization exists for the environment
+   (`prontiq-dev` in dev, `prontiq` in prod)
+9. verify the Lago billable metric code matches `meterEventName` and sums
+   `properties.credits`
+10. verify the Lago customer and subscription external IDs match
+    `pq_cust_<ulid>` and `pq_sub_<ulid>`
+11. run a replay smoke check and prove the second replay does not double-count
+12. enable `BILLING_EVENTS_ENABLED=true` and redeploy
 
 ## Verification
 
@@ -79,3 +164,18 @@ Before setting `BILLING_EVENTS_ENABLED=true` in a deployed stage:
 - confirm DLQ visible-message alarm and source queue oldest-age alarm exist
 - confirm worker forwards events into Lago once
 - confirm replay uses the same transaction ID
+- confirm malformed JSON/schema-invalid payloads fail to the source queue/DLQ
+  without ledger rows, while schema-valid deterministic-ID mismatches create
+  `invalid` ledger evidence
+- confirm `PqLagoEventForwarderErrors` is alarmed for worker crashes
+- confirm source queue age and DLQ alarms are the primary signal for per-record
+  Lago delivery failures
+- confirm accepted rows appear in `prontiq-billing-event-deliveries`
+- confirm `401` or `403` from a deliberately bad Lago API key records
+  `failed_retryable`, then succeeds after restoring the key and replaying the
+  same message
+- confirm replay after a simulated Lago duplicate-transaction `422` marks the
+  delivery ledger `accepted`
+- confirm replay after an ambiguous `422` plus successful
+  `GET /api/v1/events/{transaction_id}` confirmation marks the delivery ledger
+  `accepted`

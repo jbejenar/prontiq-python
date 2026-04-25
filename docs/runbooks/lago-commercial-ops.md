@@ -20,5 +20,9 @@ In the target architecture:
 ## Verification
 
 - confirm plan metadata in Lago matches the intended commercial surface
+- confirm each enabled metric code matches the platform `meterEventName`
+- confirm credit metrics aggregate the `credits` property by sum
+- confirm subscriptions use `pq_sub_<ulid>` external IDs derived from
+  `pq_cust_<ulid>` customer IDs
 - confirm Prontiq endpoint credit weights match the published Credits guide
 - confirm docs, roadmap, and console messaging stay aligned

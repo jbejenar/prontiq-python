@@ -8,6 +8,8 @@ In the target commercial architecture:
 
 - Clerk organizations map to Prontiq `customerId`
 - Prontiq `customerId` maps 1:1 to Lago `external_id`
+- Default Lago subscription external IDs are derived as
+  `pq_cust_<ulid> -> pq_sub_<ulid>`
 - Lago owns subscription and commercial state
 
 ## Scope

@@ -30,7 +30,7 @@
 | --------- | -------------------------- | ------- | --------- | ----------- |
 | **P0**    | Infrastructure Foundation  | 6       | 6/6 ✅    | Week 1      |
 | **P1A**   | API Core (Address)         | 13      | 10/13     | Weeks 2-3   |
-| **P1B**   | Auth & Billing             | 22      | 15/22     | Weeks 3-4   |
+| **P1B**   | Auth & Billing             | 22      | 16/22     | Weeks 3-4   |
 | **P1C**   | Frontend Surfaces          | 9       | 3/9       | Weeks 4-6   |
 | **P1D**   | Docs & SDK                 | 5       | 2/5       | Week 5      |
 | **P1E**   | Ingestion (Phase 1)        | 6       | 4/6       | Week 6      |
@@ -39,7 +39,7 @@
 | **P3**    | GLEIF/LEI + Full Dashboard | 7       | 0/7       | Weeks 11-13 |
 | **P4**    | Shopify + WooCommerce      | 5       | 0/5       | Weeks 14-17 |
 | **P5**    | CVE/NVD + Patents          | 4       | 0/4       | Weeks 18-21 |
-| **Total** |                            | **88**  | **42/88** |             |
+| **Total** |                            | **88**  | **43/88** |             |
 
 ---
 
@@ -1077,9 +1077,9 @@ Options:
 
 > **Goal:** Sign-up → DDB-native API key → hash-verified requests → rate-limited with burst limiter → usage tracked per-month → migrate the commercial layer from the shipped Stripe path to the Lago target architecture.
 >
-> **Current state.** P1B.02, P1B.04, P1B.04b, P1B.05, P1B.06, P1B.07, P1B.08, P1B.09, P1B.10, P1B.11, P1B.12, P1B.14, and P1B.15 are shipped. The DynamoDB-native key model is live in prod, the prod migration was executed on 2026-04-16, the legacy Stripe billing path is live, per-key burst limiting is enforced in the API middleware, SES feedback / quota-email delivery is live in dev + prod, previous-month scopes are now explicitly finalized and closed by the monthly `PqMonthClose` sweep, the auth integration suite is reconciled to the real post-cutover middleware contract, and the Lago migration now has a platform-owned `customerId` contract plus a feature-flagged SQS billing-event buffer. SES deliverability hardening is tracked separately in P1B.08a. The next Lago migration ticket is P1B.16.
+> **Current state.** P1B.02, P1B.04, P1B.04b, P1B.05, P1B.06, P1B.07, P1B.08, P1B.09, P1B.10, P1B.11, P1B.12, P1B.14, P1B.15, and P1B.16 are shipped. The DynamoDB-native key model is live in prod, the prod migration was executed on 2026-04-16, the legacy Stripe billing path is live, per-key burst limiting is enforced in the API middleware, SES feedback / quota-email delivery is live in dev + prod, previous-month scopes are now explicitly finalized and closed by the monthly `PqMonthClose` sweep, the auth integration suite is reconciled to the real post-cutover middleware contract, and the Lago migration now has a platform-owned `customerId` contract, feature-flagged SQS billing-event buffer, and replay-safe Lago event forwarder. SES deliverability hardening is tracked separately in P1B.08a. The next Lago migration ticket is P1B.17.
 >
-> **Lago migration progress.** `2/7` complete for `P1B.14`–`P1B.20`. The `P1B` epic rollup includes completed historical Stripe-path work, so treat the Lago migration sequence as a separate track until the new commercial runtime is implemented.
+> **Lago migration progress.** `3/7` complete for `P1B.14`–`P1B.20`. The `P1B` epic rollup includes completed historical Stripe-path work, so treat the Lago migration sequence as a separate track until the new commercial runtime is implemented.
 >
 > **Scope boundary.** The hot-path middleware rewrite (hash-based lookup, REDIRECT fallback, new usage-table writes) ships in **P1B.04b** (cutover), NOT in P1B.02. P1B.02 is pure crypto primitives only — no DDB dependency — which is why it remains parallel-safe. P1B.04b flips schema + code atomically once P1B.02 and P1B.04 are both done.
 >
@@ -1569,7 +1569,8 @@ idempotency inputs, hot-path boundary
 - `@prontiq/control-plane` writes `customerId` for new org provisioning and
   provides `backfill:customers` for legacy envelopes/API keys.
 - The API producer is feature-flagged by `BILLING_EVENTS_ENABLED`; default is
-  `false` until the `P1B.16` consumer is deployed.
+  `false` until the `P1B.16` consumer is deployed and the environment passes
+  Lago setup plus replay smoke checks.
 - Queue type is standard SQS; deterministic event ids provide replay
   idempotency for the future Lago worker.
 
@@ -1580,12 +1581,12 @@ idempotency inputs, hot-path boundary
 ```yaml
 id: P1B.16
 title: Lago Event Forwarder Worker + Idempotent Transaction IDs
-status: pending
+status: done
 priority: p0-critical
 epic: P1B
 persona: [builder]
 depends_on: [P1B.15]
-completed: null
+completed: 2026-04-25
 tech_stack:
   billing: Lago
 ```
@@ -1593,45 +1594,47 @@ tech_stack:
 #### User Story
 
 As a builder, I need a replay-safe worker that consumes queued billing events,
-writes any required platform analytics, and forwards them to Lago with
+writes local delivery evidence, and forwards them to Lago with
 deterministic transaction ids so that retries and replays never double-bill the
 customer.
 
 #### Problem Statement
 
 Once billing events are buffered in SQS, Prontiq still needs a safe bridge into
-Lago. If the worker generates ad hoc transaction ids or mixes analytics writes
-and Lago forwarding without a deterministic contract, retries will either lose
-events or double charge. The worker must therefore treat replay-safety as the
-primary invariant.
+Lago. If the worker generates ad hoc transaction ids or records delivery
+evidence ambiguously, retries will either lose events or double charge. The
+worker must therefore treat replay-safety and delivery evidence as the primary
+invariants.
 
 #### Definition of Done
 
 ##### Functional
 
-- [ ] Worker contract is defined from dequeue to Lago forward
-  - `Verify:` roadmap text specifies dequeue, validation, analytics write, Lago
-    payload construction, and ack/retry boundaries
+- [x] Worker contract is defined from dequeue to Lago forward
+  - `Verify:` roadmap text specifies dequeue, validation, delivery-ledger write,
+    Lago payload construction, and ack/retry boundaries
   - `Evidence:` ticket body documents the ordered worker responsibilities
-- [ ] Lago transaction id generation is deterministic
+- [x] Lago transaction id generation is deterministic
   - `Verify:` same billing event always produces the same Lago transaction id
   - `Evidence:` transaction-id derivation rules are documented against the
     `P1B.15` event contract
-- [ ] Duplicate processing is safe
+- [x] Duplicate processing is safe
   - `Verify:` worker replay of the same event cannot double-bill in Lago
   - `Evidence:` ticket explicitly requires duplicate suppression via
     deterministic transaction ids and idempotent worker behavior
-- [ ] Platform-side analytics write is defined as a side-effect of the worker,
+- [x] Platform-side delivery evidence is defined as a side-effect of the worker,
       not the request path
-  - `Verify:` roadmap makes analytics persistence part of async billing flow
-  - `Evidence:` ticket body describes analytics write responsibility and ordering
+  - `Verify:` roadmap makes delivery-ledger persistence part of async billing
+    flow
+  - `Evidence:` ticket body describes delivery evidence responsibility and
+    ordering
 
 ##### Operational
 
-- [ ] Worker failure leaves the event retryable
+- [x] Worker failure leaves the event retryable
   - `Verify:` ticket defines failure boundaries before/after Lago acceptance
   - `Evidence:` retry semantics described for transient Lago/network failures
-- [ ] Replay path is explicit
+- [x] Replay path is explicit
   - `Verify:` operators can safely replay queued billing events without manual
     data surgery
   - `Evidence:` ticket text references deterministic replay-safety expectations
@@ -1639,13 +1642,30 @@ primary invariant.
 #### Scope
 
 **In:** worker contract, deterministic transaction ids, Lago event payload
-bridge, analytics side-effects, retry/replay safety
+bridge, delivery-ledger side effects, retry/replay safety
 
 **Out — Do Not Implement:**
 
 - queue emitter semantics → `P1B.15`
 - reconciliation from Lago back into counters → `P1B.17`
 - console billing endpoints → `P1B.18`
+
+#### Implementation Notes
+
+- `PqLagoEventForwarder` subscribes to the standard billing-event queue with
+  SQS partial batch responses.
+- `eventId` is the Lago `transaction_id`; replaying the same event produces the
+  same Lago idempotency key.
+- `external_subscription_id` is derived from `customerId` by replacing
+  `pq_cust_` with `pq_sub_`.
+- The Lago payload is intentionally minimal: metric code, timestamp, and
+  `properties.credits = creditDelta`.
+- Delivery evidence is stored in `prontiq-billing-event-deliveries` with
+  payload-hash conflict detection, accepted/failed/invalid statuses, attempt
+  counts, and a customer/time GSI for operational review.
+- `BILLING_EVENTS_ENABLED` remains a separate rollout flag. It must stay false
+  until the target environment has canonical Lago metrics/subscriptions and a
+  successful replay smoke check.
 
 ---
 

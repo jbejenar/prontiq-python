@@ -48,3 +48,11 @@ export function deriveBillingUsageEventId(input: BillingEventIdInput): string {
   ].join("|");
   return `bevt_${createHash("sha256").update(raw).digest("hex").slice(0, 32)}`;
 }
+
+export function deriveLagoExternalSubscriptionId(customerId: string): string {
+  const match = /^pq_cust_([0-9A-HJKMNP-TV-Z]{26})$/.exec(customerId);
+  if (!match) {
+    throw new Error("customerId must match pq_cust_<ulid>");
+  }
+  return `pq_sub_${match[1]}`;
+}

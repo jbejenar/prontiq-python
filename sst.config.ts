@@ -69,6 +69,9 @@ export default $config({
     const authUsageName = isProd ? "prontiq-usage" : `prontiq-usage-${$app.stage}`;
     const auditTableName = isProd ? "prontiq-audit" : `prontiq-audit-${$app.stage}`;
     const customersTableName = isProd ? "prontiq-customers" : `prontiq-customers-${$app.stage}`;
+    const billingEventDeliveriesTableName = isProd
+      ? "prontiq-billing-event-deliveries"
+      : `prontiq-billing-event-deliveries-${$app.stage}`;
     const suppressionsName = isProd
       ? "prontiq-ses-suppressions"
       : `prontiq-ses-suppressions-${$app.stage}`;
@@ -119,6 +122,20 @@ export default $config({
         "customerId-index": { hashKey: "customerId" },
       },
       transform: { table: { name: customersTableName } },
+    });
+
+    const billingEventDeliveriesTable = new sst.aws.Dynamo("PqBillingEventDeliveries", {
+      fields: {
+        eventId: "string",
+        customerId: "string",
+        acceptedAt: "string",
+      },
+      primaryIndex: { hashKey: "eventId" },
+      globalIndexes: {
+        "customerId-acceptedAt-index": { hashKey: "customerId", rangeKey: "acceptedAt" },
+      },
+      ttl: "ttl",
+      transform: { table: { name: billingEventDeliveriesTableName } },
     });
 
     const suppressionsTable = new sst.aws.Dynamo("PqSesSuppressions", {
@@ -246,9 +263,7 @@ export default $config({
       visibilityTimeout: "5 minutes",
       transform: {
         queue: {
-          name: isProd
-            ? "prontiq-billing-events-dlq"
-            : `prontiq-billing-events-dlq-${$app.stage}`,
+          name: isProd ? "prontiq-billing-events-dlq" : `prontiq-billing-events-dlq-${$app.stage}`,
           messageRetentionSeconds: 1_209_600,
         },
       },
@@ -314,9 +329,11 @@ export default $config({
       "CLERK_WEBHOOK_SECRET",
       "CLERK_SECRET_KEY",
       "HONEYCOMB_API_KEY",
+      "LAGO_API_KEY",
       "STRIPE_SECRET_KEY",
       "STRIPE_WEBHOOK_SECRET",
     ] as const;
+    const REQUIRED_DEPLOY_VARS = ["LAGO_API_URL"] as const;
     function readGithubSecret(name: string): string {
       const raw = process.env[name];
       if (raw === undefined) return "";
@@ -339,6 +356,15 @@ export default $config({
           `Missing or whitespace-only GitHub Environment secrets for stage "${$app.stage}": ` +
             `${missing.join(", ")}. ` +
             `Set them at Settings → Environments → ${$app.stage} → Environment secrets ` +
+            `(values must be non-empty after trimming), then re-run the deploy workflow.`,
+        );
+      }
+      const missingVars = REQUIRED_DEPLOY_VARS.filter((name) => readGithubVar(name).length === 0);
+      if (missingVars.length > 0) {
+        throw new Error(
+          `Missing or whitespace-only GitHub Environment variables for stage "${$app.stage}": ` +
+            `${missingVars.join(", ")}. ` +
+            `Set them at Settings → Environments → ${$app.stage} → Environment variables ` +
             `(values must be non-empty after trimming), then re-run the deploy workflow.`,
         );
       }
@@ -471,6 +497,53 @@ export default $config({
         });
       });
     }
+
+    // Budget invariant: 3 records * 10s Lago HTTP timeout leaves >=15s inside
+    // the 45s Lambda timeout for DynamoDB writes, logging, and partial response.
+    const lagoEventForwarder = billingEventsQueue.subscribe(
+      {
+        handler: "packages/control-plane/src/lago-event-forwarder.bootstrap.handler",
+        architecture: "arm64",
+        runtime: "nodejs24.x",
+        memory: "512 MB",
+        timeout: "45 seconds",
+        concurrency: {
+          reserved: 2,
+        },
+        link: [billingEventDeliveriesTable],
+        environment: {
+          ...observabilityEnv(),
+          BILLING_EVENT_DELIVERIES_TABLE_NAME: billingEventDeliveriesTable.name,
+          LAGO_API_KEY: $util.secret(readGithubSecret("LAGO_API_KEY")),
+          LAGO_API_URL: readGithubVar("LAGO_API_URL"),
+        },
+      },
+      {
+        batch: {
+          size: 3,
+          partialResponses: true,
+        },
+      },
+    );
+
+    new aws.cloudwatch.MetricAlarm("PqLagoEventForwarderErrors", {
+      comparisonOperator: "GreaterThanThreshold",
+      evaluationPeriods: 1,
+      datapointsToAlarm: 1,
+      metricName: "Errors",
+      namespace: "AWS/Lambda",
+      period: 900,
+      statistic: "Sum",
+      threshold: 0,
+      treatMissingData: "notBreaching",
+      alarmDescription:
+        "Lago event forwarder Lambda crashed in the last 15 minutes. Per-record delivery failures are surfaced through source queue age, DLQ alarms, logs, and the billing-event delivery ledger.",
+      alarmActions: [ingestAlerts.arn],
+      okActions: [ingestAlerts.arn],
+      dimensions: {
+        FunctionName: lagoEventForwarder.nodes.function.name,
+      },
+    });
 
     new aws.cloudwatch.MetricAlarm("PqBillingEventsDlqVisible", {
       comparisonOperator: "GreaterThanThreshold",
@@ -1522,6 +1595,7 @@ export default $config({
             accountFn.name,
             sesFeedbackFn.name,
             quotaEmailWorkerFn.name,
+            lagoEventForwarder.nodes.function.name,
             billingCron.nodes.function.name,
             monthClose.nodes.function.name,
             billingEventsQueue.nodes.queue.name,
@@ -1536,6 +1610,7 @@ export default $config({
               accountName,
               sesFeedbackName,
               quotaEmailName,
+              lagoForwarderName,
               billingCronName,
               monthCloseName,
               billingEventsQueueName,
@@ -1723,9 +1798,20 @@ export default $config({
                       period: 300,
                       stat: "Maximum",
                       metrics: [
-                        ["AWS/SQS", "ApproximateNumberOfMessagesVisible", "QueueName", billingEventsQueueName],
+                        [
+                          "AWS/SQS",
+                          "ApproximateNumberOfMessagesVisible",
+                          "QueueName",
+                          billingEventsQueueName,
+                        ],
                         [".", "ApproximateAgeOfOldestMessage", ".", "."],
-                        [".", "ApproximateNumberOfMessagesVisible", ".", billingEventsDlqName, { label: "DLQ visible" }],
+                        [
+                          ".",
+                          "ApproximateNumberOfMessagesVisible",
+                          ".",
+                          billingEventsDlqName,
+                          { label: "DLQ visible" },
+                        ],
                       ],
                     },
                   },
@@ -1747,6 +1833,7 @@ export default $config({
                         [".", ".", ".", accountName],
                         [".", ".", ".", sesFeedbackName],
                         [".", ".", ".", quotaEmailName],
+                        [".", ".", ".", lagoForwarderName],
                         [".", ".", ".", billingCronName],
                         [".", ".", ".", monthCloseName],
                       ],

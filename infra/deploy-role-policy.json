@@ -68,6 +68,10 @@
         "arn:aws:dynamodb:*:*:table/prontiq-usage-*",
         "arn:aws:dynamodb:*:*:table/prontiq-audit",
         "arn:aws:dynamodb:*:*:table/prontiq-audit-*",
+        "arn:aws:dynamodb:*:*:table/prontiq-billing-event-deliveries",
+        "arn:aws:dynamodb:*:*:table/prontiq-billing-event-deliveries-*",
+        "arn:aws:dynamodb:*:*:table/prontiq-customers",
+        "arn:aws:dynamodb:*:*:table/prontiq-customers-*",
         "arn:aws:dynamodb:*:*:table/prontiq-ses-suppressions",
         "arn:aws:dynamodb:*:*:table/prontiq-ses-suppressions-*"
       ],

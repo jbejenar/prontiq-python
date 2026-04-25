@@ -6,10 +6,19 @@
 
 ## Session 33 — 2026-04-25
 
-**Focus:** P1B.16 Lago event forwarder worker + idempotent transaction IDs.
+**Focus:** P1B.16 Lago event forwarder worker + idempotent transaction IDs; next up P1B.17 reconciliation.
 
 ### Completed
 
+- **P1B.16 is complete.** `PqLagoEventForwarder` consumes queued
+  `BillingUsageEventV1` records, validates deterministic `eventId`, records
+  local delivery evidence, and forwards minimal credit-delta events to Lago.
+- **Replay safety is explicit.** The worker uses `eventId` as Lago
+  `transaction_id`, derives `external_subscription_id` from `customerId`, skips
+  accepted duplicates, and treats payload-hash conflicts as invalid evidence.
+- **Producer rollout is still gated.** Keep `BILLING_EVENTS_ENABLED=false` until
+  each environment has canonical Lago metric/customer/subscription setup and a
+  replay smoke check.
 - **P1B.15 is complete.** The platform now has `BillingUsageEventV1`,
   deterministic `bevt_...` event IDs, standard SQS source/DLQ infra, and a
   feature-flagged API emitter that runs only after DynamoDB enforcement
@@ -22,11 +31,11 @@
 
 ### Next session should start with
 
-1. Start `P1B.16 — Lago Event Forwarder Worker + Idempotent Transaction IDs`.
-2. Consume `BillingUsageEventV1` from SQS and use `eventId` as the Lago
-   transaction/idempotency input.
-3. Do not enable `BILLING_EVENTS_ENABLED=true` in prod until the worker is
-   deployed and replay-safe.
+1. Start `P1B.17 — Lago Webhook Sync + Credit-Counter Reconciliation`.
+2. Keep Lago commercial truth separate from Prontiq request-time enforcement
+   counters.
+3. Do not enable `BILLING_EVENTS_ENABLED=true` in prod until the canonical Lago
+   setup and replay smoke checks are complete.
 
 ## Session 32 — 2026-04-25
 

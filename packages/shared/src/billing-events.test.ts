@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   billingUsageEventV1Schema,
   deriveBillingUsageEventId,
+  deriveLagoExternalSubscriptionId,
   type BillingEventIdInput,
 } from "./billing-events.js";
 
@@ -63,4 +64,16 @@ test("billing event schema rejects sensitive or malformed payload drift", () => 
       eventId: "not-deterministic",
     }),
   );
+});
+
+test("lago external subscription id derives from platform customer id", () => {
+  assert.equal(
+    deriveLagoExternalSubscriptionId("pq_cust_01HYZ6Q4X6DJP2X9Q9FQKX4T7A"),
+    "pq_sub_01HYZ6Q4X6DJP2X9Q9FQKX4T7A",
+  );
+});
+
+test("lago external subscription id rejects malformed customer ids", () => {
+  assert.throws(() => deriveLagoExternalSubscriptionId("org_123"));
+  assert.throws(() => deriveLagoExternalSubscriptionId("pq_cust_not-a-ulid"));
 });

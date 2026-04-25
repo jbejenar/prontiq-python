@@ -21,13 +21,7 @@ export type {
   ApiErrorResponse,
   ErrorCode,
 } from "./types.js";
-export type {
-  Post,
-  CaseStudyMetric,
-  CaseStudy,
-  SiteSettings,
-  ContentSource,
-} from "./content.js";
+export type { Post, CaseStudyMetric, CaseStudy, SiteSettings, ContentSource } from "./content.js";
 
 export {
   BILLING_GRACE_PERIOD_PAST_DUE_DAYS_REMAINING,
@@ -63,11 +57,9 @@ export {
   BILLING_EVENT_VERSION,
   billingUsageEventV1Schema,
   deriveBillingUsageEventId,
+  deriveLagoExternalSubscriptionId,
 } from "./billing-events.js";
-export type {
-  BillingEventIdInput,
-  BillingUsageEventV1,
-} from "./billing-events.js";
+export type { BillingEventIdInput, BillingUsageEventV1 } from "./billing-events.js";
 
 export {
   manifestV1Schema,

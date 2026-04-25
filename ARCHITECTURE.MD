@@ -1520,6 +1520,76 @@ by deterministic event identity in `P1B.16`. The queue retains messages for 14
 days, has a DLQ after five failed receives, and both queue age and DLQ visible
 message count are alarmed in CloudWatch.
 
+#### 5.6.0.3 Lago Event Forwarder Contract
+
+`P1B.16` implements the async consumer for the billing-event queue. It consumes
+`BillingUsageEventV1` from SQS, validates the schema, recomputes the
+deterministic `eventId`, writes a delivery-attempt ledger row for schema-valid
+events, and forwards a minimal usage event to Lago.
+
+Lago payload contract:
+
+- `transaction_id = eventId`
+- `external_subscription_id = pq_sub_<same ulid as customerId>`
+- `code = meterEventName`
+- `timestamp = occurredAt` as epoch seconds
+- `properties.credits = creditDelta`
+
+The worker deliberately does **not** forward `apiKeyHash`, `keyPrefix`, request
+path, headers, IPs, user agents, query strings, or response payloads to Lago.
+It authenticates to Lago with a per-environment `LAGO_API_KEY` and
+`Authorization: Bearer`, posting to `${LAGO_API_URL}/api/v1/events`.
+
+Delivery state is stored in `prontiq-billing-event-deliveries` (or
+`prontiq-billing-event-deliveries-<stage>` outside prod) keyed by `eventId`.
+Rows store payload hash, status, attempt count, accepted timestamp, customer
+metadata, the derived Lago subscription external ID, and TTL. A
+`customerId-acceptedAt-index` GSI supports customer-scoped operational review.
+
+Retry boundaries:
+
+- invalid JSON/schema is surfaced as a failed SQS record without a ledger row,
+  because the worker cannot trust the event identity fields
+- schema-valid events with a mismatched deterministic `eventId` are marked
+  `invalid` and surfaced as failed SQS records without calling Lago
+- duplicate accepted events with the same payload hash are skipped without
+  resending to Lago
+- retryable Lago failures (`401`, `403`, `404`, `409`, `429`, `5xx`, other
+  ambiguous `4xx`, or network/timeout) leave the SQS record failed for normal
+  retry/DLQ handling; after operators fix Lago auth/setup, DLQ replay can send
+  the same event again because the ledger row is not terminal
+- permanent Lago event-contract failures (`400` or specific `422` validation
+  errors such as invalid metric/subscription/properties/timestamp/transaction
+  fields) are recorded as permanent delivery failures and still leave the SQS
+  record failed so the message remains billing evidence; redeliveries of the
+  same permanent failure do not call Lago again
+- Lago `422` duplicate-transaction responses are an idempotency success, not a
+  permanent failure; replay after a post-send/pre-ledger crash marks the local
+  ledger accepted when the response body identifies duplicate transaction
+  semantics or when `GET /api/v1/events/{transaction_id}` confirms the event was
+  already stored for the same external subscription
+- ambiguous Lago `422` responses that cannot be confirmed through event
+  retrieval remain retryable instead of being tombstoned locally
+- delivery-ledger `attempts` counts worker attempts that reached the Lago-send
+  phase; failure-status writes do not increment it a second time
+- delivery-ledger transitions are terminal-state aware: later failure writes do
+  not downgrade `accepted` or `failed_permanent`, and later success writes do
+  not overwrite `failed_permanent` or `invalid`
+
+Timeout budget:
+
+- Lago HTTP timeout is 10 seconds per record
+- SQS subscription batch size is 3
+- Lambda timeout is 45 seconds
+- invariant: `batch_size * lago_timeout` leaves at least 15 seconds for DynamoDB
+  writes, logging, and returning partial batch responses before Lambda deadline
+
+`BILLING_EVENTS_ENABLED` remains default-off until each environment has the
+canonical Lago organization, metric, customer, subscription, and replay smoke
+checks in place. Existing non-canonical Lago organizations are not migration
+targets for this repo; they are left untouched unless explicitly created as
+P1B.16-only test fixtures.
+
 #### 5.6.1 Legacy Stripe Billing Model (Current Shipped Path)
 
 The current live implementation still uses Stripe metadata, Stripe webhooks,

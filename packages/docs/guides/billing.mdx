@@ -79,10 +79,17 @@ provider-owned `lago_id` and migration-era Stripe `cus_...` IDs are linkage
 fields only; they are not Prontiq customer identity.
 
 <Note>
-  The customer table, backfill utility, and SQS billing-event producer are now implemented behind
-  a feature flag. Lago forwarding, webhook reconciliation, and console billing APIs still land in
+  The customer table, backfill utility, SQS billing-event producer, and Lago forwarder are now
+  implemented behind a feature flag. Webhook reconciliation and console billing APIs still land in
   later Lago migration tickets.
 </Note>
+
+## Usage event forwarding
+
+Prontiq forwards billing events to Lago asynchronously. The API request path
+does not call Lago. Each accepted event uses a deterministic transaction ID and
+sends the credit delta for the request so replay cannot double-bill when Lago is
+configured with the matching subscription and metric.
 
 ## Related guides
 
