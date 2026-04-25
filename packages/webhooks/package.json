@@ -19,7 +19,7 @@
     "@prontiq/observability": "workspace:*",
     "@prontiq/shared": "workspace:*",
     "stripe": "^22.0.2",
-    "svix": "^1.60.0"
+    "svix": "^1.92.2"
   },
   "devDependencies": {
     "@aws-sdk/client-dynamodb": "^3.1030.0",

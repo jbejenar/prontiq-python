@@ -462,8 +462,8 @@ importers:
         specifier: ^22.0.2
         version: 22.0.2(@types/node@25.6.0)
       svix:
-        specifier: ^1.60.0
-        version: 1.90.0
+        specifier: ^1.92.2
+        version: 1.92.2
     devDependencies:
       '@aws-sdk/client-dynamodb':
         specifier: ^3.1030.0
@@ -4116,8 +4116,8 @@ packages:
     resolution: {integrity: sha512-ot0WnXS9fgdkgIcePe6RHNk1WA8+muPa6cSjeR3V8K27q9BB1rTE3R1p7Hv0z1ZyAc8s6Vvv8DIyWf681MAt0w==}
     engines: {node: '>= 0.4'}
 
-  svix@1.90.0:
-    resolution: {integrity: sha512-ljkZuyy2+IBEoESkIpn8sLM+sxJHQcPxlZFxU+nVDhltNfUMisMBzWX/UR8SjEnzoI28ZjCzMbmYAPwSTucoMw==}
+  svix@1.92.2:
+    resolution: {integrity: sha512-ZmuA3UVvlnF9EgxlzmPtF7CKjQb64Z6OFlyfdDfU0sdcC7dJa+3aOYX5B9mA+RS6ch1AxBa4UP/l6KmqfGtWBQ==}
 
   swr@2.3.4:
     resolution: {integrity: sha512-bYd2lrhc+VarcpkgWclcUi92wYCpOgMws9Sd1hG1ntAu0NEy+14CbotuFjshBU2kt9rYj9TSmDcybpxpeTU1fg==}
@@ -4282,10 +4282,6 @@ packages:
 
   util-deprecate@1.0.2:
     resolution: {integrity: sha512-EPD5q1uXyFxJpCrLnCc1nHnq3gOa6DZBocAIiI2TaSCA7VCJ1UJDMagCzIkXNsUYfD1daK//LTEQ8xiIbrHtcw==}
-
-  uuid@10.0.0:
-    resolution: {integrity: sha512-8XkAphELsDnEGrDxUOHB3RGvXz6TeuYSGEZBOjtTtPm2lwhGBjLgOzLHB63IUWfBpNucQjND6d3AOudO+H3RWQ==}
-    hasBin: true
 
   vite-node@3.2.4:
     resolution: {integrity: sha512-EbKSKh+bh1E1IFxeO0pg1n4dvoOTt0UDiXMd/qn++r98+jPO1xtJilvXldeuQ8giIB5IkpjCgMleHMNEsGH6pg==}
@@ -8691,10 +8687,9 @@ snapshots:
 
   supports-preserve-symlinks-flag@1.0.0: {}
 
-  svix@1.90.0:
+  svix@1.92.2:
     dependencies:
       standardwebhooks: 1.0.0
-      uuid: 10.0.0
 
   swr@2.3.4(react@19.2.5):
     dependencies:
@@ -8855,8 +8850,6 @@ snapshots:
       react: 19.2.5
 
   util-deprecate@1.0.2: {}
-
-  uuid@10.0.0: {}
 
   vite-node@3.2.4(@types/node@25.6.0)(jiti@1.21.7)(yaml@2.8.3):
     dependencies:
