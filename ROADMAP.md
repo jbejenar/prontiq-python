@@ -30,7 +30,7 @@
 | --------- | -------------------------- | ------- | --------- | ----------- |
 | **P0**    | Infrastructure Foundation  | 6       | 6/6 ✅    | Week 1      |
 | **P1A**   | API Core (Address)         | 13      | 10/13     | Weeks 2-3   |
-| **P1B**   | Auth & Billing             | 22      | 13/22     | Weeks 3-4   |
+| **P1B**   | Auth & Billing             | 22      | 15/22     | Weeks 3-4   |
 | **P1C**   | Frontend Surfaces          | 9       | 3/9       | Weeks 4-6   |
 | **P1D**   | Docs & SDK                 | 5       | 2/5       | Week 5      |
 | **P1E**   | Ingestion (Phase 1)        | 6       | 4/6       | Week 6      |
@@ -39,7 +39,7 @@
 | **P3**    | GLEIF/LEI + Full Dashboard | 7       | 0/7       | Weeks 11-13 |
 | **P4**    | Shopify + WooCommerce      | 5       | 0/5       | Weeks 14-17 |
 | **P5**    | CVE/NVD + Patents          | 4       | 0/4       | Weeks 18-21 |
-| **Total** |                            | **88**  | **41/88** |             |
+| **Total** |                            | **88**  | **42/88** |             |
 
 ---
 
@@ -797,12 +797,12 @@ Consistent error responses are the difference between a developer-friendly API a
 ```yaml
 id: P1A.09
 title: API Gateway Caching
-status: pending
+status: done
 priority: p1-high
 epic: P1A
 persona: [builder, ops]
 depends_on: [P1A.02]
-completed: null
+completed: 2026-04-25
 tech_stack:
   cache: API Gateway cache (0.5GB)
   cost: ~$15/month
@@ -1077,9 +1077,9 @@ Options:
 
 > **Goal:** Sign-up → DDB-native API key → hash-verified requests → rate-limited with burst limiter → usage tracked per-month → migrate the commercial layer from the shipped Stripe path to the Lago target architecture.
 >
-> **Current state.** P1B.02, P1B.04, P1B.04b, P1B.05, P1B.06, P1B.07, P1B.08, P1B.09, P1B.10, P1B.11, P1B.12, and P1B.14 are shipped. The DynamoDB-native key model is live in prod, the prod migration was executed on 2026-04-16, the legacy Stripe billing path is live, per-key burst limiting is enforced in the API middleware, SES feedback / quota-email delivery is live in dev + prod, previous-month scopes are now explicitly finalized and closed by the monthly `PqMonthClose` sweep, the auth integration suite is reconciled to the real post-cutover middleware contract, and the Lago migration now has a platform-owned `customerId` contract. SES deliverability hardening is tracked separately in P1B.08a. The next Lago migration ticket is P1B.15.
+> **Current state.** P1B.02, P1B.04, P1B.04b, P1B.05, P1B.06, P1B.07, P1B.08, P1B.09, P1B.10, P1B.11, P1B.12, P1B.14, and P1B.15 are shipped. The DynamoDB-native key model is live in prod, the prod migration was executed on 2026-04-16, the legacy Stripe billing path is live, per-key burst limiting is enforced in the API middleware, SES feedback / quota-email delivery is live in dev + prod, previous-month scopes are now explicitly finalized and closed by the monthly `PqMonthClose` sweep, the auth integration suite is reconciled to the real post-cutover middleware contract, and the Lago migration now has a platform-owned `customerId` contract plus a feature-flagged SQS billing-event buffer. SES deliverability hardening is tracked separately in P1B.08a. The next Lago migration ticket is P1B.16.
 >
-> **Lago migration progress.** `1/7` complete for `P1B.14`–`P1B.20`. The `P1B` epic rollup includes completed historical Stripe-path work, so treat the Lago migration sequence as a separate track until the new commercial runtime is implemented.
+> **Lago migration progress.** `2/7` complete for `P1B.14`–`P1B.20`. The `P1B` epic rollup includes completed historical Stripe-path work, so treat the Lago migration sequence as a separate track until the new commercial runtime is implemented.
 >
 > **Scope boundary.** The hot-path middleware rewrite (hash-based lookup, REDIRECT fallback, new usage-table writes) ships in **P1B.04b** (cutover), NOT in P1B.02. P1B.02 is pure crypto primitives only — no DDB dependency — which is why it remains parallel-safe. P1B.04b flips schema + code atomically once P1B.02 and P1B.04 are both done.
 >
@@ -1096,12 +1096,12 @@ Options:
 ```yaml
 id: P1B.01
 title: Clerk Application Setup
-status: pending
+status: done
 priority: p0-critical
 epic: P1B
 persona: [builder]
 depends_on: [P0.02]
-completed: null
+completed: 2026-04-25
 tech_stack:
   auth: Clerk
   framework: Next.js 15
@@ -1493,12 +1493,12 @@ identity resolution contract across Clerk/orgs/API keys/Lago/legacy Stripe
 ```yaml
 id: P1B.15
 title: SQS Billing Event Buffer + Hot-Path Emitter
-status: pending
+status: done
 priority: p0-critical
 epic: P1B
 persona: [builder]
 depends_on: [P1B.14]
-completed: null
+completed: 2026-04-25
 tech_stack:
   billing: SQS + DynamoDB
 ```
@@ -1521,32 +1521,32 @@ commercial correctness compete with API availability.
 
 ##### Functional
 
-- [ ] Billing-event payload emitted from request handling is defined
+- [x] Billing-event payload emitted from request handling is defined
   - `Verify:` ticket specifies required fields for downstream Lago forwarding
   - `Evidence:` payload includes `customerId`, api key identity, product /
     metric identity, credit delta, timestamp, source request metadata, and a
     deterministic event identity input
-- [ ] Request handling emits billing events only after synchronous enforcement
+- [x] Request handling emits billing events only after synchronous enforcement
       succeeds
   - `Verify:` architecture text and ticket wording keep DynamoDB enforcement on
     the hot path and billing emission asynchronous
   - `Evidence:` DoD explicitly states "enforce first, enqueue second, never call
     Lago from the request handler"
-- [ ] Queue retry / DLQ / duplicate-delivery expectations are specified
+- [x] Queue retry / DLQ / duplicate-delivery expectations are specified
   - `Verify:` ticket defines retry posture and how poison messages are handled
   - `Evidence:` SQS + DLQ behavior and replay assumptions are documented
-- [ ] Event identity is deterministic enough for downstream idempotency
+- [x] Event identity is deterministic enough for downstream idempotency
   - `Verify:` `P1B.16` can derive a stable Lago transaction id from this event
     contract
   - `Evidence:` deterministic event-identity inputs described in ticket body
 
 ##### Operational
 
-- [ ] Lago unavailability does not break request handling
+- [x] Lago unavailability does not break request handling
   - `Verify:` ticket explicitly states the availability boundary
   - `Evidence:` acceptance text says requests remain gated only by local
     enforcement + successful queue write
-- [ ] Queue failure semantics are explicit
+- [x] Queue failure semantics are explicit
   - `Verify:` ticket defines what happens when SQS write fails after local
     enforcement
   - `Evidence:` retry / audit / operator follow-up expectations are spelled out
@@ -1561,6 +1561,17 @@ idempotency inputs, hot-path boundary
 - Lago forwarding worker → `P1B.16`
 - webhook reconciliation → `P1B.17`
 - console-facing billing APIs → `P1B.18`
+
+#### Implementation Notes
+
+- `BillingUsageEventV1` lives in `@prontiq/shared/billing-events`.
+- `prontiq-customers` is declared in SST with `customerId-index`.
+- `@prontiq/control-plane` writes `customerId` for new org provisioning and
+  provides `backfill:customers` for legacy envelopes/API keys.
+- The API producer is feature-flagged by `BILLING_EVENTS_ENABLED`; default is
+  `false` until the `P1B.16` consumer is deployed.
+- Queue type is standard SQS; deterministic event ids provide replay
+  idempotency for the future Lago worker.
 
 ---
 

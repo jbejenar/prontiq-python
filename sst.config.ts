@@ -68,6 +68,7 @@ export default $config({
     const authKeysName = isProd ? "prontiq-keys" : `prontiq-keys-${$app.stage}`;
     const authUsageName = isProd ? "prontiq-usage" : `prontiq-usage-${$app.stage}`;
     const auditTableName = isProd ? "prontiq-audit" : `prontiq-audit-${$app.stage}`;
+    const customersTableName = isProd ? "prontiq-customers" : `prontiq-customers-${$app.stage}`;
     const suppressionsName = isProd
       ? "prontiq-ses-suppressions"
       : `prontiq-ses-suppressions-${$app.stage}`;
@@ -106,6 +107,18 @@ export default $config({
       primaryIndex: { hashKey: "orgId", rangeKey: "timestamp#eventId" },
       ttl: "ttl",
       transform: { table: { name: auditTableName } },
+    });
+
+    const customersTable = new sst.aws.Dynamo("PqCustomers", {
+      fields: {
+        orgId: "string",
+        customerId: "string",
+      },
+      primaryIndex: { hashKey: "orgId" },
+      globalIndexes: {
+        "customerId-index": { hashKey: "customerId" },
+      },
+      transform: { table: { name: customersTableName } },
     });
 
     const suppressionsTable = new sst.aws.Dynamo("PqSesSuppressions", {
@@ -226,6 +239,32 @@ export default $config({
       environment: {
         ...sharedEmailEnv(),
         ...observabilityEnv(),
+      },
+    });
+
+    const billingEventsDlq = new sst.aws.Queue("PqBillingEventsDlq", {
+      visibilityTimeout: "5 minutes",
+      transform: {
+        queue: {
+          name: isProd
+            ? "prontiq-billing-events-dlq"
+            : `prontiq-billing-events-dlq-${$app.stage}`,
+          messageRetentionSeconds: 1_209_600,
+        },
+      },
+    });
+
+    const billingEventsQueue = new sst.aws.Queue("PqBillingEvents", {
+      visibilityTimeout: "5 minutes",
+      dlq: {
+        queue: billingEventsDlq.arn,
+        retry: 5,
+      },
+      transform: {
+        queue: {
+          name: isProd ? "prontiq-billing-events" : `prontiq-billing-events-${$app.stage}`,
+          messageRetentionSeconds: 1_209_600,
+        },
       },
     });
 
@@ -380,9 +419,15 @@ export default $config({
           actions: ["lambda:InvokeFunction"],
           resources: [quotaEmailWorkerFn.arn],
         },
+        {
+          actions: ["sqs:SendMessage"],
+          resources: [billingEventsQueue.arn],
+        },
       ],
       environment: {
         ...observabilityEnv(),
+        BILLING_EVENTS_ENABLED: readGithubVar("BILLING_EVENTS_ENABLED") || "false",
+        BILLING_EVENTS_QUEUE_URL: billingEventsQueue.url,
         OPENSEARCH_ENDPOINT: process.env.OPENSEARCH_ENDPOINT ?? OPENSEARCH_ENDPOINT_DEFAULT,
         KEYS_TABLE_NAME: authKeysTable.name,
         QUOTA_EMAIL_WORKER_FUNCTION_NAME: quotaEmailWorkerFn.name,
@@ -426,6 +471,44 @@ export default $config({
         });
       });
     }
+
+    new aws.cloudwatch.MetricAlarm("PqBillingEventsDlqVisible", {
+      comparisonOperator: "GreaterThanThreshold",
+      evaluationPeriods: 1,
+      datapointsToAlarm: 1,
+      metricName: "ApproximateNumberOfMessagesVisible",
+      namespace: "AWS/SQS",
+      period: 300,
+      statistic: "Maximum",
+      threshold: 0,
+      treatMissingData: "notBreaching",
+      alarmDescription:
+        "Billing events DLQ has visible messages. Do not purge; inspect failed messages and replay only after preserving billing evidence.",
+      alarmActions: [ingestAlerts.arn],
+      okActions: [ingestAlerts.arn],
+      dimensions: {
+        QueueName: billingEventsDlq.nodes.queue.name,
+      },
+    });
+
+    new aws.cloudwatch.MetricAlarm("PqBillingEventsOldestMessage", {
+      comparisonOperator: "GreaterThanThreshold",
+      evaluationPeriods: 1,
+      datapointsToAlarm: 1,
+      metricName: "ApproximateAgeOfOldestMessage",
+      namespace: "AWS/SQS",
+      period: 300,
+      statistic: "Maximum",
+      threshold: 3600,
+      treatMissingData: "notBreaching",
+      alarmDescription:
+        "Billing events queue oldest message exceeded 1 hour. P1B.16 worker may be down or not yet enabled; preserve queued messages for replay.",
+      alarmActions: [ingestAlerts.arn],
+      okActions: [ingestAlerts.arn],
+      dimensions: {
+        QueueName: billingEventsQueue.nodes.queue.name,
+      },
+    });
 
     // -- Ingestion Lambdas (Step Function tasks) --
     const opensearchEndpoint = process.env.OPENSEARCH_ENDPOINT ?? OPENSEARCH_ENDPOINT_DEFAULT;
@@ -968,6 +1051,7 @@ export default $config({
         // claim). Same env var → same role set → no divergence.
         CLERK_ADMIN_ROLES: process.env.CLERK_ADMIN_ROLES ?? "",
         AUDIT_TABLE_NAME: auditTable.name,
+        CUSTOMERS_TABLE_NAME: customersTable.name,
         ...sharedEmailEnv(),
         PRONTIQ_ACCOUNT_URL: process.env.PRONTIQ_ACCOUNT_URL ?? DEFAULT_ACCOUNT_URL,
       };
@@ -984,7 +1068,7 @@ export default $config({
       runtime: "nodejs24.x",
       memory: "512 MB",
       timeout: "30 seconds",
-      link: [authKeysTable, authUsageTable, auditTable, suppressionsTable],
+      link: [authKeysTable, authUsageTable, auditTable, customersTable, suppressionsTable],
       permissions: [
         {
           actions: ["ses:SendEmail", "ses:SendRawEmail"],
@@ -1008,7 +1092,7 @@ export default $config({
       runtime: "nodejs24.x",
       memory: "512 MB",
       timeout: "30 seconds",
-      link: [authKeysTable, authUsageTable, auditTable, suppressionsTable],
+      link: [authKeysTable, authUsageTable, auditTable, customersTable, suppressionsTable],
       permissions: [
         {
           actions: ["ses:SendEmail", "ses:SendRawEmail"],
@@ -1222,7 +1306,7 @@ export default $config({
       runtime: "nodejs24.x",
       memory: "512 MB",
       timeout: "30 seconds",
-      link: [authKeysTable, authUsageTable, auditTable, suppressionsTable],
+      link: [authKeysTable, authUsageTable, auditTable, customersTable, suppressionsTable],
       permissions: [
         {
           actions: ["ses:SendEmail", "ses:SendRawEmail"],
@@ -1440,6 +1524,8 @@ export default $config({
             quotaEmailWorkerFn.name,
             billingCron.nodes.function.name,
             monthClose.nodes.function.name,
+            billingEventsQueue.nodes.queue.name,
+            billingEventsDlq.nodes.queue.name,
           ])
           .apply(
             ([
@@ -1452,6 +1538,8 @@ export default $config({
               quotaEmailName,
               billingCronName,
               monthCloseName,
+              billingEventsQueueName,
+              billingEventsDlqName,
             ]) =>
               JSON.stringify({
                 widgets: [
@@ -1629,6 +1717,25 @@ export default $config({
                     width: 24,
                     height: 6,
                     properties: {
+                      title: "Billing Events Queue",
+                      view: "timeSeries",
+                      region: AWS_REGION,
+                      period: 300,
+                      stat: "Maximum",
+                      metrics: [
+                        ["AWS/SQS", "ApproximateNumberOfMessagesVisible", "QueueName", billingEventsQueueName],
+                        [".", "ApproximateAgeOfOldestMessage", ".", "."],
+                        [".", "ApproximateNumberOfMessagesVisible", ".", billingEventsDlqName, { label: "DLQ visible" }],
+                      ],
+                    },
+                  },
+                  {
+                    type: "metric",
+                    x: 0,
+                    y: 24,
+                    width: 24,
+                    height: 6,
+                    properties: {
                       title: "Critical Lambda Errors",
                       view: "timeSeries",
                       region: AWS_REGION,
@@ -1653,6 +1760,7 @@ export default $config({
 
     return {
       api: api.url,
+      billingEventsQueueUrl: billingEventsQueue.url,
       stateMachine: stateMachine.arn,
       ingestAlerts: ingestAlerts.arn,
     };

@@ -32,6 +32,7 @@ const SUFFIX = Date.now().toString();
 const KEYS_TABLE = `prontiq-keys-test-${SUFFIX}`;
 const AUDIT_TABLE = `prontiq-audit-test-${SUFFIX}`;
 const SUPPRESSIONS_TABLE = `prontiq-suppressions-test-${SUFFIX}`;
+const CUSTOMERS_TABLE = `prontiq-customers-test-${SUFFIX}`;
 
 const ddbRaw = new DynamoDBClient({
   endpoint: DDB_URL,
@@ -75,6 +76,24 @@ before(async () => {
   );
   await ddbRaw.send(
     new CreateTableCommand({
+      TableName: CUSTOMERS_TABLE,
+      AttributeDefinitions: [
+        { AttributeName: "orgId", AttributeType: "S" },
+        { AttributeName: "customerId", AttributeType: "S" },
+      ],
+      KeySchema: [{ AttributeName: "orgId", KeyType: "HASH" }],
+      GlobalSecondaryIndexes: [
+        {
+          IndexName: "customerId-index",
+          KeySchema: [{ AttributeName: "customerId", KeyType: "HASH" }],
+          Projection: { ProjectionType: "ALL" },
+        },
+      ],
+      BillingMode: "PAY_PER_REQUEST",
+    }),
+  );
+  await ddbRaw.send(
+    new CreateTableCommand({
       TableName: SUPPRESSIONS_TABLE,
       AttributeDefinitions: [{ AttributeName: "email", AttributeType: "S" }],
       KeySchema: [{ AttributeName: "email", KeyType: "HASH" }],
@@ -82,7 +101,7 @@ before(async () => {
     }),
   );
   process.env.SUPPRESSIONS_TABLE_NAME = SUPPRESSIONS_TABLE;
-  for (const tableName of [KEYS_TABLE, AUDIT_TABLE, SUPPRESSIONS_TABLE]) {
+  for (const tableName of [KEYS_TABLE, AUDIT_TABLE, SUPPRESSIONS_TABLE, CUSTOMERS_TABLE]) {
     for (let i = 0; i < 20; i++) {
       const { Table } = await ddbRaw.send(new DescribeTableCommand({ TableName: tableName }));
       if (Table?.TableStatus === "ACTIVE") break;
@@ -96,6 +115,7 @@ after(async () => {
   await ddbRaw.send(new DeleteTableCommand({ TableName: KEYS_TABLE }));
   await ddbRaw.send(new DeleteTableCommand({ TableName: AUDIT_TABLE }));
   await ddbRaw.send(new DeleteTableCommand({ TableName: SUPPRESSIONS_TABLE }));
+  await ddbRaw.send(new DeleteTableCommand({ TableName: CUSTOMERS_TABLE }));
 });
 
 function makeStripeStub(idCounter: { value: number }): {
@@ -130,9 +150,11 @@ test("happy path: provisions envelope + audit row, then replay is no-op", async 
   const service = createProvisioningService({
     ddb,
     keysTableName: KEYS_TABLE,
+    customersTableName: CUSTOMERS_TABLE,
     auditTableName: AUDIT_TABLE,
     stripe,
     sendWelcomeEmail: noopEmail,
+    generateCustomerId: () => "pq_cust_01HYZ6Q4X6DJP2X9Q9FQKX4T7B",
     logger: noopLogger,
     sleep: async () => {},
   });
@@ -154,6 +176,15 @@ test("happy path: provisions envelope + audit row, then replay is no-op", async 
   assert.ok(envelopeRow.Item);
   assert.equal(envelopeRow.Item?.tier, "free");
   assert.equal(envelopeRow.Item?.hasFirstKey, false);
+  assert.equal(envelopeRow.Item?.customerId, "pq_cust_01HYZ6Q4X6DJP2X9Q9FQKX4T7B");
+
+  const customerRow = await ddb.send(
+    new GetCommand({ TableName: CUSTOMERS_TABLE, Key: { orgId } }),
+  );
+  assert.equal(customerRow.Item?.customerId, "pq_cust_01HYZ6Q4X6DJP2X9Q9FQKX4T7B");
+  assert.equal(customerRow.Item?.lagoExternalCustomerId, "pq_cust_01HYZ6Q4X6DJP2X9Q9FQKX4T7B");
+  assert.equal(customerRow.Item?.stripeCustomerId, "cus_int_1");
+  assert.equal(customerRow.Item?.status, "active");
 
   const auditRows = await ddb.send(
     new QueryCommand({
@@ -194,12 +225,14 @@ test("suppressed owner email skips the welcome email without blocking provisioni
   const service = createProvisioningService({
     ddb,
     keysTableName: KEYS_TABLE,
+    customersTableName: CUSTOMERS_TABLE,
     auditTableName: AUDIT_TABLE,
     stripe,
     sendWelcomeEmail: async () => {
       senderCalled = true;
       return true;
     },
+    generateCustomerId: () => "pq_cust_01HYZ6Q4X6DJP2X9Q9FQKX4T7C",
     logger: noopLogger,
     sleep: async () => {},
   });

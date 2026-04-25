@@ -88,6 +88,7 @@ export interface ApiKeySubscriptionItems {
 
 export interface ApiKeyRecord {
   apiKeyHash: string;
+  customerId?: string;
   keyPrefix: string;
   ownerEmail: string;
   orgId: string;
@@ -162,7 +163,8 @@ export interface RedirectRecord {
 
 export interface OrgEnvelopeRecord {
   apiKeyHash: string;
-  stripeCustomerId: string;
+  customerId?: string;
+  stripeCustomerId: string | null;
   ownerEmail: string;
   tier: Tier;
   products: string[];
@@ -171,6 +173,24 @@ export interface OrgEnvelopeRecord {
   subscriptionItems: ApiKeySubscriptionItems;
   hasFirstKey: boolean;
   completedAt: string;
+}
+
+export type CustomerStatus = "active" | "archived" | "migration_conflict";
+
+export interface CustomerRecord {
+  orgId: string;
+  customerId: string;
+  lagoExternalCustomerId: string;
+  lagoCustomerId: string | null;
+  stripeCustomerId: string | null;
+  ownerEmail: string;
+  status: CustomerStatus;
+  createdAt: string;
+  updatedAt: string;
+  backfilledAt?: string;
+  archivedAt?: string;
+  conflictReason?: string;
+  conflictMetadata?: Record<string, unknown>;
 }
 
 export interface AuditRecord {

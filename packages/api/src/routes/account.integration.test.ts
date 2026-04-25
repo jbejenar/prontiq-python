@@ -44,6 +44,7 @@ const DDB_URL = process.env.DYNAMODB_TEST_URL ?? "http://localhost:8000";
 const SUFFIX = Date.now().toString();
 const KEYS_TABLE = `prontiq-keys-test-${SUFFIX}`;
 const AUDIT_TABLE = `prontiq-audit-test-${SUFFIX}`;
+const CUSTOMERS_TABLE = `prontiq-customers-test-${SUFFIX}`;
 
 const ddbRaw = new DynamoDBClient({
   endpoint: DDB_URL,
@@ -85,7 +86,25 @@ before(async () => {
       BillingMode: "PAY_PER_REQUEST",
     }),
   );
-  for (const tableName of [KEYS_TABLE, AUDIT_TABLE]) {
+  await ddbRaw.send(
+    new CreateTableCommand({
+      TableName: CUSTOMERS_TABLE,
+      AttributeDefinitions: [
+        { AttributeName: "orgId", AttributeType: "S" },
+        { AttributeName: "customerId", AttributeType: "S" },
+      ],
+      KeySchema: [{ AttributeName: "orgId", KeyType: "HASH" }],
+      GlobalSecondaryIndexes: [
+        {
+          IndexName: "customerId-index",
+          KeySchema: [{ AttributeName: "customerId", KeyType: "HASH" }],
+          Projection: { ProjectionType: "ALL" },
+        },
+      ],
+      BillingMode: "PAY_PER_REQUEST",
+    }),
+  );
+  for (const tableName of [KEYS_TABLE, AUDIT_TABLE, CUSTOMERS_TABLE]) {
     for (let i = 0; i < 20; i++) {
       const { Table } = await ddbRaw.send(new DescribeTableCommand({ TableName: tableName }));
       if (Table?.TableStatus === "ACTIVE") break;
@@ -97,6 +116,7 @@ before(async () => {
 after(async () => {
   await ddbRaw.send(new DeleteTableCommand({ TableName: KEYS_TABLE }));
   await ddbRaw.send(new DeleteTableCommand({ TableName: AUDIT_TABLE }));
+  await ddbRaw.send(new DeleteTableCommand({ TableName: CUSTOMERS_TABLE }));
 });
 
 interface ClerkUserStub {
@@ -186,6 +206,7 @@ function buildApp(opts: BuildAppOpts) {
   const service = createProvisioningService({
     ddb: opts.ddbOverride ?? ddb,
     keysTableName: KEYS_TABLE,
+    customersTableName: CUSTOMERS_TABLE,
     auditTableName: AUDIT_TABLE,
     stripe: opts.stripe,
     sendWelcomeEmail: noopEmail,

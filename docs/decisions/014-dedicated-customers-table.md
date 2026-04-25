@@ -12,7 +12,8 @@ The Lago migration needs deterministic reverse lookups by platform customer ID, 
 
 ## Decision
 
-Create a dedicated `prontiq-customers` table in the later runtime implementation ticket.
+Create a dedicated `prontiq-customers` table as part of the Lago migration
+runtime substrate.
 
 Target table shape:
 
@@ -36,7 +37,10 @@ Attributes:
   conflictReason           string?
 ```
 
-Runtime tickets must denormalize `customerId` onto `ORG#{orgId}` envelopes and API key records so API-key-authenticated requests can emit billing events without reading `prontiq-customers` on the hot path.
+Runtime code must denormalize `customerId` onto `ORG#{orgId}` envelopes and API
+key records so API-key-authenticated requests can emit billing events without
+reading `prontiq-customers` on the hot path. P1B.15 implements that substrate
+for new provisioning and provides `backfill:customers` for legacy records.
 
 ## Considered and Rejected
 
@@ -46,6 +50,6 @@ Runtime tickets must denormalize `customerId` onto `ORG#{orgId}` envelopes and A
 
 ## Consequences
 
-- A future infrastructure ticket must add `prontiq-customers` and `customerId-index`.
+- `P1B.15` adds `prontiq-customers` and `customerId-index`.
 - Future account deletion and GDPR purge code must include `prontiq-customers`.
-- Future hot-path billing emission must use denormalized `customerId`, not a customer-table lookup.
+- Hot-path billing emission must use denormalized `customerId`, not a customer-table lookup.

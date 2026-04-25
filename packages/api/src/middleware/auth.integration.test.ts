@@ -7,10 +7,11 @@ import type { ExecutionContext } from "hono";
 import {
   auth,
   __resetRateLimiterForTesting,
+  __setBillingEventEnqueuerForTesting,
   __setDdbForTesting,
   __setQuotaEmailEnqueuerForTesting,
 } from "./auth.js";
-import type { ApiKeyRecord, QuotaEmailTask, RedirectRecord, UsageCounterRecord } from "@prontiq/shared";
+import type { ApiKeyRecord, BillingUsageEventV1, QuotaEmailTask, RedirectRecord, UsageCounterRecord } from "@prontiq/shared";
 import { hashKey } from "@prontiq/shared";
 
 const DDB_URL = process.env.DYNAMODB_TEST_URL ?? "http://localhost:8000";
@@ -208,15 +209,23 @@ before(async () => {
 
 after(async () => {
   __setDdbForTesting(undefined);
+  __setBillingEventEnqueuerForTesting(undefined);
   delete process.env.KEYS_TABLE_NAME;
   delete process.env.USAGE_TABLE_NAME;
+  delete process.env.BILLING_EVENTS_ENABLED;
+  delete process.env.BILLING_EVENTS_QUEUE_URL;
+  delete process.env.PRONTIQ_STAGE;
   await client.send(new DeleteTableCommand({ TableName: KEYS_TABLE }));
   await client.send(new DeleteTableCommand({ TableName: USAGE_TABLE }));
 });
 
 beforeEach(async () => {
   __resetRateLimiterForTesting();
+  __setBillingEventEnqueuerForTesting(undefined);
   __setQuotaEmailEnqueuerForTesting(undefined);
+  delete process.env.BILLING_EVENTS_ENABLED;
+  delete process.env.BILLING_EVENTS_QUEUE_URL;
+  delete process.env.PRONTIQ_STAGE;
 });
 
 test("missing API key returns MISSING_API_KEY", async () => {
@@ -465,6 +474,80 @@ test("redirect fallback authenticates with the new active key", async () => {
 
   const usageOnOldHash = await getUsage(hashKey(oldRawKey), `address#${CURRENT_MONTH}`);
   assert.equal(usageOnOldHash, undefined);
+});
+
+test("billing event emission enqueues after usage enforcement succeeds", async () => {
+  process.env.BILLING_EVENTS_ENABLED = "true";
+  process.env.BILLING_EVENTS_QUEUE_URL = "https://sqs.ap-southeast-2.amazonaws.com/123/billing-events";
+  process.env.PRONTIQ_STAGE = "test";
+  const enqueued: BillingUsageEventV1[] = [];
+  __setBillingEventEnqueuerForTesting(async (event) => {
+    enqueued.push(event);
+  });
+
+  const rawKey = "pq_test_billing_event_key_123";
+  const record = await seedKey(rawKey, {
+    customerId: "pq_cust_01HYZ6Q4X6DJP2X9Q9FQKX4T7D",
+    quotaPerProduct: 10,
+    rateLimit: 10,
+    tier: "starter",
+  });
+
+  const response = await request("/v1/address/autocomplete?query=test", rawKey);
+
+  assert.equal(response.status, 200);
+  assert.equal(enqueued.length, 1);
+  assert.equal(enqueued[0]?.customerId, "pq_cust_01HYZ6Q4X6DJP2X9Q9FQKX4T7D");
+  assert.equal(enqueued[0]?.apiKeyHash, record.apiKeyHash);
+  assert.equal(enqueued[0]?.billingEndpointKey, "address.autocomplete");
+  assert.equal(enqueued[0]?.creditDelta, 1);
+  assert.equal(enqueued[0]?.requestCountAfterIncrement, 1);
+  assert.equal(enqueued[0]?.source.path, "/v1/address/autocomplete");
+});
+
+test("billing event enqueue failure returns 500 after the local usage increment", async () => {
+  process.env.BILLING_EVENTS_ENABLED = "true";
+  process.env.BILLING_EVENTS_QUEUE_URL = "https://sqs.ap-southeast-2.amazonaws.com/123/billing-events";
+  __setBillingEventEnqueuerForTesting(async () => {
+    throw new Error("sqs unavailable");
+  });
+
+  const rawKey = "pq_test_billing_event_failure_key_123";
+  const record = await seedKey(rawKey, {
+    customerId: "pq_cust_01HYZ6Q4X6DJP2X9Q9FQKX4T7E",
+    quotaPerProduct: 10,
+    rateLimit: 10,
+    tier: "starter",
+  });
+
+  const response = await request("/v1/address/autocomplete", rawKey);
+  const body = (await response.json()) as { error: { code: string; details?: { reason?: string } } };
+
+  assert.equal(response.status, 500);
+  assert.equal(body.error.code, "INTERNAL_ERROR");
+  assert.equal(body.error.details?.reason, "billing_event_enqueue_failed");
+  const usage = await getUsage(record.apiKeyHash, `address#${CURRENT_MONTH}`);
+  assert.equal(usage?.requestCount, 1);
+});
+
+test("billing event emission fails closed before usage increment when customerId is missing", async () => {
+  process.env.BILLING_EVENTS_ENABLED = "true";
+  process.env.BILLING_EVENTS_QUEUE_URL = "https://sqs.ap-southeast-2.amazonaws.com/123/billing-events";
+  const rawKey = "pq_test_billing_event_missing_customer_key_123";
+  const record = await seedKey(rawKey, {
+    quotaPerProduct: 10,
+    rateLimit: 10,
+    tier: "starter",
+  });
+
+  const response = await request("/v1/address/autocomplete", rawKey);
+  const body = (await response.json()) as { error: { code: string; details?: { reason?: string } } };
+
+  assert.equal(response.status, 500);
+  assert.equal(body.error.code, "INTERNAL_ERROR");
+  assert.equal(body.error.details?.reason, "billing_event_configuration_missing");
+  const usage = await getUsage(record.apiKeyHash, `address#${CURRENT_MONTH}`);
+  assert.equal(usage, undefined);
 });
 
 test("redirect to inactive key is rejected", async () => {

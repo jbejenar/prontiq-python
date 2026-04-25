@@ -45,6 +45,8 @@ Existing alarms retained:
 - `PqQuotaEmailWorkerErrors`
 - `PqBillingCronErrors` (legacy Stripe billing path)
 - `PqMonthCloseErrors` (legacy Stripe billing path)
+- `PqBillingEventsDlqVisible`
+- `PqBillingEventsOldestMessage`
 
 New Phase 1 alarms:
 
@@ -88,6 +90,7 @@ Widgets:
 - API Lambda error rate
 - OpenSearch cluster yellow/red state
 - OpenSearch free storage
+- billing events source queue age / visible messages / DLQ visible messages
 - critical Lambda error series
 
 ## Honeycomb Verification

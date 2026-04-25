@@ -1,5 +1,6 @@
 import { ConditionalCheckFailedException, DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { InvokeCommand, LambdaClient } from "@aws-sdk/client-lambda";
+import { SendMessageCommand, SQSClient } from "@aws-sdk/client-sqs";
 import { DynamoDBDocumentClient, GetCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import type { Context } from "hono";
 import { createMiddleware } from "hono/factory";
@@ -9,11 +10,20 @@ import {
   PRODUCT_REGISTRY,
   QUOTA_EMAIL_PENDING_LEASE_MINUTES,
   QUOTA_WARNING_THRESHOLD_FRACTION,
+  billingUsageEventV1Schema,
   createLogger,
+  deriveBillingUsageEventId,
   getBillingEndpointsForProduct,
 } from "@prontiq/shared";
 import { hashKey } from "@prontiq/shared";
-import type { ApiKeyRecord, QuotaEmailTask, RedirectRecord, UsageCounterRecord } from "@prontiq/shared";
+import type {
+  ApiKeyRecord,
+  BillingEndpointDefinition,
+  BillingUsageEventV1,
+  QuotaEmailTask,
+  RedirectRecord,
+  UsageCounterRecord,
+} from "@prontiq/shared";
 import { __resetRateLimiterForTesting as resetBurstRateLimiterForTesting, applyBurstRateLimit } from "./rate-limit.js";
 import { captureDynamoClient } from "../tracing.js";
 
@@ -31,7 +41,9 @@ type UsageUpdateResult = {
 
 let ddb: DynamoDBDocumentClient | undefined;
 let lambda: LambdaClient | undefined;
+let sqs: SQSClient | undefined;
 let quotaEmailEnqueuerOverride: ((task: QuotaEmailTask) => Promise<void>) | undefined;
+let billingEventEnqueuerOverride: ((event: BillingUsageEventV1) => Promise<void>) | undefined;
 const logger = createLogger("api-auth");
 
 const REDIRECT_SCOPE = "REDIRECT";
@@ -59,6 +71,13 @@ function getLambda(): LambdaClient {
   return lambda;
 }
 
+function getSqs(): SQSClient {
+  if (!sqs) {
+    sqs = new SQSClient({ maxAttempts: 2 });
+  }
+  return sqs;
+}
+
 function getKeysTableName(): string {
   return process.env.KEYS_TABLE_NAME ?? "prontiq-keys";
 }
@@ -69,6 +88,14 @@ function getUsageTableName(): string {
 
 function getQuotaEmailWorkerFunctionName(): string | null {
   return process.env.QUOTA_EMAIL_WORKER_FUNCTION_NAME ?? null;
+}
+
+function getBillingEventsQueueUrl(): string | null {
+  return process.env.BILLING_EVENTS_QUEUE_URL ?? null;
+}
+
+function billingEventsEnabled(): boolean {
+  return process.env.BILLING_EVENTS_ENABLED === "true";
 }
 
 function getMonthKey(now: Date): string {
@@ -115,7 +142,10 @@ function productHasBillingDefinitions(product: string): boolean {
   return getBillingEndpointsForProduct(product).length > 0;
 }
 
-function getCreditCost(path: string, product: string): number | null {
+function getBillingEndpoint(path: string, product: string): {
+  billingEndpointKey: string;
+  definition: BillingEndpointDefinition;
+} | null {
   if (!productHasBillingDefinitions(product)) {
     return null;
   }
@@ -127,7 +157,7 @@ function getCreditCost(path: string, product: string): number | null {
   if (!definition || definition.product !== product) {
     return null;
   }
-  return definition.creditCost;
+  return { billingEndpointKey: billingKey, definition };
 }
 
 function getWarningThreshold(limit: number): number {
@@ -204,6 +234,67 @@ async function enqueueQuotaEmailTask(task: QuotaEmailTask): Promise<void> {
       Payload: Buffer.from(JSON.stringify(task)),
     }),
   );
+}
+
+async function enqueueBillingEvent(event: BillingUsageEventV1): Promise<void> {
+  if (billingEventEnqueuerOverride) {
+    await billingEventEnqueuerOverride(event);
+    return;
+  }
+  const queueUrl = getBillingEventsQueueUrl();
+  if (!queueUrl) {
+    throw new Error("BILLING_EVENTS_QUEUE_URL is required when billing events are enabled");
+  }
+  await getSqs().send(
+    new SendMessageCommand({
+      QueueUrl: queueUrl,
+      MessageBody: JSON.stringify(event),
+    }),
+  );
+}
+
+function buildBillingEvent(
+  c: Context,
+  record: ApiKeyRecord,
+  product: string,
+  usageScope: string,
+  usageResult: UsageUpdateResult,
+  billingEndpointKey: string,
+  definition: BillingEndpointDefinition,
+  now: Date,
+): BillingUsageEventV1 {
+  if (!record.customerId) {
+    throw new Error("customerId missing from API key record");
+  }
+  const eventId = deriveBillingUsageEventId({
+    apiKeyHash: record.apiKeyHash,
+    billingEndpointKey,
+    creditDelta: usageResult.creditCost,
+    customerId: record.customerId,
+    requestCountAfterIncrement: usageResult.requestCount,
+    usageScope,
+  });
+  return billingUsageEventV1Schema.parse({
+    version: 1,
+    eventId,
+    occurredAt: now.toISOString(),
+    customerId: record.customerId,
+    orgId: record.orgId,
+    apiKeyHash: record.apiKeyHash,
+    keyPrefix: record.keyPrefix,
+    product,
+    billingEndpointKey,
+    meterEventName: definition.meterEventName,
+    creditDelta: usageResult.creditCost,
+    usageScope,
+    requestCountAfterIncrement: usageResult.requestCount,
+    source: {
+      requestId: c.get("requestId") ?? "unknown",
+      method: c.req.method,
+      path: c.req.path,
+      stage: process.env.PRONTIQ_STAGE ?? "unknown",
+    },
+  });
 }
 
 function getExecutionCtxWaitUntil(c: Context): ((promise: Promise<unknown>) => void) | null {
@@ -407,6 +498,12 @@ export function __setQuotaEmailEnqueuerForTesting(
   quotaEmailEnqueuerOverride = enqueuer;
 }
 
+export function __setBillingEventEnqueuerForTesting(
+  enqueuer: ((event: BillingUsageEventV1) => Promise<void>) | undefined,
+): void {
+  billingEventEnqueuerOverride = enqueuer;
+}
+
 export function __resetRateLimiterForTesting(): void {
   resetBurstRateLimiterForTesting();
 }
@@ -477,8 +574,8 @@ export function auth() {
       return rateLimitResponse;
     }
 
-    const creditCost = getCreditCost(c.req.path, product);
-    if (creditCost == null) {
+    const billingEndpoint = getBillingEndpoint(c.req.path, product);
+    if (billingEndpoint == null) {
       return c.json(
         {
           error: {
@@ -494,7 +591,33 @@ export function auth() {
         500,
       );
     }
-    const usageResult = await incrementUsage(record, creditCost, product, now);
+    if (billingEventsEnabled()) {
+      if (!record.customerId || !getBillingEventsQueueUrl()) {
+        logger.error("Billing event emission is enabled but customerId or queue URL is missing", {
+          apiKeyHash: record.apiKeyHash,
+          hasCustomerId: Boolean(record.customerId),
+          hasQueueUrl: Boolean(getBillingEventsQueueUrl()),
+          orgId: record.orgId,
+          product,
+        });
+        return c.json(
+          {
+            error: {
+              ...ERROR_CODES.INTERNAL_ERROR,
+              code: "INTERNAL_ERROR" as const,
+              request_id: c.get("requestId"),
+              details: {
+                product,
+                reason: "billing_event_configuration_missing",
+              },
+            },
+          },
+          500,
+        );
+      }
+    }
+
+    const usageResult = await incrementUsage(record, billingEndpoint.definition.creditCost, product, now);
     const usageScope = `${product}#${getMonthKey(now)}`;
     if (usageResult.quotaExceeded && record.quotaPerProduct != null) {
       setRateLimitHeaders(
@@ -538,6 +661,51 @@ export function auth() {
 
     if (usageResult.overage) {
       c.header("X-RateLimit-Over", "true");
+    }
+
+    if (billingEventsEnabled()) {
+      let event: BillingUsageEventV1 | undefined;
+      try {
+        event = buildBillingEvent(
+          c,
+          record,
+          product,
+          usageScope,
+          usageResult,
+          billingEndpoint.billingEndpointKey,
+          billingEndpoint.definition,
+          now,
+        );
+        await enqueueBillingEvent(event);
+      } catch (error) {
+        logger.error("Billing event enqueue failed after local usage increment", {
+          apiKeyHash: record.apiKeyHash,
+          billingEndpointKey: billingEndpoint.billingEndpointKey,
+          creditDelta: usageResult.creditCost,
+          customerId: record.customerId,
+          error: error instanceof Error ? error.message : String(error),
+          eventId: event?.eventId,
+          meterEventName: billingEndpoint.definition.meterEventName,
+          orgId: record.orgId,
+          requestId: c.get("requestId"),
+          requestCountAfterIncrement: usageResult.requestCount,
+          usageScope,
+        });
+        return c.json(
+          {
+            error: {
+              ...ERROR_CODES.INTERNAL_ERROR,
+              code: "INTERNAL_ERROR" as const,
+              request_id: c.get("requestId"),
+              details: {
+                product,
+                reason: "billing_event_enqueue_failed",
+              },
+            },
+          },
+          500,
+        );
+      }
     }
 
     const quotaEmailTasks = getQuotaEmailTasks(record, product, usageScope, usageResult, now);

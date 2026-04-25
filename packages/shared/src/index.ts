@@ -13,6 +13,8 @@ export type {
   StripeWebhookCompletionRecord,
   RedirectRecord,
   OrgEnvelopeRecord,
+  CustomerRecord,
+  CustomerStatus,
   AuditRecord,
   Tier,
   ApiErrorBody,
@@ -56,6 +58,16 @@ export {
   KEY_SUFFIX_BYTES,
 } from "./keys.js";
 export type { GeneratedKey } from "./keys.js";
+
+export {
+  BILLING_EVENT_VERSION,
+  billingUsageEventV1Schema,
+  deriveBillingUsageEventId,
+} from "./billing-events.js";
+export type {
+  BillingEventIdInput,
+  BillingUsageEventV1,
+} from "./billing-events.js";
 
 export {
   manifestV1Schema,

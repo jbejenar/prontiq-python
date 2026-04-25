@@ -1063,8 +1063,8 @@ API keys are generated, hashed, verified, and stored entirely in DynamoDB. No ve
 
 #### 5.5.1 DynamoDB Schema
 
-Current runtime uses four tables plus one registry item. The Lago migration adds
-the target `prontiq-customers` mapping table. All are on-demand
+Current runtime uses five tables plus registry items. The Lago migration added
+the `prontiq-customers` mapping table in P1B.15. All are on-demand
 (pay-per-request). Only `prontiq-keys` and `prontiq-usage` serve the request
 hot path.
 
@@ -1072,7 +1072,7 @@ hot path.
 | -------------------------- | --------------------------------------------------------------------------------------------- |
 | `prontiq-keys`             | API key metadata + billing registry + org-envelope record + Stripe webhook completion markers |
 | `prontiq-usage`            | Usage counters + email flags + billing push state + REDIRECT records                          |
-| `prontiq-customers`        | Target customer mapping across Clerk orgs, Prontiq `customerId`, Lago, and Stripe             |
+| `prontiq-customers`        | Customer mapping across Clerk orgs, Prontiq `customerId`, Lago, and Stripe                    |
 | `prontiq-audit`            | Append-only lifecycle audit log                                                               |
 | `prontiq-ses-suppressions` | Email bounce/complaint suppression                                                            |
 
@@ -1287,12 +1287,12 @@ GSI:  newHash-redirect-index
 
 > **Why 5 minutes?** Long enough to drain genuinely in-flight requests (Lambda 15-min max + DDB eventual-consistency window). Short enough that a leaked + rotated key has a tightly bounded exposure window. Tunable via `REDIRECT_AUTH_GRACE_SECONDS` env var if dev-mode needs longer.
 
-##### Table: `prontiq-customers` (target Lago migration)
+##### Table: `prontiq-customers` (Lago migration)
 
-The target customer mapping table is introduced by the Lago migration sequence,
-not by the current legacy Stripe runtime. It is the canonical platform-owned
-join between Clerk organizations, Prontiq customer identity, Lago customer
-records, and migration-era Stripe payment linkage.
+The customer mapping table is introduced by the Lago migration sequence, not by
+the legacy Stripe runtime. It is the canonical platform-owned join between
+Clerk organizations, Prontiq customer identity, Lago customer records, and
+migration-era Stripe payment linkage.
 
 ```text
 PK:   orgId                  string    Clerk organization id
@@ -1317,8 +1317,9 @@ Clerk `orgId`, Stripe `cus_...`, or Lago `lago_id`. Provider identifiers are
 linkage fields and may be absent during rollout, provider outage, or migration.
 
 Hot-path invariant: API-key-authenticated requests must not read
-`prontiq-customers`. Later runtime tickets must denormalize `customerId` onto
-`ORG#{orgId}` envelopes and API key records so queued billing events can carry
+`prontiq-customers`. New org provisioning writes `customerId` onto the
+`ORG#{orgId}` envelope and `backfill:customers` denormalizes `customerId` onto
+legacy org envelopes and API key records, so queued billing events can carry
 the customer identifier after the existing `prontiq-keys` hot-path read.
 
 #### 5.5.2 Key Operations
@@ -1467,11 +1468,16 @@ Backfill rules for existing orgs:
    `customerId` and update linkage fields only when the provider relationship is
    unambiguous.
 2. Otherwise read the `ORG#{orgId}` envelope from `prontiq-keys`, preserve
-   `ownerEmail` and `stripeCustomerId`, and create exactly one
+   `ownerEmail`, preserve string `stripeCustomerId` when present, store
+   `stripeCustomerId = null` when it is absent, and create exactly one
    `pq_cust_<ulid>` for that org.
-3. If duplicate `orgId`, duplicate `stripeCustomerId`, or mismatched existing
-   `customerId` evidence appears, write `status = "migration_conflict"` with
-   `conflictReason` and stop automated Lago customer creation for that org.
+3. Duplicate provider-linkage detection is global across the scanned
+   `ORG#{orgId}` envelopes and existing `prontiq-customers` rows. If duplicate
+   `orgId`, duplicate non-null `stripeCustomerId`, mismatched existing
+   customer-row `customerId`, or mismatched API-key `customerId` evidence
+   appears, write `status = "migration_conflict"` with `conflictReason` and
+   stop automated Lago customer creation for every involved org. Null or
+   missing Stripe linkage is not treated as duplicate provider evidence.
 4. Operator review resolves conflicts before any Lago customer or subscription
    mutation is attempted.
 
@@ -1486,6 +1492,33 @@ Status values describe customer-mapping lifecycle only:
 Billing delinquency remains separate state (`paymentOverdue` and later
 Lago-derived enforcement state). Do not overload customer lifecycle status for
 payment status.
+
+#### 5.6.0.2 Billing Event Buffer Contract
+
+`P1B.15` implements the platform-owned billing-event buffer. The API hot path
+still enforces credits synchronously in DynamoDB, then optionally emits
+`BillingUsageEventV1` to SQS when `BILLING_EVENTS_ENABLED=true`.
+
+The event contract is:
+
+- `eventId`: deterministic `bevt_...` derived from `customerId`, `apiKeyHash`,
+  usage scope, cumulative request count after increment, endpoint key, and
+  credit delta
+- `customerId`: required Prontiq-owned customer identity
+- API key identity: `apiKeyHash` and `keyPrefix` only; never the raw API key
+- metric identity: product, billing endpoint key, and Lago meter event name
+- source metadata: request id, method, path without query string, and stage
+
+The API handler never calls Lago. If local enforcement fails, no event is
+queued. If local enforcement succeeds and the SQS write fails, the handler
+returns `500 INTERNAL_ERROR` after the local usage increment and logs enough
+repair context for operator follow-up. This is deliberate: successful queue
+write is part of the request admission boundary once event emission is enabled.
+
+The SQS queue is standard, not FIFO. Duplicate delivery is expected and handled
+by deterministic event identity in `P1B.16`. The queue retains messages for 14
+days, has a DLQ after five failed receives, and both queue age and DLQ visible
+message count are alarmed in CloudWatch.
 
 #### 5.6.1 Legacy Stripe Billing Model (Current Shipped Path)
 

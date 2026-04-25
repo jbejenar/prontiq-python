@@ -1,9 +1,9 @@
 # NEXT-WORK.md — Active Sprint
 
 > Extracted from ROADMAP.md. This is what agents should work on NOW.
-> Last updated: 2026-04-25 (P1B.14 customer identity contract shipped)
+> Last updated: 2026-04-25 (P1B.15 SQS billing-event buffer shipped)
 
-## Current Phase: P1B.15
+## Current Phase: P1B.16
 
 ### What's Live
 
@@ -29,10 +29,16 @@
 - **P1B.09 complete (2026-04-19).** Per-key burst limiting is now explicitly extracted into `packages/api/src/middleware/rate-limit.ts`, remains enforced in the live auth path, and is covered by both unit and integration tests for burst exhaustion, refill, key isolation, and no orphan usage increments on `RATE_LIMITED`.
 - **P1B.12 complete (2026-04-19).** The auth middleware integration suite is now reconciled to the real post-cutover surface: direct unknown/revoked key failures, REDIRECT success writing usage on `newHash`, no orphan usage on pre-increment failures, and the atomic free-tier quota race are all covered in `packages/api/src/middleware/auth.integration.test.ts`. The roadmap ticket no longer claims webhook idempotency, first-key creation, or a standalone seed script.
 - **P1B.14 complete (2026-04-25).** The Lago migration now has a platform-owned
-  `customerId` contract (`pq_cust_<ulid>`), target `prontiq-customers` mapping
+  `customerId` contract (`pq_cust_<ulid>`), `prontiq-customers` mapping
   shape, `lagoExternalCustomerId = customerId`, nullable provider linkage for
   Lago `lago_id` and Stripe `cus_...`, backfill/conflict rules, and the
   invariant that API-key request auth must not read `prontiq-customers`.
+- **P1B.15 complete (2026-04-25).** `prontiq-customers` infra is declared,
+  new provisioning writes `customerId` plus a customer row atomically,
+  `backfill:customers` can dry-run/apply legacy envelope/API-key
+  denormalization, and the address API can emit `BillingUsageEventV1` to
+  standard SQS behind `BILLING_EVENTS_ENABLED`. Default remains `false` until
+  the P1B.16 Lago forwarder consumes the queue.
 - **P1F.02 complete (2026-04-19).** The prod observability baseline is live and verified: `PqIngestAlerts` prod email subscriptions via `ALERT_EMAILS`, `prontiq-production` dashboard, prod alarms for address API 5xx/Lambda error rate and OpenSearch yellow/red/low-storage, `PqApi` X-Ray tracing with DynamoDB + OpenSearch segments, and structured JSON logs across Lambda execution paths. SNS email delivery was verified by forcing `PqApiLambdaErrorRate` to `ALARM` and confirming receipt on a confirmed subscriber.
 - **P1F.03 complete (2026-04-20).** `@prontiq/observability` is live in `dev` and `prod`, Honeycomb traces are verified for `prontiq-api`, `prontiq-webhooks`, `prontiq-billing`, and `prontiq-ingestion` in both environments, and the deployed-stage rollback path is `HONEYCOMB_ENABLED=false` rather than secret removal.
 - **P1C.07 complete (2026-04-20).** `apps/landing` and `apps/console` now have Tailwind v3.4, app-local shadcn/ui primitives, dark mode, responsive shell foundations, and app-local Vitest + Testing Library. `apps/console` now carries an env-gated real Clerk auth boundary that builds/tests cleanly without Clerk keys and enables real sign-in when they are present.
@@ -89,7 +95,7 @@ POST /v1/account/setup  (Clerk JWT; not API key — recovery provisioning)
 - ~~P1B.08 — SES suppression / bounce handling~~ ✅ shipped (2026-04-19)
 - ~~P1B.09 — burst rate limiter middleware~~ ✅ shipped (2026-04-19)
 - ~~P1B.14 — CustomerId + customer mapping contract~~ ✅ shipped (2026-04-25)
-- **P1B.15 — SQS billing event buffer + hot-path emitter** → next
+- ~~P1B.15 — SQS billing event buffer + hot-path emitter~~ ✅ shipped (2026-04-25)
 - **P1B.16 — Lago event forwarder worker + idempotent transaction IDs**
 - **P1B.17 — Lago webhook sync + credit-counter reconciliation**
 - **P1B.18 — Console billing proxy surfaces + plan changes**
@@ -111,19 +117,18 @@ POST /v1/account/setup  (Clerk JWT; not API key — recovery provisioning)
 
 Recommended priority:
 
-1. P1B.15 — add the SQS billing event buffer and hot-path emitter using the
-   P1B.14 `customerId` contract.
-2. P1B.16 — forward queued events into Lago with deterministic transaction IDs.
-3. P1B.17 / P1B.18 — reconcile Lago state back into platform counters and expose the console billing surfaces.
-4. P1B.19 / P1B.20 — cut over the legacy Stripe billing path and remove the retired config/surfaces.
-5. P1C.02 / P1C.03 — continue the console overview and API-key experience after the commercial event path is underway.
+1. P1B.16 — forward queued events into Lago with deterministic transaction IDs.
+2. P1B.17 / P1B.18 — reconcile Lago state back into platform counters and expose the console billing surfaces.
+3. P1B.19 / P1B.20 — cut over the legacy Stripe billing path and remove the retired config/surfaces.
+4. P1C.02 / P1C.03 — continue the console overview and API-key experience after the commercial event path is underway.
 
-Before starting `P1B.15`, read:
+Before starting `P1B.16`, read:
 
 - `ARCHITECTURE.MD` (commercial implementation-status section + Lago target flow)
 - `docs/decisions/013-platform-owned-customer-id.md`
 - `docs/decisions/014-dedicated-customers-table.md`
 - `docs/decisions/015-lago-external-id-equals-customer-id.md`
+- `docs/decisions/016-standard-sqs-for-billing-events.md`
 - `docs/runbooks/lago-billing-events.md`
 - `docs/FRONTEND-STRATEGY.md`
 - `docs/prototypes/console-dashboard-v1.html`
@@ -133,9 +138,9 @@ Reason:
 - The legacy Stripe auth/billing path is effectively complete, but the forward
   commercial workstream is now the Lago migration sequence.
 - Honeycomb backend tracing is now implemented and verified in deployed `dev` and `prod`.
-- The next product milestone is queueing billing events with the pinned
-  `customerId` contract, without adding Lago or customer-table reads to the API
-  request path.
+- The next product milestone is forwarding queued billing events to Lago with
+  deterministic transaction IDs, without adding Lago or customer-table reads to
+  the API request path.
 - `P1C.02` and `P1C.03` still matter, but they should follow the commercial
   contract work instead of preceding it.
 - API Gateway caching remains a pragmatic performance/cost option if platform work is preferred over dashboard work.

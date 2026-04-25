@@ -260,6 +260,7 @@ jobs:
         env:
           AWS_EC2_METADATA_DISABLED: "true"
           AWS_SKIP_CREDENTIALS_VALIDATION: "true"
+          BILLING_EVENTS_ENABLED: ${{ vars.BILLING_EVENTS_ENABLED }}
           HONEYCOMB_ENABLED: ${{ vars.HONEYCOMB_ENABLED }}
           CLERK_ADMIN_ROLES: ${{ vars.CLERK_ADMIN_ROLES }}
           CLERK_ISSUER: ${{ vars.CLERK_ISSUER }}

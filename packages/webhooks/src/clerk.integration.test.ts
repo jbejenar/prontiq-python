@@ -31,6 +31,7 @@ const DDB_URL = process.env.DYNAMODB_TEST_URL ?? "http://localhost:8000";
 const SUFFIX = Date.now().toString();
 const KEYS_TABLE = `prontiq-keys-test-${SUFFIX}`;
 const AUDIT_TABLE = `prontiq-audit-test-${SUFFIX}`;
+const CUSTOMERS_TABLE = `prontiq-customers-test-${SUFFIX}`;
 const TEST_SECRET = "whsec_MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaSw";
 
 const ddbRaw = new DynamoDBClient({
@@ -73,7 +74,25 @@ before(async () => {
       BillingMode: "PAY_PER_REQUEST",
     }),
   );
-  for (const tableName of [KEYS_TABLE, AUDIT_TABLE]) {
+  await ddbRaw.send(
+    new CreateTableCommand({
+      TableName: CUSTOMERS_TABLE,
+      AttributeDefinitions: [
+        { AttributeName: "orgId", AttributeType: "S" },
+        { AttributeName: "customerId", AttributeType: "S" },
+      ],
+      KeySchema: [{ AttributeName: "orgId", KeyType: "HASH" }],
+      GlobalSecondaryIndexes: [
+        {
+          IndexName: "customerId-index",
+          KeySchema: [{ AttributeName: "customerId", KeyType: "HASH" }],
+          Projection: { ProjectionType: "ALL" },
+        },
+      ],
+      BillingMode: "PAY_PER_REQUEST",
+    }),
+  );
+  for (const tableName of [KEYS_TABLE, AUDIT_TABLE, CUSTOMERS_TABLE]) {
     for (let i = 0; i < 20; i++) {
       const { Table } = await ddbRaw.send(new DescribeTableCommand({ TableName: tableName }));
       if (Table?.TableStatus === "ACTIVE") break;
@@ -85,6 +104,7 @@ before(async () => {
 after(async () => {
   await ddbRaw.send(new DeleteTableCommand({ TableName: KEYS_TABLE }));
   await ddbRaw.send(new DeleteTableCommand({ TableName: AUDIT_TABLE }));
+  await ddbRaw.send(new DeleteTableCommand({ TableName: CUSTOMERS_TABLE }));
 });
 
 function makeStripeStub(idCounter: { value: number }): Stripe {
@@ -195,6 +215,7 @@ test("end-to-end: signed admin membership writes envelope + audit row, replay is
     ddb,
     keysTableName: KEYS_TABLE,
     auditTableName: AUDIT_TABLE,
+    customersTableName: CUSTOMERS_TABLE,
     stripe: makeStripeStub(counter),
     sendWelcomeEmail: noopEmail,
     logger: { error: () => {}, info: () => {}, warn: () => {} },
@@ -220,6 +241,17 @@ test("end-to-end: signed admin membership writes envelope + audit row, replay is
   assert.equal(envelope.Item?.hasFirstKey, false);
   assert.equal(envelope.Item?.stripeCustomerId, "cus_int_1");
   assert.equal(envelope.Item?.ownerEmail, "admin@example.com");
+  assert.match(envelope.Item?.customerId as string, /^pq_cust_[0-9A-HJKMNP-TV-Z]{26}$/);
+
+  const customer = await ddb.send(
+    new GetCommand({ TableName: CUSTOMERS_TABLE, Key: { orgId } }),
+  );
+  assert.ok(customer.Item, "customer mapping must be persisted");
+  assert.equal(customer.Item?.customerId, envelope.Item?.customerId);
+  assert.equal(customer.Item?.lagoExternalCustomerId, envelope.Item?.customerId);
+  assert.equal(customer.Item?.stripeCustomerId, "cus_int_1");
+  assert.equal(customer.Item?.ownerEmail, "admin@example.com");
+  assert.equal(customer.Item?.status, "active");
 
   const auditRows = await ddb.send(
     new QueryCommand({
@@ -257,6 +289,7 @@ test("end-to-end: invalid signature → 401, no DDB writes, no Stripe call", asy
     ddb,
     keysTableName: KEYS_TABLE,
     auditTableName: AUDIT_TABLE,
+    customersTableName: CUSTOMERS_TABLE,
     stripe: makeStripeStub(counter),
     sendWelcomeEmail: noopEmail,
     logger: { error: () => {}, info: () => {}, warn: () => {} },
@@ -288,6 +321,7 @@ test("end-to-end: non-admin membership (org:member) → 200 zero side-effects", 
     ddb,
     keysTableName: KEYS_TABLE,
     auditTableName: AUDIT_TABLE,
+    customersTableName: CUSTOMERS_TABLE,
     stripe: makeStripeStub(counter),
     sendWelcomeEmail: noopEmail,
     logger: { error: () => {}, info: () => {}, warn: () => {} },

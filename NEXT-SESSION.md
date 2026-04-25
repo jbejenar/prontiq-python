@@ -4,6 +4,30 @@
 > the time they were written, not the current source of truth. Use
 > `ROADMAP.md`, `NEXT-WORK.md`, and `README.md` for current execution status.
 
+## Session 33 — 2026-04-25
+
+**Focus:** P1B.16 Lago event forwarder worker + idempotent transaction IDs.
+
+### Completed
+
+- **P1B.15 is complete.** The platform now has `BillingUsageEventV1`,
+  deterministic `bevt_...` event IDs, standard SQS source/DLQ infra, and a
+  feature-flagged API emitter that runs only after DynamoDB enforcement
+  succeeds.
+- **Customer runtime substrate landed.** New org provisioning writes
+  `customerId` and `prontiq-customers` atomically, while existing legacy org
+  envelopes remain valid replays and are handled by `backfill:customers`.
+- **Operational guardrails landed.** Queue age/DLQ alarms, dashboard metrics,
+  runbook updates, and HINTS document the no-Lago-hot-path invariant.
+
+### Next session should start with
+
+1. Start `P1B.16 — Lago Event Forwarder Worker + Idempotent Transaction IDs`.
+2. Consume `BillingUsageEventV1` from SQS and use `eventId` as the Lago
+   transaction/idempotency input.
+3. Do not enable `BILLING_EVENTS_ENABLED=true` in prod until the worker is
+   deployed and replay-safe.
+
 ## Session 32 — 2026-04-25
 
 **Focus:** P1B.14 customer identity contract.
@@ -15,8 +39,8 @@
   `prontiq-customers` mapping table, and ADRs for customer-id ownership,
   customer-table ownership, and Lago `external_id = customerId`.
 - **Hot-path boundary is explicit.** API-key-authenticated requests must not read
-  `prontiq-customers`; later runtime tickets must denormalize `customerId` onto
-  org envelopes and key records before billing-event emission.
+  `prontiq-customers`; P1B.15 later denormalized `customerId` onto org envelopes
+  and key records before billing-event emission.
 - **Backfill and conflict behavior is documented.** Existing orgs backfill from
   `ORG#{orgId}` without creating duplicate Lago identities; ambiguous mappings
   enter `migration_conflict` for operator review.

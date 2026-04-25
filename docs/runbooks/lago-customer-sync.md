@@ -19,7 +19,7 @@ provisioning flow.
 
 `customerId` is platform-owned and formatted as `pq_cust_<ulid>`.
 
-The future `prontiq-customers` row is keyed by `orgId` and carries:
+The `prontiq-customers` row is keyed by `orgId` and carries:
 
 - `customerId`
 - `lagoExternalCustomerId` equal to `customerId`
@@ -40,16 +40,24 @@ customer primary key.
 
 ## Backfill procedure
 
-1. Resolve the Clerk org and read `prontiq-customers` by `orgId`.
-2. If a row exists, preserve `customerId` and only update unambiguous provider
+1. Run `CUSTOMERS_TABLE_NAME=<table> KEYS_TABLE_NAME=<table> pnpm --filter @prontiq/control-plane backfill:customers` for a dry run.
+2. Resolve the Clerk org and read `prontiq-customers` by `orgId`.
+3. If a row exists, preserve `customerId` and only update unambiguous provider
    linkage.
-3. If no row exists, read `ORG#{orgId}` from `prontiq-keys`, preserve
-   `ownerEmail` and `stripeCustomerId`, and create one `pq_cust_<ulid>` for the
-   org.
-4. If duplicate `orgId`, duplicate `stripeCustomerId`, or mismatched existing
-   `customerId` evidence is found, set `status = "migration_conflict"` with
-   `conflictReason`.
-5. Do not create or mutate the Lago customer while the mapping is in
+4. If no row exists, read `ORG#{orgId}` from `prontiq-keys`, preserve
+   `ownerEmail`, preserve string `stripeCustomerId` when present, store
+   `stripeCustomerId = null` when it is absent, and create one
+   `pq_cust_<ulid>` for the org.
+5. The backfill checks duplicate provider linkage across both scanned
+   `ORG#{orgId}` envelopes and existing `prontiq-customers` rows. If duplicate
+   `orgId`, duplicate non-null `stripeCustomerId`, mismatched existing
+   customer-row `customerId`, or API-key-level `customerId` mismatch is found,
+   leave denormalized key/envelope values untouched and set
+   `status = "migration_conflict"` with `conflictReason` for every involved
+   org. Null or missing Stripe linkage is valid migration input and is ignored
+   by duplicate-linkage detection.
+6. Apply with `CUSTOMERS_TABLE_NAME=<table> KEYS_TABLE_NAME=<table> pnpm --filter @prontiq/control-plane backfill:customers -- --apply`.
+7. Do not create or mutate the Lago customer while the mapping is in
    `migration_conflict`.
 
 ## Lago creation / lookup

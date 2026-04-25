@@ -10,6 +10,13 @@ export type {
   EmailInput,
 } from "./provisioning.js";
 
+export { generateCustomerId } from "./customer-identity.js";
+export { backfillCustomers } from "./customer-backfill.js";
+export type {
+  CustomerBackfillOptions,
+  CustomerBackfillStats,
+} from "./customer-backfill.js";
+
 export { buildAuditTransactItem, writeAudit, getAuditTtlSeconds } from "./audit.js";
 export type {
   AuditAction,

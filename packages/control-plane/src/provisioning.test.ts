@@ -121,7 +121,9 @@ const noopEmail: EmailSender = async () => true;
 
 const baseDeps = {
   keysTableName: "keys",
+  customersTableName: "customers",
   auditTableName: "audit",
+  generateCustomerId: () => "pq_cust_01HYZ6Q4X6DJP2X9Q9FQKX4T7A",
   logger: noopLogger,
   sleep: noopSleep,
   sendWelcomeEmail: noopEmail,
@@ -201,12 +203,16 @@ test("happy path: creates Stripe customer and writes envelope + audit transactio
   const txEntries = log.filter((e) => e.type === "TransactWrite");
   assert.equal(txEntries.length, 1);
   const tx = txEntries[0]?.args as {
-    TransactItems: { Put: { TableName: string; ConditionExpression: string } }[];
+    TransactItems: { Put: { TableName: string; Item?: Record<string, unknown>; ConditionExpression: string } }[];
   };
-  assert.equal(tx.TransactItems.length, 2);
+  assert.equal(tx.TransactItems.length, 3);
   assert.equal(tx.TransactItems[0]?.Put.TableName, "keys");
+  assert.equal(tx.TransactItems[0]?.Put.Item?.customerId, "pq_cust_01HYZ6Q4X6DJP2X9Q9FQKX4T7A");
   assert.equal(tx.TransactItems[0]?.Put.ConditionExpression, "attribute_not_exists(apiKeyHash)");
-  assert.equal(tx.TransactItems[1]?.Put.TableName, "audit");
+  assert.equal(tx.TransactItems[1]?.Put.TableName, "customers");
+  assert.equal(tx.TransactItems[1]?.Put.Item?.lagoExternalCustomerId, "pq_cust_01HYZ6Q4X6DJP2X9Q9FQKX4T7A");
+  assert.equal(tx.TransactItems[1]?.Put.ConditionExpression, "attribute_not_exists(orgId)");
+  assert.equal(tx.TransactItems[2]?.Put.TableName, "audit");
 });
 
 test("Stripe network/5xx errors (StripeAPIError, StripeConnectionError, StripeRateLimitError) are retryable_failure", async () => {

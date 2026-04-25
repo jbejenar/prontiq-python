@@ -116,7 +116,7 @@ apps/
 | Search         | OpenSearch 2.19 (managed)                                                                                                                                                                                  |
 | API Keys       | DynamoDB-native (`pq_live_` + SHA-256 hash-based lookup; live in prod)                                                                                                                                     |
 | Auth (portal)  | Clerk — webhook live in prod (`POST /webhooks/clerk`) AND JWT-authenticated `POST /v1/account/setup` recovery endpoint live in prod (P1B.05 complete)                                                      |
-| Billing        | Current live path: Stripe customer creation, subscription webhook, hourly billing cron, and month-close; target v-next path: Lago as commercial system of record with Stripe reduced to payment processing |
+| Billing        | Current live path: Stripe customer creation, subscription webhook, hourly billing cron, and month-close; target v-next path: Lago as commercial system of record with Stripe reduced to payment processing; SQS billing-event buffer is implemented and feature-flagged |
 | Frontend       | `apps/landing` live with proxy-backed demo + config-owned free tier + Clerk modal; `apps/console` has the env-gated Clerk shell base and is the future human billing surface                               |
 | Docs           | Mintlify at `docs.prontiq.dev` (live)                                                                                                                                                                      |
 | SDKs           | Speakeasy generates `@prontiq/sdk` (TypeScript) — npm publish pending NPM_TOKEN                                                                                                                            |
@@ -131,7 +131,7 @@ See [`ROADMAP.md`](ROADMAP.md) for the current execution plan.
 | ------- | ------------------------- | ------- | --------- |
 | **P0**  | Infrastructure Foundation | 6       | 6/6       |
 | **P1A** | API Core (Address)        | 13      | 10/13     |
-| **P1B** | Auth & Billing            | 22      | 13/22     |
+| **P1B** | Auth & Billing            | 22      | 15/22     |
 | **P1C** | Frontend Surfaces         | 9       | 3/9       |
 | **P1D** | Docs & SDK                | 5       | 2/5       |
 | **P1E** | Ingestion                 | 6       | 4/6       |
@@ -140,10 +140,10 @@ See [`ROADMAP.md`](ROADMAP.md) for the current execution plan.
 | **P3**  | LEI + Full Dashboard      | 7       | 0/7       |
 | **P4**  | Shopify + WooCommerce     | 5       | 0/5       |
 | **P5**  | CVE/NVD + Patents         | 4       | 0/4       |
-|         |                           | **88**  | **41/88** |
+|         |                           | **88**  | **42/88** |
 
 `P1B` includes completed legacy Stripe-path work. The Lago migration sequence is
-`P1B.14`–`P1B.20`, currently `1/7`, and is called out separately in
+`P1B.14`–`P1B.20`, currently `2/7`, and is called out separately in
 the Phase 1B section of [`ROADMAP.md`](ROADMAP.md).
 
 ## Commands

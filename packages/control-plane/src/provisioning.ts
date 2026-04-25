@@ -8,10 +8,12 @@ import {
   DEFAULT_ACCOUNT_URL,
   PLANS,
   createLogger,
+  type CustomerRecord,
   type OrgEnvelopeRecord,
 } from "@prontiq/shared";
 import Stripe from "stripe";
 import { buildAuditTransactItem } from "./audit.js";
+import { generateCustomerId as generateCustomerIdDefault } from "./customer-identity.js";
 import { isSuppressedEmail, sendSignedSesEmail } from "./email.js";
 
 // Three classes of error vocabulary surface from a DynamoDB call:
@@ -70,6 +72,7 @@ const STRIPE_NETWORK_RETRIES = 3;
 
 type Logger = Pick<Console, "error" | "warn" | "info">;
 type Sleep = (ms: number) => Promise<void>;
+type CustomerIdGenerator = (now: Date) => string;
 
 export type ProvisioningStatus =
   | "created"
@@ -104,9 +107,11 @@ export type EmailSender = (input: EmailInput) => Promise<boolean>;
 export interface ProvisioningDependencies {
   ddb: DynamoDBDocumentClient;
   keysTableName: string;
+  customersTableName: string;
   auditTableName: string;
   stripe: Stripe;
   sendWelcomeEmail: EmailSender;
+  generateCustomerId: CustomerIdGenerator;
   logger: Logger;
   sleep: Sleep;
 }
@@ -237,7 +242,9 @@ async function readOrgEnvelope(
 function buildProvisioningTransactWrite(
   input: ProvisioningInput,
   stripeCustomerId: string,
+  customerId: string,
   keysTableName: string,
+  customersTableName: string,
   auditTableName: string,
   now: Date,
 ): TransactWriteCommand {
@@ -249,6 +256,7 @@ function buildProvisioningTransactWrite(
   const envelope: OrgEnvelopeRecord = {
     apiKeyHash: getOrgEnvelopeKey(input.orgId),
     completedAt,
+    customerId,
     hasFirstKey: false,
     ownerEmail: input.ownerEmail,
     paymentOverdue: false,
@@ -258,6 +266,17 @@ function buildProvisioningTransactWrite(
     subscriptionItems: {},
     tier: FREE_TIER,
   };
+  const customer: CustomerRecord = {
+    orgId: input.orgId,
+    customerId,
+    lagoExternalCustomerId: customerId,
+    lagoCustomerId: null,
+    stripeCustomerId,
+    ownerEmail: input.ownerEmail,
+    status: "active",
+    createdAt: completedAt,
+    updatedAt: completedAt,
+  };
 
   const auditItem = buildAuditTransactItem({
     tableName: auditTableName,
@@ -265,6 +284,7 @@ function buildProvisioningTransactWrite(
     action: "ORG_PROVISIONED",
     actorId: input.actorId,
     metadata: {
+      customerId,
       source: input.source,
       stripeCustomerId,
     },
@@ -278,6 +298,13 @@ function buildProvisioningTransactWrite(
           TableName: keysTableName,
           Item: envelope,
           ConditionExpression: "attribute_not_exists(apiKeyHash)",
+        },
+      },
+      {
+        Put: {
+          TableName: customersTableName,
+          Item: customer,
+          ConditionExpression: "attribute_not_exists(orgId)",
         },
       },
       auditItem,
@@ -467,7 +494,9 @@ export function createProvisioningService(
   const logger = overrides.logger ?? defaultLogger;
   const dependencies: ProvisioningDependencies = {
     auditTableName: overrides.auditTableName ?? getRequiredEnv("AUDIT_TABLE_NAME"),
+    customersTableName: overrides.customersTableName ?? getRequiredEnv("CUSTOMERS_TABLE_NAME"),
     ddb: overrides.ddb ?? getDefaultDdb(),
+    generateCustomerId: overrides.generateCustomerId ?? generateCustomerIdDefault,
     keysTableName: overrides.keysTableName ?? getRequiredEnv("KEYS_TABLE_NAME"),
     logger,
     sendWelcomeEmail: overrides.sendWelcomeEmail ?? getDefaultEmailSender(logger),
@@ -487,7 +516,7 @@ export function createProvisioningService(
           status: "already_exists",
           emailSent: false,
           orgEnvelope: preflight.record,
-          stripeCustomerId: preflight.record.stripeCustomerId,
+          stripeCustomerId: preflight.record.stripeCustomerId ?? undefined,
         };
       case "transient_failure":
         dependencies.logger.error("Preflight ORG envelope read failed (transient)", {
@@ -533,11 +562,14 @@ export function createProvisioningService(
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
       try {
         const now = new Date();
+        const customerId = dependencies.generateCustomerId(now);
         await dependencies.ddb.send(
           buildProvisioningTransactWrite(
             input,
             stripeCustomerId,
+            customerId,
             dependencies.keysTableName,
+            dependencies.customersTableName,
             dependencies.auditTableName,
             now,
           ),
@@ -623,7 +655,7 @@ export function createProvisioningService(
             status: "already_exists",
             emailSent: false,
             orgEnvelope: reconcile.record,
-            stripeCustomerId: reconcile.record.stripeCustomerId,
+            stripeCustomerId: reconcile.record.stripeCustomerId ?? undefined,
           };
         }
         if (
