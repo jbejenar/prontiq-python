@@ -1,11 +1,13 @@
 # Console App Rules
 
 - This app is the future `console.prontiq.dev` surface.
-- Forward-looking billing and plan-management work in this app should align to the Lago-target commercial architecture; any retained Stripe-hosted behavior is legacy migration context only.
+- Billing and plan-management work in this app should align to the Lago-centered
+  commercial architecture; any retained Stripe-hosted behavior is legacy
+  migration context only.
 - P1B.19 makes Lago the runtime billing source of truth and Stripe the payment
   rail only. Do not render Stripe customer/subscription IDs as canonical account
-  state; `/v1/account/setup` returns platform `customerId` plus nullable
-  `stripeCustomerId`.
+  state; `/v1/account/setup` returns the platform `customerId` only for
+  customer identity.
 - Billing UI work must consume `/v1/account/billing`,
   `/v1/account/billing/plan-change`, and
   `/v1/account/billing/portal-session`; do not direct-call Lago or Stripe from

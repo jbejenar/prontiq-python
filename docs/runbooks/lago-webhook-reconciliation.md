@@ -15,8 +15,8 @@ In the target commercial architecture:
 ## Scope
 
 This runbook is for `POST /webhooks/lago`, the active commercial
-reconciliation path after P1B.19. The legacy Stripe webhook is rollback-only
-while P1B.20 cleanup has not removed its configuration.
+reconciliation path after P1B.19/P1B.20. The legacy Stripe webhook is removed
+from active Platform deploys.
 
 ## Preconditions
 
@@ -81,7 +81,7 @@ For full P1B.18a live certification, use
 `docs/runbooks/lago-live-smoke.md`. Retained production smoke fixtures may
 support later Lago migration tickets if they stay labelled/inventoried as
 test-only. Final production fixture retirement is handled by
-`docs/runbooks/prod-go-live-cleanup.md` in P1B.21 after P1B.20. The checklist
+`docs/runbooks/prod-go-live-cleanup.md` in P1B.21. The checklist
 below remains the webhook-specific portion.
 
 1. Deploy code with `LAGO_WEBHOOK_RECONCILIATION_ENABLED=false`.

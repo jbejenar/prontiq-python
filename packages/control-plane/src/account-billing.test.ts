@@ -37,8 +37,8 @@ function makeEnvelope(overrides: Partial<OrgEnvelopeRecord> = {}): OrgEnvelopeRe
     ownerEmail: "owner@example.com",
     paymentOverdue: false,
     products: ["address"],
-    stripeCustomerId: "cus_test",
-    stripeSubscriptionId: "sub_test",
+    stripeCustomerId: null,
+    stripeSubscriptionId: null,
     subscriptionItems: {},
     tier: "payg",
     ...overrides,
@@ -54,7 +54,7 @@ function makeCustomer(overrides: Partial<CustomerRecord> = {}): CustomerRecord {
     orgId: ORG_ID,
     ownerEmail: "owner@example.com",
     status: "active",
-    stripeCustomerId: "cus_test",
+    stripeCustomerId: null,
     updatedAt: "2026-04-26T00:00:00.000Z",
     ...overrides,
   };
@@ -105,7 +105,9 @@ function makeLagoClient(
   };
 }
 
-function makeUnavailableLagoClient(): LagoAccountBillingClient & { upsertSubscriptionCalls: number } {
+function makeUnavailableLagoClient(): LagoAccountBillingClient & {
+  upsertSubscriptionCalls: number;
+} {
   return {
     upsertSubscriptionCalls: 0,
     async getCustomerPortalUrl() {
@@ -197,8 +199,7 @@ function makeBillingActionLedgerDdb(): DynamoDBDocumentClient & {
           const requestHashMatches = record.requestHash === values[":requestHash"];
           const statusMatches = record.status === values[":expectedStatus"];
           const staleBefore = values[":staleBefore"];
-          const staleMatches =
-            typeof staleBefore !== "string" || record.updatedAt <= staleBefore;
+          const staleMatches = typeof staleBefore !== "string" || record.updatedAt <= staleBefore;
           if (!requestHashMatches || !statusMatches || !staleMatches) {
             throw conditionalCheckFailed();
           }
@@ -214,7 +215,8 @@ function makeBillingActionLedgerDdb(): DynamoDBDocumentClient & {
         }
         if (typeof values[":updatedAt"] === "string") record.updatedAt = values[":updatedAt"];
         if (typeof values[":lastError"] === "string") record.lastError = values[":lastError"];
-        if (":providerStatus" in values) record.providerStatus = values[":providerStatus"] as string | null;
+        if (":providerStatus" in values)
+          record.providerStatus = values[":providerStatus"] as string | null;
         if (":providerRequestId" in values) {
           record.providerRequestId = values[":providerRequestId"] as string | null;
         }
@@ -422,15 +424,12 @@ test("Lago account billing client maps rejected fetch to retryable Lago unavaila
     },
   });
 
-  await assert.rejects(
-    client.getCustomerPortalUrl(CUSTOMER_ID),
-    (error: unknown) => {
-      assert.ok(error instanceof AccountBillingError);
-      assert.equal(error.code, "LAGO_UNAVAILABLE");
-      assert.equal(error.httpStatus, 503);
-      return true;
-    },
-  );
+  await assert.rejects(client.getCustomerPortalUrl(CUSTOMER_ID), (error: unknown) => {
+    assert.ok(error instanceof AccountBillingError);
+    assert.equal(error.code, "LAGO_UNAVAILABLE");
+    assert.equal(error.httpStatus, 503);
+    return true;
+  });
 });
 
 test("Lago account billing client maps aborts and malformed JSON to retryable Lago unavailable", async () => {

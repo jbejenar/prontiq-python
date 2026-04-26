@@ -2,7 +2,7 @@
  * Provisioning service integration test (P1B.05 DoD).
  *
  * Exercises createProvisioningService() against a real DDB Local with a
- * stubbed Stripe client. Validates:
+ * stubbed Lago client. Validates:
  *   - Happy path writes the ORG envelope and audit row atomically
  *   - Replay against the existing envelope returns already_exists with
  *     zero side effects
@@ -23,8 +23,12 @@ import {
   DeleteTableCommand,
   DescribeTableCommand,
 } from "@aws-sdk/client-dynamodb";
-import { DynamoDBDocumentClient, GetCommand, PutCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
-import type Stripe from "stripe";
+import {
+  DynamoDBDocumentClient,
+  GetCommand,
+  PutCommand,
+  QueryCommand,
+} from "@aws-sdk/lib-dynamodb";
 import { createProvisioningService, type EmailSender } from "./provisioning.js";
 
 const DDB_URL = process.env.DYNAMODB_TEST_URL ?? "http://localhost:8000";
@@ -118,26 +122,30 @@ after(async () => {
   await ddbRaw.send(new DeleteTableCommand({ TableName: CUSTOMERS_TABLE }));
 });
 
-function makeStripeStub(idCounter: { value: number }): {
-  stripe: Stripe;
-  calls: number;
-} {
-  let calls = 0;
-  const stripe = {
-    customers: {
-      async create() {
-        calls += 1;
-        idCounter.value += 1;
-        return { id: `cus_int_${idCounter.value}` };
+function makeLagoProvisioningClient(customerId: string) {
+  const calls: { method: string; args: unknown }[] = [];
+  return {
+    calls,
+    client: {
+      async upsertCustomer(args: unknown) {
+        calls.push({ method: "upsertCustomer", args });
+      },
+      async upsertSubscription(args: unknown) {
+        calls.push({ method: "upsertSubscription", args });
+      },
+      async getSubscription(args: unknown) {
+        calls.push({ method: "getSubscription", args });
+        return {
+          billingPeriodEndingAt: "2026-05-26T00:00:00.000Z",
+          billingPeriodStartedAt: "2026-04-26T00:00:00.000Z",
+          externalCustomerId: customerId,
+          externalSubscriptionId: customerId.replace("pq_cust_", "pq_sub_"),
+          planCode: "free",
+          status: "active",
+        };
       },
     },
-  } as unknown as Stripe;
-  return {
-    stripe,
-    get calls() {
-      return calls;
-    },
-  } as { stripe: Stripe; calls: number };
+  };
 }
 
 const noopEmail: EmailSender = async () => true;
@@ -145,16 +153,17 @@ const noopLogger = { error: () => {}, info: () => {}, warn: () => {} };
 
 test("happy path: provisions envelope + audit row, then replay is no-op", async () => {
   const orgId = `org_int_${SUFFIX}_a`;
-  const counter = { value: 0 };
-  const { stripe } = makeStripeStub(counter);
+  const customerId = "pq_cust_01HYZ6Q4X6DJP2X9Q9FQKX4T7B";
+  const lago = makeLagoProvisioningClient(customerId);
   const service = createProvisioningService({
     ddb,
     keysTableName: KEYS_TABLE,
     customersTableName: CUSTOMERS_TABLE,
     auditTableName: AUDIT_TABLE,
-    stripe,
+    lagoClient: lago.client,
+    lagoPaymentProviderCode: "stripe-main",
     sendWelcomeEmail: noopEmail,
-    generateCustomerId: () => "pq_cust_01HYZ6Q4X6DJP2X9Q9FQKX4T7B",
+    generateCustomerId: () => customerId,
     logger: noopLogger,
     sleep: async () => {},
   });
@@ -166,7 +175,7 @@ test("happy path: provisions envelope + audit row, then replay is no-op", async 
     source: "integration-test",
   });
   assert.equal(first.status, "created");
-  assert.equal(first.stripeCustomerId, "cus_int_1");
+  assert.equal(first.stripeCustomerId, null);
   assert.ok(first.orgEnvelope);
   assert.equal(first.orgEnvelope?.apiKeyHash, `ORG#${orgId}`);
 
@@ -176,14 +185,19 @@ test("happy path: provisions envelope + audit row, then replay is no-op", async 
   assert.ok(envelopeRow.Item);
   assert.equal(envelopeRow.Item?.tier, "free");
   assert.equal(envelopeRow.Item?.hasFirstKey, false);
-  assert.equal(envelopeRow.Item?.customerId, "pq_cust_01HYZ6Q4X6DJP2X9Q9FQKX4T7B");
+  assert.equal(envelopeRow.Item?.customerId, customerId);
+  assert.equal(envelopeRow.Item?.lagoPlanCode, "free");
+  assert.equal(
+    envelopeRow.Item?.lagoSubscriptionExternalId,
+    customerId.replace("pq_cust_", "pq_sub_"),
+  );
 
   const customerRow = await ddb.send(
     new GetCommand({ TableName: CUSTOMERS_TABLE, Key: { orgId } }),
   );
-  assert.equal(customerRow.Item?.customerId, "pq_cust_01HYZ6Q4X6DJP2X9Q9FQKX4T7B");
-  assert.equal(customerRow.Item?.lagoExternalCustomerId, "pq_cust_01HYZ6Q4X6DJP2X9Q9FQKX4T7B");
-  assert.equal(customerRow.Item?.stripeCustomerId, "cus_int_1");
+  assert.equal(customerRow.Item?.customerId, customerId);
+  assert.equal(customerRow.Item?.lagoExternalCustomerId, customerId);
+  assert.equal(customerRow.Item?.stripeCustomerId, null);
   assert.equal(customerRow.Item?.status, "active");
 
   const auditRows = await ddb.send(
@@ -204,8 +218,12 @@ test("happy path: provisions envelope + audit row, then replay is no-op", async 
     source: "integration-test",
   });
   assert.equal(replay.status, "already_exists");
-  assert.equal(replay.stripeCustomerId, "cus_int_1");
-  assert.equal(counter.value, 1, "Stripe must not be called on replay");
+  assert.equal(replay.stripeCustomerId, null);
+  assert.deepEqual(
+    lago.calls.map((call) => call.method),
+    ["upsertCustomer", "getSubscription"],
+    "replay should not call Lago again after bootstrap is complete",
+  );
 
   const auditAfterReplay = await ddb.send(
     new QueryCommand({
@@ -219,20 +237,21 @@ test("happy path: provisions envelope + audit row, then replay is no-op", async 
 
 test("suppressed owner email skips the welcome email without blocking provisioning", async () => {
   const orgId = `org_int_${SUFFIX}_suppressed`;
-  const counter = { value: 0 };
-  const { stripe } = makeStripeStub(counter);
+  const customerId = "pq_cust_01HYZ6Q4X6DJP2X9Q9FQKX4T7C";
+  const lago = makeLagoProvisioningClient(customerId);
   let senderCalled = false;
   const service = createProvisioningService({
     ddb,
     keysTableName: KEYS_TABLE,
     customersTableName: CUSTOMERS_TABLE,
     auditTableName: AUDIT_TABLE,
-    stripe,
+    lagoClient: lago.client,
+    lagoPaymentProviderCode: "stripe-main",
     sendWelcomeEmail: async () => {
       senderCalled = true;
       return true;
     },
-    generateCustomerId: () => "pq_cust_01HYZ6Q4X6DJP2X9Q9FQKX4T7C",
+    generateCustomerId: () => customerId,
     logger: noopLogger,
     sleep: async () => {},
   });

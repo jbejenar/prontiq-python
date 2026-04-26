@@ -3,7 +3,6 @@ import { ArrowRight, Check, ExternalLink } from "lucide-react";
 
 import { AddressDemo } from "./address-demo.js";
 import { ConsoleLinkButton } from "./console-link-button.js";
-import { PaidPricingTable } from "./paid-pricing-table.js";
 import { SignupCTAButton } from "./signup-cta-button.js";
 import { ThemeToggle } from "../theme-toggle.js";
 import { Badge } from "../ui/badge.js";
@@ -20,9 +19,6 @@ export function LandingShell() {
     allowKeyless: serverEnv.PRONTIQ_ALLOW_KEYLESS_CLERK === "1",
     publishableKey: env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
   });
-  const pricingTableConfigured = Boolean(
-    env.NEXT_PUBLIC_STRIPE_PRICING_TABLE_ID && env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY,
-  );
 
   return (
     <main className="min-h-screen">
@@ -120,7 +116,7 @@ export function LandingShell() {
             </div>
           </div>
 
-          <div className="grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
+          <div className="grid gap-6 lg:grid-cols-2">
             <Card className="border-primary/20 bg-card/85">
               <CardHeader>
                 <div className="flex flex-wrap items-center justify-between gap-4">
@@ -154,18 +150,41 @@ export function LandingShell() {
               </CardContent>
             </Card>
 
-            <div className="space-y-4">
-              <PaidPricingTable
-                pricingTableId={env.NEXT_PUBLIC_STRIPE_PRICING_TABLE_ID}
-                publishableKey={env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY}
-              />
-              <p className="text-center text-xs uppercase tracking-[0.22em] text-muted-foreground">
-                {siteSettings.pricing.paidPlanLabels.join(" · ")}
-              </p>
-              <p className="text-center text-xs uppercase tracking-[0.22em] text-muted-foreground">
-                {siteSettings.pricing.paidPlansFootnote}
-              </p>
-            </div>
+            <Card className="border-border/80 bg-card/75">
+              <CardHeader>
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                  <div className="space-y-2">
+                    <Badge variant="outline">{siteSettings.pricing.paygTier.name}</Badge>
+                    <CardTitle className="text-4xl">
+                      {siteSettings.pricing.paygTier.priceLabel}
+                      <span className="ml-2 font-sans text-sm uppercase tracking-[0.18em] text-muted-foreground">
+                        {siteSettings.pricing.paygTier.unitLabel}
+                      </span>
+                    </CardTitle>
+                  </div>
+                  <Badge variant="secondary">{siteSettings.pricing.paygTier.note}</Badge>
+                </div>
+                <CardDescription className="max-w-xl text-sm leading-6">
+                  {siteSettings.pricing.paygTier.description}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <ul className="grid gap-3 text-sm text-muted-foreground">
+                  {siteSettings.pricing.paygTier.features.map((feature) => (
+                    <li className="flex items-start gap-3" key={feature}>
+                      <Check className="mt-0.5 h-4 w-4 flex-none text-primary" />
+                      <span>{feature}</span>
+                    </li>
+                  ))}
+                </ul>
+                <SignupCTAButton className="w-full" mode={clerkRuntime.mode} size="lg">
+                  {siteSettings.pricing.paygTier.ctaLabel}
+                </SignupCTAButton>
+                <p className="text-xs uppercase tracking-[0.22em] text-muted-foreground">
+                  {siteSettings.pricing.paidPlansFootnote}
+                </p>
+              </CardContent>
+            </Card>
           </div>
         </section>
 
@@ -174,7 +193,8 @@ export function LandingShell() {
             <CardHeader>
               <CardTitle className="text-2xl">Integration state</CardTitle>
               <CardDescription>
-                Landing stays build-safe when external commercial configuration is absent, but it does not fail open.
+                Landing stays build-safe when external commercial configuration is absent, but it
+                does not fail open.
               </CardDescription>
             </CardHeader>
             <CardContent className="grid gap-6 md:grid-cols-3">
@@ -189,12 +209,8 @@ export function LandingShell() {
                 </p>
               </div>
               <div className="space-y-2">
-                <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Stripe</p>
-                <p className="text-sm text-muted-foreground">
-                  {pricingTableConfigured
-                    ? "Pricing table configured."
-                    : "Pricing table falls back locally until NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY and NEXT_PUBLIC_STRIPE_PRICING_TABLE_ID are set."}
-                </p>
+                <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Billing</p>
+                <p className="text-sm text-muted-foreground">Lago-backed account billing.</p>
               </div>
             </CardContent>
           </Card>
@@ -203,7 +219,9 @@ export function LandingShell() {
         <footer className="mt-auto border-t border-border/70 py-8">
           <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
             <div className="space-y-1">
-              <p className="font-display text-2xl tracking-tight">{siteSettings.footer.brandLabel}</p>
+              <p className="font-display text-2xl tracking-tight">
+                {siteSettings.footer.brandLabel}
+              </p>
               <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
                 {siteSettings.footer.copyrightLabel}
               </p>

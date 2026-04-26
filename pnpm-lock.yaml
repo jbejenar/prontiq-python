@@ -322,10 +322,6 @@ importers:
       zod:
         specifier: ^4.3.6
         version: 4.3.6
-    devDependencies:
-      stripe:
-        specifier: ^22.0.2
-        version: 22.0.2(@types/node@25.6.0)
 
   packages/control-plane:
     dependencies:
@@ -350,9 +346,6 @@ importers:
       '@prontiq/shared':
         specifier: workspace:*
         version: link:../shared
-      stripe:
-        specifier: ^22.0.2
-        version: 22.0.2(@types/node@25.6.0)
       ulid:
         specifier: ^3.0.1
         version: 3.0.2
@@ -467,9 +460,6 @@ importers:
       '@prontiq/shared':
         specifier: workspace:*
         version: link:../shared
-      stripe:
-        specifier: ^22.0.2
-        version: 22.0.2(@types/node@25.6.0)
       svix:
         specifier: ^1.92.2
         version: 1.92.2
@@ -3883,15 +3873,6 @@ packages:
 
   strip-literal@3.1.0:
     resolution: {integrity: sha512-8r3mkIM/2+PpjHoOtiAW8Rg3jJLHaV7xPwG+YRGrv6FP0wwk/toTpATxWYOW0BKdWwl82VT2tFYi5DlROa0Mxg==}
-
-  stripe@22.0.2:
-    resolution: {integrity: sha512-2/BLrQ3oB1zlNfeL/LfHFjTGx6EQn0j+ztrrTJHuDjV5VVIpk92oSDaxyKLUr3pG3dnee2LZqhFUv2Bf0G1/3g==}
-    engines: {node: '>=18'}
-    peerDependencies:
-      '@types/node': '>=18'
-    peerDependenciesMeta:
-      '@types/node':
-        optional: true
 
   strnum@2.2.3:
     resolution: {integrity: sha512-oKx6RUCuHfT3oyVjtnrmn19H1SiCqgJSg+54XqURKp5aCMbrXrhLjRN9TjuwMjiYstZ0MzDrHqkGZ5dFTKd+zg==}
@@ -8029,10 +8010,6 @@ snapshots:
   strip-literal@3.1.0:
     dependencies:
       js-tokens: 9.0.1
-
-  stripe@22.0.2(@types/node@25.6.0):
-    optionalDependencies:
-      '@types/node': 25.6.0
 
   strnum@2.2.3: {}
 

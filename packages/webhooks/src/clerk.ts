@@ -13,8 +13,9 @@ import { createLogger } from "@prontiq/shared";
  * Clerk webhook handler for `organizationMembership.created`.
  *
  * Per ARCHITECTURE.MD §5.7.1 (post-review), this handler provisions
- * the **org envelope** (Stripe customer + ORG#{orgId} record + audit
- * row + best-effort welcome email). It does NOT mint API keys —
+ * the **org envelope** (Prontiq customer record + Lago Free subscription
+ * bootstrap + ORG#{orgId} record + audit row + best-effort welcome email).
+ * It does NOT mint API keys —
  * that's the user-driven `POST /v1/account/keys/create` (P1C.03).
  *
  * Events:
@@ -207,8 +208,7 @@ export function createClerkHandler(overrides: HandlerOverrides = {}) {
     // Resolve the verified primary email from Clerk Backend API.
     // public_user_data.identifier could be a phone, username, or
     // OAuth handle depending on the Clerk app's auth config — we
-    // need a real email for Stripe customer creation + the welcome
-    // email path.
+    // need a real email for Lago customer bootstrap + the welcome email path.
     let clerkClient: ClerkClient;
     try {
       clerkClient = overrides.clerkClient ?? getDefaultClerkClient();
@@ -241,7 +241,7 @@ export function createClerkHandler(overrides: HandlerOverrides = {}) {
       case "not_verified":
         // Primary email exists but verification didn't complete
         // (unverified | failed | expired | transferable). Forwarding
-        // an unverified email to Stripe + SES would create a customer
+        // an unverified email to Lago + SES would create a customer
         // record against a typoed / unconfirmed address. Operator fix
         // is "verify your primary email" or "set a verified email as
         // primary in Clerk dashboard", then "Resend" the failed
@@ -269,14 +269,12 @@ export function createClerkHandler(overrides: HandlerOverrides = {}) {
         logger.info("ORG envelope exists", {
           customerId: result.customerId,
           orgId: data.organization.id,
-          stripeCustomerId: result.stripeCustomerId,
         });
         return reply(200, { ok: true, status: "already_exists" });
       case "created":
         logger.info("ORG envelope created", {
           customerId: result.customerId,
           orgId: data.organization.id,
-          stripeCustomerId: result.stripeCustomerId,
           emailSent: result.emailSent,
         });
         return reply(200, { ok: true, status: "created", emailSent: result.emailSent });
@@ -284,14 +282,12 @@ export function createClerkHandler(overrides: HandlerOverrides = {}) {
         logger.error("ORG envelope provisioning retryable failure", {
           customerId: result.customerId,
           orgId: data.organization.id,
-          stripeCustomerId: result.stripeCustomerId,
         });
         return reply(500, { error: "retryable_failure" });
       case "fatal_failure":
         logger.error("ORG envelope provisioning fatal failure", {
           customerId: result.customerId,
           orgId: data.organization.id,
-          stripeCustomerId: result.stripeCustomerId,
         });
         return reply(500, { error: "fatal_failure" });
     }

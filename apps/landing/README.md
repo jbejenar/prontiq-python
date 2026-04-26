@@ -6,17 +6,16 @@ Next.js 15 app for `prontiq.dev`.
 
 - proxy-backed live autocomplete demo via `@prontiq/web-component`
 - free-tier pricing card from `content/site.json`
-- paid-plan section currently in migration away from the legacy Stripe Pricing Table path
+- first-party Free/PAYG pricing section aligned to Lago-backed billing
 - Clerk modal CTA wrappers
 - Tailwind CSS v3.4 + app-local shadcn/ui + dark mode
 - app-local Vitest + Testing Library
 - continued content wiring through `@prontiq/shared/content`
 
 Site-owned marketing/config content lives in `apps/landing/content/site.json`.
-That file owns hero/demo/pricing/footer framing copy and the Prontiq Free card.
-Paid-plan copy should follow the Lago-target commercial architecture described in
-`ARCHITECTURE.MD`. The existing Pricing Table integration is a superseded
-interim implementation retained only as migration context.
+That file owns hero/demo/pricing/footer framing copy and the Free/PAYG cards.
+Paid-plan copy should follow the Lago commercial architecture described in
+`ARCHITECTURE.MD`.
 
 `pnpm --filter landing dev`, `build`, `typecheck`, and `test` are
 self-sufficient from a fresh checkout: they build `@prontiq/shared` and
@@ -41,11 +40,3 @@ Landing envs:
 - `PRONTIQ_LANDING_UNLOCK_TOKEN` optional root-page-only soft gate token. When
   set, `/` stays black until visited once as `/?unlock=<token>`, which sets a
   7-day cookie. API routes remain unchanged.
-
-Legacy / superseded interim envs:
-
-- `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`
-- `NEXT_PUBLIC_STRIPE_PRICING_TABLE_ID`
-
-These two envs belong to the retired Stripe Pricing Table fallback and should
-not be treated as the forward-looking landing billing contract.

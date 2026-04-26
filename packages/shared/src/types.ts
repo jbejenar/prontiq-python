@@ -153,16 +153,6 @@ export interface QuotaEmailTask {
   threshold: "warning" | "limit";
 }
 
-export interface StripeWebhookCompletionRecord {
-  apiKeyHash: string;
-  claimedAt: string;
-  completedAt?: string;
-  eventType: string;
-  status: "processing" | "completed";
-  webhookOrgId: string | null;
-  ttl: number;
-}
-
 export interface RedirectRecord {
   apiKeyHash: string;
   scope: "REDIRECT";

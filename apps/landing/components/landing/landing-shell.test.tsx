@@ -34,9 +34,10 @@ test("landing shell renders the real landing sections", () => {
   expect(screen.getByRole("heading", { name: /Usage-based\. No seats\./i })).toBeInTheDocument();
   expect(screen.getByText("Try it")).toBeInTheDocument();
   expect(screen.getByText("prontiq.dev")).toBeInTheDocument();
-  expect(screen.getByText("Stripe pricing unavailable")).toBeInTheDocument();
-  expect(screen.getByText("Paid pricing")).toBeInTheDocument();
+  expect(screen.getByText("PAYG")).toBeInTheDocument();
+  expect(screen.getByText("Lago-backed account billing.")).toBeInTheDocument();
   expect(screen.queryByText("Starter · Growth")).not.toBeInTheDocument();
+  expect(screen.queryByText("Pricing table unavailable")).not.toBeInTheDocument();
   expect(screen.getAllByText("10,000 credits per month")).toHaveLength(1);
   expect(screen.getByRole("link", { name: "Console" })).toHaveAttribute(
     "href",
@@ -80,8 +81,6 @@ test("landing shell reports Clerk as configured when the publishable key is pres
     env: {
       NEXT_PUBLIC_API_URL: "https://api.prontiq.dev",
       NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: "pk_test_123",
-      NEXT_PUBLIC_STRIPE_PRICING_TABLE_ID: undefined,
-      NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: undefined,
     },
   }));
   vi.doMock("../../lib/server-env.js", () => ({

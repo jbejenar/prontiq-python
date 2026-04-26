@@ -398,7 +398,7 @@ export function clerkJwt(options: ClerkJwtOptions = {}) {
  *
  * Bot-review fix (PR #101 → Bug 1): without this gate, any verified
  * org member (e.g. an invited `org:member`) could race a delayed
- * Clerk webhook and become the recorded `ownerEmail` / Stripe
+ * Clerk webhook and become the recorded `ownerEmail` / Lago
  * customer / welcome-email recipient for the org. The webhook's
  * existing `role ∈ {org:admin, admin}` check is the contract; this
  * middleware extends it to the recovery endpoint.

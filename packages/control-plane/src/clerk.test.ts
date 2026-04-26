@@ -18,20 +18,22 @@ function verifiedEmail(id: string, address: string): ClerkEmailAddressStub {
   return { id, emailAddress: address, verification: { status: "verified" } };
 }
 
-function makeFakeClerkClient(opts: {
-  user?: ClerkUserStub;
-  throwOnGetUser?: unknown;
-}): { client: ClerkClient; getUserCalls: string[] } {
+function makeFakeClerkClient(opts: { user?: ClerkUserStub; throwOnGetUser?: unknown }): {
+  client: ClerkClient;
+  getUserCalls: string[];
+} {
   const getUserCalls: string[] = [];
   const client = {
     users: {
       async getUser(userId: string) {
         getUserCalls.push(userId);
         if (opts.throwOnGetUser !== undefined) throw opts.throwOnGetUser;
-        return opts.user ?? {
-          primaryEmailAddressId: "idn_default",
-          emailAddresses: [verifiedEmail("idn_default", "default@example.com")],
-        };
+        return (
+          opts.user ?? {
+            primaryEmailAddressId: "idn_default",
+            emailAddresses: [verifiedEmail("idn_default", "default@example.com")],
+          }
+        );
       },
     },
   } as unknown as ClerkClient;
@@ -73,9 +75,7 @@ test("not_found: matching entry has empty emailAddress string", async () => {
   const { client } = makeFakeClerkClient({
     user: {
       primaryEmailAddressId: "idn_blank",
-      emailAddresses: [
-        { id: "idn_blank", emailAddress: "", verification: { status: "verified" } },
-      ],
+      emailAddresses: [{ id: "idn_blank", emailAddress: "", verification: { status: "verified" } }],
     },
   });
   const result = await resolvePrimaryEmail(client, "user_abc");
@@ -138,9 +138,7 @@ test("not_verified: null verification object treated as unverified (defensive)",
   const { client } = makeFakeClerkClient({
     user: {
       primaryEmailAddressId: "idn_null",
-      emailAddresses: [
-        { id: "idn_null", emailAddress: "x@example.com", verification: null },
-      ],
+      emailAddresses: [{ id: "idn_null", emailAddress: "x@example.com", verification: null }],
     },
   });
   const result = await resolvePrimaryEmail(client, "user_abc");
@@ -150,7 +148,7 @@ test("not_verified: null verification object treated as unverified (defensive)",
 test("not_verified: primary unverified + secondary verified → STILL not_verified (no fallback policy)", async () => {
   // Senior-Fellow policy: do not fall back to a non-primary verified
   // email. The primary is the user's explicit identity choice;
-  // falling back would make Stripe customer email unpredictable from
+  // falling back would make Lago customer email unpredictable from
   // the operator's perspective ("which one did we send the receipt
   // to?"). Operator fix: verify the primary, or set a verified email
   // as primary in the Clerk dashboard.
@@ -158,7 +156,11 @@ test("not_verified: primary unverified + secondary verified → STILL not_verifi
     user: {
       primaryEmailAddressId: "idn_primary_unv",
       emailAddresses: [
-        { id: "idn_primary_unv", emailAddress: "primary@example.com", verification: { status: "unverified" } },
+        {
+          id: "idn_primary_unv",
+          emailAddress: "primary@example.com",
+          verification: { status: "unverified" },
+        },
         verifiedEmail("idn_secondary_v", "secondary@example.com"),
       ],
     },

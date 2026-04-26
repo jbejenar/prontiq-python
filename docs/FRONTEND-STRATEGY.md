@@ -139,7 +139,7 @@ packages/
   api/            Hono API on Lambda
   control-plane/  provisioning, billing, email, audit helpers
   ingestion/      indexing workflows
-  webhooks/       Clerk / Lago / rollback-only Stripe webhook handlers
+  webhooks/       Clerk / Lago webhook handlers
   docs/           Mintlify content
   plugins/        Shopify / WooCommerce / web component
 
@@ -204,16 +204,16 @@ panels shown there are illustrative and may be deferred ticket-by-ticket.
 
 The landing hero is now a live product demo. `apps/landing` embeds `@prontiq/web-component` and points it at a constrained landing-side proxy route so browser traffic never carries a privileged API key.
 
-The legacy Stripe Pricing Table path is not the target commercial UX. The
-forward-looking frontend contract is Lago-backed commercial UX:
+The legacy Stripe Pricing Table path has been removed. The forward-looking
+frontend contract is Lago-backed commercial UX:
 
 - Prontiq-rendered plan and usage surfaces on landing and in console billing views
 - platform-owned billing proxy/orchestration against Lago-backed commercial state
 - Prontiq-managed explanations of credits, usage, free-tier limits, and PAYG behavior
 
-The Pricing Table path is now treated as a superseded interim implementation,
-and any remaining Stripe-hosted customer-management surface should be treated as
-legacy migration context rather than canonical frontend architecture.
+The Pricing Table path is historical context only. Stripe-hosted
+customer-management surfaces are not canonical frontend architecture; use the
+Prontiq account billing APIs and Lago portal session flow.
 
 ## Design Token Contract
 

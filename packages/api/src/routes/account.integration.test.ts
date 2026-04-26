@@ -2,13 +2,13 @@
  * `POST /v1/account/setup` end-to-end integration test (P1B.05 PR 3 DoD).
  *
  * Exercises the full request → middleware → route → provisioning →
- * DDB stack against a real DDB Local with a stubbed Stripe + stubbed
+ * DDB stack against a real DDB Local with a stubbed Lago + stubbed
  * Clerk Backend client + stubbed JWT verifier. Covers the four DoD
  * scenarios at ROADMAP.md:1502-1507:
  *   (a) Fresh org → 201 + envelope + audit row
  *   (b) Replay → 200 zero side-effects (idempotency)
  *   (c) DDB transient on first attempt → retry succeeds; exactly one
- *       Stripe customer (idempotency-key reuse) + one envelope
+ *       Lago customer/subscription bootstrap + one envelope
  *   (d) `grep -rn "provisionOrg" packages/` shows webhook + account
  *       route + control-plane definition only (verified out-of-band
  *       in the PR description, not asserted here)
@@ -29,9 +29,12 @@ import {
 } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, GetCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
 import { OpenAPIHono } from "@hono/zod-openapi";
-import type Stripe from "stripe";
 import type { ClerkClient } from "@clerk/backend";
-import { createProvisioningService, type EmailSender } from "@prontiq/control-plane";
+import {
+  createProvisioningService,
+  type EmailSender,
+  type LagoProvisioningClient,
+} from "@prontiq/control-plane";
 import { clerkAdminOnly, clerkJwt, type ClerkVerifier } from "../middleware/clerk-jwt.js";
 import { requestId } from "../middleware/request-id.js";
 import { createAccountRoutes } from "./account.js";
@@ -141,25 +144,39 @@ const VERIFIED_USER: ClerkUserStub = {
   ],
 };
 
-interface StripeStubControl {
-  stripe: Stripe;
+interface LagoStubControl {
+  lagoClient: LagoProvisioningClient;
   callCount: () => number;
   resetCallCount: () => void;
 }
 
-function makeStripeStub(idCounter: { value: number }): StripeStubControl {
+function makeLagoStub(): LagoStubControl {
   let calls = 0;
-  const stripe = {
-    customers: {
-      async create() {
-        calls += 1;
-        idCounter.value += 1;
-        return { id: `cus_acct_${idCounter.value}` };
-      },
+  const subscriptions = new Set<string>();
+  const lagoClient: LagoProvisioningClient = {
+    async getSubscription(externalSubscriptionId) {
+      if (!subscriptions.has(externalSubscriptionId)) {
+        return null;
+      }
+      return {
+        billingPeriodEndingAt: "2026-05-01T00:00:00Z",
+        billingPeriodStartedAt: "2026-04-01T00:00:00Z",
+        externalCustomerId: externalSubscriptionId.replace("pq_sub_", "pq_cust_"),
+        externalSubscriptionId,
+        planCode: "free",
+        status: "active",
+      };
     },
-  } as unknown as Stripe;
+    async upsertCustomer() {
+      calls += 1;
+    },
+    async upsertSubscription(input) {
+      calls += 1;
+      subscriptions.add(input.externalSubscriptionId);
+    },
+  };
   return {
-    stripe,
+    lagoClient,
     callCount: () => calls,
     resetCallCount: () => {
       calls = 0;
@@ -187,7 +204,7 @@ interface BuildAppOpts {
    * template gap scenario).
    */
   orgRole?: string | null;
-  stripe: Stripe;
+  lagoClient: LagoProvisioningClient;
   clerkClient: ClerkClient;
   ddbOverride?: DynamoDBDocumentClient;
   billingService?: BillingServiceOverride;
@@ -214,7 +231,8 @@ function buildApp(opts: BuildAppOpts) {
       keysTableName: KEYS_TABLE,
       customersTableName: CUSTOMERS_TABLE,
       auditTableName: AUDIT_TABLE,
-      stripe: opts.stripe,
+      lagoClient: opts.lagoClient,
+      lagoPaymentProviderCode: "stripe-main",
       sendWelcomeEmail: noopEmail,
       logger: noopLogger,
       sleep: async () => {},
@@ -264,16 +282,14 @@ async function callSetup(
 
 test("DoD scenario (a): fresh org → 201 created + envelope + audit row", async () => {
   const orgId = `org_acct_a_${SUFFIX}`;
-  const counter = { value: 0 };
-  const { stripe } = makeStripeStub(counter);
-  const app = buildApp({ orgId, stripe, clerkClient: makeClerkClientStub(VERIFIED_USER) });
+  const { lagoClient } = makeLagoStub();
+  const app = buildApp({ orgId, lagoClient, clerkClient: makeClerkClientStub(VERIFIED_USER) });
 
   const { status, body } = await callSetup(app);
   assert.equal(status, 201);
   assert.equal(body.status, "created");
   assert.equal(typeof body.customerId, "string");
-  assert.equal(typeof body.stripeCustomerId, "string");
-  assert.match(body.stripeCustomerId as string, /^cus_acct_/);
+  assert.equal(body.stripeCustomerId, undefined);
 
   const envelope = await ddb.send(
     new GetCommand({ TableName: KEYS_TABLE, Key: { apiKeyHash: `ORG#${orgId}` } }),
@@ -299,20 +315,19 @@ test("DoD scenario (a): fresh org → 201 created + envelope + audit row", async
 
 test("DoD scenario (b): replay → 200 already_exists + zero new side-effects (idempotency)", async () => {
   const orgId = `org_acct_b_${SUFFIX}`;
-  const counter = { value: 0 };
-  const { stripe, callCount } = makeStripeStub(counter);
-  const app = buildApp({ orgId, stripe, clerkClient: makeClerkClientStub(VERIFIED_USER) });
+  const { lagoClient, callCount } = makeLagoStub();
+  const app = buildApp({ orgId, lagoClient, clerkClient: makeClerkClientStub(VERIFIED_USER) });
 
   const first = await callSetup(app);
   assert.equal(first.status, 201);
-  assert.equal(callCount(), 1, "first call creates one Stripe customer");
+  assert.equal(callCount(), 2, "first call bootstraps one Lago customer/subscription pair");
 
   const replay = await callSetup(app);
   assert.equal(replay.status, 200);
   assert.equal(replay.body.status, "already_exists");
   assert.equal(replay.body.customerId, first.body.customerId);
-  assert.equal(replay.body.stripeCustomerId, first.body.stripeCustomerId);
-  assert.equal(callCount(), 1, "replay MUST NOT create a second Stripe customer");
+  assert.equal(replay.body.stripeCustomerId, undefined);
+  assert.equal(callCount(), 2, "replay MUST NOT bootstrap Lago again");
 
   const auditRows = await ddb.send(
     new QueryCommand({
@@ -326,11 +341,10 @@ test("DoD scenario (b): replay → 200 already_exists + zero new side-effects (i
 
 test("account setup fails closed when an existing legacy envelope lacks customerId", async () => {
   const orgId = `org_acct_missing_customer_${SUFFIX}`;
-  const counter = { value: 0 };
-  const { stripe } = makeStripeStub(counter);
+  const { lagoClient } = makeLagoStub();
   const app = buildApp({
     orgId,
-    stripe,
+    lagoClient,
     clerkClient: makeClerkClientStub(VERIFIED_USER),
     provisioningService: {
       async provisionOrg() {
@@ -349,7 +363,6 @@ test("account setup fails closed when an existing legacy envelope lacks customer
             tier: "free",
           },
           status: "already_exists",
-          stripeCustomerId: "cus_legacy_missing_customer",
         };
       },
     },
@@ -361,14 +374,13 @@ test("account setup fails closed when an existing legacy envelope lacks customer
   assert.equal(error?.code, "CUSTOMER_MAPPING_MISSING");
 });
 
-test("account setup returns forward-mode customer contract with nullable Stripe linkage", async () => {
+test("account setup returns forward-mode customer contract without Stripe linkage", async () => {
   const orgId = `org_acct_forward_${SUFFIX}`;
   const customerId = "pq_cust_01HYZ6Q4X6DJP2X9Q9FQKX4T7A";
-  const counter = { value: 0 };
-  const { stripe } = makeStripeStub(counter);
+  const { lagoClient } = makeLagoStub();
   const app = buildApp({
     orgId,
-    stripe,
+    lagoClient,
     clerkClient: makeClerkClientStub(VERIFIED_USER),
     provisioningService: {
       async provisionOrg() {
@@ -389,7 +401,6 @@ test("account setup returns forward-mode customer contract with nullable Stripe 
             tier: "free",
           },
           status: "created",
-          stripeCustomerId: null,
         };
       },
     },
@@ -399,20 +410,18 @@ test("account setup returns forward-mode customer contract with nullable Stripe 
   assert.equal(status, 201);
   assert.equal(body.status, "created");
   assert.equal(body.customerId, customerId);
-  assert.equal(body.stripeCustomerId, null);
+  assert.equal(body.stripeCustomerId, undefined);
   assert.equal(body.emailSent, true);
 });
 
-test("DoD scenario (c): DDB transient on first attempt → retry succeeds; exactly 1 Stripe customer + 1 envelope", async () => {
+test("DoD scenario (c): DDB transient on first attempt → retry succeeds; exactly 1 Lago bootstrap + 1 envelope", async () => {
   const orgId = `org_acct_c_${SUFFIX}`;
-  const counter = { value: 0 };
-  const { stripe, callCount } = makeStripeStub(counter);
+  const { lagoClient, callCount } = makeLagoStub();
 
   // Wrap the doc client to inject a transient TransactWrite failure
   // on the FIRST TransactWriteItems call only. Subsequent calls fall
   // through to the real DDB Local. The provisioning state machine's
-  // retry loop (with the deterministic Stripe idempotency-key) must
-  // recover without a second Stripe customer creation.
+  // retry loop must recover without a second Lago bootstrap.
   let transactWriteAttempts = 0;
   const flakeyDdb = new Proxy(ddb, {
     get(target, prop, receiver) {
@@ -437,7 +446,7 @@ test("DoD scenario (c): DDB transient on first attempt → retry succeeds; exact
 
   const app = buildApp({
     orgId,
-    stripe,
+    lagoClient,
     clerkClient: makeClerkClientStub(VERIFIED_USER),
     ddbOverride: flakeyDdb,
   });
@@ -446,8 +455,8 @@ test("DoD scenario (c): DDB transient on first attempt → retry succeeds; exact
   assert.equal(result.status, 201, "retry must succeed after the simulated transient");
   assert.equal(
     callCount(),
-    1,
-    "Stripe customer created exactly once across both attempts (idempotency-key reuse)",
+    2,
+    "Lago customer/subscription bootstrapped exactly once across both attempts",
   );
   assert.ok(
     transactWriteAttempts >= 2,
@@ -462,15 +471,14 @@ test("DoD scenario (c): DDB transient on first attempt → retry succeeds; exact
 
 test("middleware integration: missing Authorization → 401 INVALID_TOKEN (no provisioning attempted)", async () => {
   const orgId = `org_acct_missing_auth_${SUFFIX}`;
-  const counter = { value: 0 };
-  const { stripe, callCount } = makeStripeStub(counter);
-  const app = buildApp({ orgId, stripe, clerkClient: makeClerkClientStub(VERIFIED_USER) });
+  const { lagoClient, callCount } = makeLagoStub();
+  const app = buildApp({ orgId, lagoClient, clerkClient: makeClerkClientStub(VERIFIED_USER) });
 
   const res = await app.request("/v1/account/setup", { method: "POST" });
   assert.equal(res.status, 401);
   const body = (await res.json()) as { error: { code: string } };
   assert.equal(body.error.code, "INVALID_TOKEN");
-  assert.equal(callCount(), 0, "no Stripe customer creation when auth fails");
+  assert.equal(callCount(), 0, "no Lago bootstrap when auth fails");
 
   const envelope = await ddb.send(
     new GetCommand({ TableName: KEYS_TABLE, Key: { apiKeyHash: `ORG#${orgId}` } }),
@@ -480,8 +488,7 @@ test("middleware integration: missing Authorization → 401 INVALID_TOKEN (no pr
 
 test("not_verified email → 500 fatal_failure with primary_email_unverified reason (no provisioning attempted)", async () => {
   const orgId = `org_acct_unverif_${SUFFIX}`;
-  const counter = { value: 0 };
-  const { stripe, callCount } = makeStripeStub(counter);
+  const { lagoClient, callCount } = makeLagoStub();
   const unverifiedUser: ClerkUserStub = {
     primaryEmailAddressId: "idn_unv",
     emailAddresses: [
@@ -490,7 +497,7 @@ test("not_verified email → 500 fatal_failure with primary_email_unverified rea
   };
   const app = buildApp({
     orgId,
-    stripe,
+    lagoClient,
     clerkClient: makeClerkClientStub(unverifiedUser),
   });
 
@@ -503,7 +510,7 @@ test("not_verified email → 500 fatal_failure with primary_email_unverified rea
   assert.equal(error.code, "FATAL_FAILURE");
   assert.equal(error.details.reason, "primary_email_unverified");
   assert.equal(error.details.verificationStatus, "unverified");
-  assert.equal(callCount(), 0, "MUST NOT forward unverified email to Stripe");
+  assert.equal(callCount(), 0, "MUST NOT forward unverified email to Lago");
 
   const envelope = await ddb.send(
     new GetCommand({ TableName: KEYS_TABLE, Key: { apiKeyHash: `ORG#${orgId}` } }),
@@ -514,17 +521,16 @@ test("not_verified email → 500 fatal_failure with primary_email_unverified rea
 test("admin-gate: non-admin org member (org_role: org:member) → 403 INSUFFICIENT_ROLE; zero side-effects (Bug 1 regression)", async () => {
   // Bot review PR #101 Bug 1: without the clerkAdminOnly() gate, an
   // invited org:member could race a delayed Clerk webhook and become
-  // the recorded ownerEmail / Stripe customer / welcome-email
+  // the recorded ownerEmail / Lago customer / welcome-email
   // recipient for the org. This regression test pins the fix: an
   // org:member calling the recovery endpoint receives 403 with NO
-  // Stripe call and NO envelope write.
+  // Lago call and NO envelope write.
   const orgId = `org_acct_member_${SUFFIX}`;
-  const counter = { value: 0 };
-  const { stripe, callCount } = makeStripeStub(counter);
+  const { lagoClient, callCount } = makeLagoStub();
   const app = buildApp({
     orgId,
     orgRole: "org:member",
-    stripe,
+    lagoClient,
     clerkClient: makeClerkClientStub(VERIFIED_USER),
   });
 
@@ -534,7 +540,7 @@ test("admin-gate: non-admin org member (org_role: org:member) → 403 INSUFFICIE
   assert.equal(error.code, "INSUFFICIENT_ROLE");
   assert.equal(error.status, 403);
   assert.equal(error.details.role, "org:member");
-  assert.equal(callCount(), 0, "MUST NOT create a Stripe customer for non-admin caller");
+  assert.equal(callCount(), 0, "MUST NOT bootstrap Lago for non-admin caller");
 
   const envelope = await ddb.send(
     new GetCommand({ TableName: KEYS_TABLE, Key: { apiKeyHash: `ORG#${orgId}` } }),
@@ -544,12 +550,11 @@ test("admin-gate: non-admin org member (org_role: org:member) → 403 INSUFFICIE
 
 test("admin-gate: missing org_role claim → 400 NO_ROLE_CLAIM; zero side-effects (operator JWT-template gap)", async () => {
   const orgId = `org_acct_missing_role_${SUFFIX}`;
-  const counter = { value: 0 };
-  const { stripe, callCount } = makeStripeStub(counter);
+  const { lagoClient, callCount } = makeLagoStub();
   const app = buildApp({
     orgId,
     orgRole: null, // omits the claim entirely
-    stripe,
+    lagoClient,
     clerkClient: makeClerkClientStub(VERIFIED_USER),
   });
 
@@ -568,12 +573,11 @@ test("admin-gate: missing org_role claim → 400 NO_ROLE_CLAIM; zero side-effect
 
 test("admin-gate: bare 'admin' role (legacy default) → 200 (matches webhook's role policy)", async () => {
   const orgId = `org_acct_legacy_admin_${SUFFIX}`;
-  const counter = { value: 0 };
-  const { stripe } = makeStripeStub(counter);
+  const { lagoClient } = makeLagoStub();
   const app = buildApp({
     orgId,
     orgRole: "admin",
-    stripe,
+    lagoClient,
     clerkClient: makeClerkClientStub(VERIFIED_USER),
   });
 
@@ -584,11 +588,10 @@ test("admin-gate: bare 'admin' role (legacy default) → 200 (matches webhook's 
 
 test("billing summary route is admin-only and returns the account billing contract", async () => {
   const orgId = `org_acct_billing_${SUFFIX}`;
-  const counter = { value: 0 };
-  const { stripe } = makeStripeStub(counter);
+  const { lagoClient } = makeLagoStub();
   const app = buildApp({
     orgId,
-    stripe,
+    lagoClient,
     clerkClient: makeClerkClientStub(VERIFIED_USER),
     billingService: {
       async getBillingSummary(principal) {
@@ -641,11 +644,10 @@ test("billing summary route is admin-only and returns the account billing contra
 
 test("plan-change route requires Idempotency-Key and forwards target plan to billing service", async () => {
   const orgId = `org_acct_plan_change_${SUFFIX}`;
-  const counter = { value: 0 };
-  const { stripe } = makeStripeStub(counter);
+  const { lagoClient } = makeLagoStub();
   const app = buildApp({
     orgId,
-    stripe,
+    lagoClient,
     clerkClient: makeClerkClientStub(VERIFIED_USER),
     billingService: {
       async getBillingSummary() {
@@ -686,13 +688,12 @@ test("plan-change route requires Idempotency-Key and forwards target plan to bil
 
 test("mutating billing routes reject missing or blank Idempotency-Key before service dispatch", async () => {
   const orgId = `org_acct_billing_idem_${SUFFIX}`;
-  const counter = { value: 0 };
-  const { stripe } = makeStripeStub(counter);
+  const { lagoClient } = makeLagoStub();
   let planChangeCalls = 0;
   let portalSessionCalls = 0;
   const app = buildApp({
     orgId,
-    stripe,
+    lagoClient,
     clerkClient: makeClerkClientStub(VERIFIED_USER),
     billingService: {
       async getBillingSummary() {

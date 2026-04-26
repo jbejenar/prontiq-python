@@ -68,11 +68,11 @@ export const siteFreeTierSchema = z.object({
 });
 
 export const sitePricingSchema = z.object({
-  paidPlanLabels: z.array(z.string().min(1)).min(1),
   freeTier: siteFreeTierSchema,
   intro: z.string().min(1),
   kicker: z.string().min(1),
   paidPlansFootnote: z.string().min(1),
+  paygTier: siteFreeTierSchema,
   title: z.string().min(1),
 });
 

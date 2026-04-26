@@ -1,5 +1,10 @@
 # P1B.14 Implementation Plan — CustomerId + Customer Mapping Contract
 
+> Historical implementation plan. Its "Current State" section describes the
+> repo before P1B.14 and before the later Lago cutover. P1B.20 removed the
+> platform-owned Stripe webhook, billing cron, and month-close from active
+> deploys.
+
 ## Intent
 
 Define one stable, platform-owned, org-scoped `customerId` contract across Clerk, Prontiq, Lago, and migration-era Stripe so downstream billing, console, and reconciliation work has one customer identity model.
@@ -10,9 +15,13 @@ Define one stable, platform-owned, org-scoped `customerId` contract across Clerk
 - Live provisioning writes `ORG#{orgId}` rows in `prontiq-keys` through `createProvisioningService().provisionOrg(...)`, with `stripeCustomerId`, `ownerEmail`, `tier`, `products`, `paymentOverdue`, `stripeSubscriptionId`, `subscriptionItems`, `hasFirstKey`, and `completedAt`.
 - `packages/shared/src/types.ts` has `ApiKeyRecord` and `OrgEnvelopeRecord` with Stripe linkage but no `customerId` or customer mapping type.
 - API-key auth currently performs one `prontiq-keys` read on the hot path, then increments `prontiq-usage`; no customer table exists and no customer-table read should be added to the hot path later.
-- Legacy Stripe billing is live: `PqBillingCron` runs hourly, `PqMonthClose` runs monthly at `cron(30 0 1 * ? *)`, and Stripe webhooks reconcile subscription/payment state.
+- At the time this plan was written, legacy Stripe billing was live:
+  `PqBillingCron` ran hourly, `PqMonthClose` ran monthly at
+  `cron(30 0 1 * ? *)`, and Stripe webhooks reconciled subscription/payment
+  state. This is historical context only after P1B.20.
 - Infra currently declares `prontiq-keys`, `prontiq-usage`, `prontiq-audit`, and `prontiq-ses-suppressions`; no `prontiq-customers` table exists.
-- Docs already say Lago is the target commercial system, but the shared `customerId` model is still pending in runtime.
+- At the time this plan was written, docs said Lago was the target commercial
+  system, but the shared `customerId` model was still pending in runtime.
 - Official Lago docs define a Lago-owned `lago_id` and application-provided customer `external_id`; this plan uses `external_id = customerId`.
 
 ## Constraints

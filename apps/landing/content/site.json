@@ -33,8 +33,7 @@
   "pricing": {
     "kicker": "Pricing",
     "title": "Usage-based. No seats.",
-    "intro": "Free gets you building immediately. Paid pricing is still in migration away from the legacy Stripe-backed purchase surface while Prontiq moves to first-party Lago-backed billing flows.",
-    "paidPlanLabels": ["Paid pricing"],
+    "intro": "Free gets you building immediately. PAYG billing is managed through Prontiq account surfaces backed by Lago.",
     "freeTier": {
       "name": "Free",
       "priceLabel": "$0",
@@ -49,7 +48,21 @@
       ],
       "ctaLabel": "Start Free"
     },
-    "paidPlansFootnote": "The current landing page still supports a legacy Stripe-backed paid surface during migration. The forward commercial direction is Prontiq-rendered billing with Free + PAYG."
+    "paygTier": {
+      "name": "PAYG",
+      "priceLabel": "Usage",
+      "unitLabel": "/credits",
+      "note": "Card managed in account",
+      "description": "Move from Free to usage-based billing when your integration is ready for production traffic.",
+      "features": [
+        "Usage-based address credits",
+        "Invoices and payment methods in account billing",
+        "Same API keys and request-time limits",
+        "Stripe payment collection through Lago"
+      ],
+      "ctaLabel": "Create Account"
+    },
+    "paidPlansFootnote": "Stripe is the payment rail behind Lago. Prontiq account billing is the customer-facing surface."
   },
   "featuresIntro": "Fast autocomplete, validation, enrichment, and reverse geocoding.",
   "footer": {

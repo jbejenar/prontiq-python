@@ -3,6 +3,7 @@
 Backend trace rollout for `P1F.03`.
 
 Status:
+
 - verified in `dev` on 2026-04-20
 - verified in `prod` on 2026-04-20
 
@@ -98,7 +99,7 @@ Custom span attributes must not contain:
 - API keys or hashes
 - JWTs
 - email addresses
-- Stripe secrets
+- payment provider secrets
 
 If any sensitive data appears in Honeycomb, revoke the ingest key immediately and redeploy with telemetry disabled.
 

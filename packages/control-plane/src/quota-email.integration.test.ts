@@ -6,11 +6,7 @@ import {
   DescribeTableCommand,
   DynamoDBClient,
 } from "@aws-sdk/client-dynamodb";
-import {
-  DynamoDBDocumentClient,
-  GetCommand,
-  PutCommand,
-} from "@aws-sdk/lib-dynamodb";
+import { DynamoDBDocumentClient, GetCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
 import { createQuotaEmailService } from "./quota-email.js";
 import type {
   OrgEnvelopeRecord,
@@ -87,9 +83,9 @@ function makeEnvelope(overrides: Partial<OrgEnvelopeRecord> = {}): OrgEnvelopeRe
     ownerEmail: "owner@example.com",
     paymentOverdue: false,
     products: ["address"],
-    stripeCustomerId: "cus_test_123",
-    stripeSubscriptionId: "sub_test_123",
-    subscriptionItems: { address: "si_test_123" },
+    stripeCustomerId: null,
+    stripeSubscriptionId: null,
+    subscriptionItems: {},
     tier: "starter",
     ...overrides,
   };
@@ -162,7 +158,9 @@ test("quota email worker sends warning email once and marks the scope sent", asy
 });
 
 test("quota email worker finalizes suppressed warning emails without retry loops", async () => {
-  await seedEnvelope(makeEnvelope({ apiKeyHash: "ORG#org_suppressed", ownerEmail: "suppressed@example.com" }));
+  await seedEnvelope(
+    makeEnvelope({ apiKeyHash: "ORG#org_suppressed", ownerEmail: "suppressed@example.com" }),
+  );
   await seedUsage(makeUsage({ apiKeyHash: "hash_suppressed", scope: "address#2026-04" }));
   await seedSuppression({
     email: "suppressed@example.com",
@@ -200,7 +198,12 @@ test("quota email worker finalizes suppressed warning emails without retry loops
 
 test("expired bounce suppressions do not block quota emails before DynamoDB TTL cleanup", async () => {
   const sent: QuotaEmailTask[] = [];
-  await seedEnvelope(makeEnvelope({ apiKeyHash: "ORG#org_expired_bounce", ownerEmail: "expired-bounce@example.com" }));
+  await seedEnvelope(
+    makeEnvelope({
+      apiKeyHash: "ORG#org_expired_bounce",
+      ownerEmail: "expired-bounce@example.com",
+    }),
+  );
   await seedUsage(makeUsage({ apiKeyHash: "hash_expired_bounce", scope: "address#2026-04" }));
   await seedSuppression({
     bounceCount: 3,

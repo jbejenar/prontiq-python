@@ -10,7 +10,6 @@ export type {
   UsageCounterRecord,
   SesSuppressionRecord,
   QuotaEmailTask,
-  StripeWebhookCompletionRecord,
   RedirectRecord,
   OrgEnvelopeRecord,
   CustomerRecord,

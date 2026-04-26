@@ -23,7 +23,7 @@ import { createLogger } from "@prontiq/shared";
  *
  * Policy: do NOT fall back to a non-primary verified email if the
  * primary itself isn't verified. The primary is the user's explicit
- * identity choice; falling back would make Stripe customer email
+ * identity choice; falling back would make Lago customer email
  * unpredictable from the operator's perspective ("which one did we
  * send the receipt to?"). Operator-facing fix is "verify your primary
  * email" or "set a verified email as primary in the Clerk dashboard".
@@ -50,16 +50,14 @@ export async function resolvePrimaryEmail(
     if (!user.primaryEmailAddressId) {
       return { kind: "not_found" };
     }
-    const primary = user.emailAddresses.find(
-      (entry) => entry.id === user.primaryEmailAddressId,
-    );
+    const primary = user.emailAddresses.find((entry) => entry.id === user.primaryEmailAddressId);
     if (!primary?.emailAddress || primary.emailAddress.length === 0) {
       return { kind: "not_found" };
     }
     // Verification check (Bug 4 from PR #95 review). Per Clerk docs,
     // Verification.status is one of: unverified | verified |
     // transferable | failed | expired. Only "verified" is safe to
-    // forward to Stripe + SES. A null verification object is treated
+    // forward to Lago + SES. A null verification object is treated
     // as not-verified (defensive).
     const status = primary.verification?.status ?? null;
     if (status !== "verified") {

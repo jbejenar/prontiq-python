@@ -1,12 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import {
-  caseStudySchema,
-  postSchema,
-  siteSettingsSchema,
-  type ContentSource,
-} from "./content.js";
+import { caseStudySchema, postSchema, siteSettingsSchema, type ContentSource } from "./content.js";
 
 test("postSchema accepts a valid post payload", () => {
   const result = postSchema.parse({
@@ -76,7 +71,6 @@ test("siteSettingsSchema enforces required homepage copy", () => {
       ],
     },
     pricing: {
-      paidPlanLabels: ["Starter", "Growth"],
       freeTier: {
         ctaLabel: "Start Free",
         description: "Build against the live address product with no card up front.",
@@ -90,9 +84,18 @@ test("siteSettingsSchema enforces required homepage copy", () => {
         priceLabel: "$0",
         unitLabel: "/mo",
       },
-      intro: "Usage-based pricing, with Free rendered by Prontiq and the interim paid purchase surface limited to Starter and Growth.",
+      intro: "Usage-based pricing, with Free and PAYG rendered by Prontiq.",
       kicker: "Pricing",
-      paidPlansFootnote: "Starter and Growth are rendered by the interim Stripe pricing surface.",
+      paidPlansFootnote: "Stripe is the payment rail behind Lago.",
+      paygTier: {
+        ctaLabel: "Create Account",
+        description: "Move to usage-based billing when production traffic starts.",
+        features: ["Usage-based address credits"],
+        name: "PAYG",
+        note: "Card managed in account",
+        priceLabel: "Usage",
+        unitLabel: "/credits",
+      },
       title: "Usage-based. No seats.",
     },
   });
@@ -145,7 +148,6 @@ test("ContentSource shape is importable from the shared package surface", () => 
           links: [{ href: "https://docs.prontiq.dev", label: "Docs" }],
         },
         pricing: {
-          paidPlanLabels: ["Starter", "Growth"],
           freeTier: {
             ctaLabel: "Start Free",
             description: "Build against the live address product with no card up front.",
@@ -157,7 +159,16 @@ test("ContentSource shape is importable from the shared package surface", () => 
           },
           intro: "Simple usage-based plans.",
           kicker: "Pricing",
-          paidPlansFootnote: "Starter and Growth are rendered by Stripe.",
+          paidPlansFootnote: "Stripe is the payment rail behind Lago.",
+          paygTier: {
+            ctaLabel: "Create Account",
+            description: "Move to usage-based billing when production traffic starts.",
+            features: ["Usage-based address credits"],
+            name: "PAYG",
+            note: "Card managed in account",
+            priceLabel: "Usage",
+            unitLabel: "/credits",
+          },
           title: "Usage-based. No seats.",
         },
       });
@@ -201,8 +212,16 @@ test("siteSettingsSchema rejects a missing free-tier pricing section", () => {
         pricing: {
           intro: "Simple usage-based plans.",
           kicker: "Pricing",
-          paidPlanLabels: ["Starter", "Growth"],
-          paidPlansFootnote: "Starter and Growth are rendered by Stripe.",
+          paidPlansFootnote: "Stripe is the payment rail behind Lago.",
+          paygTier: {
+            ctaLabel: "Create Account",
+            description: "Move to usage-based billing when production traffic starts.",
+            features: ["Usage-based address credits"],
+            name: "PAYG",
+            note: "Card managed in account",
+            priceLabel: "Usage",
+            unitLabel: "/credits",
+          },
           title: "Usage-based. No seats.",
         },
       }),

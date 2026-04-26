@@ -38,14 +38,17 @@ test("buildAuditTransactItem populates the audit row schema per ARCH §5.5.1", (
     orgId: "org_abc",
     action: "ORG_PROVISIONED",
     actorId: "clerk-webhook",
-    metadata: { source: "user.created", stripeCustomerId: "cus_123" },
+    metadata: { source: "user.created", customerId: "pq_cust_01HXTESTCUSTOMER000000000" },
     now,
   });
   const row = item.Put?.Item as Record<string, unknown>;
   assert.equal(row.orgId, "org_abc");
   assert.equal(row.action, "ORG_PROVISIONED");
   assert.equal(row.actorId, "clerk-webhook");
-  assert.deepEqual(row.metadata, { source: "user.created", stripeCustomerId: "cus_123" });
+  assert.deepEqual(row.metadata, {
+    source: "user.created",
+    customerId: "pq_cust_01HXTESTCUSTOMER000000000",
+  });
   const sk = row["timestamp#eventId"] as string;
   assert.match(sk, /^2026-04-17T10:00:00\.000Z#[0-9A-HJKMNP-TV-Z]{26}$/);
 });
@@ -126,13 +129,7 @@ test("apiKeyHash is omitted when not provided (org-scoped events)", () => {
 });
 
 test("all 5 lifecycle actions produce a valid row (P1B.07 DoD)", () => {
-  const actions: AuditAction[] = [
-    "CREATE",
-    "ROTATE",
-    "REVOKE",
-    "UPGRADE",
-    "DOWNGRADE",
-  ];
+  const actions: AuditAction[] = ["CREATE", "ROTATE", "REVOKE", "UPGRADE", "DOWNGRADE"];
   for (const action of actions) {
     const item = buildAuditTransactItem({
       tableName: "audit",
@@ -219,9 +216,10 @@ test("Bug 5: missing eventId falls back to fresh ULID (no idempotency, but uniqu
   assert.match(skA, /#[0-9A-HJKMNP-TV-Z]{26}$/);
 });
 
-function makeWriteAuditStub(opts: {
-  throwOnPut?: Error;
-}): { ddb: DynamoDBDocumentClient; calls: number } {
+function makeWriteAuditStub(opts: { throwOnPut?: Error }): {
+  ddb: DynamoDBDocumentClient;
+  calls: number;
+} {
   let calls = 0;
   const ddb = {
     async send(command: unknown) {

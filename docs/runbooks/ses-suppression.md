@@ -1,6 +1,6 @@
 # SES Suppression Runbook
 
-Operating, verifying, and manually recovering the SES bounce / complaint suppression flow used by welcome emails, quota emails, and legacy Stripe `past_due` billing emails.
+Operating, verifying, and manually recovering the SES bounce / complaint suppression flow used by welcome emails and quota emails.
 
 ## Scope
 
@@ -11,7 +11,6 @@ Implemented in P1B.08:
 - `PqSesFeedback` Lambda subscriber
 - suppression-aware SES send helper used by:
   - Clerk welcome email
-  - Stripe `past_due` billing email
   - quota 80% / 100% emails
 - async quota email worker `PqQuotaEmailWorker`
 

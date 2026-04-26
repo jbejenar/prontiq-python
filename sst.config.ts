@@ -360,14 +360,13 @@ export default $config({
       "HONEYCOMB_API_KEY",
       "LAGO_API_KEY",
       "LAGO_WEBHOOK_HMAC_SECRET",
-      "STRIPE_WEBHOOK_SECRET",
     ] as const;
     const REQUIRED_DEPLOY_VARS = ["LAGO_API_URL", "LAGO_PAYMENT_PROVIDER_CODE"] as const;
     function readGithubSecret(name: string): string {
       const raw = process.env[name];
       if (raw === undefined) return "";
       // Trim leading/trailing whitespace including newlines — common
-      // copy-paste artefact when operators paste from the Clerk/Stripe
+      // copy-paste artefact when operators paste from provider
       // dashboards. Whitespace-only values become empty here and fail
       // the same validation as truly-unset secrets.
       return raw.trim();
@@ -379,11 +378,7 @@ export default $config({
     }
     const isDeployedStage = $app.stage === "dev" || $app.stage === "prod";
     if (isDeployedStage) {
-      const legacyStripeEnabled = readGithubVar("LEGACY_STRIPE_RUNTIME_ENABLED") !== "false";
-      const requiredDeploySecrets = legacyStripeEnabled
-        ? [...REQUIRED_DEPLOY_SECRETS, "STRIPE_SECRET_KEY" as const]
-        : REQUIRED_DEPLOY_SECRETS;
-      const missing = requiredDeploySecrets.filter((name) => readGithubSecret(name).length === 0);
+      const missing = REQUIRED_DEPLOY_SECRETS.filter((name) => readGithubSecret(name).length === 0);
       if (missing.length > 0) {
         throw new Error(
           `Missing or whitespace-only GitHub Environment secrets for stage "${$app.stage}": ` +
@@ -1113,9 +1108,9 @@ export default $config({
     // before the welcome email path goes live in prod.
 
     // ─── Shared env contract for ALL control-plane Lambdas ───
-    // Current shipped state is still Stripe-centric. The target commercial
-    // architecture is Lago-centered, but that migration has not landed in this
-    // runtime wiring yet.
+    // Current shipped state is Lago-centered. Stripe is retained only as the
+    // payment rail configured inside Lago; platform Lambdas no longer deploy
+    // Stripe webhook, billing-cron, or month-close runtime surfaces.
     //
     // Both `PqClerkWebhook` (Svix-signed `POST /webhooks/clerk`) and
     // `PqAccount` (Clerk-JWT-authenticated `POST /v1/account/setup`)
@@ -1157,7 +1152,6 @@ export default $config({
         // guard above.
         CLERK_SECRET_KEY: $util.secret(readGithubSecret("CLERK_SECRET_KEY")),
         ...observabilityEnv(),
-        STRIPE_SECRET_KEY: $util.secret(readGithubSecret("STRIPE_SECRET_KEY")),
         // Non-secret config — plaintext in state is fine.
         // Consumed by `getAdminRoles()` in `@prontiq/control-plane`,
         // called by BOTH the webhook handler (gates on the Svix-
@@ -1170,7 +1164,6 @@ export default $config({
         LAGO_API_KEY: $util.secret(readGithubSecret("LAGO_API_KEY")),
         LAGO_API_URL: readGithubVar("LAGO_API_URL"),
         LAGO_PAYMENT_PROVIDER_CODE: readGithubVar("LAGO_PAYMENT_PROVIDER_CODE") || "",
-        LEGACY_STRIPE_RUNTIME_ENABLED: readGithubVar("LEGACY_STRIPE_RUNTIME_ENABLED") || "true",
         ...sharedEmailEnv(),
         PRONTIQ_ACCOUNT_URL: process.env.PRONTIQ_ACCOUNT_URL ?? DEFAULT_ACCOUNT_URL,
       };
@@ -1204,27 +1197,6 @@ export default $config({
     });
 
     api.route("POST /webhooks/clerk", clerkWebhookFn.arn);
-
-    const stripeWebhookFn = new sst.aws.Function("PqStripeWebhook", {
-      handler: "packages/webhooks/src/stripe.bootstrap.handler",
-      architecture: "arm64",
-      runtime: "nodejs24.x",
-      memory: "512 MB",
-      timeout: "30 seconds",
-      link: [authKeysTable, authUsageTable, auditTable, customersTable, suppressionsTable],
-      permissions: [
-        {
-          actions: ["ses:SendEmail", "ses:SendRawEmail"],
-          resources: sharedEmailSendResources(),
-        },
-      ],
-      environment: {
-        ...controlPlaneEnv(),
-        STRIPE_WEBHOOK_SECRET: $util.secret(readGithubSecret("STRIPE_WEBHOOK_SECRET")),
-      },
-    });
-
-    api.route("POST /webhooks/stripe", stripeWebhookFn.arn);
 
     const lagoWebhookFn = new sst.aws.Function("PqLagoWebhook", {
       handler: "packages/webhooks/src/lago.bootstrap.handler",
@@ -1287,26 +1259,6 @@ export default $config({
       },
     });
 
-    new aws.cloudwatch.MetricAlarm("PqStripeWebhookErrors", {
-      comparisonOperator: "GreaterThanThreshold",
-      evaluationPeriods: 1,
-      datapointsToAlarm: 1,
-      metricName: "5xx",
-      namespace: "AWS/ApiGateway",
-      period: 900,
-      statistic: "Sum",
-      threshold: 5,
-      treatMissingData: "notBreaching",
-      alarmDescription:
-        "Stripe webhook route returned more than 5 5xx responses in 15 minutes. Catches both unhandled Lambda exceptions and handler-returned 500s for replay-safe Stripe retries.",
-      alarmActions: [ingestAlerts.arn],
-      dimensions: {
-        ApiId: api.nodes.api.id,
-        Stage: "$default",
-        Route: "POST /webhooks/stripe",
-      },
-    });
-
     new aws.cloudwatch.MetricAlarm("PqLagoWebhookErrors", {
       comparisonOperator: "GreaterThanThreshold",
       evaluationPeriods: 1,
@@ -1363,87 +1315,13 @@ export default $config({
       },
     });
 
-    const billingCron = new sst.aws.Cron("PqBillingCron", {
-      schedule: "rate(1 hour)",
-      function: {
-        handler: "packages/control-plane/src/billing-cron.bootstrap.handler",
-        architecture: "arm64",
-        runtime: "nodejs24.x",
-        memory: "512 MB",
-        timeout: "2 minutes",
-        link: [authKeysTable, authUsageTable],
-        environment: {
-          ...observabilityEnv(),
-          KEYS_TABLE_NAME: authKeysTable.name,
-          LEGACY_STRIPE_RUNTIME_ENABLED: readGithubVar("LEGACY_STRIPE_RUNTIME_ENABLED") || "true",
-          STRIPE_SECRET_KEY: $util.secret(readGithubSecret("STRIPE_SECRET_KEY")),
-          USAGE_TABLE_NAME: authUsageTable.name,
-        },
-      },
-    });
-
-    new aws.cloudwatch.MetricAlarm("PqBillingCronErrors", {
-      comparisonOperator: "GreaterThanThreshold",
-      evaluationPeriods: 1,
-      datapointsToAlarm: 1,
-      metricName: "Errors",
-      namespace: "AWS/Lambda",
-      period: 3600,
-      statistic: "Sum",
-      threshold: 0,
-      treatMissingData: "notBreaching",
-      alarmDescription:
-        "Billing cron Lambda recorded an error in the last hour. Check CloudWatch Logs for meter push failures before usage drift accumulates.",
-      alarmActions: [ingestAlerts.arn],
-      dimensions: {
-        FunctionName: billingCron.nodes.function.name,
-      },
-    });
-
-    const monthClose = new sst.aws.Cron("PqMonthClose", {
-      schedule: "cron(30 0 1 * ? *)",
-      function: {
-        handler: "packages/control-plane/src/month-close.bootstrap.handler",
-        architecture: "arm64",
-        runtime: "nodejs24.x",
-        memory: "512 MB",
-        timeout: "2 minutes",
-        link: [authKeysTable, authUsageTable],
-        environment: {
-          ...observabilityEnv(),
-          KEYS_TABLE_NAME: authKeysTable.name,
-          LEGACY_STRIPE_RUNTIME_ENABLED: readGithubVar("LEGACY_STRIPE_RUNTIME_ENABLED") || "true",
-          STRIPE_SECRET_KEY: $util.secret(readGithubSecret("STRIPE_SECRET_KEY")),
-          USAGE_TABLE_NAME: authUsageTable.name,
-        },
-      },
-    });
-
-    new aws.cloudwatch.MetricAlarm("PqMonthCloseErrors", {
-      comparisonOperator: "GreaterThanThreshold",
-      evaluationPeriods: 1,
-      datapointsToAlarm: 1,
-      metricName: "Errors",
-      namespace: "AWS/Lambda",
-      period: 3600,
-      statistic: "Sum",
-      threshold: 0,
-      treatMissingData: "notBreaching",
-      alarmDescription:
-        "Month-close Lambda recorded an error during the day-1 previous-month finalisation sweep. Check CloudWatch Logs before billing close drifts.",
-      alarmActions: [ingestAlerts.arn],
-      dimensions: {
-        FunctionName: monthClose.nodes.function.name,
-      },
-    });
-
     // ─── Account-handler Lambda (P1B.05 PR 3): POST /v1/account/setup ───
     //
     // Same control-plane env contract as PqClerkWebhook — see the
     // controlPlaneEnv() helper above. Both Lambdas share the same
     // CLERK_ADMIN_ROLES override (so the admin-role policy is
     // uniform across both ingress paths), the same DDB table names,
-    // the same Stripe + Clerk Backend API secrets, etc. Webhook adds
+    // the same Lago + Clerk Backend API secrets, etc. Webhook adds
     // CLERK_WEBHOOK_SECRET on top; this Lambda doesn't need it
     // (authenticates via Clerk JWT instead of Svix signature).
     //
@@ -1458,8 +1336,7 @@ export default $config({
     // Lambda's clerkAdminOnly() gate and the webhook's role gate.
     // The existing deployed-stage guard above validates the secrets/vars this
     // Lambda needs (CLERK_SECRET_KEY, LAGO_API_KEY, LAGO_API_URL, and
-    // LAGO_PAYMENT_PROVIDER_CODE) for dev/prod stages. Stripe remains present
-    // only for explicit legacy rollback.
+    // LAGO_PAYMENT_PROVIDER_CODE) for dev/prod stages.
     const accountFn = new sst.aws.Function("PqAccount", {
       handler: "packages/api/src/account-handler.bootstrap.handler",
       architecture: "arm64",
@@ -1686,13 +1563,10 @@ export default $config({
             api.nodes.api.id,
             apiDefaultRoute.nodes.function.name,
             clerkWebhookFn.name,
-            stripeWebhookFn.name,
             accountFn.name,
             sesFeedbackFn.name,
             quotaEmailWorkerFn.name,
             lagoEventForwarder.nodes.function.name,
-            billingCron.nodes.function.name,
-            monthClose.nodes.function.name,
             billingEventsQueue.nodes.queue.name,
             billingEventsDlq.nodes.queue.name,
           ])
@@ -1701,13 +1575,10 @@ export default $config({
               apiId,
               apiFunctionName,
               clerkWebhookName,
-              stripeWebhookName,
               accountName,
               sesFeedbackName,
               quotaEmailName,
               lagoForwarderName,
-              billingCronName,
-              monthCloseName,
               billingEventsQueueName,
               billingEventsDlqName,
             ]) =>
@@ -1924,13 +1795,10 @@ export default $config({
                       stat: "Sum",
                       metrics: [
                         ["AWS/Lambda", "Errors", "FunctionName", clerkWebhookName],
-                        [".", ".", ".", stripeWebhookName],
                         [".", ".", ".", accountName],
                         [".", ".", ".", sesFeedbackName],
                         [".", ".", ".", quotaEmailName],
                         [".", ".", ".", lagoForwarderName],
-                        [".", ".", ".", billingCronName],
-                        [".", ".", ".", monthCloseName],
                       ],
                     },
                   },

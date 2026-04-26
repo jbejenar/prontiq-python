@@ -1,8 +1,5 @@
 import { ConditionalCheckFailedException } from "@aws-sdk/client-dynamodb";
-import type {
-  DynamoDBDocumentClient,
-  TransactWriteCommandInput,
-} from "@aws-sdk/lib-dynamodb";
+import type { DynamoDBDocumentClient, TransactWriteCommandInput } from "@aws-sdk/lib-dynamodb";
 import { PutCommand } from "@aws-sdk/lib-dynamodb";
 import { monotonicFactory } from "ulid";
 
@@ -30,7 +27,8 @@ export interface BuildAuditInput {
   /**
    * Timestamp of the event. Defaults to `new Date()`. **For idempotent
    * writes** (where the same logical event might be retried — Svix
-   * webhook redelivery, billing-cron retry after timeout, etc.) you
+   * webhook redelivery, Lago webhook redelivery, billing-event worker
+   * retry after timeout, etc.) you
    * MUST pass the upstream event's timestamp here so retries produce
    * the same sort key.
    */
@@ -42,8 +40,8 @@ export interface BuildAuditInput {
    *
    * **For idempotent writes**, pass the upstream event's identifier:
    *   - Clerk webhook: the Svix `svix-id` header
-   *   - Stripe webhook: the Stripe event ID (`evt_...`)
-   *   - Billing cron: a deterministic key like `${invoiceId}-${period}`
+   *   - Lago webhook: the Lago unique key
+   *   - Billing event worker: the deterministic billing event ID
    *
    * MUST be paired with a deterministic `now` (the upstream event's
    * timestamp) so the full sort key is stable across retries. With both
@@ -97,8 +95,7 @@ export function buildAuditTransactItem(input: BuildAuditInput): TransactItem {
     Put: {
       TableName: input.tableName,
       Item: item,
-      ConditionExpression:
-        "attribute_not_exists(orgId) AND attribute_not_exists(#eventKey)",
+      ConditionExpression: "attribute_not_exists(orgId) AND attribute_not_exists(#eventKey)",
       ExpressionAttributeNames: {
         "#eventKey": SORT_KEY_NAME,
       },

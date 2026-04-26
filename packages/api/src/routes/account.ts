@@ -60,10 +60,6 @@ const accountSetupSuccessSchema = z.object({
   customerId: z.string().openapi({
     description: "Prontiq-owned platform customer id.",
   }),
-  stripeCustomerId: z.string().nullable().openapi({
-    description:
-      "Legacy/payment-rail Stripe linkage. Null after Lago cutover when Stripe is used only through Lago.",
-  }),
   emailSent: z.boolean().optional().openapi({
     description:
       "True only when the welcome email was best-effort sent for a freshly-created envelope. Absent on already_exists replays.",
@@ -401,7 +397,6 @@ export function createAccountRoutes(overrides: AccountRouteOverrides = {}) {
           logger.error("ORG envelope missing customerId (account-setup replay)", {
             request_id: requestId,
             orgId: principal.orgId,
-            stripeCustomerId: result.stripeCustomerId,
           });
           return c.json(
             {
@@ -419,13 +414,11 @@ export function createAccountRoutes(overrides: AccountRouteOverrides = {}) {
         logger.info("ORG envelope exists (account-setup replay)", {
           request_id: requestId,
           orgId: principal.orgId,
-          stripeCustomerId: result.stripeCustomerId,
         });
         return c.json(
           {
             status: "already_exists" as const,
             customerId,
-            stripeCustomerId: result.stripeCustomerId ?? null,
           },
           200,
         );
@@ -436,7 +429,6 @@ export function createAccountRoutes(overrides: AccountRouteOverrides = {}) {
           logger.error("Created ORG envelope missing customerId (account-setup)", {
             request_id: requestId,
             orgId: principal.orgId,
-            stripeCustomerId: result.stripeCustomerId,
           });
           return c.json(
             {
@@ -454,14 +446,12 @@ export function createAccountRoutes(overrides: AccountRouteOverrides = {}) {
         logger.info("ORG envelope created (account-setup)", {
           request_id: requestId,
           orgId: principal.orgId,
-          stripeCustomerId: result.stripeCustomerId,
           emailSent: result.emailSent,
         });
         return c.json(
           {
             status: "created" as const,
             customerId,
-            stripeCustomerId: result.stripeCustomerId ?? null,
             emailSent: result.emailSent,
           },
           201,
@@ -471,7 +461,6 @@ export function createAccountRoutes(overrides: AccountRouteOverrides = {}) {
         logger.error("ORG envelope provisioning retryable failure (account-setup)", {
           request_id: requestId,
           orgId: principal.orgId,
-          stripeCustomerId: result.stripeCustomerId,
         });
         return c.json(
           {
@@ -488,7 +477,6 @@ export function createAccountRoutes(overrides: AccountRouteOverrides = {}) {
         logger.error("ORG envelope provisioning fatal failure (account-setup)", {
           request_id: requestId,
           orgId: principal.orgId,
-          stripeCustomerId: result.stripeCustomerId,
         });
         return c.json(
           {

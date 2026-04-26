@@ -10,8 +10,6 @@ export const env = createEnv({
     NEXT_PUBLIC_API_URL: z.url(),
     NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: z.string().min(1).optional(),
     NEXT_PUBLIC_DEPLOYMENT_ENV: z.enum(["development", "preview", "production"]).optional(),
-    NEXT_PUBLIC_STRIPE_PRICING_TABLE_ID: z.string().min(1).optional(),
-    NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: z.string().min(1).optional(),
   },
   runtimeEnv: {
     NEXT_PUBLIC_ACCOUNT_URL: process.env.NEXT_PUBLIC_ACCOUNT_URL,
@@ -24,8 +22,6 @@ export const env = createEnv({
       process.env.VERCEL_ENV === "development"
         ? process.env.VERCEL_ENV
         : undefined),
-    NEXT_PUBLIC_STRIPE_PRICING_TABLE_ID: process.env.NEXT_PUBLIC_STRIPE_PRICING_TABLE_ID,
-    NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY,
   },
   emptyStringAsUndefined: true,
 });

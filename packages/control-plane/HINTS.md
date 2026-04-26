@@ -5,15 +5,12 @@
   provisioning replays; do not mutate them in the provisioning preflight path.
 - Use `backfill:customers` for legacy customer denormalization and inspect dry
   runs before `--apply`.
-- Do not add generated `customerId` to Stripe customer-create metadata while
-  Stripe idempotency keys are still based only on `orgId`.
-- P1B.19 forward provisioning runs with `LEGACY_STRIPE_RUNTIME_ENABLED=false`.
-  In that mode, do not instantiate Stripe for provisioning; bootstrap the Lago
-  Free subscription, write denormalized Lago period fields onto the org
-  envelope/API keys, and return nullable `stripeCustomerId`.
-- Legacy Stripe webhook, billing cron, and month-close code paths are
-  rollback-only after P1B.19. If touched, preserve the disabled-summary /
-  retired-webhook behavior and signature verification.
+- Do not instantiate Stripe for provisioning. P1B.20 removed direct
+  platform-owned Stripe runtime paths; Stripe exists only as the payment rail
+  configured inside Lago.
+- Forward provisioning must bootstrap the Lago Free subscription, write
+  denormalized Lago period fields onto the org envelope/API keys, and keep
+  persisted `stripeCustomerId` nullable/historical only.
 - Lago event forwarding must remain replay-safe: use `eventId` as Lago
   `transaction_id`, derive `external_subscription_id` from `customerId`, and
   write delivery evidence before/after send attempts.

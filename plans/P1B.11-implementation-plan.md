@@ -1,18 +1,26 @@
 # P1B.11 Implementation Plan
 
+> Historical implementation plan. P1B.20 later removed the platform-owned
+> Stripe billing cron and month-close deploys; Lago now owns billing-period
+> reconciliation.
+
 ## Intent
 
 Implement P1B.11 so a dedicated monthly Lambda finalizes the previous month's billable usage at `00:30 UTC` on day 1, pushes any remaining Stripe meter delta exactly once, then marks the current-hash previous-month scope `closed=true` so the hourly billing cron stops revisiting it permanently.
 
 ## Current State
 
-- `packages/control-plane/src/billing-cron.ts` is the live hourly Stripe metering path.
+- At the time this plan was written,
+  `packages/control-plane/src/billing-cron.ts` was the live hourly Stripe
+  metering path. This is historical context only after P1B.20.
 - Replay-safe meter pushes already exist on the current-hash usage row through:
   - `pendingMeterEventIdentifier`
   - `pendingMeterTargetCumulativeCount`
   - `lastPushedCumulativeCount`
 - `UsageCounterRecord.closed?: boolean` already exists and is already respected by the hourly cron and key rotation flow.
-- `sst.config.ts` currently wires `PqBillingCron` only; there is no dedicated month-close Lambda, schedule, alarm, or runbook yet.
+- At the time this plan was written, `sst.config.ts` wired `PqBillingCron`
+  only; there was no dedicated month-close Lambda, schedule, alarm, or runbook
+  yet.
 
 ## Constraints
 

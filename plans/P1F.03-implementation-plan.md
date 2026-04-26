@@ -10,8 +10,8 @@ Integrate Honeycomb as Prontiq's primary backend trace-analysis plane for deploy
 - There is no existing Honeycomb package in the repo.
 - In-scope deployed Lambda surfaces are:
   - API: `PqApi`, `PqAccount`
-  - Webhooks: `PqClerkWebhook`, `PqStripeWebhook`
-  - Control-plane: `PqSesFeedback`, `PqQuotaEmailWorker`, `PqBillingCron`, `PqMonthClose`
+  - Webhooks: `PqClerkWebhook`, `PqLagoWebhook`
+  - Control-plane: `PqSesFeedback`, `PqQuotaEmailWorker`, `PqBillingEventWorker`
   - Ingestion: `PqIngestReadManifest`, `PqIngestCreateIndex`, `PqIngestHealthCheck`, `PqIngestAliasSwap`, `PqIngestOnFailure`, `PqIngestRouter`, `PqIngestCleanup`
 - Explicitly deferred surfaces:
   - `packages/ingestion/src/fargate-bulk-ingest.ts`
@@ -34,7 +34,7 @@ Integrate Honeycomb as Prontiq's primary backend trace-analysis plane for deploy
   - API keys or hashes
   - JWTs
   - email addresses
-  - Stripe secrets
+  - payment provider secrets
 - Root `pnpm lint`, `pnpm typecheck`, `pnpm build`, and `pnpm test` must stay green with no Honeycomb key set.
 
 ## Approach
@@ -69,7 +69,7 @@ Mergeability:
 
 Files:
 - `packages/api/src/{index.ts,account-handler.ts,tracing.ts}`
-- `packages/webhooks/src/{clerk.ts,stripe.ts}`
+- `packages/webhooks/src/{clerk.ts,lago.ts}`
 
 Changes:
 - Wrap exported Lambda handlers with `wrapLambdaHandler()`.

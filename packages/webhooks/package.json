@@ -8,8 +8,8 @@
   "scripts": {
     "build": "node ../../scripts/ts-package-build.mjs build",
     "typecheck": "node ../../scripts/ts-package-build.mjs typecheck",
-    "test": "pnpm -w build --filter @prontiq/webhooks... && node --test dist/clerk.test.js dist/stripe.test.js dist/lago.test.js",
-    "test:integration": "pnpm -w build --filter @prontiq/webhooks... && node --test dist/clerk.integration.test.js dist/stripe.integration.test.js",
+    "test": "pnpm -w build --filter @prontiq/webhooks... && node --test dist/clerk.test.js dist/lago.test.js",
+    "test:integration": "pnpm -w build --filter @prontiq/webhooks... && node --test dist/clerk.integration.test.js",
     "lint": "eslint src/",
     "clean": "node ../../scripts/ts-package-build.mjs clean"
   },
@@ -18,7 +18,6 @@
     "@prontiq/control-plane": "workspace:*",
     "@prontiq/observability": "workspace:*",
     "@prontiq/shared": "workspace:*",
-    "stripe": "^22.0.2",
     "svix": "^1.92.2"
   },
   "devDependencies": {

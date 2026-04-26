@@ -14,9 +14,9 @@ In the target commercial architecture:
 
 ## Scope
 
-This runbook is for the active Lago-centered customer path after P1B.19. Legacy
-Stripe provisioning is rollback-only behind `LEGACY_STRIPE_RUNTIME_ENABLED=true`
-and must not be treated as the normal customer-sync flow.
+This runbook is for the active Lago-centered customer path after P1B.19/P1B.20.
+Direct Stripe provisioning is no longer part of the Platform runtime and must
+not be treated as the normal customer-sync flow.
 
 ## Customer contract
 

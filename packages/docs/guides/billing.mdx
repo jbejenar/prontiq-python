@@ -1,9 +1,9 @@
 ---
 title: "Billing"
-description: "How Prontiq is moving to a Lago-centered commercial model."
+description: "How Prontiq uses a Lago-centered commercial model."
 ---
 
-Prontiq is moving to a **Lago-centered** commercial architecture.
+Prontiq uses a **Lago-centered** commercial architecture.
 
 The target model is:
 
@@ -33,38 +33,26 @@ Prontiq still owns:
 - per-key usage tracking
 - billing-event emission away from the hot path
 
-## What changes during migration
+## Runtime posture
 
-The live platform still contains a Stripe-centric billing path today. During the
-migration:
+The live platform no longer owns a direct Stripe billing runtime:
 
-- canonical architecture docs describe the **target Lago model**
-- legacy Stripe billing flows remain documented as current implementation only
-- no API usage changes are required for data endpoints
+- Lago owns the customer-facing billing state.
+- Stripe is configured inside Lago as the payment rail.
+- No API usage changes are required for data endpoints.
 
 ## Customer identity
 
-### Live today
+### Live contract
 
-The shared `customerId` substrate, SQS billing-event producer, Lago forwarder,
-and Lago webhook reconciliation are implemented for the Lago migration, but
-customer-facing Lago billing is not live yet.
-
-Today, commercial/account identity is represented by:
+Commercial/account identity is represented by:
 
 - the Clerk organization
 - the Prontiq org envelope in DynamoDB
-- the current migration-era Stripe customer record
+- the Prontiq-owned `customerId`
+- Lago commercial state
 
-That is the live implementation while the Lago migration is still in progress.
-New provisioning writes a Prontiq-owned `customerId`, legacy records are handled
-by the customer backfill utility, and API billing-event emission remains
-feature-flagged until each environment passes live Lago setup and smoke
-certification.
-
-### Target contract
-
-The platform customer contract is now defined by `P1B.14`.
+The platform customer contract is defined by `P1B.14`.
 
 Prontiq-owned customer IDs are opaque, org-scoped identifiers formatted as
 `pq_cust_<ulid>`. Humans signing in with Clerk and machines authenticating with
@@ -82,8 +70,8 @@ fields only; they are not Prontiq customer identity.
 
 <Note>
   The customer table, backfill utility, SQS billing-event producer, Lago forwarder, and webhook
-  reconciliation are now implemented behind rollout gates. Console billing APIs now expose the
-  Prontiq-owned account contract for billing state, plan changes, and Lago portal access.
+  reconciliation are implemented. Console billing APIs expose the Prontiq-owned account contract for
+  billing state, plan changes, and Lago portal access.
 </Note>
 
 ## Usage event forwarding

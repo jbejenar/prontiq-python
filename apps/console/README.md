@@ -14,8 +14,8 @@ Next.js 15 app for `console.prontiq.dev`.
 
 This ticket does **not** implement live account data, TanStack Query, or the
 key / usage / billing product surfaces. Those remain later console tickets. The
-forward-looking billing surface for this app is Lago-backed; any remaining
-Stripe-hosted account flows are legacy migration context only.
+billing surface for this app is Lago-backed; any remaining Stripe-hosted
+account flows are legacy migration context only.
 
 `pnpm --filter console dev`, `build`, `typecheck`, and `test` are
 self-sufficient from a fresh checkout: they build `@prontiq/sdk` and

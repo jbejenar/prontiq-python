@@ -168,7 +168,7 @@ Nobody else bundles Australian address validation with ABN verification with LEI
 | **Ingestion**         | EventBridge → Step Functions                          | AWS free tier                                                                              | —                       | S3 manifest trigger → parallel bulk index → health check → alias swap.                                                                                                                  |
 | **Auth (portal)**     | Clerk                                                 | **50,000 MAUs free**                                                                       | $20/mo (Pro)            | Sign-up, login, OAuth, orgs, teams. Pre-built Next.js components. Won't hit paid for years.                                                                                             |
 | **API keys**          | DynamoDB (+ DAX from Phase 3)                         | AWS free tier                                                                              | —                       | DynamoDB-native: generate, SHA-256 hash, verify. Raw key never stored. ~80 LOC (see §7). No vendor in the hot path. DAX when sub-ms matters at scale.                                   |
-| **Billing**           | Lago + Stripe payment rail                            | Lago owns plans, pricing, metering, and invoicing; Stripe handles payment collection only. | 2.9% + 30¢/txn          | Current runtime is Lago-centered after P1B.19. The repo still contains a rollback-only legacy Stripe-centric billing path.                                                              |
+| **Billing**           | Lago + Stripe payment rail                            | Lago owns plans, pricing, metering, and invoicing; Stripe handles payment collection only. | 2.9% + 30¢/txn          | Current runtime is Lago-centered after P1B.19/P1B.20. Platform-owned Stripe webhook, cron, month-close, and pricing-table surfaces are removed.                                         |
 | **Docs**              | Mintlify                                              | **Free Hobby plan** (1 editor, custom domain, playground)                                  | ~$250-300/mo (Pro)      | Beautiful docs from OpenAPI spec. Free tier covers a solo founder. AI assistant and team collaboration only on paid.                                                                    |
 | **SDKs**              | Speakeasy                                             | **1 SDK, up to 50 API methods, free forever**                                              | Contact for pricing     | Auto-generated typed SDKs. 50 methods covers entire address + ABN + LEI surface.                                                                                                        |
 | **Authenticated app** | `apps/console` on `console.prontiq.dev` + Clerk shell | Deployed via Next.js app hosting                                                           | —                       | Two-app architecture: `apps/landing` for acquisition, `apps/console` for authenticated usage, keys, billing, and account-management surfaces. Legacy `/account` language is superseded. |
@@ -178,10 +178,10 @@ Nobody else bundles Australian address validation with ABN verification with LEI
 ### 3.3 Monthly Cost Model
 
 **All figures in this section are USD/month.** The table below is the **current
-shipped runtime cost model** for the live AWS + legacy-Stripe stack. It does
-**not** include the separate Lago infra layer, because the Lago migration
-sequence (`P1B.14`–`P1B.21`, including `P1B.18a`) is underway and is
-being stood up in the separate `prontiq-lago` repo.
+shipped runtime cost model** for the live AWS platform plus Stripe as a
+payment rail through Lago. Platform-owned legacy Stripe webhook/cron/month-close
+surfaces were removed by P1B.20. Lago infrastructure itself is stood up in the
+separate `prontiq-lago` repo and should be costed there.
 
 | Stage                     | OpenSearch                                 | Clerk                    | Mintlify                 | Speakeasy | Stripe          | SES        | Total               |
 | ------------------------- | ------------------------------------------ | ------------------------ | ------------------------ | --------- | --------------- | ---------- | ------------------- |
@@ -1069,14 +1069,14 @@ P1B.17. All are on-demand
 (pay-per-request). Only `prontiq-keys` and `prontiq-usage` serve the request
 hot path.
 
-| Table                         | Purpose                                                                                       |
-| ----------------------------- | --------------------------------------------------------------------------------------------- |
-| `prontiq-keys`                | API key metadata + billing registry + org-envelope record + Stripe webhook completion markers |
-| `prontiq-usage`               | Local enforcement counters + email flags + billing push state + REDIRECT records              |
-| `prontiq-customers`           | Customer mapping across Clerk orgs, Prontiq `customerId`, Lago, and Stripe                    |
-| `prontiq-lago-webhook-events` | Lago webhook idempotency ledger keyed by `X-Lago-Unique-Key`                                  |
-| `prontiq-audit`               | Append-only lifecycle audit log                                                               |
-| `prontiq-ses-suppressions`    | Email bounce/complaint suppression                                                            |
+| Table                         | Purpose                                                                          |
+| ----------------------------- | -------------------------------------------------------------------------------- |
+| `prontiq-keys`                | API key metadata + billing registry + org-envelope record                        |
+| `prontiq-usage`               | Local enforcement counters + email flags + billing push state + REDIRECT records |
+| `prontiq-customers`           | Customer mapping across Clerk orgs, Prontiq `customerId`, Lago, and Stripe       |
+| `prontiq-lago-webhook-events` | Lago webhook idempotency ledger keyed by `X-Lago-Unique-Key`                     |
+| `prontiq-audit`               | Append-only lifecycle audit log                                                  |
+| `prontiq-ses-suppressions`    | Email bounce/complaint suppression                                               |
 
 **Design principles:** hot-path isolation (keys + usage separated), append-only logging (audit), TTL-driven cleanup, hash-only key storage. The customer mapping table is control-plane state; it must not be read by request-time API-key auth.
 
@@ -1097,13 +1097,16 @@ PK:   apiKeyHash           string    SHA-256 of the raw key
       quotaPerProduct      number?   Credit limit per product family. null = uncapped tracked.
       rateLimit            number    Requests per second (burst limit, used by §5.4.1)
       active               boolean   false = revoked, all requests rejected
-      paymentOverdue       boolean   Set true by past_due webhook; cleared on recovery / downgrade / deletion
-      stripeCustomerId     string    "cus_abc123"
-      stripeSubscriptionId string    "sub_xyz789" (set on upgrade, cleared on downgrade)
-      subscriptionItems    map       Snapshot of Stripe subscription item IDs by product
-                                     from the last successful webhook reconciliation.
-                                     Useful for support/debugging; meter-based billing
-                                     no longer depends on these IDs directly.
+      paymentOverdue       boolean   Set true by Lago reconciliation when payment
+                                     state is overdue; cleared when Lago reports
+                                     active/paid/recovered state.
+      stripeCustomerId     string?   Historical/payment-rail linkage only.
+                                     Null for post-P1B.20 Lago-first orgs unless
+                                     imported during migration.
+      stripeSubscriptionId string?   Historical Stripe runtime field. Not written
+                                     by active Lago-centered provisioning.
+      subscriptionItems    map?      Historical Stripe runtime field. Not written
+                                     by active Lago-centered provisioning.
       lagoPlanCode         string?   Lago plan code; must map directly to Prontiq tier
       lagoSubscriptionExternalId string?  Derived `pq_sub_<ulid>` subscription id
       lagoSubscriptionStatus string? Last reconciled Lago subscription status
@@ -1117,7 +1120,11 @@ PK:   apiKeyHash           string    SHA-256 of the raw key
 GSI:  orgId-index          PK: orgId  (list all keys in an org)
 ```
 
-> **Why keep `subscriptionItems`?** It gives support and future tooling a direct snapshot of the Stripe subscription composition the webhook last observed. The billing cron (§5.6.2) now uses Stripe meters rather than `subscriptionItems.createUsageRecord()`, so this field is no longer the primary billing linkage.
+> **Why keep historical Stripe fields?** Old environments may still contain
+> `stripeCustomerId`, `stripeSubscriptionId`, and `subscriptionItems` from the
+> pre-Lago runtime. P1B.20 removed the code that writes or consumes those fields
+> for active billing. They remain documented only so support/backfill tooling can
+> understand retained rows without treating provider IDs as canonical identity.
 
 ##### Table: `prontiq-usage`
 
@@ -1134,19 +1141,15 @@ SK:   scope                string    "{product}#{yearMonth}" e.g. "address#2026-
       limitEmailSent       boolean   True once the 100% threshold email sent
       warningEmailPendingAt string?  Worker lease for the 80% email
       limitEmailPendingAt   string?  Worker lease for the 100% email
-      lastPushedCumulativeCount  number  Cumulative count last pushed to Stripe for this scope.
-                                          **Only meaningful on the CURRENT hash in a rotation chain.**
-                                          On rotated-out hashes (those reachable via REDIRECT records),
-                                          this field is dead state and is ignored by the cron. The
-                                          rename from `lastPushedCount` makes this invariant explicit.
-      pendingMeterEventIdentifier   string  Deterministic Stripe meter-event identifier reserved
-                                            on the CURRENT hash before calling Stripe. Cleared
-                                            after the DDB watermark finalize succeeds.
+      lastPushedCumulativeCount  number? Historical Stripe cron watermark.
+                                          Ignored by active Lago-centered billing.
+      pendingMeterEventIdentifier   string? Historical Stripe cron replay marker.
+                                            Ignored by active Lago-centered billing.
       pendingMeterTargetCumulativeCount number  The target cumulative count paired with
                                                 `pendingMeterEventIdentifier`. Lets retries
-                                                re-send the exact same Stripe meter event if the
+                                                re-send the exact same historical meter event if the
                                                 API call succeeded but the DDB finalize write failed.
-      closed               boolean   True once month-close Lambda finalised this scope
+      closed               boolean?  Historical month-close marker.
       ttl                  number    Unix timestamp — auto-expire after 90 days
 ```
 
@@ -1199,9 +1202,12 @@ PK:   email                string    The suppressed email address
       ttl                  number    90 days for bounce suppressions, no TTL for complaints
 ```
 
-##### Billing Registry Items (stored in `prontiq-keys`)
+##### Historical Billing Registry Items (stored in `prontiq-keys`)
 
-Two reserved items index billable keys for the hourly Stripe cron.
+Two reserved items indexed billable keys for the retired hourly Stripe cron.
+P1B.20 removed the cron and month-close Lambda from active deploys. Rows may
+still exist in older environments and should be treated as historical cleanup
+input, not as active Lago billing state.
 
 ```
 PK:   apiKeyHash           "REGISTRY#active-keys"    (reserved, not a real key hash)
@@ -1212,33 +1218,35 @@ PK:   apiKeyHash           "REGISTRY#retired-billing-keys"   (reserved, not a re
 
       activeHashes         string set                  Formerly billable apiKeyHash values
                                                      still waiting for their final
-                                                     current/previous-month Stripe
+                                                     current/previous-month legacy
                                                      meter delta to be flushed
 ```
 
-`REGISTRY#active-keys` contains currently billable paid-tier keys. `REGISTRY#retired-billing-keys`
-contains hashes that were downgraded/cancelled out of paid billing and still have outstanding
-or pending meter deltas that must be flushed before billing discovery can stop. A hash may
-temporarily exist in **both** registries: live entitlement processing resumes immediately via
-the active registry, while the retired registry keeps historical current/previous-month billing
-discovery alive until the chain-aware drain check says the hash is fully settled. Free keys are
-active in `prontiq-keys` but absent from both registries once drained.
+Historically, `REGISTRY#active-keys` contained currently billable paid-tier
+keys. `REGISTRY#retired-billing-keys` contained hashes that were
+downgraded/cancelled out of paid billing and still had outstanding or pending
+meter deltas. Active Lago-centered billing does not read or mutate these
+registries.
 
-| Event                                                                | Registry Action                                                                                                                                                                                           |
-| -------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **UPGRADE** (free → paid)                                            | ADD hash to `REGISTRY#active-keys`; if the hash is still present in `REGISTRY#retired-billing-keys`, leave it there until the hourly cron confirms historical billable scopes are fully drained           |
-| **DOWNGRADE** (paid → paid within the legacy ladder)                 | Keep in registry (still billable) — only the `tier` / `quotaPerProduct` / `subscriptionItems` change                                                                                                      |
-| **DOWNGRADE to free** / **CANCEL** (`customer.subscription.deleted`) | DELETE hash from `REGISTRY#active-keys`, ADD hash to `REGISTRY#retired-billing-keys` until the hourly cron drains any remaining current/previous-month billable deltas, then DELETE from retired registry |
-| **ROTATE** (if billable)                                             | DELETE old hash + ADD new hash                                                                                                                                                                            |
-| **REVOKE** (if billable)                                             | DELETE hash                                                                                                                                                                                               |
+| Historical Event                                     | Historical Registry Action                                                                                                                                                                                |
+| ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **UPGRADE** (free → paid)                            | ADD hash to `REGISTRY#active-keys`; if the hash is still present in `REGISTRY#retired-billing-keys`, leave it there until the historical hourly cron confirms billable scopes are fully drained           |
+| **DOWNGRADE** (paid → paid within the legacy ladder) | Keep in registry (still billable) — only the `tier` / `quotaPerProduct` / `subscriptionItems` change                                                                                                      |
+| **DOWNGRADE to free** / **CANCEL**                   | DELETE hash from `REGISTRY#active-keys`, ADD hash to `REGISTRY#retired-billing-keys` until the hourly cron drains any remaining current/previous-month billable deltas, then DELETE from retired registry |
+| **ROTATE** (if billable)                             | DELETE old hash + ADD new hash                                                                                                                                                                            |
+| **REVOKE** (if billable)                             | DELETE hash                                                                                                                                                                                               |
 
-> **Sharding ceiling:** DynamoDB item-size limit is 400 KiB (409,600 bytes). A 64-char SHA-256 hex hash is ~64 bytes plus string-set overhead. Theoretical maximum is ~6,400 hashes; practical ceiling is ~6,000 billable keys per registry item once attribute-name overhead and set metadata are accounted for. At that scale, shard both `REGISTRY#active-keys#{0..N}` and `REGISTRY#retired-billing-keys#{0..N}` keyed by the first N bits of the hash (trigger: Phase 5).
+> **Historical sharding ceiling:** DynamoDB item-size limit is 400 KiB
+> (409,600 bytes). A 64-char SHA-256 hex hash is ~64 bytes plus string-set
+> overhead. The old registry design had a practical ceiling of ~6,000 billable
+> keys per registry item and would have needed sharding at that scale. Active
+> Lago-centered billing does not use this registry path.
 
-##### Stripe Webhook Completion Marker (stored in `prontiq-keys`)
+##### Historical Stripe Webhook Completion Marker (removed)
 
-Replay-safe dedupe/claim record for Stripe webhook processing. The handler
-claims the record as `processing` before side effects, finishes replay-safe
-state writes, then finalizes the same record as `completed`.
+The retired Stripe webhook used a replay-safe dedupe/claim record in
+`prontiq-keys`. P1B.20 removed the handler and shared type, but old ledger rows
+may still exist in historical environments.
 
 ```
 PK:   apiKeyHash           "WEBHOOK#stripe#{eventId}"   (reserved — not a real key hash)
@@ -1278,7 +1286,11 @@ PK:   apiKeyHash           "ORG#{orgId}"             (reserved — not a real ke
 
 > **Why an "org envelope" instead of a provisioning lock that holds a key hash?** The raw API key cannot be safely minted in a webhook — there's no in-flight HTTP response to the user, and DDB stores only the hash. The Clerk webhook provisions everything _except_ the key. The user's first sign-in to `apps/console` on `console.prontiq.dev` calls `/v1/account/keys/create`, which mints the key and returns the raw value in the HTTP response (shown once). See §5.7.1 + §10 Developer Journey.
 
-Forward-mode provisioning writes the local envelope/customer row first, then idempotently bootstraps the Lago customer and `pq_sub_<ulid>` Free subscription before returning success. Legacy rollback mode can still create a Stripe customer upstream of the TransactWriteItems with `Idempotency-Key: clerk-provision-{orgId}` so webhook retries return the same `cus_...` without duplicates. See §5.7.1 for the full flow and §12.2 for failure modes.
+Provisioning writes the local envelope/customer row first, then idempotently
+bootstraps the Lago customer and `pq_sub_<ulid>` Free subscription before
+returning success. It does not create Stripe customers; Stripe is configured
+inside Lago as the payment rail. See §5.7.1 for the full flow and §12.2 for
+failure modes.
 
 ##### REDIRECT Record (stored in `prontiq-usage`)
 
@@ -1292,9 +1304,9 @@ SK:   scope                "REDIRECT"
       authValidUntil       number                    Unix seconds — 5 minutes after rotation.
                                                      After this, auth middleware rejects 401 on
                                                      the old key. Drains in-flight requests only.
-      ttl                  number                    Unix seconds — 90 days. Used by billing cron
-                                                     to attribute any late/orphaned usage events
-                                                     on oldHash → newHash. Independent of auth.
+      ttl                  number                    Unix seconds — 90 days. Used by billing-event
+                                                     attribution and historical cleanup on
+                                                     oldHash → newHash. Independent of auth.
       revokedByRotateAt    string                    ISO 8601 timestamp of the rotation event
                                                      (audit trail, no functional behaviour).
 
@@ -1302,8 +1314,9 @@ GSI:  newHash-redirect-index
       PK: newHash          (sparse — only REDIRECT items populate it)
       Projection: KEYS_ONLY (just oldHash + newHash)
 
-      The billing cron uses this GSI to ask "which old hashes redirect
-      to this currently-billable hash?" without scanning prontiq-usage.
+      Billing-event attribution and historical cleanup use this GSI to ask
+      "which old hashes redirect to this current hash?" without scanning
+      prontiq-usage.
       The GSI is sparse because newHash is only set on REDIRECT items
       — counter items (SK = "{product}#{yearMonth}") have no newHash
       attribute, so DDB excludes them from the index. Storage cost is
@@ -1453,7 +1466,7 @@ Request arrives with X-Api-Key header
 
 Canonical target posture: **Lago-centered commercial architecture**.
 
-- **Lago** is the target commercial system of record for plans, pricing,
+- **Lago** is the commercial system of record for plans, pricing,
   metering, invoicing, wallets/coupons, and analytics.
 - **Stripe** is reduced to payment processing only.
 - **Prontiq Platform** keeps API key lifecycle, request-time credit
@@ -1464,31 +1477,30 @@ Canonical target posture: **Lago-centered commercial architecture**.
 
 #### 5.6.0 Implementation Status
 
-Prontiq is cutting over from the legacy Stripe runtime to the Lago-centered
-runtime in P1B.19:
+Prontiq has cut over from the legacy Stripe runtime to the Lago-centered
+runtime:
 
 - **Active target path:** Lago-centered commercial architecture with
   org-scoped `customerId`, SQS billing-event buffering, Lago event forwarding,
   Lago webhook reconciliation, and private account billing APIs.
 - **Stripe role:** Stripe remains the payment rail behind Lago. It is not the
   commercial source of truth and must not be called from the API hot path.
-- **Legacy rollback path:** Stripe-backed provisioning, Stripe webhook sync,
-  hourly billing cron, and month-close finalisation remain in code only behind
-  `LEGACY_STRIPE_RUNTIME_ENABLED=true` until P1B.20 removes stale config and
-  surfaces.
+- **Removed legacy platform runtime:** Stripe-backed provisioning, Stripe
+  webhook sync, hourly billing cron, month-close finalisation, and embedded
+  pricing-table surfaces are no longer active code/deploy paths after P1B.20.
 - **Current Lago rollout state:** platform-side Lago forwarding, webhook
   reconciliation, live smoke certification, and account billing APIs are
   deployed in dev and prod. P1B.19 adds Lago Free subscription bootstrap during
-  provisioning, retired Stripe webhook behavior, disabled legacy cron/month
+  provisioning; P1B.20 removes stale Stripe runtime/config/frontend surfaces.
   close behavior, and the post-cutover `COUNTER_PERIOD_SOURCE=lago` posture.
-  Retained prod smoke fixtures are expected to support P1B.20; they must remain
+  Retained prod smoke fixtures are expected to support P1B.21; they must remain
   clearly labelled/inventoried as test-only rather than destructively cleaned
   now. P1B.21 is the final customer go-live cleanup gate after the Lago
   migration completes.
 
-The subsections below retain the **legacy shipped Stripe path** for rollback and
-operational history. They are not the forward-looking commercial source of
-truth.
+The subsections below retain the **legacy shipped Stripe path** for operational
+history. They are not the forward-looking commercial source of truth and are no
+longer active deploy paths.
 
 #### 5.6.0.1 Target Customer Identity Contract
 
@@ -1802,15 +1814,14 @@ Drift and idempotency:
 - reconciliation failures finalize the ledger as `drift`, write an error, and
   return 500 so the Lago retry/log surface remains the operator work queue
 
-#### 5.6.1 Legacy Stripe Billing Model (Rollback Path)
+#### 5.6.1 Legacy Stripe Billing Model (Historical)
 
 The legacy implementation used Stripe metadata, Stripe webhooks, the hourly
-billing cron, and month-close. After P1B.19 this path is retained only as a
-rollback path behind `LEGACY_STRIPE_RUNTIME_ENABLED=true`; the default runtime
-keeps Stripe as payment rail only and uses Lago plus local DynamoDB enforcement
-state for billing.
+billing cron, and month-close. After P1B.20 this path is historical
+implementation evidence only; the default runtime keeps Stripe as payment rail
+inside Lago and uses Lago plus local DynamoDB enforcement state for billing.
 
-In the retired Stripe path, the runtime still carries a legacy plan ladder in
+The shared constants still carry a legacy plan ladder in
 `packages/shared/src/constants.ts` alongside endpoint credit weights in
 `BILLING_ENDPOINTS`.
 
@@ -1845,11 +1856,11 @@ In the legacy Stripe path:
 - the hourly cron pushed family-level credit deltas into Stripe meters
 - month-close finalized the previous-month sweep exactly once
 
-**Fail-closed rule:** a product must not be enabled commercially until it has explicit endpoint credit weights in `BILLING_ENDPOINTS`. If Stripe enables a product with no corresponding billing weights yet, the auth middleware returns `500 INTERNAL_ERROR` for that product rather than silently billing it at a guessed rate.
+**Fail-closed rule:** a product must not be enabled commercially until it has explicit endpoint credit weights in `BILLING_ENDPOINTS`. If Lago enables a product with no corresponding billing weights yet, the auth middleware returns `500 INTERNAL_ERROR` for that product rather than silently billing it at a guessed rate.
 
-The same fail-closed rule applies to Stripe metering: the billing cron derives each product family's Stripe meter event name from the shared billing definitions rather than synthesizing it independently. A product with no declared meter mapping is not billable.
+The same fail-closed rule applies to Lago metering: event forwarding derives each product family's Lago billable metric from the shared billing definitions rather than synthesizing it independently. A product with no declared meter mapping is not billable.
 
-**Overage calculation:** the billing cron (§5.6.2) ultimately pushes **credits**, not raw request counts, to Stripe hourly via family-level Stripe meters. The auth middleware already applies the published endpoint credit weights and accumulates the resulting family total (for example all Address endpoints -> Address credits) in DynamoDB. Changing commercial pricing or endpoint credit weights is a product/catalog decision, not a Stripe catalog rewrite.
+**Overage calculation:** the Lago event forwarder pushes **credits**, not raw request counts, to Lago via family-level billable metrics. The auth middleware already applies the published endpoint credit weights and accumulates the resulting family total (for example all Address endpoints -> Address credits) in DynamoDB. Changing commercial pricing or endpoint credit weights is a product/catalog decision, not a Stripe catalog rewrite.
 
 **Legacy subscription lifecycle summary:**
 
@@ -1857,7 +1868,8 @@ The same fail-closed rule applies to Stripe metering: the billing cron derives e
 - upgrades and paid-plan mutations reconciled back through Stripe webhooks
 - invoices and payment-method management lived in Stripe-hosted surfaces
 - cancellation downgraded the org back to Free at period end
-- failed renewals entered the grace-period path in §5.6.3
+- failed renewals entered the old direct-Stripe grace-period path, which has
+  since been replaced by Lago reconciliation in §5.6.3
 
 **Legacy customer-management surface:** the retired Stripe path linked a billing
 tab to hosted Stripe customer-management surfaces. Treat that as
@@ -1872,40 +1884,41 @@ DynamoDB on every request, and now applies endpoint credit weights inline
 before incrementing the family usage row. Plan changes take effect on the next
 request after the webhook processes.
 
-#### 5.6.2 Legacy Hourly Billing Cron
+#### 5.6.2 Legacy Hourly Billing Cron (Removed)
 
-Scheduled Lambda (EventBridge cron, hourly), retained only for rollback. With
-`LEGACY_STRIPE_RUNTIME_ENABLED=false`, it returns a disabled summary before
-resolving Stripe dependencies or reading usage rows. In rollback mode it uses
-targeted reads, not a table scan. **Push state is single-rooted**: only the
-current hash in a rotation chain holds `lastPushedCumulativeCount`. Old hashes'
-counters are read for usage attribution only — their `lastPushedCumulativeCount`
-is dead state and ignored. **Replay safety is explicit on the current-hash usage
-row**: before calling Stripe, the cron reserves `pendingMeterEventIdentifier` +
-`pendingMeterTargetCumulativeCount`; after Stripe accepts the event, the cron
-finalizes by advancing `lastPushedCumulativeCount` and clearing the pending
+The legacy EventBridge hourly Stripe billing Lambda was removed from active
+deploys in P1B.20. This section remains only to explain historical
+`lastPushedCumulativeCount` / pending-meter fields retained in persisted
+records. The old implementation used targeted reads, not a table scan. **Push
+state was single-rooted**: only the current hash in a rotation chain held
+`lastPushedCumulativeCount`. Old hashes' counters were read for usage
+attribution only; their `lastPushedCumulativeCount` is now dead state and
+ignored. **Replay safety was explicit on the current-hash usage row**: before
+calling Stripe, the cron reserved `pendingMeterEventIdentifier` +
+`pendingMeterTargetCumulativeCount`; after Stripe accepted the event, the cron
+finalized by advancing `lastPushedCumulativeCount` and clearing the pending
 marker.
 
-**Authoritative billing model:** customer-facing billing is in credits. The cron's job is:
+**Historical billing model:** customer-facing billing was expressed in credits. The cron's job was:
 
 1. gather the current family-level credit totals from DynamoDB
 2. compare them with the last successfully pushed cumulative counts
 3. compute the resulting family-level credit delta
 4. emit that credit delta into Stripe
 
-**Implementation note (current state):** the shipped implementation keeps one `{product}#{yearMonth}` row per family and stores consumed credits in that row's `requestCount` field. The legacy field name remains for schema compatibility; semantically it is now "credits used this month for the product family."
+**Historical implementation note:** the shipped legacy implementation kept one `{product}#{yearMonth}` row per family and stored consumed credits in that row's `requestCount` field. The legacy field name remains for schema compatibility; semantically it means "credits used this month for the product family."
 
 ```
-Every hour:
+Historical hourly flow:
   1. Read `REGISTRY#active-keys` and `REGISTRY#retired-billing-keys`
      from prontiq-keys.
-     `active` = currently billable hashes.
+     `active` = then-currently billable hashes.
      `retired` = hashes recently downgraded/cancelled out of paid billing
      but still waiting for their final current/previous-month credit delta
      to be pushed.
-     `active=false` still blocks request authentication (§5.5.3), but it
-     does NOT block retired-billing finalisation here as long as the hash
-     still has Stripe customer linkage and outstanding billable history.
+     `active=false` still blocked request authentication (§5.5.3), but it
+     did NOT block retired-billing finalisation here as long as the hash
+     still had Stripe customer linkage and outstanding billable history.
 
   2. For each apiKeyHash (= "current hash") in the union of active + retired:
      a. BatchGetItem prontiq-keys for stripeCustomerId + enabled products
@@ -1959,7 +1972,7 @@ Every hour:
          push and the observed `lastPushedCumulativeCount` still matching
          what this cron run read.)
 
-     g. stripe.billing.meterEvents.create(
+     g. stripe.billing.meterEvents.create( // historical removed path
           {
             event_name: "prontiq_{product}_requests",
             identifier: pendingMeterEventIdentifier,
@@ -1969,9 +1982,9 @@ Every hour:
             }
           }
         )
-        (The payload value is now "credits used since the last successful
-         sync" for that API family. Stripe meters aggregate credits over
-         the billing period. The deterministic identifier is reused on
+        (The payload value was "credits used since the last successful
+         sync" for that API family. Stripe meters aggregated credits over
+         the billing period. The deterministic identifier was reused on
          retry if Stripe accepted the event but the DDB finalize step failed.)
 
      h. Finalize the CURRENT hash's prontiq-usage row only:
@@ -1991,7 +2004,7 @@ Every hour:
      previous-month billable scopes after that full retirement check,
      remove it from `REGISTRY#retired-billing-keys`.
 
-  5. Stripe aggregates meter events per metered Price and invoices at month end.
+  5. Stripe aggregated meter events per metered Price and invoiced at month end.
 ```
 
 **Worked example — rotation correctness** (this is the test case that pinned the previous design's bug):
@@ -2014,11 +2027,11 @@ The previous design at T5 would have computed `sumLastPushed = 150 + 100 = 250 �
 
 **Why query the GSI at all:** without it, the cron would have to scan `prontiq-usage` looking for `SK="REDIRECT"` records (doesn't scale) or maintain a per-org rotation history (more state, more bugs). The sparse GSI on `newHash` gives exactly the access pattern needed.
 
-**Why delta meter events instead of `action: "set"` usage records:** Stripe meters aggregate event values over the billing period; they do not replace the prior total. The cron therefore computes the delta from `lastPushedCumulativeCount`, but it still keeps replay safety by reserving a deterministic pending event identifier on the current-hash row before it calls Stripe.
+**Historical reason for delta meter events instead of `action: "set"` usage records:** Stripe meters aggregated event values over the billing period; they did not replace the prior total. The removed cron therefore computed the delta from `lastPushedCumulativeCount`, but it still kept replay safety by reserving a deterministic pending event identifier on the current-hash row before it called Stripe.
 
-**Month-boundary handling:** for the first 6 hours of each month, the hourly cron processes both current-month and previous-month scopes. Because scope discovery is usage-driven rather than entitlement-only, a family removed at the month boundary still gets its final previous-month delta pushed before month-close. A dedicated **month-close Lambda** (`PqMonthClose`, P1B.11) runs at `00:30 UTC` on day 1, performs a final sweep on previous-month scopes, and sets `closed: true` on the **current-hash** previous-month row only after that scope is fully reconciled. Once closed, the hourly cron skips that scope permanently.
+**Historical month-boundary handling:** for the first 6 hours of each month, the hourly cron processed both current-month and previous-month scopes. Because scope discovery was usage-driven rather than entitlement-only, a family removed at the month boundary still got its final previous-month delta pushed before month-close. A dedicated **month-close Lambda** (`PqMonthClose`, P1B.11, removed by P1B.20) ran at `00:30 UTC` on day 1, performed a final sweep on previous-month scopes, and set `closed: true` on the **current-hash** previous-month row only after that scope was fully reconciled.
 
-**Idempotency / failure model:** the pending marker is the guardrail. If Stripe accepts the event and the DDB finalize write fails, the next cron or month-close run reuses the same `pendingMeterEventIdentifier` + `pendingMeterTargetCumulativeCount`, re-sends the exact same meter event (Stripe dedupes on identifier), and then finalizes the watermark. CloudWatch alarms `PqBillingCronErrors` and `PqMonthCloseErrors` page on failed runs.
+**Historical idempotency / failure model:** the pending marker was the guardrail. If Stripe accepted the event and the DDB finalize write failed, the next cron or month-close run reused the same `pendingMeterEventIdentifier` + `pendingMeterTargetCumulativeCount`, re-sent the exact same meter event (Stripe deduped on identifier), and then finalized the watermark.
 
 **Cost at scale:**
 
@@ -2028,37 +2041,40 @@ The previous design at T5 would have computed `sumLastPushed = 150 + 100 = 250 �
 | 1M req/mo   | ~$1.50   | ~$5.00          | ~$0.00      | **~$6.50** |
 | 10M req/mo  | ~$15.00  | ~$50.00         | ~$0.10      | **~$65**   |
 
-#### 5.6.3 Legacy Payment Failure & Grace Period
+#### 5.6.3 Payment Failure & Grace Period
 
-When a paid developer's card fails on renewal, their production app must not break immediately.
+When a paid developer's card fails on renewal, their production app must not
+break immediately. The active integration point is Lago commercial-state
+reconciliation, not direct Stripe webhooks. Stripe is the payment rail
+configured inside Lago.
 
-| Stripe Event                                              | What Happens                                                                                                                                                                                                                                                                                                                                                                                               | Timing  |
-| --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
-| `invoice.payment_failed`                                  | Log only. Stripe retries via Smart Retries.                                                                                                                                                                                                                                                                                                                                                                | Day 0-7 |
-| `customer.subscription.updated` with `status: 'past_due'` | All retries exhausted. Email developer: "Your payment failed. Update your card at [billing link]." Clarify that the overall Stripe retry/cancellation policy gives ~14 days from first failure, and that entering `past_due` means ~7 days remain before cancellation. Set `paymentOverdue: true` on all org keys. Middleware adds `X-Payment-Overdue: true` to responses. The console app shows a banner. | Day ~7  |
-| `customer.subscription.deleted` (at end of grace)         | Downgrade all org keys to free. Clear `paymentOverdue`, `stripeSubscriptionId`, `subscriptionItems`. Remove from registry.                                                                                                                                                                                                                                                                                 | Day ~14 |
+| Input                                                    | What Happens                                                                                                                                                                                                                                                                         | Timing |
+| -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------ |
+| Lago invoice/payment failure state backed by Stripe      | Lago retries / dunning follows the Stripe payment configuration owned inside Lago. Platform does not process direct Stripe invoice webhooks.                                                                                                                                          | Day 0+ |
+| Lago subscription/customer state indicates payment issue | `POST /webhooks/lago` reconciles local billing state. If Lago indicates overdue access semantics, set local `paymentOverdue: true` and keep the API hot path on the DynamoDB snapshot. Middleware adds `X-Payment-Overdue: true`; console shows a billing banner.                       | Async  |
+| Lago subscription terminates or downgrades               | Reconcile local entitlement snapshot from the Lago webhook, downgrade keys to Free if Lago says the active subscription ended, and keep audit / webhook-ledger rows idempotent by Lago unique key.                                                                                     | Async  |
 
-**Total grace: ~14 days from first failure.** `customer.subscription.updated` handles both directions: `past_due` sets the flag and sends the email; `active` (after successful retry) clears the flag.
+**Grace-period source of truth:** Lago/Stripe payment settings decide retry and
+cancellation timing. Platform mirrors the resulting Lago state into DynamoDB for
+hot-path enforcement; it does not own payment retries or direct Stripe dunning
+webhooks.
 
-> **Implementer note — Stripe configuration required.** `customer.subscription.deleted` does NOT fire 7 days after `past_due` by default. The 14-day total requires:
->
-> 1. **Stripe Dashboard → Settings → Billing → Subscriptions and emails → Smart Retries:** configure retry schedule so all retry attempts complete within 7 days of first failure.
-> 2. **Subscription setting:** cancel subscription when all retries exhausted (Stripe Dashboard → Settings → Billing → Subscription cancellation policy).
->    Without both, `past_due` persists indefinitely or retry cadence differs. Pick a retry schedule, document it, and test with a failing test card before going live.
+Historical direct-Stripe grace-period logic from P1B.06/P1B.10/P1B.11 was
+removed from active deploys in P1B.20. Do not recreate it unless a new decision
+record explicitly moves payment-state ownership out of Lago.
 
 ### 5.7 Webhook Chain
 
-The live webhook chain has three ingress classes: Clerk provisioning, Lago
-commercial-state reconciliation, and rollback-only Stripe handling. All verify
-signatures. State-changing handlers write audit or ledger rows. The provisioning
+The live webhook chain has two ingress classes: Clerk provisioning and Lago
+commercial-state reconciliation. Both verify signatures. State-changing handlers write audit or ledger rows. The provisioning
 handler is **idempotent by completion-marker semantics, not by attempt-marker** —
 see §5.7.1.
 
-**Legacy orgId resolution in Stripe handlers:** Stripe webhook events carry a
+**Historical orgId resolution in Stripe handlers:** Stripe webhook events carried a
 `customer` field as a string ID (e.g., `"cus_abc123"`), not an expanded customer
-object. In the rollback-only Stripe path, provisioning stores `orgId` in the
+object. In the removed Stripe path, provisioning stored `orgId` in the
 Stripe customer's `metadata` at creation time. Every Stripe webhook handler
-retrieves the full customer to read it:
+retrieved the full customer to read it:
 
 ```typescript
 const stripeCustomerId = event.data.object.customer; // "cus_abc123"
@@ -2066,10 +2082,9 @@ const customer = await stripe.customers.retrieve(stripeCustomerId); // full obje
 const orgId = customer.metadata.orgId; // "org_clerk_xyz"
 ```
 
-One extra Stripe API call per webhook invocation. Stripe webhooks are retained
-only for rollback, never the hot path, so the latency is irrelevant.
-Optimisation using `client_reference_id` on Checkout remains deferred unless the
-legacy runtime is reactivated.
+One extra Stripe API call per webhook invocation was acceptable because the
+legacy Stripe webhook was never on the hot path. The platform-owned Stripe
+webhook is now removed.
 
 #### 5.7.1 Clerk: `organizationMembership.created`
 
@@ -2105,10 +2120,6 @@ legacy runtime is reactivated.
    b. Ensure Lago Free subscription using `external_subscription_id=pq_sub_<customer ulid>`.
    c. Write local Lago linkage and billing-period fields back to the org
       envelope for local enforcement reads.
-   Legacy rollback mode (`LEGACY_STRIPE_RUNTIME_ENABLED=true`) creates the
-   Stripe customer before the DDB transaction with Idempotency-Key
-   `clerk-provision-{orgId}` and stores `stripeCustomerId` on the envelope.
-
 5. Send welcome email via SES — best-effort and suppression-aware. Subject: "Welcome to Prontiq."
    Body: "Your account is ready. Sign in at https://console.prontiq.dev
    to create your first API key." Includes docs link.
@@ -2147,124 +2158,25 @@ The `/v1/account/keys/create` endpoint (P1C.03):
 - The webhook provisions only what the user can't see anyway (Prontiq customer identity, org envelope, and Lago Free bootstrap). No secret material is generated server-side without a user-visible HTTP response.
 - The first-key flow is just a normal `/v1/account/keys/create` call — no special "first-time" code path. Treats "first key" as the same operation as "Nth key".
 - SES failure is no longer load-bearing. The user can sign in regardless and create their key from the UI.
-- Lago bootstrap uses stable `customerId` and `external_subscription_id` values so retries are safe. Legacy Stripe rollback mode still uses the historical `clerk-provision-{orgId}` idempotency key.
+- Lago bootstrap uses stable `customerId` and `external_subscription_id` values
+  so retries are safe. The platform no longer creates Stripe customers directly.
 - ORG#{orgId} item replaces the previous PROVISION#{orgId}: no more `provisionedKeyHash` field (no key exists yet), just `customerId`, nullable `stripeCustomerId`, Lago linkage/billing-period fields, a cached entitlement snapshot (`tier`, `products`), and `hasFirstKey`.
 
 **Manual recovery path** (the rare case where the Clerk webhook never fires at all): the console app detects no `ORG#{orgId}` record and shows a "Set up your account" CTA. Clicking it calls `POST /v1/account/setup` (Clerk-authenticated) which runs the same Prontiq customer-envelope and Lago Free bootstrap flow against the user's session-derived `orgId`. Same code path as the webhook, just triggered by the user instead of Clerk. The user then creates their first key normally via `/v1/account/keys/create`.
 
-#### 5.7.2 Legacy Stripe: `checkout.session.completed` (rollback-only upgrade from free)
+#### 5.7.2 Historical Stripe Webhook Paths (Removed)
 
-```
-1. Verify stripe-signature                                       (invalid → 400 INVALID_SIGNATURE)
+The platform-owned Stripe webhook paths for `checkout.session.completed`,
+`customer.subscription.updated`, `customer.subscription.deleted`, and
+`invoice.payment_failed` were removed from active deploys in P1B.20. Stripe is
+now configured inside Lago as the payment rail, and Lago webhooks are the
+platform reconciliation input.
 
-2. Retrieve Stripe customer → read metadata.orgId
-
-3. **Two-step Stripe read for the subscription items map** (Checkout
-   Session events do NOT include the per-product subscription-item IDs
-   inline — only the subscription ID):
-
-   a. Read `event.data.object.subscription` → subscriptionId.
-   b. `stripe.subscriptions.retrieve(subscriptionId, { expand: ['items.data.price', 'items.data.price.product'] })`
-      → returns Subscription with `items.data[]` populated, each entry
-      having `id` (the `si_...` we need) and `price.product`
-      (the expanded Stripe Product object we inspect for metadata).
-   c. Build subscriptionItems map:
-        for each item in subscription.items.data:
-          if item.price.metadata.prontiqTier exists OR
-             item.price.product.metadata.prontiqTier exists:
-            // recurring plan price; tier source of truth
-            continue
-          product = item.price.product.metadata.prontiqProduct
-            // e.g., "address"
-          subscriptionItems[product] = item.id  // "si_..."
-   d. Determine tier from the recurring plan Price metadata:
-        tier = recurringItem.price.metadata.prontiqTier
-            || recurringItem.price.product.metadata.prontiqTier
-      **Validate** that the tier is one of the known Prontiq tiers and
-      that at least one metered product is enabled. If metadata is
-      missing/invalid → return 500 with a CloudWatch ERROR log. Stripe
-      will retry the webhook; on persistent failure, alert via SNS so an
-      operator can fix the misconfigured subscription before billing breaks.
-
-4. Query prontiq-keys by orgId (GSI) → ALL keys for this org
-
-5. Determine tier from the recurring Price or Product `metadata.prontiqTier`.
-
-6. TransactWriteItems (DDB): for each org key,
-   - UpdateItem prontiq-keys/{apiKeyHash}: set tier, products,
-     quotaPerProduct, rateLimit, stripeSubscriptionId, subscriptionItems
-   - Update REGISTRY#active-keys: ADD apiKeyHash to activeHashes
-   (One transaction can touch up to 100 items; for orgs with > ~30 keys,
-    chunk into multiple transactions.)
-
-7. Reset warningEmailSent + limitEmailSent on all prontiq-usage items
-   for the current scope **only when the usage row already exists**
-   (no sparse-row backfill just to clear flags; existing counters only).
-
-8. Write UPGRADE to prontiq-audit (one entry per orgId+timestamp).
-
-9. Finalize the claimed webhook marker in prontiq-keys:
-     PK = WEBHOOK#stripe#{eventId}
-     status = completed
-   Duplicate delivery returns 200 only once the marker is completed;
-   a fresh duplicate that sees `status=processing` returns 500 so
-   Stripe retries after the active worker finishes.
-
-10. Return 200.
-```
-
-> **Why validate before persisting?** A misconfigured Stripe subscription (for example a recurring plan Price/Product missing `metadata.prontiqTier`, or a metered Product missing `metadata.prontiqProduct`) would let the billing cron or entitlement state drift silently from what the customer bought. Validating + failing the webhook surfaces the misconfiguration immediately. Stripe will retry, and on persistent failure the operator gets paged — far better than silent under-billing.
-
-#### 5.7.3 Stripe: `customer.subscription.updated` (billing-state reconcile / past_due / recovered)
-
-```
-1. Verify stripe-signature
-2. Retrieve Stripe customer → read metadata.orgId
-3. If the Stripe subscription snapshot differs from DynamoDB (tier, products, subscriptionItems, or derived limits):
-   a. Determine new tier from recurring Price/Product `metadata.prontiqTier`
-   b. Query prontiq-keys by orgId → ALL keys
-   c. Update each key: tier, products, quotaPerProduct, rateLimit, subscriptionItems
-   d. Registry: UPGRADE → ADD hash(es); DOWNGRADE → keep in registry (still paid, limits adjusted)
-   e. Reset warningEmailSent + limitEmailSent on usage items
-   f. Write UPGRADE or DOWNGRADE to prontiq-audit
-4. If status === 'past_due':
-   a. Query prontiq-keys by orgId → ALL keys
-   b. Set paymentOverdue: true on each key
-   c. Send payment failure email via SES (best-effort; suppression-aware)
-5. If status === 'active' AND any org key has paymentOverdue:
-   a. Query prontiq-keys by orgId → ALL keys
-   b. Clear paymentOverdue on each
-   c. No email in P1B.06
-6. Return 200
-```
-
-> Both initial upgrade (§5.7.2) and subsequent subscription changes converge on the same DynamoDB update logic. `subscription.updated` is not tier-only: it reconciles any Stripe-side drift in `products`, `subscriptionItems`, or derived limits even when the tier string does not change. The same event type also handles payment-status transitions (`active ↔ past_due`) — one event type, two state transitions.
-
-#### 5.7.4 Stripe: `customer.subscription.deleted` (cancel / end of grace)
-
-```
-1. Verify stripe-signature
-2. Retrieve Stripe customer → read metadata.orgId
-3. Query prontiq-keys by orgId → ALL keys
-4. Update each key: tier → "free", products → free list, quotaPerProduct → 10000
-5. Clear stripeSubscriptionId, subscriptionItems, paymentOverdue on each key
-6. DELETE each apiKeyHash from `REGISTRY#active-keys`
-7. ADD each apiKeyHash to `REGISTRY#retired-billing-keys`
-   (keeps the hash discoverable for the hourly billing cron until the
-    final current/previous-month meter deltas are flushed)
-8. Write DOWNGRADE to prontiq-audit
-9. Return 200
-```
-
-Stripe is configured with `cancel_at_period_end: true` on user-initiated cancellation. The webhook fires at period end, not at cancellation time.
-
-#### 5.7.5 Stripe: `invoice.payment_failed`
-
-```
-1. Verify stripe-signature
-2. Log event for debugging
-3. Return 200 (no action — Stripe retries via Smart Retries)
-```
+Historical rows may still contain Stripe subscription fields or
+`WEBHOOK#stripe#{eventId}` markers. Treat them as migration/cleanup evidence
+only. Do not recreate `POST /webhooks/stripe`, direct Stripe entitlement
+reconciliation, or Stripe-hosted customer-management flows without a new
+decision record.
 
 #### 5.7.6 Shopify: `app.installed` (Phase 4)
 
@@ -2316,8 +2228,9 @@ Stripe is configured with `cancel_at_period_end: true` on user-initiated cancell
 7. UPGRADE
    Current Lago path: Prontiq-owned billing surface proxies Lago-backed plan
    changes while keeping request-time enforcement in DynamoDB.
-   Rollback-only legacy path: Stripe-backed hosted upgrade flow updates
-   tier/quota after Stripe webhook reconciliation.
+   Historical-only legacy path: Stripe-backed hosted upgrade flow updated
+   tier/quota after Stripe webhook reconciliation. P1B.20 removed this
+   platform-owned runtime.
 
 8. SHOPIFY (optional)
    Clicks "Integrations" → Shopify card → OAuth install flow
@@ -2340,7 +2253,7 @@ The customer-facing frontend is a two-app Next.js architecture, not a single `/a
 - `console.prontiq.dev` is the authenticated application
 - `docs.prontiq.dev` remains the Mintlify docs surface
 
-`apps/landing` is now live as the public conversion surface. It embeds the real `<prontiq-address>` widget behind a constrained landing-side autocomplete proxy, renders the Prontiq Free tier from site config, and opens a real Clerk sign-up modal when the Clerk publishable key is present. The original Stripe Pricing Table approach for paid plans is now treated as a superseded interim implementation. The forward-looking commercial direction is Lago-backed pricing and billing surfaces owned by Prontiq.
+`apps/landing` is now live as the public conversion surface. It embeds the real `<prontiq-address>` widget behind a constrained landing-side autocomplete proxy, renders Prontiq-owned Free/PAYG pricing cards from site config, and opens a real Clerk sign-up modal when the Clerk publishable key is present. The original Stripe Pricing Table approach has been removed. The forward-looking commercial direction is Lago-backed pricing and billing surfaces owned by Prontiq.
 
 The console is a client-rendered app below the auth boundary. `P1C.07` established the real console frontend base: Tailwind v3.4, app-local shadcn/ui primitives, dark mode, a responsive console shell, and an env-gated Clerk boundary that enables real sign-in when the Clerk keys are present while preserving deterministic keyless local/CI builds.
 
@@ -2355,7 +2268,7 @@ Initial console pages:
 | **Overview**    | DynamoDB-backed account endpoints                                | Usage summary, plan state, onboarding         |
 | **Keys**        | `/v1/account/keys*`                                              | First-key flow, create, rotate, revoke, audit |
 | **Usage**       | `/v1/account/usage`                                              | Charts, quota visibility, export              |
-| **Billing**     | Prontiq-rendered billing state + Lago-target commercial surfaces | Migration-aware plan and invoice management   |
+| **Billing**     | Prontiq-rendered billing state + Lago-backed commercial surfaces | Migration-aware plan and invoice management   |
 | **Playground**  | `@prontiq/sdk` + public API                                      | Pre-authenticated exploration                 |
 | **Danger Zone** | dedicated account-management flow                                | Self-service org deletion                     |
 
@@ -2548,15 +2461,14 @@ prontiq-platform/
 │   │   └── package.json
 │   ├── control-plane/                  # @prontiq/control-plane — provisionOrg service + audit + clerk helpers
 │   │   ├── src/
-│   │   │   ├── provisioning.ts         # createProvisioningService() — Prontiq customer envelope + Lago Free bootstrap + best-effort SES welcome email; legacy Stripe customer create only when rollback flag is enabled; exception-free public surface (read-result discriminated union); strong reads on every envelope check
+│   │   │   ├── provisioning.ts         # createProvisioningService() — Prontiq customer envelope + Lago Free bootstrap + best-effort SES welcome email; exception-free public surface (read-result discriminated union); strong reads on every envelope check
 │   │   │   ├── audit.ts                # buildAuditTransactItem (atomic grouping) + writeAudit (standalone) + monotonic ULID + idempotent on eventId
 │   │   │   ├── clerk.ts                # resolvePrimaryEmail (verified-primary-email invariant — shared by webhook + /v1/account/setup)
 │   │   │   └── index.ts
 │   │   └── package.json                # Consumed by webhooks AND api
-│   ├── webhooks/                       # Lambdas: clerk.ts (live) + lago.ts (live reconciliation) + stripe.ts (rollback-only legacy runtime)
+│   ├── webhooks/                       # Lambdas: clerk.ts (live) + lago.ts (live reconciliation)
 │   │   ├── src/
 │   │   │   ├── clerk.ts                # organizationMembership.created (admin role) → resolvePrimaryEmail (from @prontiq/control-plane) → provisionOrg
-│   │   │   ├── stripe.ts               # 4 events (§5.7) — stub; P1B.06
 │   │   │   └── index.ts                # Router
 │   │   └── package.json
 │   ├── tokens/                         # Scaffolded (P1C.00) — design tokens + emitted theming artifacts
@@ -2719,10 +2631,10 @@ Endpoint URLs reflect live prod (query-param form). Path-param migration is a v2
 | Method | Endpoint           | Auth Headers                                                          | Verification                       | On Invalid              |
 | ------ | ------------------ | --------------------------------------------------------------------- | ---------------------------------- | ----------------------- |
 | POST   | `/webhooks/clerk`  | `svix-id`, `svix-timestamp`, `svix-signature`                         | HMAC against Clerk webhook secret  | 400 `INVALID_SIGNATURE` |
-| POST   | `/webhooks/stripe` | `stripe-signature`                                                    | `stripe.webhooks.constructEvent()` | 400 `INVALID_SIGNATURE` |
 | POST   | `/webhooks/lago`   | `x-lago-signature`, `x-lago-signature-algorithm`, `x-lago-unique-key` | HMAC-SHA256 base64 over raw body   | 400 `INVALID_SIGNATURE` |
 
-**Handled Stripe events:** `checkout.session.completed` (initial upgrade), `customer.subscription.updated` (plan changes + past_due + recovery — §5.6.3), `customer.subscription.deleted` (cancel / downgrade), `invoice.payment_failed` (log only).
+**Retired Stripe webhook:** `POST /webhooks/stripe` was removed by P1B.20.
+Stripe remains only the payment rail configured inside Lago.
 
 **Handled Lago events:** `subscription.started`, `subscription.terminated`,
 `invoice.created`, `invoice.payment_overdue`, and
@@ -3015,22 +2927,21 @@ On account deletion, purge: `prontiq-customers`, `prontiq-keys` (all org keys + 
 
 ### 12.2 Webhook Reliability
 
-**Signature verification.** Clerk: Svix headers. Stripe: `stripe.webhooks.constructEvent()`. Lago: `X-Lago-Signature-Algorithm=hmac` plus base64 HMAC-SHA256 over the raw body. Invalid → 400 `INVALID_SIGNATURE`.
+**Signature verification.** Clerk: Svix headers. Lago: `X-Lago-Signature-Algorithm=hmac` plus base64 HMAC-SHA256 over the raw body. Invalid → 400 `INVALID_SIGNATURE`.
 
 **Idempotency.**
 
-- **Clerk provisioning** (`organizationMembership.created`): writes the `ORG#{orgId}` envelope record and `CUSTOMER#{customerId}` row, then bootstraps Lago Free (§5.7.1). A retry that hits an existing `ORG#{orgId}` returns 200 immediately. Legacy Stripe rollback mode uses `Idempotency-Key: clerk-provision-{orgId}` so retries reuse the same `cus_...`. **The webhook does NOT mint API keys** — those are user-driven via `/v1/account/keys/create` after sign-in, which puts the raw key in a user-visible HTTP response (the only safe place for hash-only-stored secrets).
-- **Stripe webhooks**: dedupe on `event.id` via a claim/finalize reserved item in `prontiq-keys` (`WEBHOOK#stripe#{eventId}`). The handler claims the item as `processing`, applies replay-safe target-state writes, then finalizes it as `completed`. Stripe duplicates that arrive while a fresh `processing` claim exists return 500 so Stripe retries later; completed markers return 200 no-op.
+- **Clerk provisioning** (`organizationMembership.created`): writes the `ORG#{orgId}` envelope record and `CUSTOMER#{customerId}` row, then bootstraps Lago Free (§5.7.1). A retry that hits an existing `ORG#{orgId}` returns 200 immediately. **The webhook does NOT mint API keys** — those are user-driven via `/v1/account/keys/create` after sign-in, which puts the raw key in a user-visible HTTP response (the only safe place for hash-only-stored secrets).
 - **Lago webhooks**: dedupe on `X-Lago-Unique-Key` via `prontiq-lago-webhook-events`. Same unique key plus same payload hash replays completed/ignored events as 200 no-op. Same unique key plus a different payload hash is drift and returns 500. Fresh in-flight duplicates return 500 so Lago retries after the active worker finishes.
 
 **Clerk webhook failure → manual recovery.** Two independent failure cases, both fully recoverable from the user side:
 
-1. **Webhook never created the org envelope** (e.g., Svix delivery failure during a Lambda outage). The console app detects "no `ORG#{orgId}` record" and shows a "Set up your account" CTA. Clicking it calls `POST /v1/account/setup` (Clerk-authenticated), which runs the same Prontiq customer-envelope + Lago Free bootstrap flow as the webhook. Legacy Stripe rollback mode uses the same Stripe idempotency key as the webhook. Same code, two triggers.
+1. **Webhook never created the org envelope** (e.g., Svix delivery failure during a Lambda outage). The console app detects "no `ORG#{orgId}` record" and shows a "Set up your account" CTA. Clicking it calls `POST /v1/account/setup` (Clerk-authenticated), which runs the same Prontiq customer-envelope + Lago Free bootstrap flow as the webhook. Same code, two triggers.
 2. **Org envelope exists but the user has no keys** (e.g., SES failed so no welcome email arrived, but webhook succeeded). The standard `/v1/account/keys/create` flow handles this — there's nothing special about a "first" key. The `hasFirstKey` flag flips on the first successful create.
 
 In both cases, the user owns recovery. No operator paging required for SES outages or single-shot webhook misses.
 
-**Stripe webhook failure.** Stripe redelivers failed webhooks for 3 days. If processing fails persistently, the event lands in DLQ and pages oncall. Common cause: `subscriptionItems` validation failure (§5.7.2) — usually a Stripe Dashboard misconfiguration where a Prontiq product is missing its metered Price.
+**Historical Stripe webhook failure.** The platform-owned Stripe webhook was removed in P1B.20. Historical failure notes live in [docs/runbooks/stripe-webhook.md](docs/runbooks/stripe-webhook.md).
 
 **Lago webhook failure.** Lago retries non-2xx webhook responses and exposes
 the event in its webhook logs. Persistent 5xx from `/webhooks/lago` means either
@@ -3045,16 +2956,16 @@ During rotation, `TransactWriteItems` atomically deletes the old `prontiq-keys` 
 
 **Two-clock model — auth grace and billing attribution are independent:**
 
-| Clock               | Field            | Default       | What it controls                                                                                                      |
-| ------------------- | ---------------- | ------------- | --------------------------------------------------------------------------------------------------------------------- |
-| Auth grace          | `authValidUntil` | now + 5 min   | How long the auth middleware will accept the old raw key (re-resolves to newHash). After expiry → 401.                |
-| Billing attribution | `ttl`            | now + 90 days | How long the billing cron attributes orphaned usage on `oldHash` to `newHash`. After expiry → DDB removes the record. |
+| Clock               | Field            | Default       | What it controls                                                                                                                                    |
+| ------------------- | ---------------- | ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Auth grace          | `authValidUntil` | now + 5 min   | How long the auth middleware will accept the old raw key (re-resolves to newHash). After expiry → 401.                                              |
+| Billing attribution | `ttl`            | now + 90 days | Historical billing-attribution retention for orphaned usage on `oldHash`; retained for schema compatibility. After expiry → DDB removes the record. |
 
-**Why decoupled?** A user who rotates because of a leak gets immediate effective protection — the leaked key's exposure window is bounded to 5 minutes regardless of in-flight Lambda invocations. The 90-day billing window only matters for the cron, which runs server-side and never authenticates a request.
+**Why decoupled?** A user who rotates because of a leak gets immediate effective protection — the leaked key's exposure window is bounded to 5 minutes regardless of in-flight Lambda invocations. The 90-day billing window is retained as historical schema behavior and can support asynchronous billing/forensics without authenticating a request.
 
 **REVOKE-after-ROTATE:** the redirect back-door closes automatically. The REVOKE on `newHash` flips `active: false` on the live `prontiq-keys` record. The next request with the (rotated-out) old raw key follows the REDIRECT, lands on `newHash`, and fails the `active` check in §5.5.3 step 3 → 401. No explicit REDIRECT mutation needed at REVOKE time.
 
-See §5.5.1 for the full REDIRECT schema, §5.5.3 for the auth middleware behaviour on lookup miss, and §5.6.2 for billing cron handling.
+See §5.5.1 for the full REDIRECT schema and §5.5.3 for the auth middleware behaviour on lookup miss.
 
 ### 12.4 OpenSearch Failure Handling
 
@@ -3122,11 +3033,11 @@ Phases are defined by product scope. Security deliverables are first-class, ship
 
 | Phase | Timeline  | Scope                 | Product Deliverables                                                                                                                                                                                                                                                       | Security Deliverables                                                                                                                                                                                                                                       |
 | ----- | --------- | --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **1** | 4-6 weeks | Address API           | Hono routes, DynamoDB-native key verify + usage counters, rate-limit headers, burst rate limiting, Clerk auth, legacy Stripe billing path in prod, Lago migration planning, Mintlify docs, Speakeasy TypeScript SDK, `apps/landing`, `apps/console`, welcome email via SES | Idempotent webhooks, flag-based threshold emails, `prontiq-audit` table, circuit breaker, SES bounce handling, CORS per-endpoint, input validation (Zod), re-auth step-up on sensitive actions, WAF rules, CloudWatch dashboard, payment grace period (14d) |
+| **1** | 4-6 weeks | Address API           | Hono routes, DynamoDB-native key verify + usage counters, rate-limit headers, burst rate limiting, Clerk auth, historical Stripe billing baseline followed by Lago cutover, Mintlify docs, Speakeasy TypeScript SDK, `apps/landing`, `apps/console`, welcome email via SES | Idempotent webhooks, flag-based threshold emails, `prontiq-audit` table, circuit breaker, SES bounce handling, CORS per-endpoint, input validation (Zod), re-auth step-up on sensitive actions, WAF rules, CloudWatch dashboard, Lago-backed payment grace handling |
 | **2** | 4 weeks   | ABN/ASIC              | New pipeline, new Hono route group, new OpenSearch index. SDK adds `prontiq.abn`. Commercialisation maps into Lago billable metrics and billing surfaces rather than new Stripe-only meters.                                                                               | Extend error taxonomy; ABN-specific Zod schemas                                                                                                                                                                                                             |
 | **3** | 3 weeks   | GLEIF/LEI             | First international product. Evaluate team-management needs.                                                                                                                                                                                                               | Evaluate geographic access restrictions                                                                                                                                                                                                                     |
 | **4** | 4 weeks   | Shopify + WooCommerce | Scale OpenSearch to 2-node HA. Lambda in-memory cache.                                                                                                                                                                                                                     | Plugin-specific API key scoping (read-only keys)                                                                                                                                                                                                            |
-| **5** | TBD       | CVE/NVD + Patents     | DAX when trigger criteria met. Full dashboard if > 500 developers.                                                                                                                                                                                                         | `REGISTRY#active-keys` sharding. Full security audit. Penetration testing.                                                                                                                                                                                  |
+| **5** | TBD       | CVE/NVD + Patents     | DAX when trigger criteria met. Full dashboard if > 500 developers.                                                                                                                                                                                                         | Full security audit. Penetration testing. Historical `REGISTRY#active-keys` sharding applies only if old Stripe registry cleanup proves it is still operationally needed.                                                                                   |
 
 ---
 

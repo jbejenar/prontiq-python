@@ -2,7 +2,7 @@
 
 ## Scope
 
-Operating, debugging, and recovering the `POST /webhooks/clerk` endpoint that consumes Clerk's `organizationMembership.created` events and provisions the ORG envelope for the live Lago-centered provisioning path (Prontiq customer envelope + Lago Free subscription bootstrap + audit row + best-effort welcome email). Per ARCHITECTURE.MD §5.7.1, this handler does NOT mint API keys — that's the user-driven `POST /v1/account/keys/create` (P1C.03). Legacy Stripe customer creation is rollback-only behind `LEGACY_STRIPE_RUNTIME_ENABLED=true`.
+Operating, debugging, and recovering the `POST /webhooks/clerk` endpoint that consumes Clerk's `organizationMembership.created` events and provisions the ORG envelope for the live Lago-centered provisioning path (Prontiq customer envelope + Lago Free subscription bootstrap + audit row + best-effort welcome email). Per ARCHITECTURE.MD §5.7.1, this handler does NOT mint API keys — that's the user-driven `POST /v1/account/keys/create` (P1C.03).
 
 ## Endpoint
 
@@ -23,8 +23,6 @@ The Clerk dashboard's webhook configuration points at the dev URL today. The pro
    - `LAGO_API_KEY` — Lago API key for the stage.
    - `LAGO_API_URL` — Lago base URL for the stage.
    - `LAGO_PAYMENT_PROVIDER_CODE` — Lago payment provider code that points at Stripe as the payment rail.
-   - `STRIPE_SECRET_KEY` — required only while `LEGACY_STRIPE_RUNTIME_ENABLED=true` for rollback-mode provisioning.
-   - `LEGACY_STRIPE_RUNTIME_ENABLED` — GitHub Environment variable; set to `false` for P1B.19 cutover, `true` only for explicit rollback.
 
    The values flow: GitHub Environment secret → workflow `env:` block → `process.env.X` at SST-config time → baked into the Lambda's environment variable. The handler reads `process.env.CLERK_WEBHOOK_SECRET` etc. at runtime.
 
@@ -73,7 +71,6 @@ The Clerk dashboard's webhook configuration points at the dev URL today. The pro
 The handler is idempotent at every layer:
 
 - Preflight read finds the existing envelope → `200 { ok: true, status: "already_exists" }`. Zero side effects.
-- Legacy rollback mode: Stripe `Idempotency-Key` returns the cached customer (24h window).
 - Forward mode: Lago customer/subscription upserts are idempotent on `customerId` and `pq_sub_<ulid>`.
 - Envelope `attribute_not_exists(apiKeyHash)` rejects duplicate writes.
 - Audit row's conditional write rejects duplicate inserts.
@@ -149,7 +146,7 @@ After the primary is verified, click "Resend" on the failed message in the Clerk
 
 Logged as `ORG envelope provisioning fatal failure` with classification `fatal`. Causes:
 
-- Stripe `StripeInvalidRequestError` (e.g. malformed email — won't fix on retry).
+- Lago validation errors (for example malformed email or missing payment provider code).
 - DDB `ValidationException` (item too large, bad shape — code bug).
 - DDB `ResourceNotFoundException` (table missing — schema drift, IAM problem).
 
@@ -208,4 +205,4 @@ See also: `docs/runbooks/monitoring-alerting.md` for the shared Phase 1 alerting
 1. Disable the endpoint in the Clerk dashboard (do NOT delete — keeps the audit history of past deliveries).
 2. Remove the `api.route("POST /webhooks/clerk", ...)` line + `clerkWebhookFn` declaration + alarm from `sst.config.ts`.
 3. Deploy. SST will delete the Lambda, the route, and the alarm. The DDB tables and SNS topic remain (used by other consumers).
-4. Optionally remove the GitHub Environment secrets / vars for this surface (`CLERK_WEBHOOK_SECRET`, `CLERK_SECRET_KEY`, `LAGO_API_KEY`, `LAGO_API_URL`, `LAGO_PAYMENT_PROVIDER_CODE`, `LEGACY_STRIPE_RUNTIME_ENABLED`, and `CLERK_ADMIN_ROLES`) once you're sure no other code reads them. Keep `STRIPE_SECRET_KEY` only while legacy rollback remains possible.
+4. Optionally remove the GitHub Environment secrets / vars for this surface (`CLERK_WEBHOOK_SECRET`, `CLERK_SECRET_KEY`, `LAGO_API_KEY`, `LAGO_API_URL`, `LAGO_PAYMENT_PROVIDER_CODE`, and `CLERK_ADMIN_ROLES`) once you're sure no other code reads them.

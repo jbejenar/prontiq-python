@@ -39,13 +39,10 @@ This secret is validated in both deployed stages: GitHub workflow validation che
 Existing alarms retained:
 
 - `PqClerkWebhookErrors`
-- `PqStripeWebhookErrors`
 - `PqLagoWebhookErrors`
 - `PqAccountErrors`
 - `PqSesFeedbackErrors`
 - `PqQuotaEmailWorkerErrors`
-- `PqBillingCronErrors` (legacy Stripe billing path)
-- `PqMonthCloseErrors` (legacy Stripe billing path)
 - `PqBillingEventsDlqVisible`
 - `PqBillingEventsOldestMessage`
 

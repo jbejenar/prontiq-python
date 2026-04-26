@@ -1,7 +1,7 @@
 /**
  * Clerk webhook handler — end-to-end integration test (P1B.05 PR 2 DoD).
  *
- * Wires the REAL provisioning service (with stubbed Stripe/SES via DI)
+ * Wires the REAL provisioning service (with stubbed Lago/SES via DI)
  * against a REAL DDB Local. Confirms the handler boundary, the
  * provisioning state machine, and the DDB schema all agree.
  *
@@ -21,10 +21,13 @@ import {
 } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, GetCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
 import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from "aws-lambda";
-import type Stripe from "stripe";
 import type { ClerkClient } from "@clerk/backend";
 import { Webhook } from "svix";
-import { createProvisioningService, type EmailSender } from "@prontiq/control-plane";
+import {
+  createProvisioningService,
+  type EmailSender,
+  type LagoProvisioningClient,
+} from "@prontiq/control-plane";
 import { createClerkHandler } from "./clerk.js";
 
 const DDB_URL = process.env.DYNAMODB_TEST_URL ?? "http://localhost:8000";
@@ -107,15 +110,30 @@ after(async () => {
   await ddbRaw.send(new DeleteTableCommand({ TableName: CUSTOMERS_TABLE }));
 });
 
-function makeStripeStub(idCounter: { value: number }): Stripe {
+function makeLagoStub(callCounter: { value: number }): LagoProvisioningClient {
+  const subscriptions = new Set<string>();
   return {
-    customers: {
-      async create() {
-        idCounter.value += 1;
-        return { id: `cus_int_${idCounter.value}` };
-      },
+    async getSubscription(externalSubscriptionId) {
+      if (!subscriptions.has(externalSubscriptionId)) {
+        return null;
+      }
+      return {
+        billingPeriodEndingAt: "2026-05-01T00:00:00Z",
+        billingPeriodStartedAt: "2026-04-01T00:00:00Z",
+        externalCustomerId: externalSubscriptionId.replace("pq_sub_", "pq_cust_"),
+        externalSubscriptionId,
+        planCode: "free",
+        status: "active",
+      };
     },
-  } as unknown as Stripe;
+    async upsertCustomer() {
+      callCounter.value += 1;
+    },
+    async upsertSubscription(input) {
+      callCounter.value += 1;
+      subscriptions.add(input.externalSubscriptionId);
+    },
+  };
 }
 
 const noopEmail: EmailSender = async () => true;
@@ -216,7 +234,8 @@ test("end-to-end: signed admin membership writes envelope + audit row, replay is
     keysTableName: KEYS_TABLE,
     auditTableName: AUDIT_TABLE,
     customersTableName: CUSTOMERS_TABLE,
-    stripe: makeStripeStub(counter),
+    lagoClient: makeLagoStub(counter),
+    lagoPaymentProviderCode: "stripe-main",
     sendWelcomeEmail: noopEmail,
     logger: { error: () => {}, info: () => {}, warn: () => {} },
     sleep: async () => {},
@@ -239,17 +258,15 @@ test("end-to-end: signed admin membership writes envelope + audit row, replay is
   assert.ok(envelope.Item, "envelope must be persisted");
   assert.equal(envelope.Item?.tier, "free");
   assert.equal(envelope.Item?.hasFirstKey, false);
-  assert.equal(envelope.Item?.stripeCustomerId, "cus_int_1");
+  assert.equal(envelope.Item?.stripeCustomerId, null);
   assert.equal(envelope.Item?.ownerEmail, "admin@example.com");
   assert.match(envelope.Item?.customerId as string, /^pq_cust_[0-9A-HJKMNP-TV-Z]{26}$/);
 
-  const customer = await ddb.send(
-    new GetCommand({ TableName: CUSTOMERS_TABLE, Key: { orgId } }),
-  );
+  const customer = await ddb.send(new GetCommand({ TableName: CUSTOMERS_TABLE, Key: { orgId } }));
   assert.ok(customer.Item, "customer mapping must be persisted");
   assert.equal(customer.Item?.customerId, envelope.Item?.customerId);
   assert.equal(customer.Item?.lagoExternalCustomerId, envelope.Item?.customerId);
-  assert.equal(customer.Item?.stripeCustomerId, "cus_int_1");
+  assert.equal(customer.Item?.stripeCustomerId, null);
   assert.equal(customer.Item?.ownerEmail, "admin@example.com");
   assert.equal(customer.Item?.status, "active");
 
@@ -264,13 +281,13 @@ test("end-to-end: signed admin membership writes envelope + audit row, replay is
   assert.equal(auditRows.Items?.[0]?.action, "ORG_PROVISIONED");
   assert.equal(auditRows.Items?.[0]?.actorId, "user_admin");
 
-  // Svix redelivery: replay the same event. Must NOT create a second
-  // Stripe customer or a second audit row.
+  // Svix redelivery: replay the same event. Must NOT bootstrap a second
+  // Lago subscription or create a second audit row.
   const second = await handler(adminEvent(orgId));
   const decoded2 = decodeBody(second);
   assert.equal(decoded2.statusCode, 200);
   assert.equal(decoded2.body.status, "already_exists");
-  assert.equal(counter.value, 1, "Stripe.customers.create must not be called on replay");
+  assert.equal(counter.value, 2, "Lago bootstrap must not repeat on replay");
 
   const auditAfterReplay = await ddb.send(
     new QueryCommand({
@@ -282,7 +299,7 @@ test("end-to-end: signed admin membership writes envelope + audit row, replay is
   assert.equal(auditAfterReplay.Count, 1, "no new audit rows on replay");
 });
 
-test("end-to-end: invalid signature → 401, no DDB writes, no Stripe call", async () => {
+test("end-to-end: invalid signature → 401, no DDB writes, no Lago call", async () => {
   const orgId = `org_int_invalid_${SUFFIX}`;
   const counter = { value: 0 };
   const service = createProvisioningService({
@@ -290,7 +307,8 @@ test("end-to-end: invalid signature → 401, no DDB writes, no Stripe call", asy
     keysTableName: KEYS_TABLE,
     auditTableName: AUDIT_TABLE,
     customersTableName: CUSTOMERS_TABLE,
-    stripe: makeStripeStub(counter),
+    lagoClient: makeLagoStub(counter),
+    lagoPaymentProviderCode: "stripe-main",
     sendWelcomeEmail: noopEmail,
     logger: { error: () => {}, info: () => {}, warn: () => {} },
     sleep: async () => {},
@@ -322,7 +340,8 @@ test("end-to-end: non-admin membership (org:member) → 200 zero side-effects", 
     keysTableName: KEYS_TABLE,
     auditTableName: AUDIT_TABLE,
     customersTableName: CUSTOMERS_TABLE,
-    stripe: makeStripeStub(counter),
+    lagoClient: makeLagoStub(counter),
+    lagoPaymentProviderCode: "stripe-main",
     sendWelcomeEmail: noopEmail,
     logger: { error: () => {}, info: () => {}, warn: () => {} },
     sleep: async () => {},

@@ -55,10 +55,12 @@ function makeFakeClerkClient(opts: {
       async getUser(userId: string) {
         getUserCalls.push(userId);
         if (opts.throwOnGetUser) throw opts.throwOnGetUser;
-        return opts.user ?? {
-          primaryEmailAddressId: "idn_default",
-          emailAddresses: [verifiedEmail("idn_default", "default@example.com")],
-        };
+        return (
+          opts.user ?? {
+            primaryEmailAddressId: "idn_default",
+            emailAddresses: [verifiedEmail("idn_default", "default@example.com")],
+          }
+        );
       },
     },
   } as unknown as ClerkClient;
@@ -163,10 +165,10 @@ test("valid signature + admin membership + new org → 200 + provisionOrg called
   const service = makeFakeService({
     status: "created",
     emailSent: true,
-    stripeCustomerId: "cus_new",
+    stripeCustomerId: null,
     orgEnvelope: {
       apiKeyHash: `ORG#${orgId}`,
-      stripeCustomerId: "cus_new",
+      stripeCustomerId: null,
       ownerEmail: "admin@example.com",
       paymentOverdue: false,
       stripeSubscriptionId: null,
@@ -204,10 +206,10 @@ test("valid signature + admin membership + already_exists → 200 zero new side-
   const service = makeFakeService({
     status: "already_exists",
     emailSent: false,
-    stripeCustomerId: "cus_existing",
+    stripeCustomerId: null,
     orgEnvelope: {
       apiKeyHash: `ORG#${orgId}`,
-      stripeCustomerId: "cus_existing",
+      stripeCustomerId: null,
       ownerEmail: "admin@example.com",
       paymentOverdue: false,
       stripeSubscriptionId: null,
@@ -311,7 +313,7 @@ test("provisionOrg returns retryable_failure → 500 (Svix redelivers)", async (
   const service = makeFakeService({
     status: "retryable_failure",
     emailSent: false,
-    stripeCustomerId: "cus_retry",
+    stripeCustomerId: null,
   });
   const { client: clerkClient } = makeFakeClerkClient({ user: STANDARD_USER });
   const handler = createClerkHandler({ service, webhookSecret: TEST_SECRET, clerkClient });
@@ -326,7 +328,7 @@ test("provisionOrg returns fatal_failure → 500 (Svix retries; if persistent �
   const service = makeFakeService({
     status: "fatal_failure",
     emailSent: false,
-    stripeCustomerId: "cus_fatal",
+    stripeCustomerId: null,
   });
   const { client: clerkClient } = makeFakeClerkClient({ user: STANDARD_USER });
   const handler = createClerkHandler({ service, webhookSecret: TEST_SECRET, clerkClient });
@@ -540,7 +542,7 @@ test("Bug 2: user with no primary email → 500 fatal_failure (operator must fix
 
 test("Bug 2: user with primaryEmailAddressId pointing at a missing entry → 500 fatal_failure", async () => {
   // Defensive — Clerk shouldn't return this, but if it does we must
-  // not silently ship a malformed email through to Stripe.
+  // not silently ship a malformed email through to Lago.
   const service = makeFakeService({ status: "created", emailSent: false });
   const userWithDanglingId: ClerkUserStub = {
     primaryEmailAddressId: "idn_dangling",
@@ -594,7 +596,7 @@ test("Bug 2: CLERK_SECRET_KEY unset (no override) → 500 internal_error (handle
 });
 
 // ---------------------------------------------------------------------------
-// Bug 4 regression — primary email must be verified before forwarding to Stripe/SES
+// Bug 4 regression — primary email must be verified before forwarding to Lago/SES
 // ---------------------------------------------------------------------------
 
 test("Bug 4: verified primary email → found → provisioning proceeds", async () => {
@@ -614,7 +616,11 @@ test("Bug 4: unverified primary → 500 fatal_failure with reason 'primary_email
   const userUnverified: ClerkUserStub = {
     primaryEmailAddressId: "idn_unverified",
     emailAddresses: [
-      { id: "idn_unverified", emailAddress: "typo@exmaple.com", verification: { status: "unverified" } },
+      {
+        id: "idn_unverified",
+        emailAddress: "typo@exmaple.com",
+        verification: { status: "unverified" },
+      },
     ],
   };
   const { client: clerkClient } = makeFakeClerkClient({ user: userUnverified });
@@ -625,7 +631,7 @@ test("Bug 4: unverified primary → 500 fatal_failure with reason 'primary_email
   assert.equal(statusCode, 500);
   assert.equal(body.error, "fatal_failure");
   assert.equal(body.reason, "primary_email_unverified");
-  assert.equal(service.calls.length, 0, "MUST NOT forward unverified email to Stripe");
+  assert.equal(service.calls.length, 0, "MUST NOT forward unverified email to Lago");
 });
 
 test("Bug 4: failed verification status → 500 fatal_failure (not silently accepted)", async () => {
@@ -650,9 +656,7 @@ test("Bug 4: null verification object → 500 fatal_failure (defensive — treat
   const service = makeFakeService({ status: "created", emailSent: false });
   const userNullVerif: ClerkUserStub = {
     primaryEmailAddressId: "idn_null_v",
-    emailAddresses: [
-      { id: "idn_null_v", emailAddress: "x@example.com", verification: null },
-    ],
+    emailAddresses: [{ id: "idn_null_v", emailAddress: "x@example.com", verification: null }],
   };
   const { client: clerkClient } = makeFakeClerkClient({ user: userNullVerif });
   const handler = createClerkHandler({ service, webhookSecret: TEST_SECRET, clerkClient });
@@ -667,14 +671,18 @@ test("Bug 4: primary unverified but secondary IS verified → STILL 500 (no fall
   // Senior-Fellow policy decision documented in resolvePrimaryEmail's
   // doc-comment: do not fall back to a non-primary verified email.
   // The primary is the user's explicit identity; falling back makes
-  // Stripe customer email unpredictable from the operator's view.
+  // Lago customer email unpredictable from the operator's view.
   // The user-facing fix is "verify your primary" or "set a verified
   // email as primary in Clerk dashboard".
   const service = makeFakeService({ status: "created", emailSent: false });
   const userMixed: ClerkUserStub = {
     primaryEmailAddressId: "idn_unverified_primary",
     emailAddresses: [
-      { id: "idn_unverified_primary", emailAddress: "primary@example.com", verification: { status: "unverified" } },
+      {
+        id: "idn_unverified_primary",
+        emailAddress: "primary@example.com",
+        verification: { status: "unverified" },
+      },
       verifiedEmail("idn_verified_secondary", "secondary@example.com"),
     ],
   };

@@ -11,14 +11,15 @@
 
 **Pattern:** Free open dataset → independent pipeline → S3 (NDJSON + manifest.json) → event-driven indexing → OpenSearch → commercial API → auth / billing / docs / SDKs.
 
-**Stack:** SST v4 + Pulumi · Hono + @hono/zod-openapi · OpenSearch 2.19 · DynamoDB (DDB-native keys, hash-based) · Clerk · Lago · Stripe (payment rail + rollback-only legacy runtime) · Next.js 15 · Mintlify · Speakeasy
+**Stack:** SST v4 + Pulumi · Hono + @hono/zod-openapi · OpenSearch 2.19 · DynamoDB (DDB-native keys, hash-based) · Clerk · Lago · Stripe (payment rail through Lago only) · Next.js 15 · Mintlify · Speakeasy
 
 **Repo:** pnpm monorepo with Turborepo. Frontend foundations are now scaffolded in-repo via `apps/landing`, `apps/console`, `packages/tokens`, and workspace-wired `sdks/typescript`. TypeScript strict. ESM only.
 
-> **Commercial architecture migration note.** P1B.19 cuts runtime billing over
-> to the Lago-centered model. Stripe is the payment rail and the old
-> Stripe-centric billing path (`P1B.03`, `P1B.06`, `P1B.10`, `P1B.11`) is
-> rollback-only legacy context until P1B.20 removes stale config and surfaces.
+> **Commercial architecture migration note.** P1B.19 cut runtime billing over
+> to the Lago-centered model and P1B.20 removes active legacy Stripe deploy,
+> config, and frontend surfaces. Stripe remains the payment rail through Lago
+> only. Older Stripe-centric tickets (`P1B.03`, `P1B.06`, `P1B.10`,
+> `P1B.11`) remain below as historical implementation evidence.
 > Older completed ticket text remains below as historical implementation
 > evidence where explicitly labelled.
 
@@ -1077,11 +1078,11 @@ Options:
 
 ## Phase 1B — Auth & Billing
 
-> **Goal:** Sign-up → DDB-native API key → hash-verified requests → rate-limited with burst limiter → usage tracked per-month → migrate the commercial layer from the shipped Stripe path to the Lago target architecture.
+> **Goal:** Sign-up → DDB-native API key → hash-verified requests → rate-limited with burst limiter → usage tracked per-month → migrate the commercial layer from the shipped Stripe path to the Lago-backed architecture.
 >
-> **Current state.** P1B.02, P1B.04, P1B.04b, P1B.05, P1B.06, P1B.07, P1B.08, P1B.09, P1B.10, P1B.11, P1B.12, P1B.14, P1B.15, P1B.16, P1B.17, P1B.18a, P1B.18, and P1B.19 are implemented. The DynamoDB-native key model is live in prod, the prod migration was executed on 2026-04-16, per-key burst limiting is enforced in the API middleware, SES feedback / quota-email delivery is live in dev + prod, previous-month scopes are finalized by the rollback-only `PqMonthClose` path, the auth integration suite is reconciled to the real post-cutover middleware contract, and the Lago migration now has a platform-owned `customerId` contract, SQS billing-event buffer, replay-safe Lago event forwarder, Lago webhook reconciliation code, dev/prod live-smoke certification, Prontiq-owned private account billing APIs, and P1B.19 runtime cutover controls. Final destructive cleanup is deferred to P1B.21 after P1B.20. SES deliverability hardening is tracked separately in P1B.08a. The next Lago migration work is P1B.20.
+> **Current state.** P1B.02, P1B.04, P1B.04b, P1B.05, P1B.06, P1B.07, P1B.08, P1B.09, P1B.10, P1B.11, P1B.12, P1B.14, P1B.15, P1B.16, P1B.17, P1B.18a, P1B.18, P1B.19, and P1B.20 are implemented. The DynamoDB-native key model is live in prod, the prod migration was executed on 2026-04-16, per-key burst limiting is enforced in the API middleware, SES feedback / quota-email delivery is live in dev + prod, the auth integration suite is reconciled to the real post-cutover middleware contract, and the Lago migration now has a platform-owned `customerId` contract, SQS billing-event buffer, replay-safe Lago event forwarder, Lago webhook reconciliation code, dev/prod live-smoke certification, Prontiq-owned private account billing APIs, P1B.19 runtime cutover controls, and P1B.20 legacy Stripe cleanup. Final destructive cleanup is deferred to P1B.21. SES deliverability hardening is tracked separately in P1B.08a. The next Lago migration work is P1B.21.
 >
-> **Lago migration progress.** `7/9` implemented for `P1B.14`–`P1B.21` plus `P1B.18a`. The `P1B` epic rollup includes completed historical Stripe-path work, so treat the Lago migration sequence as a separate track until the new commercial runtime is fully cleaned up and go-live ready.
+> **Lago migration progress.** `8/9` implemented for `P1B.14`–`P1B.21` plus `P1B.18a`. The `P1B` epic rollup includes completed historical Stripe-path work, so treat the Lago migration sequence as a separate track until final go-live cleanup is complete.
 >
 > **Scope boundary.** The hot-path middleware rewrite (hash-based lookup, REDIRECT fallback, new usage-table writes) ships in **P1B.04b** (cutover), NOT in P1B.02. P1B.02 is pure crypto primitives only — no DDB dependency — which is why it remains parallel-safe. P1B.04b flips schema + code atomically once P1B.02 and P1B.04 are both done.
 >
@@ -1247,7 +1248,8 @@ history only. The forward path is now the Lago migration sequence.
 #### Historical Shipped State
 
 This ticket is complete because the legacy Stripe billing baseline was
-implemented and is still present in the shipped migration-era stack.
+implemented. It is now historical context only: P1B.20 removed the
+platform-owned Stripe deploy/runtime surfaces after the Lago cutover.
 
 - [x] Historical Stripe catalog and family meters created for the legacy
       billing path
@@ -1263,16 +1265,17 @@ implemented and is still present in the shipped migration-era stack.
   - `Evidence:` current runtime still carries the legacy paid-tier ladder in
     `packages/shared/src/constants.ts`
 - [x] Webhook URL configured for `checkout.session.completed`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.payment_failed`
-  - `Verify:` Stripe dashboard Webhooks section
-  - `Evidence:` legacy Stripe webhook remains deployed at `{api-url}/webhooks/stripe`
+  - `Verify:` historical Stripe dashboard Webhooks section / archived setup notes
+  - `Evidence:` superseded by P1B.20; `POST /webhooks/stripe` is no longer
+    deployed by Prontiq Platform
 - [x] Historical retry and cancellation settings configured for the Stripe path
   - `Verify:` Stripe dashboard → Settings → Billing → Subscriptions and emails
-  - `Evidence:` current legacy billing path still assumes the configured Stripe
-    retry/cancellation behavior documented in the runbooks
+  - `Evidence:` retained as historical Stripe configuration context only; Lago
+    now owns billing lifecycle reconciliation
 - [x] `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` in SST secrets
-  - `Verify:` Webhook handler Lambda has access
-  - `Evidence:` the shipped legacy Stripe webhook path still depends on these
-    secrets during the Lago migration window
+  - `Verify:` historical deploy evidence only
+  - `Evidence:` superseded by P1B.20; these secrets are no longer part of the
+    active Prontiq Platform deploy contract
 
 #### Scope
 
@@ -1417,7 +1420,7 @@ duplication.
 #### Problem Statement
 
 The shipped platform still carries Stripe-era customer linkage, while the
-forward architecture makes Lago the target commercial system of record. Without
+forward architecture makes Lago the commercial system of record. Without
 a first-class `customerId` contract, the console, billing worker, Lago event
 forwarder, and reconciliation flows would each invent their own identity join
 logic. That would make backfill unsafe and would leave the request path,
@@ -1926,7 +1929,7 @@ The console billing page should consume Prontiq-owned contract surfaces, not
 invent billing logic in the UI and not hard-code a Stripe-hosted user journey
 as the long-term model. This ticket exists to define the backend/orchestration
 contract that `P1C.05` renders. Without this contract, the frontend would again
-be forced to couple itself to migration residue instead of the Lago target
+be forced to couple itself to migration residue instead of the Lago-backed
 architecture.
 
 #### Definition of Done
@@ -2044,15 +2047,16 @@ rollback plan.
 
 #### Implementation Evidence
 
-- `LEGACY_STRIPE_RUNTIME_ENABLED=false` disables Stripe-backed provisioning,
-  the Stripe billing cron, and month-close without deleting rollback code.
-- Forward provisioning creates the Prontiq customer envelope and bootstraps a
+- P1B.19 temporarily disabled Stripe-backed provisioning, billing cron, and
+  month-close behind `LEGACY_STRIPE_RUNTIME_ENABLED=false` while proving the
+  Lago-forward path.
+- Forward provisioning created the Prontiq customer envelope and bootstrapped a
   Lago Free subscription before returning success.
-- `POST /webhooks/stripe` still verifies signatures but returns `status=retired`
-  when the legacy runtime is disabled.
-- `docs/runbooks/stripe-legacy-cutover.md` defines cutover, rollback, and
-  evidence capture. P1B.20 owns stale Stripe config/surface removal; P1B.21
-  owns final smoke-fixture retirement.
+- Superseded by P1B.20: the Stripe webhook, billing cron, month-close,
+  `LEGACY_STRIPE_RUNTIME_ENABLED`, and `STRIPE_*` deploy secret contract are no
+  longer part of active Platform deploys.
+- `docs/runbooks/stripe-legacy-cutover.md` is now a historical cutover record.
+  P1B.21 owns final smoke-fixture retirement.
 
 **In:** cutover criteria, legacy Stripe retirement scope, rollback posture,
 post-cutover documentation and operations cleanup
@@ -2072,12 +2076,12 @@ post-cutover documentation and operations cleanup
 ```yaml
 id: P1B.20
 title: Legacy Stripe Config and Surface Cleanup
-status: pending
+status: done
 priority: p1-high
 epic: P1B
 persona: [ops, builder]
 depends_on: [P1B.19]
-completed: null
+completed: 2026-04-26
 tech_stack:
   billing: Lago + Stripe
   config: SST + Next.js env contracts
@@ -2087,7 +2091,7 @@ tech_stack:
 
 As an operator and builder, I need the repo cleaned of retired Stripe-era
 billing configuration and migration-only frontend surfaces after cutover so
-that the codebase, deploy config, and docs reflect the actual Lago target
+that the codebase, deploy config, and docs reflect the actual Lago-backed
 architecture instead of preserving dead billing paths indefinitely.
 
 #### Problem Statement
@@ -2103,25 +2107,25 @@ will keep telling future engineers that both billing systems still matter.
 
 ##### Functional
 
-- [ ] Billing-only Stripe env and secret contracts are audited and reduced to
+- [x] Billing-only Stripe env and secret contracts are audited and reduced to
       the post-cutover minimum
   - `Verify:` every remaining `STRIPE_*` env/secret has an intentional
     payment-rail consumer in the final architecture
   - `Evidence:` env contract diff across `sst.config.ts`, app env schemas,
     deploy docs, and runbooks
-- [ ] Retired landing pricing-table surfaces are removed once no active flow
+- [x] Retired landing pricing-table surfaces are removed once no active flow
       depends on them
   - `Verify:` `apps/landing` no longer renders or documents the legacy Stripe
     pricing-table path
   - `Evidence:` component/env/content/test cleanup removes the pricing-table
     fallback surface when the post-cutover billing UX is live
-- [ ] Legacy Stripe billing deploy/runtime wiring is removed or explicitly
+- [x] Legacy Stripe billing deploy/runtime wiring is removed or explicitly
       tombstoned
   - `Verify:` webhook/cron/month-close billing-only paths are no longer treated
     as active deploy targets after cutover
   - `Evidence:` code/config/docs diff shows retired Stripe billing surfaces
     deleted or moved into historical-only context
-- [ ] Operator docs are reconciled to post-cutover reality
+- [x] Operator docs are reconciled to post-cutover reality
   - `Verify:` canonical docs and runbooks no longer instruct operators to set
     or maintain retired Stripe billing config
   - `Evidence:` runbook/doc updates describe only intentional remaining Stripe
@@ -2129,11 +2133,11 @@ will keep telling future engineers that both billing systems still matter.
 
 ##### Operational
 
-- [ ] Cleanup is verified by search, not just by spot checks
+- [x] Cleanup is verified by search, not just by spot checks
   - `Verify:` targeted grep over `STRIPE_`, `pricing table`, `PqBillingCron`,
     and `PqMonthClose` leaves only intentional historical/payment-rail matches
   - `Evidence:` recorded verification commands / outputs in PR or session notes
-- [ ] Post-cutover deploy contract is simpler than the migration contract
+- [x] Post-cutover deploy contract is simpler than the migration contract
   - `Verify:` deploy-stage secret inventory shrinks after cleanup
   - `Evidence:` AGENTS / README / runbooks no longer require migration-only
     Stripe billing config
@@ -2392,10 +2396,10 @@ This ticket covers only the webhook side. P1C.03 covers the user-driven key crea
   - `Evidence:` `packages/webhooks/src/clerk.ts` uses `new Webhook(secret).verify(rawBody, headers)`. Test "invalid signature → 401" + "missing svix headers → 401" + happy-path tests confirm both branches.
 - [x] **Read-first idempotency check** — `GetItem ORG#{orgId}`. If found → return 200 (no side effects).
   - `Verify:` Webhook payload sent twice; second returns 200; second invocation makes no duplicate billing bootstrap calls and ZERO DDB writes
-  - `Evidence:` Integration test "end-to-end: signed admin membership writes envelope + audit row, replay is no-op" asserts Stripe `customers.create` count = 1 and audit row count = 1 across both calls.
-- [x] **Legacy Stripe rollback customer create with idempotency key** — historical P1B.04 acceptance for the pre-Lago runtime. In the current P1B.19 runtime, forward provisioning creates the Prontiq `customerId` envelope and Lago Free subscription; Stripe customer creation is rollback-only behind `LEGACY_STRIPE_RUNTIME_ENABLED=true`.
-  - `Verify:` Force a step-4 transaction failure; retry the webhook; `customers.list({email: …})` shows exactly one customer
-  - `Evidence:` `packages/control-plane/src/provisioning.ts` passes `idempotencyKey: clerk-provision-${input.orgId}` to `customers.create`. Unit test "happy path: creates Stripe customer and writes envelope + audit transactionally" asserts the idempotency-key shape.
+  - `Evidence:` Integration test "end-to-end: signed admin membership writes envelope + audit row, replay is no-op" asserts one Lago/bootstrap call and one audit row across both calls. Historical pre-Lago evidence asserted one Stripe customer via idempotency key; platform-owned Stripe customer creation was removed by P1B.20.
+- [x] **Legacy Stripe customer create with idempotency key** — historical P1B.04 acceptance for the pre-Lago runtime. In the current runtime, forward provisioning creates the Prontiq `customerId` envelope and Lago Free subscription; platform-owned Stripe customer creation was removed by P1B.20.
+  - `Verify:` Historical only. Do not run this against current Platform deploys.
+  - `Evidence:` Superseded by current provisioning tests that assert `stripeCustomerId=null` and Lago Free bootstrap idempotency. Direct Stripe customer calls were removed from `packages/control-plane/src/provisioning.ts` in P1B.20.
 - [x] **No raw API key generated in this handler.** `grep -n "generateKey\|hashKey" packages/webhooks/src/clerk.ts` returns zero. The handler creates only the customer envelope + billing bootstrap + audit entry.
   - `Verify:` Code review
   - `Evidence:` `grep -n "generateKey\|hashKey" packages/webhooks/src/clerk.ts` → no matches.
@@ -2412,7 +2416,7 @@ This ticket covers only the webhook side. P1C.03 covers the user-driven key crea
   - **Invariant enforced:** `provisionOrg` never throws (Bug 4 fix); never returns `created` without a strongly-confirmed ORG envelope (defensive guard); strong reads on every envelope check (Bug 1 fix).
   - `Verify:` Bug 1/2/4/7 regression tests in `packages/control-plane/src/provisioning.test.ts` cover every branch: ConditionalCheckFailed-during-race → already_exists; ProvisionedThroughputExceeded reason → retry; ValidationError reason → fatal; TimeoutError on writes → retryable (Bug 7).
   - `Evidence:` 51/51 control-plane tests pass.
-- [x] **No partial state possible** — if billing bootstrap or DDB write fails midway, retry the webhook; verify idempotent recovery and exactly one ORG envelope row results. Legacy Stripe rollback additionally verifies the same Stripe customer is reused via Idempotency-Key.
+- [x] **No partial state possible** — if billing bootstrap or DDB write fails midway, retry the webhook; verify idempotent recovery and exactly one ORG envelope row results. Current forward mode verifies Lago bootstrap idempotency; the older Stripe idempotency-key check is historical only after P1B.20.
   - `Verify:` `packages/control-plane/src/provisioning.test.ts` "ConditionalCheckFailed during a race → reconciliation read finds envelope → already_exists" asserts this. The reconciliation read with `ConsistentRead: true` correctly detects the prior writer's commit.
   - `Evidence:` Test passes. Manual chaos verification deferred to post-deploy on dev (operator runbook §"Healthy redelivery").
 - [x] Welcome email sent via SES (subject "Welcome to Prontiq.", body includes a sign-in link to `/account` + docs link). **Does NOT contain an API key** — the user creates one from `/account` after sign-in. SES failure does not block provisioning durability.
@@ -2421,18 +2425,18 @@ This ticket covers only the webhook side. P1C.03 covers the user-driven key crea
 
 ##### Recovery Endpoint
 
-- [x] Implement `POST /v1/account/setup` (Clerk-authenticated). Idempotent. If `ORG#{orgId}` exists → 200 (no side effects). If missing → run the same customer-envelope + Lago Free bootstrap flow as the webhook handler (factored into a shared service). Legacy Stripe rollback uses the historical Stripe-customer-create branch only when `LEGACY_STRIPE_RUNTIME_ENABLED=true`.
+- [x] Implement `POST /v1/account/setup` (Clerk-authenticated). Idempotent. If `ORG#{orgId}` exists → 200 (no side effects). If missing → run the same customer-envelope + Lago Free bootstrap flow as the webhook handler (factored into a shared service). Historical Stripe customer creation was removed by P1B.20.
   - `Verify:` **Route-level integration tests** (no UI dependency — UI is owned by P1C.03):
     - (a) Call `POST /v1/account/setup` with a Clerk-authenticated test principal whose ORG envelope does not exist → 201 + envelope created + audit row
     - (b) Call same endpoint twice in a row → second returns 200 with no DDB writes (idempotent)
-    - (c) Inject Stripe-create success then DDB failure on first attempt → retry succeeds; verify exactly 1 Stripe customer (Idempotency-Key reuse) and 1 ORG envelope
+    - (c) Inject Lago bootstrap / DDB failure on first attempt → retry succeeds; verify exactly 1 ORG envelope and no duplicate Lago subscription side effects
     - (d) Verify both the webhook handler AND `/setup` endpoint import from the same shared service
-  - `Evidence:` `packages/api/src/routes/account.integration.test.ts` covers (a), (b), (c) against DDB Local with stubbed Stripe + Clerk + JWT verifier. (d) verified via `grep -rn "provisionOrg" packages/` showing 1 definition (`@prontiq/control-plane/src/provisioning.ts`) + 2 imports (`@prontiq/webhooks/src/clerk.ts`, `@prontiq/api/src/routes/account.ts`). `resolvePrimaryEmail` lives in `@prontiq/control-plane` and is shared by both consumers (PR 3a refactor, 2026-04-18). New `PqAccount` Lambda separate from address-API `$default` so the hot path bundle stays minimal; mounted via `api.route("ANY /v1/account/{proxy+}", accountFn.arn)` with explicit-route precedence in front of `$default`. `PqAccountErrors` CloudWatch alarm wired to the existing `PqIngestAlerts` SNS topic.
+  - `Evidence:` `packages/api/src/routes/account.integration.test.ts` covers (a), (b), and current response shape against DDB Local with stubbed Clerk + JWT verifier; provisioning unit/integration coverage asserts Lago Free bootstrap and `stripeCustomerId=null`. (d) verified via `grep -rn "provisionOrg" packages/` showing 1 definition (`@prontiq/control-plane/src/provisioning.ts`) + 2 imports (`@prontiq/webhooks/src/clerk.ts`, `@prontiq/api/src/routes/account.ts`). `resolvePrimaryEmail` lives in `@prontiq/control-plane` and is shared by both consumers (PR 3a refactor, 2026-04-18). New `PqAccount` Lambda separate from address-API `$default` so the hot path bundle stays minimal; mounted via `api.route("ANY /v1/account/{proxy+}", accountFn.arn)` with explicit-route precedence in front of `$default`. `PqAccountErrors` CloudWatch alarm wired to the existing `PqIngestAlerts` SNS topic.
   - `Note:` UI-level verification (the `/account` page detecting missing envelope and rendering the "Set up your account" CTA that calls this endpoint) lives in **P1C.03 DoD** — not here, because P1B.05 ships before any UI work and shouldn't depend on dashboard rendering.
 
 #### Scope
 
-**In:** Svix verification, ORG envelope creation, Prontiq customer identity creation, Lago Free bootstrap, rollback-only Stripe customer create with idempotency, audit entry, welcome email (no key in body), `/v1/account/setup` recovery endpoint, shared `provisioning.ts` service.
+**In:** Svix verification, ORG envelope creation, Prontiq customer identity creation, Lago Free bootstrap, audit entry, welcome email (no key in body), `/v1/account/setup` recovery endpoint, shared `provisioning.ts` service.
 
 **Out — Do Not Implement:**
 
@@ -2455,13 +2459,13 @@ depends_on: [P1B.03, P1B.04]
 completed: 2026-04-18
 ```
 
-> Legacy shipped path. This ticket remains implemented in the current platform
-> but is superseded as forward-looking commercial architecture by the Lago
-> migration sequence.
+> Legacy shipped path. This ticket was implemented in the old platform runtime
+> and is retained for history only. P1B.20 removed the hourly Stripe cron from
+> active deploys after the Lago cutover.
 
 #### Shipped State
 
-`POST /webhooks/stripe` is live in dev and prod.
+`POST /webhooks/stripe` was live in dev and prod during the historical Stripe runtime and was removed by P1B.20.
 
 Implemented event contract:
 
@@ -2773,33 +2777,33 @@ depends_on: [P1B.03, P1B.04, P1B.06]
 completed: 2026-04-18
 ```
 
-> Legacy shipped path. This ticket remains implemented in the current platform
-> but is superseded as forward-looking commercial architecture by the Lago
-> migration sequence.
+> Legacy shipped path. This ticket was implemented in the old platform runtime
+> and is retained for history only. P1B.20 removed the hourly Stripe cron from
+> active deploys after the Lago cutover.
 
 #### User Story
 
-As a platform operator, usage data flows from `prontiq-usage` to Stripe every hour via family-level Stripe credit meters so that billing is accurate, replay-safe, and no usage is lost across month boundaries.
+As a platform operator, usage data flowed from `prontiq-usage` to Stripe every hour via family-level Stripe credit meters so that the historical billing path was accurate, replay-safe, and did not lose usage across month boundaries.
 
 #### Problem Statement
 
-Hourly EventBridge-triggered Lambda. Per ARCHITECTURE.MD §5.6.2 (rewritten to fix the rotation double-count bug from PR #57 review #5):
+Historical hourly EventBridge-triggered Lambda. Per ARCHITECTURE.MD §5.6.2 (rewritten to fix the rotation double-count bug from PR #57 review #5):
 
 - Reads `REGISTRY#active-keys` (one item)
 - For each billable hash, recursively walks REDIRECT GSI to build the full attribution chain ([currentHash, ...predecessorHashes])
 - Sums usage across the chain, then rates that usage into credits per API family
 - Compares to `currentHash.lastPushedCumulativeCount` ONLY (old hashes' pushed state is dead — including it would double-count)
 - Reserves a replay-safe pending push on the current hash row (`pendingMeterEventIdentifier`, `pendingMeterTargetCumulativeCount`)
-- Pushes the **credit delta** to Stripe via `stripe.billing.meterEvents.create(...)` with deterministic `event_name = prontiq_${product}_requests`
-- After Stripe accepts the event, finalizes by setting `currentHash.lastPushedCumulativeCount = pendingMeterTargetCumulativeCount` and clearing the pending marker
+- Pushed the **credit delta** to Stripe via `stripe.billing.meterEvents.create(...)` with deterministic `event_name = prontiq_${product}_requests`
+- After Stripe accepted the event, finalized by setting `currentHash.lastPushedCumulativeCount = pendingMeterTargetCumulativeCount` and clearing the pending marker
 
 #### Definition of Done
 
 ##### Functional
 
-- [x] Scheduled Lambda runs hourly (EventBridge cron)
-  - `Verify:` EventBridge rule exists
-  - `Evidence:` SST config
+- [x] Scheduled Lambda ran hourly (EventBridge cron)
+  - `Verify:` historical EventBridge/SST evidence from the shipped Stripe runtime
+  - `Evidence:` superseded by P1B.20; `PqBillingCron` is no longer deployed
 - [x] Reads `REGISTRY#active-keys` — targeted reads, not a scan
   - `Verify:` Lambda log shows single GetItem + BatchGet
   - `Evidence:` CloudWatch log
@@ -2826,7 +2830,8 @@ Hourly EventBridge-triggered Lambda. Per ARCHITECTURE.MD §5.6.2 (rewritten to f
   - T5: run cron. Assert: Stripe meter set to 175 (NOT a negative delta), B.lastPushedCumulativeCount=175
   - `Evidence:` Integration test passes; demonstrates the §5.6.2 worked-example table
 - [x] **Multi-rotation test**: A→B→C, 10 reqs against C, verify cron walks chain=[C,B,A] and pushes correct cumulative
-- [x] CloudWatch alarm on cron errors (`PqBillingCronErrors`)
+- [x] CloudWatch alarm on cron errors (`PqBillingCronErrors`) during the legacy
+      runtime; removed from active deploys by P1B.20
 - [x] Month boundary: first 6 hours of each month, process both current + previous month scopes
 
 #### Scope
@@ -2853,25 +2858,25 @@ depends_on: [P1B.10]
 completed: 2026-04-19
 ```
 
-> Legacy shipped path. This ticket remains implemented in the current platform
-> but is superseded as forward-looking commercial architecture by the Lago
-> migration sequence.
+> Legacy shipped path. This ticket was implemented in the old platform runtime
+> and is retained for history only. P1B.20 removed month-close from active
+> deploys after the Lago cutover.
 
 #### User Story
 
-As a platform operator, a dedicated Lambda finalises the previous month's usage at 00:30 UTC on day 1 so that Stripe invoices close cleanly and the hourly cron stops revisiting closed scopes.
+As a platform operator, a dedicated Lambda finalised the previous month's usage at 00:30 UTC on day 1 so that historical Stripe invoices closed cleanly and the hourly cron stopped revisiting closed scopes.
 
 #### Problem Statement
 
-Stripe invoices finalise on the month boundary. Usage writes can arrive late (clock skew, retries). At 00:30 UTC on day 1, a dedicated Lambda sweeps previous-month scopes, pushes remaining deltas, sets `closed: true`. The hourly cron skips any scope with `closed: true`. See ARCHITECTURE.MD §5.6.2.
+Historical Stripe invoices finalised on the month boundary. Usage writes could arrive late (clock skew, retries). At 00:30 UTC on day 1, a dedicated Lambda swept previous-month scopes, pushed remaining deltas, and set `closed: true`. The hourly cron skipped any scope with `closed: true`. See ARCHITECTURE.MD §5.6.2.
 
 #### Definition of Done
 
 ##### Functional
 
-- [x] Scheduled Lambda runs monthly via EventBridge cron `30 0 1 * ? *` (UTC)
-  - `Verify:` `PqMonthClose` exists in SST and deploys in dev + prod
-  - `Evidence:` `sst.config.ts`
+- [x] Scheduled Lambda ran monthly via EventBridge cron `30 0 1 * ? *` (UTC)
+  - `Verify:` historical SST evidence from the shipped Stripe runtime
+  - `Evidence:` superseded by P1B.20; `PqMonthClose` is no longer deployed
 - [x] For each billable key, fetch previous-month `prontiq-usage` scope
   - `Evidence:` `packages/control-plane/src/month-close.ts`
 - [x] Push any remaining delta to Stripe
@@ -2892,12 +2897,15 @@ Stripe invoices finalise on the month boundary. Usage writes can arrive late (cl
 
 - Refund / correction flow → manual Stripe dashboard
 
-#### Shipped Evidence
+#### Historical Shipped Evidence
 
-- `packages/control-plane/src/billing-runtime.ts` now holds the shared chain-discovery and replay-safe scope-reconciliation logic used by both hourly billing and month-close.
-- `packages/control-plane/src/month-close.ts` implements `createMonthCloseService()` and the Lambda handler.
-- `sst.config.ts` wires `PqMonthClose` plus `PqMonthCloseErrors`.
-- `docs/runbooks/month-close.md` is the operator runbook.
+- `packages/control-plane/src/billing-runtime.ts` held the shared chain-discovery and replay-safe scope-reconciliation logic used by both hourly billing and month-close.
+- `packages/control-plane/src/month-close.ts` implemented `createMonthCloseService()` and the Lambda handler.
+- `sst.config.ts` wired `PqMonthClose` plus `PqMonthCloseErrors`.
+- `docs/runbooks/month-close.md` was the operator runbook.
+
+P1B.20 removed those files, deploy resources, and alarms from active code. The
+tombstoned runbook now points operators to Lago billing-period reconciliation.
 
 ---
 
@@ -3335,7 +3343,7 @@ not the target design.
 - [ ] Migration-era payment-method or invoice links are clearly labeled if they
       still point to legacy Stripe-hosted surfaces
   - `Verify:` No Stripe-hosted surface is presented as the forward-looking UX
-  - `Evidence:` UI copy and docs match the Lago-target posture
+  - `Evidence:` UI copy and docs match the Lago-backed posture
 
 #### Scope
 
@@ -3379,7 +3387,7 @@ widgets.
 
 The original embedded pricing-table integration shipped as an interim path, but
 it is not the forward contract. Landing and console pricing surfaces should now
-align to the Lago-target commercial architecture and the current business
+align to the Lago-backed commercial architecture and the current business
 direction of Free + PAYG.
 
 #### Historical Superseded State
@@ -3388,7 +3396,7 @@ direction of Free + PAYG.
   Prontiq-rendered cards while keeping Stripe-hosted commercial flows as the
   forward direction.
 - That is no longer the target model. Future landing and console pricing
-  surfaces should build against Lago-target billing contracts and the current
+  surfaces should build against Lago-backed billing contracts and the current
   Free + PAYG direction instead.
 - Keep this ticket only as a record of the retired Pricing Table replacement
   plan so future work does not accidentally revive it.
@@ -4579,7 +4587,7 @@ As a platform operator, I retain the historical Stripe-meter planning context fo
 
 #### Problem Statement
 
-This ticket is retained only as a record of the retired Stripe-meter expansion idea. Do not schedule new engineering work from it. When ABN commercialisation resumes under the Lago target architecture, track billable-metric definition, customer/product mapping, and billing-surface visibility in a Lago-target ticket instead.
+This ticket is retained only as a record of the retired Stripe-meter expansion idea. Do not schedule new engineering work from it. When ABN commercialisation resumes under the Lago-backed architecture, track billable-metric definition, customer/product mapping, and billing-surface visibility in a Lago-backed ticket instead.
 
 #### Historical Superseded State
 
@@ -5402,7 +5410,7 @@ As a platform operator, I retain the historical Stripe-meter planning context fo
 
 #### Problem Statement
 
-This ticket is retained only as a record of the retired Stripe-meter expansion idea for later product families. Do not schedule new engineering work from it. When CVE or Patents commercialisation resumes under the Lago target architecture, track billable-metric definition, customer/product mapping, and billing-surface visibility in Lago-target tickets instead.
+This ticket is retained only as a record of the retired Stripe-meter expansion idea for later product families. Do not schedule new engineering work from it. When CVE or Patents commercialisation resumes under the Lago-backed architecture, track billable-metric definition, customer/product mapping, and billing-surface visibility in Lago-backed tickets instead.
 
 #### Historical Superseded State
 

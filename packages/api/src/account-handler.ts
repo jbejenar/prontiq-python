@@ -14,8 +14,8 @@ import { accountRoutes } from "./routes/account.js";
  * Why a separate Lambda from the address-API `$default` handler:
  *   - The address-API hot path (15M-doc OpenSearch search) must keep
  *     its bundle minimal — adding `@clerk/backend` (Backend SDK +
- *     `verifyToken`) and `@prontiq/control-plane` (DDB SDK + Stripe
- *     SDK + SES SigV4) to that bundle would inflate cold-start and
+ *     `verifyToken`) and `@prontiq/control-plane` (DDB SDK + Lago HTTP
+ *     client + SES SigV4) to that bundle would inflate cold-start and
  *     enlarge the IAM blast radius for no benefit.
  *   - Account routes are admin / low-QPS — extra cold-start on
  *     `/v1/account/setup` is acceptable in exchange for keeping the
@@ -81,7 +81,7 @@ app.onError((err, c) => {
 //   2. clerkAdminOnly()  — gate on org_role ∈ getAdminRoles(). Mirrors
 //                          the Clerk webhook's role gate so a non-admin
 //                          can't race a delayed webhook and become the
-//                          recorded ownerEmail / Stripe customer.
+//                          recorded ownerEmail / Lago customer.
 //
 // Order matters: clerkAdminOnly() reads c.get("clerkPrincipal") which is
 // populated by clerkJwt(). Default-secure-by-construction — every route

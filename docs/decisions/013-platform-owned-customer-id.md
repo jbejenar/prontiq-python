@@ -6,7 +6,7 @@ Accepted.
 
 ## Context
 
-The live platform still links organizations to migration-era Stripe customer records through the `ORG#{orgId}` envelope. The Lago migration needs one stable customer identifier that can be used by Clerk-authenticated console flows, API-key-authenticated usage events, Lago customer records, and retained Stripe payment-rail linkage without making any provider ID canonical.
+Some historical organization envelopes may still carry migration-era Stripe customer linkage. The Lago migration needs one stable customer identifier that can be used by Clerk-authenticated console flows, API-key-authenticated usage events, Lago customer records, and retained Stripe payment-rail linkage without making any provider ID canonical.
 
 ## Decision
 
@@ -23,7 +23,7 @@ pq_cust_<ulid>
 ## Considered and Rejected
 
 - Clerk `orgId` as `customerId`: rejected because it couples commercial identity to the auth provider and makes a future auth migration commercially disruptive.
-- Stripe `cus_...` as `customerId`: rejected because Stripe is no longer the target commercial source of truth and remains only the payment rail after the Lago migration.
+- Stripe `cus_...` as `customerId`: rejected because Stripe is no longer the commercial source of truth and remains only the payment rail through Lago.
 - Lago `lago_id` as `customerId`: rejected because it is provider-owned and unavailable before Lago customer creation.
 - `ORG#{orgId}` as `customerId`: rejected because it is a storage key for the existing provisioning envelope, not a durable commercial identity.
 

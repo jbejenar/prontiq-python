@@ -15,7 +15,6 @@ import {
   type OrgEnvelopeRecord,
   type ApiKeyRecord,
 } from "@prontiq/shared";
-import Stripe from "stripe";
 import { buildAuditTransactItem } from "./audit.js";
 import { generateCustomerId as generateCustomerIdDefault } from "./customer-identity.js";
 import { isSuppressedEmail, sendSignedSesEmail } from "./email.js";
@@ -58,8 +57,8 @@ const TRANSIENT_REASON_CODES = new Set([
 
 // 3. Provably-fatal AWS SDK exception names — retrying these will
 //    never succeed. Anything NOT in this allowlist and NOT in the
-//    transient set is "ambiguous" and treated as retryable on
-//    post-Stripe paths (the safe default — see classifyDdbError).
+//    transient set is "ambiguous" and treated as retryable after a
+//    possible write commit (the safe default — see classifyDdbError).
 const FATAL_TOP_LEVEL_NAMES = new Set([
   "ValidationException",
   "ResourceNotFoundException",
@@ -72,7 +71,6 @@ const FATAL_TOP_LEVEL_NAMES = new Set([
 const MAX_ATTEMPTS = 3;
 const BACKOFF_MS = 150;
 const FREE_TIER = "free" as const;
-const STRIPE_NETWORK_RETRIES = 3;
 
 type Logger = Pick<Console, "error" | "warn" | "info">;
 type Sleep = (ms: number) => Promise<void>;
@@ -139,10 +137,8 @@ export interface ProvisioningDependencies {
   keysTableName: string;
   customersTableName: string;
   auditTableName: string;
-  legacyStripeRuntimeEnabled: boolean;
-  lagoClient?: LagoProvisioningClient;
+  lagoClient: LagoProvisioningClient;
   lagoPaymentProviderCode: string;
-  stripe?: Stripe;
   sendWelcomeEmail: EmailSender;
   generateCustomerId: CustomerIdGenerator;
   logger: Logger;
@@ -150,7 +146,6 @@ export interface ProvisioningDependencies {
 }
 
 let cachedDdb: DynamoDBDocumentClient | undefined;
-let cachedStripe: Stripe | undefined;
 let cachedLagoClient: LagoProvisioningClient | undefined;
 const defaultLogger = createLogger("control-plane-provisioning");
 
@@ -159,14 +154,6 @@ function getDefaultDdb(): DynamoDBDocumentClient {
     cachedDdb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
   }
   return cachedDdb;
-}
-
-function getDefaultStripe(): Stripe {
-  if (!cachedStripe) {
-    const key = getRequiredEnv("STRIPE_SECRET_KEY");
-    cachedStripe = new Stripe(key, { maxNetworkRetries: STRIPE_NETWORK_RETRIES });
-  }
-  return cachedStripe;
 }
 
 function normalizeLagoApiUrl(value: string): string {
@@ -342,10 +329,6 @@ function getOptionalEnv(name: string, fallback: string): string {
   return process.env[name] ?? fallback;
 }
 
-function legacyStripeRuntimeEnabled(): boolean {
-  return process.env.LEGACY_STRIPE_RUNTIME_ENABLED !== "false";
-}
-
 function getOrgEnvelopeKey(orgId: string): string {
   return `ORG#${orgId}`;
 }
@@ -380,8 +363,7 @@ function isCompleteOrgEnvelope(record: unknown, orgId: string): record is OrgEnv
 // site. Earlier versions returned `OrgEnvelopeRecord | undefined` and
 // let SDK exceptions escape — that turned recoverable read failures
 // (throttle, network blip, IAM lapse) into uncaught 500s, *especially*
-// dangerous after a Stripe customer was already created or after a
-// TransactWriteItems may have already committed.
+// dangerous after a TransactWriteItems may have already committed.
 type EnvelopeReadResult =
   | { kind: "found"; record: OrgEnvelopeRecord }
   | { kind: "missing" }
@@ -391,9 +373,8 @@ type EnvelopeReadResult =
 // Strongly-consistent read. Eventual consistency would let three real
 // scenarios slip past the state machine:
 //   1. Preflight idempotency check misses a concurrent provisioner that
-//      committed <1ms ago → unnecessary Stripe call (idempotency-key
-//      saves us from duplicate customer, but also: ConditionalCheckFailed
-//      on the next TransactWriteItems → wasted retry path).
+//      committed <1ms ago → unnecessary retry work and a predictable
+//      ConditionalCheckFailed on the next TransactWriteItems.
 //   2. Post-commit confirmation reads back undefined despite the
 //      transaction having committed → caller sees `created` with
 //      `orgEnvelope: undefined`, which is a lie about durability.
@@ -681,12 +662,6 @@ async function bootstrapLagoFreeSubscription(
   if (isCompleteLagoBootstrap(envelope)) {
     return envelope;
   }
-  if (dependencies.legacyStripeRuntimeEnabled) {
-    return envelope;
-  }
-  if (!dependencies.lagoClient) {
-    throw new Error("Lago provisioning client is required when legacy Stripe runtime is disabled");
-  }
   const customerId = envelope.customerId;
   if (!customerId) throw new Error("ORG envelope is missing customerId");
   const externalSubscriptionId = deriveLagoExternalSubscriptionId(customerId);
@@ -744,10 +719,9 @@ function hasSmithyRetryableTrait(error: unknown): boolean {
 //                (ValidationError, ItemCollectionSizeLimitExceeded, …).
 //                Retrying will not succeed.
 //   ambiguous  → unknown error name, no retry trait, not a recognised
-//                terminal. Caller chooses policy: post-Stripe paths
-//                map this to retryable_failure (Stripe idempotency-key
-//                + envelope attribute_not_exists make retries safe);
-//                preflight (no Stripe customer yet) can choose fatal.
+//                terminal. Caller chooses policy: post-write paths map
+//                this to retryable_failure (envelope attribute_not_exists
+//                makes retries safe); preflight can choose fatal.
 //
 // ConditionalCheckFailed is deliberately NOT in either set — it's the
 // idempotency-success signal handled by the post-failure reconciliation
@@ -784,40 +758,6 @@ function classifyDdbError(error: unknown): DdbClassification {
   if (hasSmithyRetryableTrait(error)) return "transient";
 
   return "ambiguous";
-}
-
-// Stripe SDK errors expose two separate signals:
-//   - `error.type` is a category string like `"card_error"` /
-//     `"invalid_request_error"` / `"api_error"` (NOT a class name)
-//   - the constructor itself is the typed subclass on
-//     `Stripe.errors.*`
-// `instanceof` is the contract Stripe documents for branching, so we use
-// that rather than string matching on `error.type` (which previously had
-// us comparing TS class names against category strings — a silent
-// no-match that defaulted everything to "not fatal").
-//
-// Default for unrecognised Stripe error subclasses: NOT fatal. Reason:
-// every customers.create call is idempotency-keyed on
-// `clerk-provision-{orgId}`, so a Svix retry of a transient blip we
-// misclassified just returns the same `cus_...`. Misclassifying a real
-// fatal error as retryable (the cost) is bounded by Svix's retry window
-// and an eventual DLQ alarm. Misclassifying a transient as fatal (the
-// alternative) silently drops a real customer.
-function isFatalStripeError(error: unknown): boolean {
-  if (!(error instanceof Stripe.errors.StripeError)) {
-    return false;
-  }
-  if (
-    error instanceof Stripe.errors.StripeCardError ||
-    error instanceof Stripe.errors.StripeInvalidRequestError ||
-    error instanceof Stripe.errors.StripeAuthenticationError ||
-    error instanceof Stripe.errors.StripePermissionError ||
-    error instanceof Stripe.errors.StripeIdempotencyError
-  ) {
-    return true;
-  }
-  // Connection / API / RateLimit / UnknownError → retryable.
-  return false;
 }
 
 async function sleepDefault(ms: number): Promise<void> {
@@ -898,24 +838,18 @@ export function createProvisioningService(overrides: Partial<ProvisioningDepende
   provisionOrg: (input: ProvisioningInput) => Promise<ProvisioningResult>;
 } {
   const logger = overrides.logger ?? defaultLogger;
-  const runtimeEnabled = overrides.legacyStripeRuntimeEnabled ?? legacyStripeRuntimeEnabled();
   const dependencies: ProvisioningDependencies = {
     auditTableName: overrides.auditTableName ?? getRequiredEnv("AUDIT_TABLE_NAME"),
     customersTableName: overrides.customersTableName ?? getRequiredEnv("CUSTOMERS_TABLE_NAME"),
     ddb: overrides.ddb ?? getDefaultDdb(),
     generateCustomerId: overrides.generateCustomerId ?? generateCustomerIdDefault,
     keysTableName: overrides.keysTableName ?? getRequiredEnv("KEYS_TABLE_NAME"),
-    lagoClient: overrides.lagoClient ?? (runtimeEnabled ? undefined : getDefaultLagoClient()),
+    lagoClient: overrides.lagoClient ?? getDefaultLagoClient(),
     lagoPaymentProviderCode:
-      overrides.lagoPaymentProviderCode ??
-      (runtimeEnabled
-        ? (process.env.LAGO_PAYMENT_PROVIDER_CODE ?? "")
-        : getRequiredEnv("LAGO_PAYMENT_PROVIDER_CODE")),
-    legacyStripeRuntimeEnabled: runtimeEnabled,
+      overrides.lagoPaymentProviderCode ?? getRequiredEnv("LAGO_PAYMENT_PROVIDER_CODE"),
     logger,
     sendWelcomeEmail: overrides.sendWelcomeEmail ?? getDefaultEmailSender(logger),
     sleep: overrides.sleep ?? sleepDefault,
-    stripe: overrides.stripe ?? (runtimeEnabled ? getDefaultStripe() : undefined),
   };
 
   async function provisionOrg(input: ProvisioningInput): Promise<ProvisioningResult> {
@@ -964,38 +898,7 @@ export function createProvisioningService(overrides: Partial<ProvisioningDepende
         break;
     }
 
-    let stripeCustomerId: string | null = null;
-    if (dependencies.legacyStripeRuntimeEnabled) {
-      if (!dependencies.stripe) {
-        dependencies.logger.error("Legacy Stripe runtime is enabled but Stripe client is missing", {
-          orgId: input.orgId,
-        });
-        return { status: "fatal_failure", emailSent: false };
-      }
-      try {
-        const customer = await dependencies.stripe.customers.create(
-          {
-            email: input.ownerEmail,
-            metadata: {
-              orgId: input.orgId,
-              source: input.source,
-            },
-          },
-          {
-            idempotencyKey: `clerk-provision-${input.orgId}`,
-          },
-        );
-        stripeCustomerId = customer.id;
-      } catch (error) {
-        const fatal = isFatalStripeError(error);
-        dependencies.logger.error("Stripe customer creation failed", {
-          error: error instanceof Error ? error.message : String(error),
-          fatal,
-          orgId: input.orgId,
-        });
-        return { status: fatal ? "fatal_failure" : "retryable_failure", emailSent: false };
-      }
-    }
+    const stripeCustomerId: string | null = null;
 
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
       let customerId: string | undefined;
@@ -1015,8 +918,7 @@ export function createProvisioningService(overrides: Partial<ProvisioningDepende
         );
         // Strong-read confirmation: a successful TransactWriteItems
         // commit followed by a strongly-consistent GetItem MUST return
-        // the envelope. Three failure shapes to handle, all preserving
-        // stripeCustomerId so retries reuse it via the idempotency-key:
+        // the envelope. Three failure shapes to handle:
         //  - transient_failure: temporary read issue → caller should
         //    retry (Svix redelivery for webhook, client retry for API)
         //  - fatal_failure: schema/IAM drift → page someone
@@ -1104,10 +1006,9 @@ export function createProvisioningService(overrides: Partial<ProvisioningDepende
         // After a write failure, we must read to distinguish "competing
         // writer won the race" (already_exists) from "real failure"
         // (retryable / fatal). If the read itself fails, we cannot
-        // distinguish — preserve stripeCustomerId and return retryable
-        // (Svix redelivery is safe: the customer-create idempotency-key
-        // means no duplicate Stripe customer; the envelope's
-        // attribute_not_exists means no duplicate envelope).
+        // distinguish — return retryable. Svix redelivery is safe because
+        // the envelope's attribute_not_exists condition prevents a duplicate
+        // envelope and the preflight read collapses successful retries.
         const reconcile = await readOrgEnvelope(
           dependencies.ddb,
           dependencies.keysTableName,
@@ -1164,9 +1065,6 @@ export function createProvisioningService(overrides: Partial<ProvisioningDepende
         // (TimeoutError, AbortError, generic SDK error). Two safety
         // properties make a retry safe even in the truly-committed
         // case:
-        //   - The Stripe customer is already created with the
-        //     deterministic idempotency-key, so a Svix retry's
-        //     customers.create returns the same `cus_...`.
         //   - The envelope's `attribute_not_exists(apiKeyHash)` and
         //     audit's conditional write reject duplicates.
         // The cost of misclassifying transient as fatal is much worse

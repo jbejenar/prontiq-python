@@ -6,29 +6,28 @@
 
 ## Session 41 — 2026-04-26
 
-**Focus:** P1B.19 Stripe legacy billing runtime retirement.
+**Focus:** P1B.20 legacy Stripe config and surface cleanup.
 
 ### Completed
 
-- **P1B.19 is implemented for review.** `LEGACY_STRIPE_RUNTIME_ENABLED=false`
-  is now the cutover posture for provisioning, Stripe webhook dispatch,
-  `PqBillingCron`, and `PqMonthClose`.
-- **Forward provisioning is Lago-backed.** New org setup writes the Prontiq
-  customer envelope, skips Stripe customer creation, upserts the Lago customer
-  and Free subscription, and denormalizes Lago billing-period fields locally.
-- **Legacy Stripe paths are rollback-only.** Stripe webhooks still verify
-  signatures but return `retired`; cron and month-close return disabled
-  summaries instead of pushing meter events.
+- **P1B.20 is implemented.** The platform-owned Stripe webhook,
+  billing-cron, month-close, pricing-table component, `STRIPE_*` deploy secret
+  contract, `LEGACY_STRIPE_RUNTIME_ENABLED`, and `stripe` package dependency
+  are removed from active code/config.
+- **Forward provisioning is Lago-backed only.** New org setup writes the
+  Prontiq customer envelope, upserts the Lago customer and Free subscription,
+  and denormalizes Lago billing-period fields locally.
+- **Private account setup contract is cleaner.** `POST /v1/account/setup`
+  returns the Prontiq `customerId`; Stripe linkage remains a historical
+  persisted field only and is not exposed in the private response schema.
 - **Docs and runbooks are aligned.** Architecture, roadmap, handoff docs,
-  private API docs, and Stripe/Lago runbooks now distinguish active Lago runtime
-  from rollback-only Stripe code.
+  private API docs, and Lago/Stripe historical runbooks now distinguish active
+  Lago runtime from historical Stripe implementation evidence.
 
 ### Next session should start with
 
-1. Deploy/verify P1B.19 in dev and prod before starting P1B.20 cleanup.
-2. Confirm `LEGACY_STRIPE_RUNTIME_ENABLED=false`,
-   `COUNTER_PERIOD_SOURCE=lago`, `BILLING_EVENTS_ENABLED=true`, and
-   `LAGO_WEBHOOK_RECONCILIATION_ENABLED=true` in each target environment.
+1. Open/review/merge the P1B.20 cleanup PR, then deploy dev/prod.
+2. Start `P1B.21 — Final Prod Go-Live Cleanup + Smoke Fixture Retirement`.
 3. Preserve repo-owned smoke fixtures until P1B.21 unless they become unsafe or
    ambiguous.
 
@@ -319,7 +318,7 @@ console billing proxy surfaces.
 
 ### Completed
 
-- **Canonical commercial architecture direction changed.** `ARCHITECTURE.MD` now presents Lago as the target commercial system of record, while the currently shipped Stripe webhook / billing cron / month-close path is retained only as legacy implementation context.
+- **Canonical commercial architecture direction changed.** `ARCHITECTURE.MD` was updated to present Lago as the target commercial system of record. At that point the Stripe webhook / billing cron / month-close path was still shipped and retained only as legacy implementation context; P1B.20 later removed it from active deploys.
 - **Roadmap and handoff docs are now migration-oriented.** The forward workstream is no longer Stripe Checkout-session orchestration. It is the Lago migration sequence. Current source-of-truth docs now track that sequence as `P1B.14` through `P1B.21`, including inserted certification ticket `P1B.18a`.
 - **Repo guidance is now normalized.** README, AGENTS, frontend strategy,
   Mintlify guides, app README/HINTS, ADRs, and runbooks now align to the Lago
@@ -340,7 +339,7 @@ console billing proxy surfaces.
 
 - **`P1C.01` is now complete.** `apps/landing` now renders the real `prontiq.dev` landing page with sticky nav, hero statement, live demo, pricing section, and footer.
 - **The hero demo is now live and guarded.** The page embeds `@prontiq/web-component`, routes suggestions through `GET /api/demo/address/autocomplete`, and applies app-local per-IP token-bucket rate limiting plus query/limit clamps. No client-side API key is exposed.
-- **Commercial CTA paths are now real but build-safe.** The landing page now renders a config-owned Prontiq Free card and Clerk modal CTA wrappers. The original Stripe Pricing Table integration is now treated as a superseded interim implementation; the forward-looking direction is now Lago-backed pricing and billing surfaces owned by Prontiq. Helper-managed local/CI runs remain keyless-safe; absent Clerk or Stripe envs degrade to deterministic fallback states instead of failing open.
+- **Commercial CTA paths became real but build-safe.** The landing page rendered a config-owned Prontiq Free card and Clerk modal CTA wrappers. The original Stripe Pricing Table integration was treated as a superseded interim implementation and was removed by P1B.20; the forward-looking direction is Lago-backed pricing and billing surfaces owned by Prontiq. Helper-managed local/CI runs remain keyless-safe.
 - **Source-of-truth docs are reconciled.** Roadmap, architecture, frontend strategy, README/HINTS, and current-work tracking now treat `P1C.01` as shipped work and move the active frontend queue to `P1C.02`.
 
 ### Verification evidence
@@ -627,12 +626,16 @@ console billing proxy surfaces.
 
 **Focus:** P1B.11 month-close finalisation Lambda.
 
+> Historical note: P1B.20 removed `PqMonthClose`, `PqBillingCron`, and the
+> shared Stripe billing runtime from active deploys. This session is retained as
+> implementation history only.
+
 ### Completed
 
-- **Month-close finalisation is live.** `PqMonthClose` now runs on `cron(30 0 1 * ? *)` in dev + prod and reuses the same replay-safe pending meter identifier flow as `PqBillingCron`.
-- **Previous-month scopes now close explicitly.** After the final previous-month sweep succeeds, the current-hash row is marked `closed=true`, which makes the hourly cron stop revisiting that scope permanently.
-- **Billing runtime extracted.** Shared scope-reconciliation logic now lives in `packages/control-plane/src/billing-runtime.ts`, so hourly and monthly billing paths use the same redirect-chain discovery, pending-marker claim/finalize, and Stripe meter-event semantics.
-- **Operator docs updated.** New `docs/runbooks/month-close.md` documents the schedule, manual invocation, expected DynamoDB state, and recovery path for wrongly closed scopes or failed monthly runs.
+- **Month-close finalisation shipped historically.** `PqMonthClose` ran on `cron(30 0 1 * ? *)` in dev + prod and reused the same replay-safe pending meter identifier flow as `PqBillingCron`.
+- **Previous-month scopes closed explicitly in the historical path.** After the final previous-month sweep succeeded, the current-hash row was marked `closed=true`, which made the hourly cron stop revisiting that scope permanently.
+- **Billing runtime extracted historically.** Shared scope-reconciliation logic lived in `packages/control-plane/src/billing-runtime.ts`, so hourly and monthly billing paths used the same redirect-chain discovery, pending-marker claim/finalize, and Stripe meter-event semantics.
+- **Operator docs updated historically.** `docs/runbooks/month-close.md` now tombstones the removed runtime and redirects operators to Lago-owned billing flows.
 
 ### Verification evidence
 
@@ -652,7 +655,7 @@ Integration coverage now includes:
 
 1. Read NEXT-WORK.md.
 2. P1F.02 — monitoring + alerting.
-3. Keep `docs/runbooks/month-close.md` as the operator source of truth for monthly billing finalisation.
+3. Historical at the time: keep `docs/runbooks/month-close.md` as the operator source of truth for monthly billing finalisation. Current state: Lago owns billing-period finalisation and the runbook is tombstoned.
 
 > Per-session summary of what happened. Newest session first.
 > Purpose: continuity across session breaks without reading git log.
@@ -686,13 +689,13 @@ Integration coverage now includes:
 
 - P1B.08 is fully shipped and operationally verified.
 - SES is still in sandbox, so arbitrary-recipient delivery remains blocked until AWS production access is enabled.
-- Stripe prod webhook still awaits the first real production billing delivery for its final live confirmation point.
+- Historical at the time: Stripe prod webhook still awaited the first real production billing delivery for its final live confirmation point. Current state: P1B.20 removed the platform-owned Stripe webhook.
 
 ### Follow-up
 
 1. Request / confirm SES production access for `prontiq.dev` in `ap-southeast-2`.
 2. Keep `docs/runbooks/ses-suppression.md` as the source of truth for SES operations.
-3. Move to P1B.11 month-close once the SES production-access request is in flight or approved.
+3. Historical at the time: move to P1B.11 month-close once the SES production-access request is in flight or approved. Current state: P1B.20 removed month-close.
 
 ---
 
@@ -703,9 +706,9 @@ Integration coverage now includes:
 ### Shipped
 
 - **SES feedback loop implemented.** `PqSesFeedback` now consumes SNS-wrapped SES `BOUNCE` and `COMPLAINT` events from a stage-specific SES configuration set and writes `prontiq-ses-suppressions`.
-- **Suppression-aware sends unified.** Welcome email, Stripe `past_due` email, and quota emails now route through the same suppression-aware SES helper in `@prontiq/control-plane`.
+- **Suppression-aware sends unified.** Welcome email, the historical Stripe `past_due` email path, and quota emails routed through the same suppression-aware SES helper in `@prontiq/control-plane`. Current state: P1B.20 removed the direct Stripe `past_due` path.
 - **80% / 100% quota emails shipped.** API usage increments now enqueue async work to `PqQuotaEmailWorker`, which sends org-level threshold emails to `ORG#{orgId}.ownerEmail` using short worker leases on the usage row.
-- **Usage-row state extended.** `warningEmailPendingAt` and `limitEmailPendingAt` now back the worker lease model, and Stripe paid-plan transitions clear both sent and pending markers when usage flags are reset.
+- **Usage-row state extended.** `warningEmailPendingAt` and `limitEmailPendingAt` now back the worker lease model. Historical Stripe paid-plan transitions cleared both sent and pending markers when usage flags reset; current state is Lago reconciliation.
 - **New operator docs added.** `docs/runbooks/ses-suppression.md` now captures the SES setup, simulator verification path, suppression semantics, and manual unsuppression process.
 
 ### Verification evidence
@@ -728,7 +731,7 @@ Integration coverage now includes:
 - quota-warning exact-once behavior
 - quota-email suppression skip
 - quota worker retry after send failure
-- Stripe paid-plan reset clearing sent + pending email markers
+- Historical Stripe paid-plan reset clearing sent + pending email markers
 
 ### Next session should start with
 
@@ -741,6 +744,9 @@ Integration coverage now includes:
 ## Session 15 — 2026-04-19
 
 **Focus:** Post-rollout Stripe verification in dev and prod after the billing webhook + hourly meter push shipped.
+
+> Historical note: P1B.20 removed the platform-owned Stripe webhook and meter
+> push path. This section is retained only as old rollout evidence.
 
 ### Verified live in dev
 
@@ -762,13 +768,13 @@ Integration coverage now includes:
   - destination `we_1TNj1SGU4RM7bEKoX6oSjygi`
   - subscribed events exactly match the implemented handler contract
 - A non-billing live event resend (`customer.created`) proved Stripe can target the destination, but it is not part of the subscribed billing event set and is not treated as webhook proof.
-- The first real production billing delivery remains the final live confirmation point.
+- Historical at the time: the first real production billing delivery remained the final live confirmation point. Current state: the Stripe endpoint was removed by P1B.20.
 
 ### Next session should start with
 
 1. Read NEXT-WORK.md.
 2. **P1B.11 — month-close job.**
-3. Use `docs/runbooks/stripe-webhook.md` as the operator source of truth when the first real prod billing delivery lands.
+3. Historical at the time: use `docs/runbooks/stripe-webhook.md` as the operator source of truth when the first real prod billing delivery lands. Current state: that runbook tombstones the removed endpoint.
 
 ---
 
@@ -776,13 +782,18 @@ Integration coverage now includes:
 
 **Focus:** P1B.10 — hourly billing cron into Stripe meters, plus full billing-doc reconciliation after the Stripe webhook/catalog work landed.
 
+> Historical note: P1B.20 removed the platform-owned Stripe billing cron,
+> Stripe webhook, month-close, direct Stripe deploy config, and Stripe package
+> dependency. This session is retained as implementation history only; do not
+> use it as current architecture guidance.
+
 ### Shipped
 
-- **Hourly billing cron (`PqBillingCron`) implemented.** New `packages/control-plane/src/billing-cron.ts` service + Lambda handler wired in `sst.config.ts` on `rate(1 hour)`. Reads `REGISTRY#active-keys`, loads the current paid key, recursively walks `newHash-redirect-index`, sums usage across the full rotation chain, and emits Stripe meter events using the live catalog contract (`event_name = prontiq_${product}_requests`, payload keys `stripe_customer_id` + `request_count`). Under the shipped credits model, the auth middleware already rates requests into family-level credits before writing `prontiq-usage`, so the cron now pushes those accumulated family credit deltas directly.
-- **Replay-safe meter push state added to `prontiq-usage`.** Current-hash usage rows can now carry `pendingMeterEventIdentifier` + `pendingMeterTargetCumulativeCount` so a Stripe-accepted meter event can be retried and finalized without double billing if the DynamoDB watermark update fails after the Stripe API call.
-- **Sandbox Stripe catalog hardened.** Billing contract now depends on Stripe metadata rather than checked-in catalog IDs: recurring Price/Product carries `metadata.prontiqTier`; metered Product carries `metadata.prontiqProduct`. Sandbox now has Starter, Growth, and Address-metered objects plus a live `prontiq_address_requests` meter.
-- **Billing weights now fail closed for unrated products.** Address endpoints are explicitly rated in `BILLING_ENDPOINTS`; if Stripe enables a future product before matching endpoint weights land in code, auth returns `500 INTERNAL_ERROR` for that product instead of silently charging a guessed default.
-- **Docs reconciled to the meter model.** Architecture/backlog/session/changelog text now points to Stripe meters + metadata contract instead of legacy `subscriptionItems.createUsageRecord()` assumptions.
+- **Hourly billing cron (`PqBillingCron`) implemented historically.** New `packages/control-plane/src/billing-cron.ts` service + Lambda handler was wired in `sst.config.ts` on `rate(1 hour)`. It read `REGISTRY#active-keys`, loaded the current paid key, recursively walked `newHash-redirect-index`, summed usage across the full rotation chain, and emitted Stripe meter events using the historical Stripe catalog contract. P1B.20 removed this runtime.
+- **Replay-safe meter push state added historically to `prontiq-usage`.** Current-hash usage rows could carry `pendingMeterEventIdentifier` + `pendingMeterTargetCumulativeCount` so a Stripe-accepted meter event could be retried and finalized without double billing if the DynamoDB watermark update failed after the Stripe API call.
+- **Sandbox Stripe catalog hardened historically.** The old billing contract depended on Stripe metadata rather than checked-in catalog IDs. P1B.20 superseded this with Lago-backed billing configuration.
+- **Billing weights fail closed for unrated products.** Address endpoints are explicitly rated in `BILLING_ENDPOINTS`; if Lago enables a future product before matching endpoint weights land in code, auth returns `500 INTERNAL_ERROR` for that product instead of silently charging a guessed default.
+- **Docs reconciled to the then-current meter model.** Architecture/backlog/session/changelog text pointed to Stripe meters + metadata contract instead of legacy `subscriptionItems.createUsageRecord()` assumptions. P1B.20 later superseded this with Lago-forward billing events.
 
 ### Verification evidence
 
@@ -800,8 +811,8 @@ Billing-cron integration coverage now includes:
 ### Next session should start with
 
 1. Read NEXT-WORK.md.
-2. **P1B.08 — SES suppression / bounce handling.** The hourly billing path is now live; suppression ingestion is the remaining email-hardening gap on the control plane.
-3. **P1B.11 — month-close job.** Previous-month scopes are still only revisited by the hourly cron during the early UTC rollover window. The dedicated finalisation sweep that sets `closed: true` is the next billing-hardening ticket.
+2. Historical at the time: **P1B.08 — SES suppression / bounce handling.** The hourly billing path was live; suppression ingestion was the remaining email-hardening gap on the control plane.
+3. Historical at the time: **P1B.11 — month-close job.** Previous-month scopes were only revisited by the hourly cron during the early UTC rollover window. Current state: P1B.20 removed this path.
 
 ---
 
@@ -836,8 +847,8 @@ Billing-cron integration coverage now includes:
 ### Next session should start with
 
 1. Read NEXT-WORK.md.
-2. **P1B.08 — SES suppression / bounce handling.** Stripe webhook is now implemented, so the next control-plane hardening ticket is the SES subscriber that keeps `prontiq-ses-suppressions` current instead of read-only.
-3. **Operator follow-up that doesn't block next ticket:** configure Stripe Dashboard webhook subscriptions + Smart Retries/cancel-on-exhaustion policy per `docs/runbooks/stripe-webhook.md`, ensure the recurring Stripe Price carries `metadata.prontiqTier` and metered Stripe Products carry `metadata.prontiqProduct`, and verify SES domain identity for `prontiq.dev` in `ap-southeast-2` if payment/welcome emails should start going green.
+2. Historical at the time: **P1B.08 — SES suppression / bounce handling.** Stripe webhook had just shipped, so the next control-plane hardening ticket was the SES subscriber that keeps `prontiq-ses-suppressions` current instead of read-only.
+3. Historical at the time: configure Stripe Dashboard webhook subscriptions + Smart Retries/cancel-on-exhaustion policy. Current state: P1B.20 removed the platform-owned Stripe webhook/runtime.
 
 ---
 
@@ -851,13 +862,13 @@ Billing-cron integration coverage now includes:
 - **PR #95 — Clerk webhook handler + SST infra (P1B.05 PR 2/3 v1).** First version. Wired `POST /webhooks/clerk` on existing PqApi → new `PqClerkWebhook` Lambda that calls `provisionOrg`. Used `sst.Secret` (SSM-backed). Merged but failed deploy-dev with `SecretMissingError`.
 - **PR #97 — Hotfix replacing #96.** Switched secrets from `sst.Secret` (SSM) to `process.env` (matches existing `WELCOME_EMAIL_FROM` GitHub-Environment pattern). Plus 5 review-bot findings addressed (Bug 1 admin-role gate `org:admin` not just `admin`; Bug 2 verified primary email via `@clerk/backend` users.getUser; Bug 3 wire `CLERK_ADMIN_ROLES` end-to-end through deploy plumbing; Bug 4 `Verification.status === "verified"` check; Bug 5 `getAdminRoles` whitespace fallback; Bug 6 `$util.secret()` Pulumi state encryption; Bug 7 trim secret values before validation).
 - **PR #98 — Hotfix: drop `AWS_REGION` from PqClerkWebhook env.** Lambda reserved key; `CreateFunction` rejected explicit values. Doc-comment so it can't sneak back.
-- **Prod deploy (`Deploy to Production` workflow on `a8f181b`)** triggered manually after dev was verified end-to-end on real Svix traffic (`org_3CTU4Oh1XTqVdEGcyTBGqRWujCm` provisioned: Stripe customer + envelope + audit row, all atomic; 4 subsequent retries returned `already_exists` with zero side effects). Prod smoke-tested with non-admin role payload — handler skipped correctly in 13ms.
+- **Prod deploy (`Deploy to Production` workflow on `a8f181b`)** triggered manually after dev was verified end-to-end on real Svix traffic under the historical pre-Lago runtime (`org_3CTU4Oh1XTqVdEGcyTBGqRWujCm` provisioned: Stripe customer + envelope + audit row, all atomic; 4 subsequent retries returned `already_exists` with zero side effects). Prod smoke-tested with non-admin role payload — handler skipped correctly in 13ms.
 
 ### Verification evidence
 
 - 129 tests pass workspace-wide (10 shared + 50 control-plane + 21 ingestion + 20 api + 28 webhooks).
 - 4 integration tests pass against `amazon/dynamodb-local:2.5.2` (1 control-plane, 3 webhooks).
-- Dev `prontiq-keys-dev` has `ORG#org_3CTU4Oh1XTqVdEGcyTBGqRWujCm` envelope with `tier: "free"`, `hasFirstKey: false`, `stripeCustomerId: cus_UM5zw8xl8HgS9n`.
+- Historical dev `prontiq-keys-dev` evidence had `ORG#org_3CTU4Oh1XTqVdEGcyTBGqRWujCm` envelope with `tier: "free"`, `hasFirstKey: false`, `stripeCustomerId: cus_UM5zw8xl8HgS9n`. Current post-P1B.20 provisioning writes `stripeCustomerId: null` and bootstraps Lago Free.
 - Dev `prontiq-audit-dev` has 1 `ORG_PROVISIONED` row (idempotency invariant proven across 5 deliveries).
 - Stripe Dashboard shows 1 customer with `metadata.orgId: org_3CTU4Oh1XTqVdEGcyTBGqRWujCm`.
 - Prod `POST /webhooks/clerk` returns 401 on unsigned, 200 `{skipped: true, reason: "non_admin_membership"}` on signed non-admin payload, all secrets present with correct prefixes (`whsec_`, `sk_`, `sk_`).
@@ -882,13 +893,13 @@ Billing-cron integration coverage now includes:
    - **Required env var:** `CLERK_SECRET_KEY` only. Already configured in the dev + prod GitHub Environment secrets (operator set 2026-04-17). Wired through the deploy workflows' `env:` block alongside the webhook's existing `CLERK_SECRET_KEY` use.
    - **Not used by this endpoint:** `CLERK_ADMIN_ROLES` (webhook-only — for the `organizationMembership.created` role gate), `CLERK_ISSUER` / `CLERK_JWKS_URL` (used by the frontend Clerk SDK and the future `/account` page in P1C, not by API-side JWT verify under the secretKey model).
    - **Claims extracted from the verified JWT:** `sub` → `userId`, `org_id` → `orgId`. If `org_id` is absent (user is signed in but has no active org context), return `400 NO_ACTIVE_ORG` per the existing API error envelope.
-   - **Email resolution:** mirror the webhook's pattern — call `clerkClient.users.getUser(userId)` via the same `@clerk/backend` client and use the verified primary email (the `Bug 4` invariant from PR #97 — never trust client-side claims for the `ownerEmail` going to Stripe).
+   - **Email resolution:** mirror the webhook's pattern — call `clerkClient.users.getUser(userId)` via the same `@clerk/backend` client and use the verified primary email (the `Bug 4` invariant from PR #97 — never trust client-side claims for the `ownerEmail` used in provisioning).
 
    **Implementation flow:**
    - New `packages/api/src/middleware/clerk-jwt.ts` — Hono middleware that verifies the JWT and sets `c.set("clerkPrincipal", { userId, orgId })`.
    - New `packages/api/src/routes/account.ts` — `POST /v1/account/setup` route. Reuses `createProvisioningService` from `@prontiq/control-plane`. Maps `ProvisioningResult.status` → 200 (`already_exists`), 201 (`created`), 503 (`retryable_failure`), 500 (`fatal_failure`).
    - New `packages/api/src/account-handler.ts` — separate Lambda entry point (mounts only the Clerk-JWT middleware + account routes; does NOT include the address routes or API-key auth middleware).
-   - `sst.config.ts` — `api.route("ANY /v1/account/{proxy+}", { handler: ".../account-handler.handler", link: [...], permissions: [SES], environment: { CLERK_SECRET_KEY, STRIPE_SECRET_KEY, ... } })`. Reuse the same `REQUIRED_WEBHOOK_SECRETS` fail-fast guard pattern (or factor it to cover the account Lambda too).
+   - Historical implementation note: the original account route plan included `STRIPE_SECRET_KEY` while the pre-Lago provisioning path still created Stripe customers. Current post-P1B.20 deploys must not require Stripe secrets; account setup uses Clerk + Lago config only.
    - Update CORS on `PqApi` to include `POST` + `Authorization` (currently `GET` + `X-Api-Key` only) so the future browser dashboard can call this endpoint.
 
 3. **Operator follow-up that doesn't block next ticket:** SES domain identity verify for `prontiq.dev` in `ap-southeast-2` + sandbox-out request. Steps in `docs/runbooks/clerk-webhook.md`. Until done, every webhook delivery logs `emailSent: false` (provisioning durability unaffected).

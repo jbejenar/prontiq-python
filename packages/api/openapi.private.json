@@ -46,13 +46,6 @@
                                             "type": "string",
                                             "description": "Prontiq-owned platform customer id."
                                         },
-                                        "stripeCustomerId": {
-                                            "type": [
-                                                "string",
-                                                "null"
-                                            ],
-                                            "description": "Legacy/payment-rail Stripe linkage. Null after Lago cutover when Stripe is used only through Lago."
-                                        },
                                         "emailSent": {
                                             "type": "boolean",
                                             "description": "True only when the welcome email was best-effort sent for a freshly-created envelope. Absent on already_exists replays."
@@ -60,8 +53,7 @@
                                     },
                                     "required": [
                                         "status",
-                                        "customerId",
-                                        "stripeCustomerId"
+                                        "customerId"
                                     ]
                                 }
                             }
@@ -85,13 +77,6 @@
                                             "type": "string",
                                             "description": "Prontiq-owned platform customer id."
                                         },
-                                        "stripeCustomerId": {
-                                            "type": [
-                                                "string",
-                                                "null"
-                                            ],
-                                            "description": "Legacy/payment-rail Stripe linkage. Null after Lago cutover when Stripe is used only through Lago."
-                                        },
                                         "emailSent": {
                                             "type": "boolean",
                                             "description": "True only when the welcome email was best-effort sent for a freshly-created envelope. Absent on already_exists replays."
@@ -99,8 +84,7 @@
                                     },
                                     "required": [
                                         "status",
-                                        "customerId",
-                                        "stripeCustomerId"
+                                        "customerId"
                                     ]
                                 }
                             }

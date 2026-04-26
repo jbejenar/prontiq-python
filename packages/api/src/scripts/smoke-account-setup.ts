@@ -64,8 +64,8 @@
  *      handler (validates the operator's Clerk Dashboard config).
  *   3. The `clerkAdminOnly()` gate accepts admin roles (or correctly
  *      rejects non-admin with 403).
- *   4. `provisionOrg` + DDB writes work end-to-end against the real
- *      Stripe + DDB tables for the stage being tested.
+ *   4. `provisionOrg` + DDB writes + Lago Free bootstrap work end-to-end
+ *      against the real stage dependencies.
  *   5. Idempotency: a second run returns 200 already_exists (when
  *      `EXPECT` isn't pinned to `created`).
  *
@@ -84,7 +84,7 @@ import type { Session } from "@clerk/backend";
 
 interface SetupSuccess {
   status: "created" | "already_exists";
-  stripeCustomerId: string;
+  customerId: string;
   emailSent?: boolean;
 }
 
@@ -155,10 +155,7 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
   return Promise.race([
     promise,
     new Promise<T>((_, reject) =>
-      setTimeout(
-        () => reject(new Error(`${label} timed out after ${ms}ms`)),
-        ms,
-      ).unref?.(),
+      setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms).unref?.(),
     ),
   ]);
 }
@@ -281,7 +278,9 @@ async function resolveSession(
       return { session, origin: "matched_target_org" };
     }
     if (matching.length > 1) {
-      const candidates = matching.map((s) => `  - ${s.id} (lastActiveAt=${s.lastActiveAt ?? "null"})`).join("\n");
+      const candidates = matching
+        .map((s) => `  - ${s.id} (lastActiveAt=${s.lastActiveAt ?? "null"})`)
+        .join("\n");
       throw new SessionResolutionError(
         `${matching.length} active sessions match CLERK_TEST_ORG_ID=${targetOrgId}. Pin one via CLERK_TEST_SESSION_ID:\n${candidates}`,
       );
@@ -297,7 +296,10 @@ async function resolveSession(
   }
   if (withOrg.length > 1) {
     const candidates = withOrg
-      .map((s) => `  - ${s.id} → org=${s.lastActiveOrganizationId} (lastActiveAt=${s.lastActiveAt ?? "null"})`)
+      .map(
+        (s) =>
+          `  - ${s.id} → org=${s.lastActiveOrganizationId} (lastActiveAt=${s.lastActiveAt ?? "null"})`,
+      )
       .join("\n");
     throw new SessionResolutionError(
       `User has ${withOrg.length} active sessions across multiple orgs. Set CLERK_TEST_ORG_ID to disambiguate:\n${candidates}`,
@@ -433,7 +435,11 @@ async function smokeAccountSetup(
   } catch (error) {
     const durationMs = Date.now() - start;
     if (error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError")) {
-      return { kind: "transport_error", reason: `request timed out after ${timeoutMs}ms`, durationMs };
+      return {
+        kind: "transport_error",
+        reason: `request timed out after ${timeoutMs}ms`,
+        durationMs,
+      };
     }
     const message = error instanceof Error ? error.message : String(error);
     return { kind: "transport_error", reason: message, durationMs };
@@ -473,7 +479,10 @@ function checkExpectation(result: SmokeResult, expect: string | undefined): Expe
     case "created":
       return result.httpStatus === 201 && status === "created"
         ? { pass: true, reason: "201 created" }
-        : { pass: false, reason: `expected 201 created, got ${result.httpStatus} ${code ?? status}` };
+        : {
+            pass: false,
+            reason: `expected 201 created, got ${result.httpStatus} ${code ?? status}`,
+          };
     case "already_exists":
       return result.httpStatus === 200 && status === "already_exists"
         ? { pass: true, reason: "200 already_exists" }
@@ -484,7 +493,10 @@ function checkExpectation(result: SmokeResult, expect: string | undefined): Expe
     case "403":
       return result.httpStatus === 403 && code === "INSUFFICIENT_ROLE"
         ? { pass: true, reason: "403 INSUFFICIENT_ROLE (non-admin caller correctly rejected)" }
-        : { pass: false, reason: `expected 403 INSUFFICIENT_ROLE, got ${result.httpStatus} ${code}` };
+        : {
+            pass: false,
+            reason: `expected 403 INSUFFICIENT_ROLE, got ${result.httpStatus} ${code}`,
+          };
     case "400":
       return result.httpStatus === 400
         ? { pass: true, reason: `400 ${code ?? "unknown"}` }
@@ -495,7 +507,9 @@ function checkExpectation(result: SmokeResult, expect: string | undefined): Expe
 }
 
 function printResult(result: SmokeResult): void {
-  console.log(`      HTTP ${result.kind === "transport_error" ? "(no response)" : result.httpStatus} in ${result.durationMs}ms`);
+  console.log(
+    `      HTTP ${result.kind === "transport_error" ? "(no response)" : result.httpStatus} in ${result.durationMs}ms`,
+  );
   if (result.kind === "transport_error") {
     console.log(`      Transport error: ${result.reason}`);
     return;
@@ -504,7 +518,12 @@ function printResult(result: SmokeResult): void {
   if (result.kind === "non_json") {
     console.log(`      Content-Type: ${result.contentType ?? "null"}`);
     console.log(`      Body snippet (≤${RAW_BODY_SNIPPET_BYTES} bytes):`);
-    console.log(result.bodySnippet.split("\n").map((l) => `        ${l}`).join("\n"));
+    console.log(
+      result.bodySnippet
+        .split("\n")
+        .map((l) => `        ${l}`)
+        .join("\n"),
+    );
     return;
   }
   console.log(`      Body: ${JSON.stringify(result.body, null, 2)}`);
@@ -522,9 +541,13 @@ export async function run(): Promise<number> {
   console.log("=== Account-setup smoke ===");
   console.log(`API:     ${apiUrl}`);
   console.log(`User:    ${userIdentifier}`);
-  console.log(`Org:     ${targetOrgId ?? "(unpinned — must be exactly one active session with org)"}`);
+  console.log(
+    `Org:     ${targetOrgId ?? "(unpinned — must be exactly one active session with org)"}`,
+  );
   if (pinnedSessionId) console.log(`Session: ${pinnedSessionId} (pinned)`);
-  console.log(`Tenant:  ${secretKey.startsWith("sk_live_") ? "PROD (sk_live_)" : "DEV (sk_test_)"}`);
+  console.log(
+    `Tenant:  ${secretKey.startsWith("sk_live_") ? "PROD (sk_live_)" : "DEV (sk_test_)"}`,
+  );
   console.log(`Timeout: ${timeoutMs}ms per call`);
   if (expect) console.log(`Expect:  ${expect}`);
   console.log();
@@ -548,7 +571,13 @@ export async function run(): Promise<number> {
   console.log("[1/3] Resolving target session...");
   let resolved: ResolvedSession;
   try {
-    resolved = await resolveSession(clerk, resolvedUser.userId, targetOrgId, pinnedSessionId, timeoutMs);
+    resolved = await resolveSession(
+      clerk,
+      resolvedUser.userId,
+      targetOrgId,
+      pinnedSessionId,
+      timeoutMs,
+    );
   } catch (error) {
     if (error instanceof SessionResolutionError) {
       console.error(`\n      ${error.message}`);

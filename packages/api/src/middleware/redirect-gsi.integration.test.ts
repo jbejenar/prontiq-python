@@ -7,9 +7,9 @@
  *      `newHash` attribute and are excluded from the index
  *   3. Returns exactly one item when queried by the new hash
  *
- * The billing cron (P1B.10, ARCHITECTURE.MD §5.6.2) depends on this GSI
- * to attribute rotated-out usage to the current billable hash without
- * scanning the whole usage table.
+ * Billing-event attribution and historical cleanup depend on this GSI to
+ * attribute rotated-out usage to the current hash without scanning the whole
+ * usage table.
  *
  * Run locally:
  *   docker run -p 8000:8000 amazon/dynamodb-local:2.5.2
@@ -68,9 +68,7 @@ before(async () => {
   // Wait for table to become ACTIVE (DDB Local is usually instant,
   // but newer versions return CREATING briefly).
   for (let i = 0; i < 20; i++) {
-    const { Table } = await client.send(
-      new DescribeTableCommand({ TableName: TEST_TABLE }),
-    );
+    const { Table } = await client.send(new DescribeTableCommand({ TableName: TEST_TABLE }));
     if (Table?.TableStatus === "ACTIVE") return;
     await new Promise((r) => setTimeout(r, 100));
   }

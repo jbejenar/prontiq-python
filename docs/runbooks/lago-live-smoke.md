@@ -25,10 +25,10 @@ It does not replace:
   semantics
 - `docs/runbooks/lago-webhook-reconciliation.md` for webhook drift handling
 - `docs/runbooks/prod-go-live-cleanup.md` for final production smoke-fixture
-  retirement after P1B.20
+  retirement in P1B.21
 - P1B.18 console billing proxy/API contract work
-- P1B.19 Stripe legacy retirement. After P1B.19, use
-  `docs/runbooks/stripe-legacy-cutover.md` for the active cutover posture.
+- P1B.19/P1B.20 Stripe legacy retirement/cleanup. Stripe is now only the
+  payment rail inside Lago.
 
 ## Safety Rules
 

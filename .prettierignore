@@ -4,3 +4,4 @@ node_modules/
 .sst/
 .turbo/
 pnpm-lock.yaml
+.claude-loop/

@@ -1,4 +1,4 @@
-# ADR-008: Lago becomes the target commercial system of record
+# ADR-008: Lago is the commercial system of record
 
 ## Status
 
@@ -8,13 +8,15 @@ Accepted
 
 The repo previously shipped a Stripe-centric billing path. P1B.19 cuts runtime
 billing over to the Lago-centered model while retaining Stripe as the payment
-rail and rollback-only legacy runtime. Plans, pricing, metering, invoicing, and
+rail, and P1B.20 removes the legacy platform-owned Stripe runtime. Plans,
+pricing, metering, invoicing, and
 commercial reporting need to live outside the Prontiq hot path and outside
 founder-operated billing logic.
 
 ## Decision
 
-Lago is the target commercial system of record for Prontiq.
+Lago is the commercial system of record for Prontiq after the P1B.19 cutover
+and P1B.20 Stripe-runtime removal.
 
 Prontiq will continue to own:
 
@@ -25,6 +27,6 @@ Prontiq will continue to own:
 
 ## Consequences
 
-- Canonical docs and roadmap now describe a Lago-centered target architecture.
-- The live Stripe webhook / billing cron / month-close path is retained as
-  legacy shipped implementation until migration is complete.
+- Canonical docs and roadmap now describe a Lago-centered current architecture.
+- The direct Stripe webhook / billing cron / month-close path is historical
+  shipped implementation only after P1B.20.

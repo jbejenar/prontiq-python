@@ -114,7 +114,6 @@ curl https://api.prontiq.dev/v1/address/autocomplete?q=test \
 ```
 
 <Note>
-  The current live platform still contains Stripe-linked account provisioning, but Prontiq's target
-  commercial architecture is moving toward Lago. API key authentication for data endpoints does not
-  change as part of that migration.
+  The live commercial runtime is Lago-centered. API key authentication for data endpoints does not
+  call Lago or Stripe; it reads local DynamoDB enforcement state only.
 </Note>

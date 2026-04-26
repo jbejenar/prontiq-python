@@ -1,6 +1,7 @@
 # ADR-007: Stripe Pricing Tables are not used for Prontiq's hybrid billing UX
 
-> Superseded on 2026-04-22 by the Lago commercial architecture direction.
+> Superseded on 2026-04-22 by the Lago commercial architecture direction and
+> closed out by DEC-033 / P1B.20 on 2026-04-26.
 >
 > This ADR is retained as a record of the **legacy Stripe-forward** billing UX
 > decision. It is not the forward-looking commercial architecture.
@@ -21,7 +22,8 @@ retired.
 
 Do not use embedded Stripe Pricing Tables for Prontiq's paid-plan purchase UX.
 Keep pricing UI first-party and platform-owned instead of treating a hosted
-Stripe widget as the long-term contract.
+Stripe widget as the long-term contract. P1B.20 removes the interim
+`stripe-pricing-table` component/env wiring entirely.
 
 ## Consequences
 
