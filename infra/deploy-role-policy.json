@@ -70,6 +70,8 @@
         "arn:aws:dynamodb:*:*:table/prontiq-audit-*",
         "arn:aws:dynamodb:*:*:table/prontiq-billing-event-deliveries",
         "arn:aws:dynamodb:*:*:table/prontiq-billing-event-deliveries-*",
+        "arn:aws:dynamodb:*:*:table/prontiq-billing-actions",
+        "arn:aws:dynamodb:*:*:table/prontiq-billing-actions-*",
         "arn:aws:dynamodb:*:*:table/prontiq-lago-webhook-events",
         "arn:aws:dynamodb:*:*:table/prontiq-lago-webhook-events-*",
         "arn:aws:dynamodb:*:*:table/prontiq-customers",
