@@ -25,3 +25,7 @@
   tests. P1B.18a live smoke work may create repo-owned test
   customers/subscriptions in the canonical environment orgs, or dedicated
   repo-owned test orgs only when isolation is required.
+- Before customer go-live, P1B.18b must clean, disable, relabel, or explicitly
+  retain repo-owned prod smoke artifacts. Do not delete delivery/webhook ledger
+  evidence or real customer rows during that cleanup without a dedicated
+  decision.

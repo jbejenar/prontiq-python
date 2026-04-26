@@ -77,8 +77,9 @@ resolve Lago webhooks.
 ## Rollout
 
 For full P1B.18a live certification, use
-`docs/runbooks/lago-live-smoke.md`. The checklist below remains the
-webhook-specific portion.
+`docs/runbooks/lago-live-smoke.md`. For production go-live cleanup after
+certification, use `docs/runbooks/prod-go-live-cleanup.md`. The checklist below
+remains the webhook-specific portion.
 
 1. Deploy code with `LAGO_WEBHOOK_RECONCILIATION_ENABLED=false`.
 2. Configure `LAGO_WEBHOOK_HMAC_SECRET` in the GitHub Environment.

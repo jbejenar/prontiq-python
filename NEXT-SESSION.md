@@ -4,6 +4,34 @@
 > the time they were written, not the current source of truth. Use
 > `ROADMAP.md`, `NEXT-WORK.md`, and `README.md` for current execution status.
 
+## Session 37 — 2026-04-26
+
+**Focus:** P1B.18b planning for production go-live cleanup and readiness.
+
+### Completed
+
+- **P1B.18a has partial safe evidence.** Dev and prod API-produced billing
+  events were accepted, billing queues/DLQs were empty, prod
+  `BILLING_EVENTS_ENABLED=true` was deployed, and `COUNTER_PERIOD_SOURCE`
+  remains `calendar`. Do not mark full customer go-live readiness until P1B.18b
+  inventory/cleanup and any remaining certification gaps are closed.
+- **P1B.18b added as the go-live gate.** The roadmap now inserts prod cleanup
+  and readiness between live smoke certification and console billing proxy work.
+- **Runbook added.** `docs/runbooks/prod-go-live-cleanup.md` defines inventory,
+  cleanup/disposition, prod flag/catalog/queue/alarm/DNS/TLS/SES checks, and a
+  post-cleanup smoke.
+
+### Next session should start with
+
+1. Execute `P1B.18b — Prod Go-Live Cleanup + Readiness Audit`.
+2. Use `docs/runbooks/prod-go-live-cleanup.md` as the checklist.
+3. Confirm the required smoke subset exists before fixture cleanup starts:
+   repo-owned prod smoke customer/key/subscription, at least one API-originated
+   accepted delivery row, empty source queue/DLQ, and no active CloudWatch
+   alarms.
+4. Do not delete real customer rows, unrelated Lago orgs, or replay/drift
+   ledger evidence while cleaning smoke artifacts.
+
 ## Session 36 — 2026-04-26
 
 **Focus:** P1B.18a implementation support for Lago live smoke certification and

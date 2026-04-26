@@ -132,7 +132,7 @@ See [`ROADMAP.md`](ROADMAP.md) for the current execution plan.
 | ------- | ------------------------- | ------- | --------- |
 | **P0**  | Infrastructure Foundation | 6       | 6/6       |
 | **P1A** | API Core (Address)        | 13      | 11/13     |
-| **P1B** | Auth & Billing            | 23      | 17/23     |
+| **P1B** | Auth & Billing            | 24      | 17/24     |
 | **P1C** | Frontend Surfaces         | 9       | 3/9       |
 | **P1D** | Docs & SDK                | 5       | 2/5       |
 | **P1E** | Ingestion                 | 6       | 4/6       |
@@ -141,18 +141,22 @@ See [`ROADMAP.md`](ROADMAP.md) for the current execution plan.
 | **P3**  | LEI + Full Dashboard      | 7       | 0/7       |
 | **P4**  | Shopify + WooCommerce     | 5       | 0/5       |
 | **P5**  | CVE/NVD + Patents         | 4       | 0/4       |
-|         |                           | **89**  | **46/89** |
+|         |                           | **90**  | **46/90** |
 
 `P1B` includes completed legacy Stripe-path work. The Lago migration sequence is
-`P1B.14`–`P1B.20` plus `P1B.18a`, currently `4/8`, and is called out separately in
-the Phase 1B section of [`ROADMAP.md`](ROADMAP.md).
+`P1B.14`–`P1B.20` plus `P1B.18a`/`P1B.18b`, currently `4/9`, and is called out
+separately in the Phase 1B section of [`ROADMAP.md`](ROADMAP.md).
 
 P1B.17 adds Lago webhook reconciliation. P1B.18a owns live Lago setup and smoke
-certification before console billing APIs depend on it. Use
+paths before console billing APIs depend on them. Use
 `pnpm --filter @prontiq/control-plane lago:smoke:event` to generate controlled
-usage smoke events; do not enable `BILLING_EVENTS_ENABLED=true`, Lago webhooks,
-or `COUNTER_PERIOD_SOURCE=lago` until the environment has canonical Lago org,
-metric, customer, subscription, replay checks, and alert health verified.
+usage smoke events; do not hand-build Lago transaction IDs. P1B.18b is the
+production go-live cleanup gate: clean, disable, relabel, or explicitly retain
+prod smoke artifacts and run one post-cleanup prod smoke before customer-facing
+billing surfaces depend on the production Lago path. It starts only after the
+prod smoke subset has real artifacts to inventory: smoke customer/key,
+subscription, accepted API-originated delivery evidence, empty queues, and no
+active alarms.
 
 ## Commands
 

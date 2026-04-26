@@ -141,8 +141,9 @@ Lago.
 ## Backfill and rollout
 
 For full P1B.18a live certification, use
-`docs/runbooks/lago-live-smoke.md`. The checklist below remains the
-forwarder-specific portion.
+`docs/runbooks/lago-live-smoke.md`. For production go-live cleanup after
+certification, use `docs/runbooks/prod-go-live-cleanup.md`. The checklist below
+remains the forwarder-specific portion.
 
 Before setting `BILLING_EVENTS_ENABLED=true` in a deployed stage:
 

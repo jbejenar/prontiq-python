@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Prod go-live cleanup gate** (`P1B.18b`) added between Lago smoke
+  certification and console billing contract work. The roadmap and runbooks now
+  require inventorying repo-owned prod smoke artifacts, deciding
+  delete/disable/relabel/retain disposition, rechecking prod Lago catalog,
+  flags, queues, alarms, DNS/TLS, and SES auth, then running one post-cleanup
+  prod smoke before customer-facing billing surfaces depend on Lago.
+
 - **Lago live smoke certification tooling** (`P1B.18a`) added for the
   rollout-gated Lago migration. `@prontiq/control-plane` now has
   `lago:smoke:event`, which loads a stage smoke key/customer from DynamoDB,

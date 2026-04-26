@@ -29,3 +29,13 @@ In the target architecture:
   webhook reconciliation
 - confirm Prontiq endpoint credit weights match the published Credits guide
 - confirm docs, roadmap, and console messaging stay aligned
+
+## Production Go-Live Gate
+
+Before customer-facing billing surfaces or Stripe retirement depend on the
+production Lago path, complete `docs/runbooks/prod-go-live-cleanup.md`.
+
+That gate must inventory repo-owned prod smoke artifacts, decide whether each is
+deleted/disabled/relabelled/retained, recheck production flags and catalog
+state, and run one post-cleanup smoke. Do not treat P1B.18a smoke evidence alone
+as permission to expose production billing UX to customers.

@@ -24,6 +24,8 @@ It does not replace:
 - `docs/runbooks/lago-billing-events.md` for worker internals and replay
   semantics
 - `docs/runbooks/lago-webhook-reconciliation.md` for webhook drift handling
+- `docs/runbooks/prod-go-live-cleanup.md` for the production cleanup/readiness
+  gate after smoke certification
 - P1B.18 console billing proxy/API contract work
 - P1B.19 Stripe legacy retirement
 
@@ -277,3 +279,10 @@ the return to OK in CloudWatch rather than expecting a recovery email.
   enabled too early.
 - Do not delete `prontiq-billing-event-deliveries` or
   `prontiq-lago-webhook-events` rows; they are replay and drift evidence.
+
+## After Certification
+
+Before treating production as customer-ready, complete
+`docs/runbooks/prod-go-live-cleanup.md`. P1B.18a proves the integration works;
+P1B.18b decides what to do with production smoke artifacts and proves the
+post-cleanup state is safe for real customer traffic.
