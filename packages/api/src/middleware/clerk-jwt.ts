@@ -337,7 +337,7 @@ export function clerkJwt(options: ClerkJwtOptions = {}) {
     if (!orgId || orgId.length === 0) {
       // Operator-helpful 400: the token IS valid, but the user isn't
       // operating under an active org. Two preconditions can cause
-      // this (both documented in the runbook + Mintlify guide):
+      // this (documented in the runbook + private account API docs):
       //   1. Clerk dashboard JWT template missing
       //      `{ "org_id": "{{org.id}}" }` in BOTH dev and prod tenants.
       //   2. Frontend hasn't called `setActive({ organization })`
@@ -348,7 +348,7 @@ export function clerkJwt(options: ClerkJwtOptions = {}) {
         c,
         400,
         "NO_ACTIVE_ORG",
-        "JWT does not include an org_id claim. Ensure the Clerk session token JWT template includes { \"org_id\": \"{{org.id}}\" } and the frontend has called setActive({ organization }) before invoking this endpoint.",
+        'JWT does not include an org_id claim. Ensure the Clerk session token JWT template includes { "org_id": "{{org.id}}" } and the frontend has called setActive({ organization }) before invoking this endpoint.',
       );
     }
 
@@ -432,7 +432,7 @@ export function clerkAdminOnly(options: ClerkAdminOnlyOptions = {}) {
         c,
         400,
         "NO_ROLE_CLAIM",
-        "JWT does not include an org_role claim. Ensure the Clerk session token JWT template includes { \"org_role\": \"{{org.role}}\" }.",
+        'JWT does not include an org_role claim. Ensure the Clerk session token JWT template includes { "org_role": "{{org.role}}" }.',
       );
     }
 

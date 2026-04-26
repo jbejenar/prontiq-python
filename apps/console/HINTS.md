@@ -5,7 +5,8 @@
 - Billing UI work must consume `/v1/account/billing`,
   `/v1/account/billing/plan-change`, and
   `/v1/account/billing/portal-session`; do not direct-call Lago or Stripe from
-  the browser.
+  the browser. These routes are private console contracts documented by
+  `packages/api/openapi.private.json`, not the public SDK.
 - `P1C.07` provides the Tailwind/shadcn/theme shell base and the env-gated Clerk boundary.
 - Fully missing Clerk keys are only a valid disabled mode when the helper-managed local/CI opt-in is present.
 - One-key-only Clerk config is a fail-closed misconfiguration, not a valid disabled mode.

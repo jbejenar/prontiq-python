@@ -931,7 +931,7 @@ On a t3.small.search with 50GB gp3:
 
 **Framework:** Hono + `@hono/zod-openapi` on Lambda (ARM64, Node.js 24) deployed via SST v4.
 
-**Why Hono specifically:** the `@hono/zod-openapi` package auto-generates an OpenAPI 3.1 spec from Zod route schemas. That spec is consumed by Mintlify (docs) and Speakeasy (SDKs). Without it, you maintain the spec manually — and it drifts. Hono itself is chosen for its lightweight middleware composition and route grouping, which maps cleanly to a multi-product API.
+**Why Hono specifically:** the `@hono/zod-openapi` package auto-generates OpenAPI 3.1 specs from Zod route schemas. The public spec is consumed by Mintlify and Speakeasy; the private spec documents Clerk-authenticated console/account routes for internal frontend and operator use. Without generated specs, contracts drift. Hono itself is chosen for its lightweight middleware composition and route grouping, which maps cleanly to a multi-product API.
 
 **Route structure:**
 
@@ -2418,6 +2418,11 @@ docs.prontiq.dev/
 
 **Speakeasy** (free tier: 1 SDK, 50 methods) — auto-generates typed SDKs from the OpenAPI spec. Published to npm, PyPI, Packagist via GitHub Action on spec change.
 
+**OpenAPI boundary** — `packages/docs/openapi.json` is the public data API spec
+for Mintlify and Speakeasy. Clerk-authenticated account/console routes such as
+`/v1/account/*` are generated into `packages/api/openapi.private.json` and must
+not appear in the public docs or SDK surface.
+
 **SDK usage:**
 
 ```typescript
@@ -2783,7 +2788,9 @@ Speakeasy generates SDK types from these shapes. Every success response includes
 }
 ```
 
-Diff these shapes against `packages/docs/openapi.json` before any doc update — the live OpenAPI spec is the source of truth for SDK codegen.
+Diff these public data API shapes against `packages/docs/openapi.json` before
+any public doc update — that spec is the source of truth for SDK codegen. Diff
+private account/console routes against `packages/api/openapi.private.json`.
 
 ---
 
@@ -3112,7 +3119,11 @@ Three products. One platform. One API key. One SDK. One invoice.
 
 2. **No vendor in the hot path.** Clerk manages identity. Lago is the target commercial record and Stripe is the payment rail, but neither belongs in request-time auth. API key verification is a single DynamoDB read against a hash — no third party touches the sub-50ms autocomplete call. No vendor latency, no vendor outage.
 
-3. **The OpenAPI spec is the single atom.** `@hono/zod-openapi` generates it from route schemas. Mintlify consumes it for docs. Speakeasy consumes it for SDKs. One source of truth, three outputs. Change a route, everything updates.
+3. **Generated OpenAPI specs are contract atoms.** `@hono/zod-openapi`
+   generates public and private specs from route schemas. Mintlify and
+   Speakeasy consume only the public data API spec; console/internal work
+   consumes the private account API spec. Change a route, regenerate the
+   matching spec, and keep the boundary explicit.
 
 4. **Free tiers are marketing spend, not lost revenue.** Clerk (50K MAUs), Mintlify (Hobby plan), Speakeasy (50 methods), Stripe (processing only), SES (62K/month Lambda-emitted). The **current shipped runtime** costs about $35/month to run at Phase 1 scale. The **target Lago cutover** adds a separate billing-infra layer on top of that, so post-migration planning should assume roughly $106/month at the same traffic shape.
 

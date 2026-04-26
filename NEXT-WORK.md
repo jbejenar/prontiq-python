@@ -7,16 +7,17 @@
 
 ### What's Live
 
-| Surface        | URL                                                | Status                                                                                         |
-| -------------- | -------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| API            | `https://api.prontiq.dev`                          | ✅ 6 endpoints, 15M docs, custom domain                                                        |
-| Docs           | `https://docs.prontiq.dev`                         | ✅ Mintlify Luma theme, OpenAPI playground                                                     |
-| Clerk webhook  | `https://api.prontiq.dev/webhooks/clerk`           | ✅ verifies Svix sig, provisions ORG envelope on `organizationMembership.created` (admin role) |
-| Stripe webhook | `https://api.prontiq.dev/webhooks/stripe`          | ✅ deployed on the legacy billing path; retained during Lago migration                         |
-| Account setup  | `POST https://api.prontiq.dev/v1/account/setup`    | ✅ Clerk-JWT recovery endpoint; same `provisionOrg` code path as the webhook; idempotent       |
-| TypeScript SDK | `sdks/typescript/` (`@prontiq/sdk` v0.1.0)         | ✅ Auto-generated; npm publish pending NPM_TOKEN secret                                        |
-| OpenAPI spec   | `/openapi.json` (committed in `packages/docs/`)    | ✅ Generated from Zod, CI verifies freshness                                                   |
-| Ingestion      | EventBridge → Step Function → Fargate → OpenSearch | ✅ Automated, alias swap, blue-green                                                           |
+| Surface          | URL                                                | Status                                                                                         |
+| ---------------- | -------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| API              | `https://api.prontiq.dev`                          | ✅ 6 endpoints, 15M docs, custom domain                                                        |
+| Docs             | `https://docs.prontiq.dev`                         | ✅ Mintlify Luma theme, OpenAPI playground                                                     |
+| Clerk webhook    | `https://api.prontiq.dev/webhooks/clerk`           | ✅ verifies Svix sig, provisions ORG envelope on `organizationMembership.created` (admin role) |
+| Stripe webhook   | `https://api.prontiq.dev/webhooks/stripe`          | ✅ deployed on the legacy billing path; retained during Lago migration                         |
+| Account setup    | `POST https://api.prontiq.dev/v1/account/setup`    | ✅ Clerk-JWT recovery endpoint; same `provisionOrg` code path as the webhook; idempotent       |
+| TypeScript SDK   | `sdks/typescript/` (`@prontiq/sdk` v0.1.0)         | ✅ Auto-generated; npm publish pending NPM_TOKEN secret                                        |
+| OpenAPI spec     | `/openapi.json` (committed in `packages/docs/`)    | ✅ Generated from Zod, CI verifies freshness                                                   |
+| Private API spec | `packages/api/openapi.private.json`                | ✅ Generated from Zod for Clerk-authenticated console/account routes                           |
+| Ingestion        | EventBridge → Step Function → Fargate → OpenSearch | ✅ Automated, alias swap, blue-green                                                           |
 
 ### Platform State
 
@@ -69,7 +70,9 @@
   `Idempotency-Key`, and write `prontiq-billing-actions`. Lago webhook
   reconciliation now preserves current entitlements during pending transitions
   and waits for active replacement snapshots before changing local enforcement
-  state.
+  state. The account routes are private console/admin contracts and are
+  generated into `packages/api/openapi.private.json`, not the public SDK/docs
+  spec.
 - **P1F.02 complete (2026-04-19).** The prod observability baseline is live and verified: `PqIngestAlerts` prod email subscriptions via `ALERT_EMAILS`, `prontiq-production` dashboard, prod alarms for address API 5xx/Lambda error rate and OpenSearch yellow/red/low-storage, `PqApi` X-Ray tracing with DynamoDB + OpenSearch segments, and structured JSON logs across Lambda execution paths. SNS email delivery was verified by forcing `PqApiLambdaErrorRate` to `ALARM` and confirming receipt on a confirmed subscriber.
 - **P1F.03 complete (2026-04-20).** `@prontiq/observability` is live in `dev` and `prod`, Honeycomb traces are verified for `prontiq-api`, `prontiq-webhooks`, `prontiq-billing`, and `prontiq-ingestion` in both environments, and the deployed-stage rollback path is `HONEYCOMB_ENABLED=false` rather than secret removal.
 - **P1C.07 complete (2026-04-20).** `apps/landing` and `apps/console` now have Tailwind v3.4, app-local shadcn/ui primitives, dark mode, responsive shell foundations, and app-local Vitest + Testing Library. `apps/console` now carries an env-gated real Clerk auth boundary that builds/tests cleanly without Clerk keys and enables real sign-in when they are present.
@@ -103,7 +106,7 @@ POST /v1/account/billing/portal-session
 
 ### Recent Ships
 
-- **P1B.05 PR 3/3 (prod-cutover 2026-04-18)**: `POST /v1/account/setup` recovery endpoint live in dev + prod. Clerk-JWT-authenticated (`@clerk/backend.verifyToken({ secretKey })` with 5s clock skew); reads `sub` + `org_id` from the verified JWT; calls `resolvePrimaryEmail` (shared with the webhook via `@prontiq/control-plane`) then `createProvisioningService().provisionOrg(...)`. New `PqAccount` Lambda separate from address-API `$default` (keeps the hot path bundle minimal: `@clerk/backend` + `@prontiq/control-plane` only land in the new Lambda — verified by adding a doc-comment in `packages/api/src/index.ts` forbidding those imports). Mounted via `api.route("ANY /v1/account/{proxy+}", accountFn.arn)` with explicit-route precedence in front of `$default`. CORS extended on `PqApi` to allow POST + Authorization (additive — no rejection of existing GET / X-Api-Key flows). New `PqAccountErrors` CloudWatch alarm wired to `PqIngestAlerts` SNS topic. Mintlify reference page documents operator preconditions (Clerk dashboard JWT template needs `{ "org_id": "{{org.id}}" }` in BOTH dev and prod tenants; frontend must `setActive({ organization })`). Closes P1B.05 ticket.
+- **P1B.05 PR 3/3 (prod-cutover 2026-04-18)**: `POST /v1/account/setup` recovery endpoint live in dev + prod. Clerk-JWT-authenticated (`@clerk/backend.verifyToken({ secretKey })` with 5s clock skew); reads `sub` + `org_id` from the verified JWT; calls `resolvePrimaryEmail` (shared with the webhook via `@prontiq/control-plane`) then `createProvisioningService().provisionOrg(...)`. New `PqAccount` Lambda separate from address-API `$default` (keeps the hot path bundle minimal: `@clerk/backend` + `@prontiq/control-plane` only land in the new Lambda — verified by adding a doc-comment in `packages/api/src/index.ts` forbidding those imports). Mounted via `api.route("ANY /v1/account/{proxy+}", accountFn.arn)` with explicit-route precedence in front of `$default`. CORS extended on `PqApi` to allow POST + Authorization (additive — no rejection of existing GET / X-Api-Key flows). New `PqAccountErrors` CloudWatch alarm wired to `PqIngestAlerts` SNS topic. Private account docs capture operator preconditions (Clerk dashboard JWT template needs `{ "org_id": "{{org.id}}" }` in BOTH dev and prod tenants; frontend must `setActive({ organization })`). Closes P1B.05 ticket.
 - **P1B.05 PR 3a refactor (prod-cutover 2026-04-18)**: `resolvePrimaryEmail` + `EmailLookupResult` moved from `packages/webhooks/src/clerk.ts` into `packages/control-plane/src/clerk.ts` so the new `/v1/account/setup` endpoint can import the same helper without an `api → webhooks` dep direction. `@clerk/backend` now declared explicitly on `@prontiq/control-plane` (no transitive hoisting). 12 new node:test cases for the helper + ADR-002 contract #6 added. Pure refactor; webhook behaviour identical at runtime. PR #100.
 - **P1B.05 PR 2/3 (prod-cutover 2026-04-18)**: Clerk webhook handler (`POST /webhooks/clerk` on the existing `PqApi`) live in dev + prod. Verifies Svix signature, gates on `role ∈ {org:admin, admin}`, resolves verified primary email via Clerk Backend API (does NOT trust `public_user_data.identifier`), calls `createProvisioningService().provisionOrg(...)`. End-to-end DoD verified on real Svix traffic in dev (1 envelope + 1 audit row across 5 deliveries — idempotency proven). New `PqClerkWebhook` Lambda (separate from address-API `$default`) + 3 GitHub Environment secrets sourced via deploy workflows + `$util.secret()` wrapping in Pulumi state + deployed-stage fail-fast secret validation + `PqClerkWebhookErrors` CloudWatch alarm. Operator runbook in `docs/runbooks/clerk-webhook.md`. Welcome emails are now suppression-aware and best-effort through the shared SES helper and configuration-set path.
 - **P1B.07**: audit writer helper shipped in `packages/control-plane/src/audit.ts` (location revised from `shared` because the helper needs the AWS SDK DDB clients). Dual API: `buildAuditTransactItem` for atomic grouping inside `TransactWriteItems`; `writeAudit` for standalone callers. Lands as part of the new `@prontiq/control-plane` package alongside the recovered `provisionOrg` service for P1B.05.
@@ -216,18 +219,19 @@ Reason:
 
 ## Reference Files
 
-| File                                          | Purpose                                 | When to Read                         |
-| --------------------------------------------- | --------------------------------------- | ------------------------------------ |
-| `ARCHITECTURE.MD`                             | Full platform design                    | When you need design context         |
-| `ROADMAP.md`                                  | Master plan                             | When you need the full scope         |
-| `docs/FRONTEND-STRATEGY.md`                   | Canonical frontend architecture         | Before any P1C implementation        |
-| `docs/decisions/001-remove-unkey.md`          | ADR — why Unkey was removed             | When auditing architecture decisions |
-| `sst.config.ts`                               | Infrastructure definition               | When working on infra                |
-| `packages/shared/src/constants.ts`            | Product registry, tier limits           | When working on auth/billing         |
-| `packages/api/src/index.ts`                   | API entry point                         | When working on routes               |
-| `packages/api/src/scripts/rotate-prod-key.ts` | Prod key rotation operator command      | When rotating the seed key           |
-| `packages/api/src/search/queries.ts`          | OpenSearch queries                      | When tuning search                   |
-| `packages/docs/openapi.json`                  | Committed OpenAPI spec                  | Source of truth for SDK/docs         |
-| `.speakeasy/workflow.yaml`                    | SDK generation config                   | When adding SDK languages            |
-| `docs/operations/ingestion-runbook.md`        | Ingestion operator guide                | When running ingestion               |
-| `docs/runbooks/p1b04b-cutover.md`             | Auth/billing cutover + rotation runbook | When operating the v2.2 key model    |
+| File                                          | Purpose                                 | When to Read                               |
+| --------------------------------------------- | --------------------------------------- | ------------------------------------------ |
+| `ARCHITECTURE.MD`                             | Full platform design                    | When you need design context               |
+| `ROADMAP.md`                                  | Master plan                             | When you need the full scope               |
+| `docs/FRONTEND-STRATEGY.md`                   | Canonical frontend architecture         | Before any P1C implementation              |
+| `docs/decisions/001-remove-unkey.md`          | ADR — why Unkey was removed             | When auditing architecture decisions       |
+| `sst.config.ts`                               | Infrastructure definition               | When working on infra                      |
+| `packages/shared/src/constants.ts`            | Product registry, tier limits           | When working on auth/billing               |
+| `packages/api/src/index.ts`                   | API entry point                         | When working on routes                     |
+| `packages/api/src/scripts/rotate-prod-key.ts` | Prod key rotation operator command      | When rotating the seed key                 |
+| `packages/api/src/search/queries.ts`          | OpenSearch queries                      | When tuning search                         |
+| `packages/docs/openapi.json`                  | Committed public OpenAPI spec           | Source of truth for SDK/docs               |
+| `packages/api/openapi.private.json`           | Committed private OpenAPI spec          | Source of truth for console/account routes |
+| `.speakeasy/workflow.yaml`                    | SDK generation config                   | When adding SDK languages                  |
+| `docs/operations/ingestion-runbook.md`        | Ingestion operator guide                | When running ingestion                     |
+| `docs/runbooks/p1b04b-cutover.md`             | Auth/billing cutover + rotation runbook | When operating the v2.2 key model          |

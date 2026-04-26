@@ -19,11 +19,11 @@ verification.
 
 ### Server-to-server surface
 
-| Endpoint                 | Purpose                                                                                                                                                                                                                                        | Auth                                                |
-| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
-| `POST /webhooks/clerk`   | Clerk `organizationMembership.created` → ORG envelope provisioning for the current live billing path (Stripe customer + DDB record + audit row + best-effort welcome email). See `docs/runbooks/clerk-webhook.md`.                             | Svix signature (no API key)                         |
-| `POST /webhooks/lago`    | Lago subscription/invoice events → local enforcement-state reconciliation during the Lago migration. Default deployed but disabled by `LAGO_WEBHOOK_RECONCILIATION_ENABLED=false`. See `docs/runbooks/lago-webhook-reconciliation.md`.         | Lago HMAC signature (no API key)                    |
-| `POST /v1/account/setup` | Dashboard recovery for org provisioning when the Clerk webhook missed delivery. Idempotent — runs the same `provisionOrg` code path as the webhook. See [`api-reference/account-setup`](https://docs.prontiq.dev/api-reference/account-setup). | Clerk session token (`Authorization: Bearer <jwt>`) |
+| Endpoint                 | Purpose                                                                                                                                                                                                                                | Auth                                                |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
+| `POST /webhooks/clerk`   | Clerk `organizationMembership.created` → ORG envelope provisioning for the current live billing path (Stripe customer + DDB record + audit row + best-effort welcome email). See `docs/runbooks/clerk-webhook.md`.                     | Svix signature (no API key)                         |
+| `POST /webhooks/lago`    | Lago subscription/invoice events → local enforcement-state reconciliation during the Lago migration. Default deployed but disabled by `LAGO_WEBHOOK_RECONCILIATION_ENABLED=false`. See `docs/runbooks/lago-webhook-reconciliation.md`. | Lago HMAC signature (no API key)                    |
+| `POST /v1/account/setup` | Dashboard recovery for org provisioning when the Clerk webhook missed delivery. Idempotent — runs the same `provisionOrg` code path as the webhook. Private console contract documented in `docs/private-api/account-billing.md`.      | Clerk session token (`Authorization: Bearer <jwt>`) |
 
 Future products are roadmap items, not active docs/API surfaces yet.
 
@@ -164,7 +164,9 @@ default.
 P1B.18 added the Prontiq-owned account billing APIs under `/v1/account/billing`
 for billing summary, Lago portal access, and gated Free/PAYG plan changes.
 Mutations are Clerk-org-admin-only, require `Idempotency-Key`, and write
-`prontiq-billing-actions` evidence.
+`prontiq-billing-actions` evidence. These routes are private console/admin
+contracts documented in `packages/api/openapi.private.json`, not the public
+Mintlify/Speakeasy spec.
 
 ## Commands
 

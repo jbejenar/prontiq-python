@@ -11,10 +11,10 @@
     "build": "node scripts/run-turbo.mjs build",
     "lint": "turbo lint",
     "typecheck": "node scripts/run-turbo.mjs typecheck",
-    "test": "node --test scripts/referenced-package-typecheck.test.mjs scripts/frontend-dev-workflow.test.mjs && node scripts/run-turbo.mjs test",
+    "test": "node --test scripts/referenced-package-typecheck.test.mjs scripts/frontend-dev-workflow.test.mjs scripts/openapi-boundary.test.mjs && node scripts/run-turbo.mjs test",
     "deploy:dev": "sst deploy --stage dev",
     "deploy:prod": "sst deploy --stage prod",
-    "generate:openapi": "pnpm build && node -e \"import app from './packages/api/dist/openapi.js'; const r = await app.fetch(new Request('http://localhost/openapi.json')); const fs = await import('fs'); fs.writeFileSync('packages/docs/openapi.json', JSON.stringify(await r.json(), null, 4) + '\\n');\"",
+    "generate:openapi": "pnpm build && node scripts/generate-openapi.mjs",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },

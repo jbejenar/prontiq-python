@@ -18,7 +18,8 @@
   forwarding and webhook smoke evidence, but must keep Lago and Stripe off the
   API hot path.
 - Account billing routes belong in `account-handler.ts` / `routes/account.ts`,
-  not the address API `$default` app. Update `openapi.ts` when adding account
-  routes so docs include the contract without bloating the hot-path Lambda.
+  not the address API `$default` app. Update `openapi-private.ts` when adding
+  account routes; never mount `/v1/account/*` in the public `openapi.ts` or
+  `packages/docs/openapi.json`.
 - Never include raw API keys, query strings, headers, IP addresses, user agents,
   or response payloads in billing events.

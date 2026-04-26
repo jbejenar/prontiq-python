@@ -76,6 +76,7 @@ sdks/
 - **Billing events are queue-first.** API handlers must never call Lago directly. Emit `BillingUsageEventV1` only after DynamoDB enforcement succeeds, and preserve deterministic `eventId` inputs for idempotency.
 - **Lago forwarding is minimal.** The worker may send only Lago-required usage fields: `transaction_id`, `external_subscription_id`, metric `code`, timestamp, and credit properties. Do not forward API-key hashes, key prefixes, request URLs, headers, IPs, user agents, query strings, or response payloads.
 - **OpenAPI spec is the single source of truth.** Routes are defined with `@hono/zod-openapi` — never add API endpoints without Zod schemas.
+- **Public/private API specs stay separate.** `packages/docs/openapi.json` is the public Mintlify/Speakeasy data API spec. Clerk-authenticated `/v1/account/*` console/admin routes belong only in `packages/api/openapi.private.json` via `packages/api/src/openapi-private.ts`.
 - **Manifest contract is sacred.** See `ARCHITECTURE.MD` section 5.1.2. Pipelines produce NDJSON + manifest. Platform consumes.
 - **Index names follow `{product}-{version}` convention.** Aliases are from the product registry. Never hardcode alias names in route handlers.
 

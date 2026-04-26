@@ -101,21 +101,17 @@ Burst-limited responses also include a `Retry-After` header.
 
 Every response includes an `X-Request-Id` header (format: `req_...`). Include this when contacting support — it traces directly to the log entry.
 
-## Account-management endpoints use Clerk JWT, not API keys
+## Console/account endpoints use Clerk JWT, not API keys
 
-A small number of dashboard-driven endpoints under `/v1/account/*` authenticate with a Clerk session token instead of an API key. These are admin / one-time setup paths (e.g. recovery provisioning), not data-access endpoints.
+A small number of dashboard-driven endpoints under `/v1/account/*` authenticate
+with a Clerk session token instead of an API key. These are private console
+routes, not public data-access endpoints, and they are not included in the
+public API reference or SDK.
 
 ```bash
-# Address API: X-Api-Key (this page, above)
 curl https://api.prontiq.dev/v1/address/autocomplete?q=test \
   -H "X-Api-Key: pq_live_..."
-
-# Account: Bearer JWT
-curl -X POST https://api.prontiq.dev/v1/account/setup \
-  -H "Authorization: Bearer eyJhbGciOiJSUzI1NiIs..."
 ```
-
-See [Account setup](/api-reference/account-setup) for the recovery-provisioning endpoint and required JWT claims.
 
 <Note>
   The current live platform still contains Stripe-linked account provisioning, but Prontiq's target

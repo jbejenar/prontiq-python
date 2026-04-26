@@ -17,9 +17,9 @@
 - **Lago transition handling is safer.** Pending transitions record metadata
   without downgrading local entitlements; terminated events preserve access when
   Lago returns an active replacement snapshot.
-- **Docs and public API references are aligned.** Architecture, roadmap,
-  runbooks, Mintlify account API pages, and OpenAPI generation now include the
-  account billing contract.
+- **Docs and API references are aligned.** Account billing routes are documented
+  through the private OpenAPI spec and internal runbooks, while the public
+  Mintlify/Speakeasy spec remains limited to customer data APIs.
 
 ### Next session should start with
 
@@ -779,12 +779,12 @@ Billing-cron integration coverage now includes:
 
 ## Session 13 — 2026-04-18
 
-**Focus:** P1B.05 PR 3 — split into PR 3a (refactor: move `resolvePrimaryEmail` to `@prontiq/control-plane`) → dev → prod, then PR 3b (`POST /v1/account/setup` recovery endpoint + `PqAccount` Lambda + JWT middleware + Mintlify reference page) → dev → prod. Closes P1B.05 ticket end-to-end.
+**Focus:** P1B.05 PR 3 — split into PR 3a (refactor: move `resolvePrimaryEmail` to `@prontiq/control-plane`) → dev → prod, then PR 3b (`POST /v1/account/setup` recovery endpoint + `PqAccount` Lambda + JWT middleware + private account docs) → dev → prod. Closes P1B.05 ticket end-to-end.
 
 ### Shipped to prod
 
 - **PR #100 — `resolvePrimaryEmail` moved to `@prontiq/control-plane` (P1B.05 PR 3a refactor).** Pure refactor; webhook behaviour identical at runtime. `@clerk/backend` declared explicitly on `@prontiq/control-plane` (no transitive hoisting). 12 new node:test cases covering all 4 `EmailLookupResult` variants. ADR-002 amended with hardening contract #6. Merged 2026-04-18, dev verified, prod-deployed via Deploy to Production workflow run 24595460142 (success).
-- **PR #\_\_ — `POST /v1/account/setup` recovery endpoint (P1B.05 PR 3b, the feature).** Clerk-JWT-authenticated endpoint that reuses `createProvisioningService().provisionOrg(...)` from `@prontiq/control-plane`. New `PqAccount` Lambda separate from address-API `$default` (verified isolation: `packages/api/src/index.ts` carries a doc-comment forbidding `@prontiq/control-plane` and `@clerk/backend` imports — bundle stays minimal). Mounted via `api.route("ANY /v1/account/{proxy+}", accountFn.arn)` with explicit-route precedence in front of `$default`. CORS extended on `PqApi` to allow POST + Authorization (additive — no existing-flow rejection). New `PqAccountErrors` CloudWatch alarm. New Mintlify page `packages/docs/api-reference/account-setup.mdx` documents the operator preconditions (Clerk dashboard JWT template needs `{ "org_id": "{{org.id}}" }` in BOTH dev and prod tenants; frontend must `setActive({ organization })` — neither caught by the deploy guard).
+- **PR #\_\_ — `POST /v1/account/setup` recovery endpoint (P1B.05 PR 3b, the feature).** Clerk-JWT-authenticated endpoint that reuses `createProvisioningService().provisionOrg(...)` from `@prontiq/control-plane`. New `PqAccount` Lambda separate from address-API `$default` (verified isolation: `packages/api/src/index.ts` carries a doc-comment forbidding `@prontiq/control-plane` and `@clerk/backend` imports — bundle stays minimal). Mounted via `api.route("ANY /v1/account/{proxy+}", accountFn.arn)` with explicit-route precedence in front of `$default`. CORS extended on `PqApi` to allow POST + Authorization (additive — no existing-flow rejection). New `PqAccountErrors` CloudWatch alarm. The endpoint is now documented through the private account API contract, not public Mintlify API reference.
 - **ROADMAP P1B.05 flipped to `complete`** with `completed: 2026-04-18`. P1B counter 4/13 → 5/13; total 26/76 → 27/76.
 
 ### Verification evidence
@@ -797,7 +797,13 @@ Billing-cron integration coverage now includes:
 
 - **Clerk SDK's public `verifyToken` throws on error** (wrapped via `withLegacyReturn` internally), even though the underlying `verifyJwt` returns `JwtReturnType<...>`. Plan assumed try/catch — verified this is correct from the actual `node_modules/.pnpm/@clerk+backend@3.2.12/.../dist/index.d.ts` signature before writing the middleware. Lesson: verify SDK contracts against the installed package, not against memory of the public API.
 - **Lambda bundle isolation is enforced by import graph, not package.json.** Adding `@clerk/backend` + `@prontiq/control-plane` as deps on `@prontiq/api` is fine — SST/esbuild bundles each `handler` export's transitive imports. The doc-comment in `packages/api/src/index.ts` is the actual contract; the package.json deps are just resolution metadata.
-- **Mintlify reference pages don't need to be in the OpenAPI spec.** The address API's `openapi.json` is generated from `packages/api/src/index.ts` only; the account endpoint runs on a separate Lambda + separate `OpenAPIHono` instance. We document `/v1/account/setup` in a hand-written MDX page instead. Trade-off: SDK doesn't get an auto-generated client for the account endpoint (acceptable — SDK is for data API consumers; dashboard developers calling `/v1/account/setup` invoke it directly via `fetch` with their own Clerk SDK).
+- **Private account routes don't belong in the public OpenAPI spec.** The public
+  `packages/docs/openapi.json` is generated for public data APIs only; account
+  routes run on a separate Lambda and are generated into
+  `packages/api/openapi.private.json`. Trade-off: SDK doesn't get an
+  auto-generated client for account endpoints, which is intentional because the
+  SDK is for data API consumers and dashboard code calls account routes with
+  Clerk session tokens.
 
 ### Next session should start with
 

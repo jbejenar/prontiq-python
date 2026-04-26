@@ -429,11 +429,13 @@ tech_stack:
 
 #### User Story
 
-As a builder, I need routes defined with `createRoute()` so that the OpenAPI 3.1 spec is auto-generated from code — the single atom that drives docs and SDKs.
+As a builder, I need routes defined with `createRoute()` so that OpenAPI 3.1
+specs are auto-generated from code. Public data routes drive public docs and
+SDKs; private account routes drive internal console/operator contracts.
 
 #### Problem Statement
 
-The current routes use `addressRoutes.get()` (standard Hono) with manual `safeParse()` validation. This works but doesn't generate an OpenAPI spec. `@hono/zod-openapi` is already installed but not used. Migrating to `createRoute()` adds ~10 lines per route but produces a machine-readable spec that Mintlify (docs) and Speakeasy (SDKs) consume directly. Without the spec, docs and SDKs must be written by hand — and they drift.
+The current routes use `addressRoutes.get()` (standard Hono) with manual `safeParse()` validation. This works but doesn't generate an OpenAPI spec. `@hono/zod-openapi` is already installed but not used. Migrating to `createRoute()` adds ~10 lines per route but produces machine-readable specs. Mintlify and Speakeasy consume the public data API spec; private account/console specs stay internal. Without generated specs, docs and SDKs must be written by hand — and they drift.
 
 #### Definition of Done
 
@@ -1077,7 +1079,7 @@ Options:
 
 > **Goal:** Sign-up → DDB-native API key → hash-verified requests → rate-limited with burst limiter → usage tracked per-month → migrate the commercial layer from the shipped Stripe path to the Lago target architecture.
 >
-> **Current state.** P1B.02, P1B.04, P1B.04b, P1B.05, P1B.06, P1B.07, P1B.08, P1B.09, P1B.10, P1B.11, P1B.12, P1B.14, P1B.15, P1B.16, P1B.17, P1B.18a, and P1B.18 are shipped. The DynamoDB-native key model is live in prod, the prod migration was executed on 2026-04-16, the legacy Stripe billing path is live, per-key burst limiting is enforced in the API middleware, SES feedback / quota-email delivery is live in dev + prod, previous-month scopes are now explicitly finalized and closed by the monthly `PqMonthClose` sweep, the auth integration suite is reconciled to the real post-cutover middleware contract, and the Lago migration now has a platform-owned `customerId` contract, SQS billing-event buffer, replay-safe Lago event forwarder, Lago webhook reconciliation code, dev/prod live-smoke certification, and Prontiq-owned account billing APIs for billing summary, Lago portal access, and gated Free/PAYG plan changes. Final destructive cleanup is deferred to P1B.21 after P1B.20. SES deliverability hardening is tracked separately in P1B.08a. The next Lago migration work is P1B.19.
+> **Current state.** P1B.02, P1B.04, P1B.04b, P1B.05, P1B.06, P1B.07, P1B.08, P1B.09, P1B.10, P1B.11, P1B.12, P1B.14, P1B.15, P1B.16, P1B.17, P1B.18a, and P1B.18 are shipped. The DynamoDB-native key model is live in prod, the prod migration was executed on 2026-04-16, the legacy Stripe billing path is live, per-key burst limiting is enforced in the API middleware, SES feedback / quota-email delivery is live in dev + prod, previous-month scopes are now explicitly finalized and closed by the monthly `PqMonthClose` sweep, the auth integration suite is reconciled to the real post-cutover middleware contract, and the Lago migration now has a platform-owned `customerId` contract, SQS billing-event buffer, replay-safe Lago event forwarder, Lago webhook reconciliation code, dev/prod live-smoke certification, and Prontiq-owned private account billing APIs for billing summary, Lago portal access, and gated Free/PAYG plan changes. Final destructive cleanup is deferred to P1B.21 after P1B.20. SES deliverability hardening is tracked separately in P1B.08a. The next Lago migration work is P1B.19.
 >
 > **Lago migration progress.** `6/9` complete for `P1B.14`–`P1B.21` plus `P1B.18a`. The `P1B` epic rollup includes completed historical Stripe-path work, so treat the Lago migration sequence as a separate track until the new commercial runtime is implemented.
 >
@@ -1952,7 +1954,8 @@ architecture.
 
 - [x] Backend contract is stable enough for the console to build against
   - `Verify:` `P1B.18` shipped before `P1C.05` consumes the billing UI contract
-  - `Evidence:` roadmap dependency chain, OpenAPI contract, and runbooks align
+  - `Evidence:` roadmap dependency chain, private OpenAPI contract, and runbooks
+    align
 
 #### Scope
 

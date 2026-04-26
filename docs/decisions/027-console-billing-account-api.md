@@ -26,5 +26,6 @@ Clerk-org-admin authenticated and proxy the allowed Lago billing operations.
 ## Consequences
 
 - `PqAccount` owns account billing routes.
-- Public docs describe Prontiq account APIs as the stable contract.
+- The private OpenAPI spec describes Prontiq account APIs as the stable console
+  contract; public docs and SDKs do not expose these Clerk-authenticated routes.
 - `P1C.05` must render these APIs rather than direct Lago/Stripe behavior.

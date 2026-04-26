@@ -37,8 +37,9 @@ routes backed by local enforcement state, Lago, and a replay-safe action ledger.
   `OrgEnvelopeRecord`, and `ApiKeyRecord`.
 - `sst.config.ts` owns the `PqAccount` Lambda, DynamoDB table wiring, deploy
   env validation, and CloudWatch alarms.
-- Public OpenAPI generation currently imports the address hot-path app, so it
-  needs an account-aware docs app without changing production route isolation.
+- Public OpenAPI generation must stay limited to the public data API. Account
+  routes need a separate private spec without changing production route
+  isolation.
 
 ### Documentation Survey
 
@@ -50,8 +51,9 @@ routes backed by local enforcement state, Lago, and a replay-safe action ledger.
   smoke-generation decisions.
 - `docs/runbooks/lago-*` covers Lago event forwarding, webhook reconciliation,
   live smoke, customer sync, and commercial operations.
-- `packages/docs/openapi.json` and `packages/docs/api-reference/*` own public API
-  docs.
+- `packages/docs/openapi.json` and `packages/docs/api-reference/*` own public
+  data API docs. `packages/api/openapi.private.json` owns Clerk-authenticated
+  account/console contracts.
 - `HINTS.md` files guide future agent work and must record the account-billing
   guardrails.
 
@@ -59,7 +61,7 @@ routes backed by local enforcement state, Lago, and a replay-safe action ledger.
 
 - The codebase does not yet have account billing routes.
 - The codebase does not yet have a mutating account-billing action ledger.
-- The public OpenAPI generator does not yet include `PqAccount` routes.
+- The private OpenAPI generator does not yet include `PqAccount` routes.
 - Existing Lago webhook docs still need to clearly distinguish pending
   transition metadata from active entitlement changes.
 
@@ -149,15 +151,17 @@ access, but keep browser and hot-path code talking only to Prontiq-owned APIs.
 - Rollback: stop callers via feature flag; keep service code inert if routes are
   reverted.
 
-### Phase 3 — Account API Routes and OpenAPI
+### Phase 3 — Account API Routes and Private OpenAPI
 
 - Add `GET /v1/account/billing`.
 - Add `POST /v1/account/billing/plan-change`.
 - Add `POST /v1/account/billing/portal-session`.
 - Keep routes under `clerkAdminOnly()`.
-- Add an account-aware OpenAPI composition file for documentation generation.
-- Regenerate public OpenAPI and API reference docs.
-- Rollback: remove routes and regenerate OpenAPI; no data repair required
+- Add an account-aware private OpenAPI composition file for internal contract
+  generation.
+- Regenerate the private OpenAPI spec and keep public OpenAPI free of
+  `/v1/account/*` routes.
+- Rollback: remove routes and regenerate specs; no data repair required
   unless provider mutations already occurred.
 
 ### Phase 4 — Lago Transition Reconciliation Hardening
@@ -175,7 +179,7 @@ access, but keep browser and hot-path code talking only to Prontiq-owned APIs.
 
 ### Phase 5 — Documentation and Handoff
 
-- Update architecture, roadmap, handoff, runbooks, public docs, HINTS, and
+- Update architecture, roadmap, handoff, runbooks, private docs, HINTS, and
   changelog.
 - Add decision records for API proxying, the action ledger, and Lago transition
   semantics.
@@ -210,10 +214,12 @@ access, but keep browser and hot-path code talking only to Prontiq-owned APIs.
   active replacement state is observed.
 - `HINTS.md`: update package/app hints for account-billing route ownership,
   ledger requirements, and console UI boundaries.
-- `packages/docs/openapi.json`: regenerate with account-billing routes.
-- `packages/docs/api-reference/*`: add account billing, plan change, and portal
-  session API pages.
-- `packages/docs/guides/billing.mdx`: describe the account billing API contract.
+- `packages/api/openapi.private.json`: regenerate with account-billing routes.
+- `packages/docs/openapi.json`: verify it excludes account-billing routes.
+- `docs/private-api/account-billing.md`: document the private account billing
+  API contract for internal/frontend use.
+- `packages/docs/guides/billing.mdx`: describe account billing as private
+  console surfaces, not public API-key endpoints.
 - `docs/runbooks/console-billing.md`: add rollout, smoke, failure, and rollback
   procedures.
 - `docs/runbooks/lago-webhook-reconciliation.md`: update pending transition
@@ -237,7 +243,8 @@ access, but keep browser and hot-path code talking only to Prontiq-owned APIs.
   service dispatch.
 - Control-plane integration tests verify pending Lago transitions preserve local
   entitlements and active replacement snapshots prevent false downgrades.
-- OpenAPI generation verifies the public docs include account-billing routes.
+- OpenAPI generation verifies the private spec includes account-billing routes
+  and the public spec excludes them.
 - Typecheck and lint verify ESM imports, strict TypeScript, and formatting.
 - Manual verification after deploy:
   - `GET /v1/account/billing` returns the active test org state.
@@ -282,43 +289,41 @@ cutover decision owned by `P1B.19`/`P1B.20`.
 
 ## File Checklist
 
-| Phase | File | Doc update |
-| --- | --- | --- |
-| 1 | `sst.config.ts` | No |
-| 1 | `packages/shared/src/types.ts` | No |
-| 2 | `packages/control-plane/src/account-billing.ts` | No |
-| 2 | `packages/control-plane/src/account-billing.test.ts` | No |
-| 2 | `packages/control-plane/src/index.ts` | No |
-| 2 | `packages/control-plane/package.json` | No |
-| 3 | `packages/api/src/routes/account.ts` | No |
-| 3 | `packages/api/src/routes/account.integration.test.ts` | No |
-| 3 | `packages/api/src/openapi.ts` | No |
-| 3 | `package.json` | No |
-| 3 | `.github/workflows/ci.yml` | No |
-| 4 | `packages/control-plane/src/lago-webhook-reconciliation.ts` | No |
-| 4 | `packages/control-plane/src/lago-webhook-reconciliation.integration.test.ts` | No |
-| 5 | `ARCHITECTURE.MD` | Yes |
-| 5 | `ROADMAP.md` | Yes |
-| 5 | `NEXT-WORK.md` | Yes |
-| 5 | `NEXT-SESSION.md` | Yes |
-| 5 | `README.md` | Yes |
-| 5 | `CHANGELOG.md` | Yes |
-| 5 | `docs/decisions/027-console-billing-account-api.md` | Yes |
-| 5 | `docs/decisions/028-billing-action-ledger.md` | Yes |
-| 5 | `docs/decisions/029-lago-plan-transition-semantics.md` | Yes |
-| 5 | `docs/runbooks/console-billing.md` | Yes |
-| 5 | `docs/runbooks/lago-webhook-reconciliation.md` | Yes |
-| 5 | `docs/runbooks/lago-commercial-ops.md` | Yes |
-| 5 | `docs/runbooks/lago-customer-sync.md` | Yes |
-| 5 | `packages/api/HINTS.md` | Yes |
-| 5 | `packages/control-plane/HINTS.md` | Yes |
-| 5 | `apps/console/HINTS.md` | Yes |
-| 5 | `packages/docs/docs.json` | Yes |
-| 5 | `packages/docs/guides/billing.mdx` | Yes |
-| 5 | `packages/docs/api-reference/account-billing.mdx` | Yes |
-| 5 | `packages/docs/api-reference/account-billing-plan-change.mdx` | Yes |
-| 5 | `packages/docs/api-reference/account-billing-portal-session.mdx` | Yes |
-| 5 | `packages/docs/openapi.json` | Yes |
-| 6 | Verification commands only | No |
+| Phase | File                                                                         | Doc update |
+| ----- | ---------------------------------------------------------------------------- | ---------- |
+| 1     | `sst.config.ts`                                                              | No         |
+| 1     | `packages/shared/src/types.ts`                                               | No         |
+| 2     | `packages/control-plane/src/account-billing.ts`                              | No         |
+| 2     | `packages/control-plane/src/account-billing.test.ts`                         | No         |
+| 2     | `packages/control-plane/src/index.ts`                                        | No         |
+| 2     | `packages/control-plane/package.json`                                        | No         |
+| 3     | `packages/api/src/routes/account.ts`                                         | No         |
+| 3     | `packages/api/src/routes/account.integration.test.ts`                        | No         |
+| 3     | `packages/api/src/openapi.ts`                                                | No         |
+| 3     | `package.json`                                                               | No         |
+| 3     | `.github/workflows/ci.yml`                                                   | No         |
+| 4     | `packages/control-plane/src/lago-webhook-reconciliation.ts`                  | No         |
+| 4     | `packages/control-plane/src/lago-webhook-reconciliation.integration.test.ts` | No         |
+| 5     | `ARCHITECTURE.MD`                                                            | Yes        |
+| 5     | `ROADMAP.md`                                                                 | Yes        |
+| 5     | `NEXT-WORK.md`                                                               | Yes        |
+| 5     | `NEXT-SESSION.md`                                                            | Yes        |
+| 5     | `README.md`                                                                  | Yes        |
+| 5     | `CHANGELOG.md`                                                               | Yes        |
+| 5     | `docs/decisions/027-console-billing-account-api.md`                          | Yes        |
+| 5     | `docs/decisions/028-billing-action-ledger.md`                                | Yes        |
+| 5     | `docs/decisions/029-lago-plan-transition-semantics.md`                       | Yes        |
+| 5     | `docs/runbooks/console-billing.md`                                           | Yes        |
+| 5     | `docs/runbooks/lago-webhook-reconciliation.md`                               | Yes        |
+| 5     | `docs/runbooks/lago-commercial-ops.md`                                       | Yes        |
+| 5     | `docs/runbooks/lago-customer-sync.md`                                        | Yes        |
+| 5     | `packages/api/HINTS.md`                                                      | Yes        |
+| 5     | `packages/control-plane/HINTS.md`                                            | Yes        |
+| 5     | `apps/console/HINTS.md`                                                      | Yes        |
+| 5     | `packages/docs/guides/billing.mdx`                                           | Yes        |
+| 5     | `docs/private-api/account-billing.md`                                        | Yes        |
+| 5     | `packages/api/openapi.private.json`                                          | Yes        |
+| 5     | `packages/docs/openapi.json`                                                 | Yes        |
+| 6     | Verification commands only                                                   | No         |
 
 P1B.18: 6 phases, 22 doc updates, 0 open questions.

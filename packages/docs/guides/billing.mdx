@@ -93,20 +93,16 @@ does not call Lago. Each accepted event uses a deterministic transaction ID and
 sends the credit delta for the request so replay cannot double-bill when Lago is
 configured with the matching subscription and metric.
 
-## Account billing APIs
+## Console billing surfaces
 
-Console billing screens use Prontiq account APIs rather than direct Lago or
-Stripe browser integration:
+Signed-in console billing screens use private Prontiq account routes rather than
+direct Lago or Stripe browser integration:
 
-- `GET /v1/account/billing` reads current billing state for the active
-  organization
-- `POST /v1/account/billing/plan-change` submits an idempotent Free/PAYG plan
-  change
-- `POST /v1/account/billing/portal-session` returns a Lago portal URL for
-  invoices and payment-management actions
+Those routes are Clerk-session-authenticated and are not part of the public
+server-to-server data API, public Mintlify API reference, or Speakeasy SDK.
 
-These routes use Clerk session authentication and are intended for the signed-in
-console, not server-to-server API-key traffic.
+API-key users should continue to integrate through the public data API and use
+the console UI for account billing actions.
 
 ## Related guides
 

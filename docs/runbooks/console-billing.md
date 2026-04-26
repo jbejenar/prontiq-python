@@ -2,6 +2,10 @@
 
 Operational guidance for the P1B.18 account billing API surfaces.
 
+These routes are private console/admin contracts. Their generated spec is
+`packages/api/openapi.private.json`; they must not appear in the public
+Mintlify/Speakeasy spec at `packages/docs/openapi.json`.
+
 ## Surfaces
 
 - `GET /v1/account/billing` returns current local billing state and bounded Lago
@@ -41,22 +45,22 @@ All routes run in the `PqAccount` Lambda and require Clerk org-admin auth.
    as stored failures.
 10. Confirm `prontiq-billing-actions` contains the action record.
 11. Replay the same successful scheduled plan-change after pending metadata is
-   visible locally; it must return the stored response rather than
-   `PLAN_CHANGE_ALREADY_PENDING`.
+    visible locally; it must return the stored response rather than
+    `PLAN_CHANGE_ALREADY_PENDING`.
 12. Temporarily unavailable Lago must not prevent stored successful replay,
-   stored failure replay, or provider-accepted resume from returning from the
-   local ledger.
+    stored failure replay, or provider-accepted resume from returning from the
+    local ledger.
 13. If Lago accepted the mutation but local metadata repair failed, retry the
-   same idempotency key and same body; the action should resume from stored
-   provider outcome without resubmitting Lago.
+    same idempotency key and same body; the action should resume from stored
+    provider outcome without resubmitting Lago.
 14. Confirm a fresh request for the current local plan still returns
-   `PLAN_CHANGE_ALREADY_PENDING` when a different transition is already
-   scheduled; it must not return `noop`.
+    `PLAN_CHANGE_ALREADY_PENDING` when a different transition is already
+    scheduled; it must not return `noop`.
 15. Confirm pending transition metadata is present on both the org envelope and
     active API-key records, with enforcement fields unchanged until Lago reports
     the active replacement state.
 16. Confirm Lago webhooks reconcile local state without putting Lago on the API
-   request hot path.
+    request hot path.
 
 ## Rollback
 

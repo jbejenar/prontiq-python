@@ -54,15 +54,6 @@
               "api-reference/postcode-lookup",
               "api-reference/suburb-lookup"
             ]
-          },
-          {
-            "group": "Account",
-            "pages": [
-              "api-reference/account-setup",
-              "api-reference/account-billing",
-              "api-reference/account-billing-plan-change",
-              "api-reference/account-billing-portal-session"
-            ]
           }
         ]
       }

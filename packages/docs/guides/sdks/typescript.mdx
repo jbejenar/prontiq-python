@@ -21,9 +21,7 @@ bun add @prontiq/sdk
 
 </CodeGroup>
 
-<Note>
-  The SDK is ESM-only. For CommonJS, use `await import("@prontiq/sdk")`.
-</Note>
+<Note>The SDK is ESM-only. For CommonJS, use `await import("@prontiq/sdk")`.</Note>
 
 ## Setup
 
@@ -40,9 +38,9 @@ const prontiq = new Prontiq({
 
 ```typescript
 const { suggestions, total } = await prontiq.getV1AddressAutocomplete(
-  "8 noble way",    // q
-  "WA",             // state (optional)
-  5,                // limit (optional)
+  "8 noble way", // q
+  "WA", // state (optional)
+  5, // limit (optional)
 );
 
 for (const s of suggestions) {
@@ -53,9 +51,7 @@ for (const s of suggestions) {
 ## Validate
 
 ```typescript
-const { match, confidence } = await prontiq.getV1AddressValidate(
-  "8 noble way success wa 6164"
-);
+const { match, confidence } = await prontiq.getV1AddressValidate("8 noble way success wa 6164");
 
 if (confidence === "high") {
   console.log(`Verified: ${match?.addressLabel}`);
@@ -67,7 +63,7 @@ if (confidence === "high") {
 ```typescript
 const address = await prontiq.getV1AddressEnrich("GAWA_147231326");
 
-console.log(address.geocode);    // { latitude, longitude, type, reliability }
+console.log(address.geocode); // { latitude, longitude, type, reliability }
 console.log(address.boundaries); // { lga, stateElectorate, meshBlock, sa2, ... }
 ```
 
@@ -75,10 +71,10 @@ console.log(address.boundaries); // { lga, stateElectorate, meshBlock, sa2, ... 
 
 ```typescript
 const { results } = await prontiq.getV1AddressReverse(
-  -33.8568,  // lat
-  151.2153,  // lon
-  200,       // radius in meters (optional)
-  3,         // limit (optional)
+  -33.8568, // lat
+  151.2153, // lon
+  200, // radius in meters (optional)
+  3, // limit (optional)
 );
 
 for (const r of results) {
@@ -93,22 +89,19 @@ for (const r of results) {
 const { localities } = await prontiq.getV1AddressLookupPostcode("2000");
 
 // Suburb → postcodes
-const { postcodes, addressCount } = await prontiq.getV1AddressLookupSuburb(
-  "bondi beach",
-  "NSW",
-);
+const { postcodes, addressCount } = await prontiq.getV1AddressLookupSuburb("bondi beach", "NSW");
 ```
 
 ## All methods
 
-| Method | Description |
-|--------|-------------|
-| `getV1AddressAutocomplete(q, state?, limit?)` | Real-time typeahead suggestions |
-| `getV1AddressValidate(q)` | Verify a full address string |
-| `getV1AddressEnrich(id)` | Full record by G-NAF ID |
+| Method                                           | Description                      |
+| ------------------------------------------------ | -------------------------------- |
+| `getV1AddressAutocomplete(q, state?, limit?)`    | Real-time typeahead suggestions  |
+| `getV1AddressValidate(q)`                        | Verify a full address string     |
+| `getV1AddressEnrich(id)`                         | Full record by G-NAF ID          |
 | `getV1AddressReverse(lat, lon, radius?, limit?)` | Coordinates to nearest addresses |
-| `getV1AddressLookupPostcode(postcode)` | Postcode to localities |
-| `getV1AddressLookupSuburb(suburb, state?)` | Suburb to postcodes |
+| `getV1AddressLookupPostcode(postcode)`           | Postcode to localities           |
+| `getV1AddressLookupSuburb(suburb, state?)`       | Suburb to postcodes              |
 
 ## Error handling
 
@@ -126,5 +119,7 @@ try {
 ```
 
 <Info>
-  The SDK is auto-generated from the [OpenAPI spec](/api-reference/autocomplete) by [Speakeasy](https://www.speakeasy.com). It stays in sync with every API change automatically.
+  The SDK is auto-generated from the public [OpenAPI spec](/api-reference/autocomplete) by
+  [Speakeasy](https://www.speakeasy.com). It stays in sync with public data API changes
+  automatically.
 </Info>
