@@ -1472,17 +1472,15 @@ Prontiq is in a migration window:
   org-scoped `customerId`, SQS billing-event buffering, Lago event forwarding,
   and webhook reconciliation back into Prontiq enforcement state.
 - **Current Lago rollout state:** platform-side Lago forwarding and webhook
-  reconciliation code is deployed in dev and prod. P1B.18a is still in
-  progress. The repo-owned smoke-event helper exists; API-produced
-  usage-forwarding smoke evidence exists in dev/prod; retained smoke fixtures
-  are inventoried as test-only data. P1B.18a is not complete because webhook
-  certification is still missing: as of the 2026-04-26 audit,
-  `LAGO_WEBHOOK_RECONCILIATION_ENABLED=false` is still deployed in dev and prod,
-  and no completed Lago webhook-ledger rows exist in either stage. Retained prod
-  smoke fixtures are expected to support P1B.18, P1B.19, and P1B.20; they must
-  remain clearly labelled/inventoried as test-only rather than destructively
-  cleaned now. P1B.21 is the final customer go-live cleanup gate after the Lago
-  migration completes.
+  reconciliation code is deployed in dev and prod. P1B.18a closed on
+  2026-04-26: the repo-owned smoke-event helper exists, API-produced
+  usage-forwarding smoke evidence exists in dev/prod, valid HMAC Lago webhook
+  smoke completed in both webhook ledgers, replaying the same webhook unique
+  keys returns duplicate no-ops, and retained smoke fixtures are inventoried as
+  test-only data. Retained prod smoke fixtures are expected to support P1B.18,
+  P1B.19, and P1B.20; they must remain clearly labelled/inventoried as
+  test-only rather than destructively cleaned now. P1B.21 is the final customer
+  go-live cleanup gate after the Lago migration completes.
 
 The subsections below retain the **legacy shipped Stripe path** for migration
 and operational history. They are not the forward-looking commercial source of
@@ -1642,7 +1640,8 @@ IDs are not acceptable. Existing non-canonical Lago organizations are not
 migration targets for this repo; they are left untouched unless explicitly
 created as repo-owned test fixtures for live smoke isolation.
 
-Current safe smoke fixture inventory from the 2026-04-26 closeout audit:
+Current safe smoke fixture inventory from the 2026-04-26 P1B.18a
+certification:
 
 - dev: `org_prontiq_platform_lago_smoke_dev`,
   `pq_cust_01KQ3T50Z86ZKEFG8Y7N68V3QP`,
@@ -1653,6 +1652,19 @@ Current safe smoke fixture inventory from the 2026-04-26 closeout audit:
 
 This inventory deliberately excludes raw API keys, API-key hashes, Lago API
 keys, webhook HMAC secrets, and local ignored evidence files.
+
+Webhook certification evidence:
+
+- dev: unsigned route returned `400 invalid_signature`, signed unique key
+  `prontiq-platform-dev-smoke-20260426T051602Z` completed in
+  `prontiq-lago-webhook-events-dev`, replay returned `200 duplicate`
+- prod: unsigned route returned `400 invalid_signature`, signed unique key
+  `prontiq-platform-prod-smoke-20260426T051812Z` completed in
+  `prontiq-lago-webhook-events`, replay returned `200 duplicate`
+- both stages reconciled the smoke envelope/key to Lago `payg` and
+  `billingPeriodKey=2026-04-26_2026-05-25`
+- `COUNTER_PERIOD_SOURCE` remains the calendar default for request-time
+  enforcement
 
 #### 5.6.0.4 Lago Webhook Reconciliation Contract
 

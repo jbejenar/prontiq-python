@@ -1,9 +1,9 @@
 # NEXT-WORK.md — Active Sprint
 
 > Extracted from ROADMAP.md. This is what agents should work on NOW.
-> Last updated: 2026-04-26 (P1B.18a closeout audit recorded; webhook certification still open)
+> Last updated: 2026-04-26 (P1B.18a complete; P1B.18 next)
 
-## Current Phase: P1B.18a / P1B.18
+## Current Phase: P1B.18
 
 ### What's Live
 
@@ -53,16 +53,16 @@
   tracked. The route is gated by `LAGO_WEBHOOK_RECONCILIATION_ENABLED`; the API
   counter source remains `calendar` unless `COUNTER_PERIOD_SOURCE=lago` is
   deliberately enabled after reconciliation is proven.
-- **P1B.18a in progress; not closed.** The Lago runtime is deployed in dev and
+- **P1B.18a complete (2026-04-26).** The Lago runtime is deployed in dev and
   prod, the repo-owned smoke helper is in place, API-produced billing events
-  have been smoke-tested in dev and prod, prod `BILLING_EVENTS_ENABLED=true` is
-  deployed, `COUNTER_PERIOD_SOURCE` remains `calendar`, and alert policy is
-  ALARM-only for email-backed operational alarms. The 2026-04-26 closeout audit
-  confirmed safe dev/prod smoke fixture inventory, two accepted
-  delivery-ledger rows per stage, empty billing queues/DLQs, and healthy Lago
-  alarms. It also confirmed P1B.18a cannot be marked complete yet:
-  `LAGO_WEBHOOK_RECONCILIATION_ENABLED=false` is still deployed in dev/prod and
-  both Lago webhook ledgers have zero completed rows.
+  have been smoke-tested in dev and prod, `BILLING_EVENTS_ENABLED=true` is
+  deployed, `LAGO_WEBHOOK_RECONCILIATION_ENABLED=true` is configured for both
+  GitHub Environments and deployed Lambdas, `COUNTER_PERIOD_SOURCE` remains
+  `calendar`, and alert policy is ALARM-only for email-backed operational
+  alarms. Dev/prod webhook certification completed with unique keys
+  `prontiq-platform-dev-smoke-20260426T051602Z` and
+  `prontiq-platform-prod-smoke-20260426T051812Z`; replays returned
+  `200 duplicate`.
 - **P1F.02 complete (2026-04-19).** The prod observability baseline is live and verified: `PqIngestAlerts` prod email subscriptions via `ALERT_EMAILS`, `prontiq-production` dashboard, prod alarms for address API 5xx/Lambda error rate and OpenSearch yellow/red/low-storage, `PqApi` X-Ray tracing with DynamoDB + OpenSearch segments, and structured JSON logs across Lambda execution paths. SNS email delivery was verified by forcing `PqApiLambdaErrorRate` to `ALARM` and confirming receipt on a confirmed subscriber.
 - **P1F.03 complete (2026-04-20).** `@prontiq/observability` is live in `dev` and `prod`, Honeycomb traces are verified for `prontiq-api`, `prontiq-webhooks`, `prontiq-billing`, and `prontiq-ingestion` in both environments, and the deployed-stage rollback path is `HONEYCOMB_ENABLED=false` rather than secret removal.
 - **P1C.07 complete (2026-04-20).** `apps/landing` and `apps/console` now have Tailwind v3.4, app-local shadcn/ui primitives, dark mode, responsive shell foundations, and app-local Vitest + Testing Library. `apps/console` now carries an env-gated real Clerk auth boundary that builds/tests cleanly without Clerk keys and enables real sign-in when they are present.
@@ -127,11 +127,7 @@ POST /v1/account/setup  (Clerk JWT; not API key — recovery provisioning)
 - ~~P1B.15 — SQS billing event buffer + hot-path emitter~~ ✅ shipped (2026-04-25)
 - ~~P1B.16 — Lago event forwarder worker + idempotent transaction IDs~~ ✅ shipped (2026-04-25)
 - ~~P1B.17 — Lago webhook sync + credit-counter reconciliation~~ ✅ shipped (2026-04-25)
-- **P1B.18a — Lago live setup + smoke certification**
-  - Repo-owned helper and API-produced usage smoke are in place.
-  - Remaining blocker: enable webhook reconciliation only after Lago HMAC
-    endpoint preflight, redeploy dev/prod, send valid low-risk Lago webhook
-    smoke, and record completed `prontiq-lago-webhook-events` rows.
+- ~~P1B.18a — Lago live setup + smoke certification~~ ✅ shipped (2026-04-26)
 - **P1B.18 — Console billing proxy surfaces + plan changes**
 - **P1B.19 — Stripe legacy billing retirement and cutover**
 - **P1B.20 — Legacy Stripe config and surface cleanup**
@@ -152,15 +148,12 @@ POST /v1/account/setup  (Clerk JWT; not API key — recovery provisioning)
 
 Recommended priority:
 
-1. P1B.18a — close the webhook-certification blocker. Do not start P1B.18 as
-   "unblocked" until dev/prod have completed Lago webhook-ledger evidence.
-2. P1B.18 — expose console billing surfaces on top of the Lago-backed contract.
-3. P1B.19 / P1B.20 — cut over the legacy Stripe billing path and remove the retired config/surfaces.
-4. P1B.21 — retire or explicitly retain prod smoke fixtures after Lago work is complete.
-5. P1C.02 / P1C.03 — continue the console overview and API-key experience after the commercial event path is underway.
+1. P1B.18 — expose console billing surfaces on top of the Lago-backed contract.
+2. P1B.19 / P1B.20 — cut over the legacy Stripe billing path and remove the retired config/surfaces.
+3. P1B.21 — retire or explicitly retain prod smoke fixtures after Lago work is complete.
+4. P1C.02 / P1C.03 — continue the console overview and API-key experience after the commercial event path is underway.
 
-After closing the remaining `P1B.18a` evidence and before starting `P1B.18`,
-read:
+Before starting `P1B.18`, read:
 
 - `ARCHITECTURE.MD` (commercial implementation-status section + Lago target flow)
 - `docs/decisions/013-platform-owned-customer-id.md`

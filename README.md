@@ -132,7 +132,7 @@ See [`ROADMAP.md`](ROADMAP.md) for the current execution plan.
 | ------- | ------------------------- | ------- | --------- |
 | **P0**  | Infrastructure Foundation | 6       | 6/6       |
 | **P1A** | API Core (Address)        | 13      | 11/13     |
-| **P1B** | Auth & Billing            | 24      | 17/24     |
+| **P1B** | Auth & Billing            | 24      | 18/24     |
 | **P1C** | Frontend Surfaces         | 9       | 3/9       |
 | **P1D** | Docs & SDK                | 5       | 2/5       |
 | **P1E** | Ingestion                 | 6       | 4/6       |
@@ -141,10 +141,10 @@ See [`ROADMAP.md`](ROADMAP.md) for the current execution plan.
 | **P3**  | LEI + Full Dashboard      | 7       | 0/7       |
 | **P4**  | Shopify + WooCommerce     | 5       | 0/5       |
 | **P5**  | CVE/NVD + Patents         | 4       | 0/4       |
-|         |                           | **90**  | **46/90** |
+|         |                           | **90**  | **47/90** |
 
 `P1B` includes completed legacy Stripe-path work. The Lago migration sequence is
-`P1B.14`–`P1B.21` plus `P1B.18a`, currently `4/9`, and is called out
+`P1B.14`–`P1B.21` plus `P1B.18a`, currently `5/9`, and is called out
 separately in the Phase 1B section of [`ROADMAP.md`](ROADMAP.md).
 
 P1B.17 adds Lago webhook reconciliation. P1B.18a owns live Lago setup and smoke
@@ -155,11 +155,11 @@ fixtures are expected to support the remaining Lago migration work and must stay
 clearly labelled/inventoried as test-only. Final smoke-fixture retirement and
 destructive cleanup is deferred to `P1B.21` after `P1B.20`.
 
-As of the 2026-04-26 closeout audit, P1B.18a is not complete: dev/prod
-usage-forwarding smoke has accepted delivery-ledger evidence, but webhook
-certification is still missing because `LAGO_WEBHOOK_RECONCILIATION_ENABLED`
-remains disabled in both deployed webhook Lambdas and no completed Lago webhook
-ledger rows exist yet.
+P1B.18a closed on 2026-04-26: dev/prod usage-forwarding smoke has accepted
+delivery-ledger evidence, valid HMAC Lago webhook smoke has completed
+webhook-ledger rows in both stages, replaying the same webhook unique keys
+returns `200 duplicate`, and `COUNTER_PERIOD_SOURCE` remains on the calendar
+default.
 
 ## Commands
 

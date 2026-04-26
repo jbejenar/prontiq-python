@@ -4,20 +4,57 @@
 > the time they were written, not the current source of truth. Use
 > `ROADMAP.md`, `NEXT-WORK.md`, and `README.md` for current execution status.
 
-## Session 38 — 2026-04-26
+## Session 39 — 2026-04-26
 
-**Focus:** P1B.18a closeout audit.
+**Focus:** P1B.18a webhook certification closeout.
 
 ### Completed
 
-- **P1B.18a was audited but not closed.** Dev and prod have accepted
-  delivery-ledger evidence for API-produced Lago usage smoke, empty billing
-  source queues/DLQs, healthy Lago CloudWatch alarms, and ALARM-only email
-  actions.
-- **The closeout blocker is webhook certification.**
-  `LAGO_WEBHOOK_RECONCILIATION_ENABLED=false` is still deployed in both
-  `PqLagoWebhook` Lambdas, and both `prontiq-lago-webhook-events-dev` and
-  `prontiq-lago-webhook-events` have zero completed rows.
+- **P1B.18a is complete.** Dev/prod usage-forwarding smoke already had
+  accepted delivery-ledger evidence; the missing HMAC webhook path is now
+  certified in both stages.
+- **Webhook reconciliation is enabled and verified.** GitHub Environment var
+  `LAGO_WEBHOOK_RECONCILIATION_ENABLED=true` is set for dev and prod, and the
+  deployed Lago webhook Lambdas report the flag as enabled.
+- **Valid webhook smoke completed.** Dev unique key
+  `prontiq-platform-dev-smoke-20260426T051602Z` completed in
+  `prontiq-lago-webhook-events-dev`; prod unique key
+  `prontiq-platform-prod-smoke-20260426T051812Z` completed in
+  `prontiq-lago-webhook-events`.
+- **Replay safety was verified.** Replaying the same signed webhook unique keys
+  returned `200 duplicate` in both stages.
+- **Local enforcement state converged.** Dev/prod smoke envelopes and key rows
+  reconciled to Lago `payg`, active subscription status, and
+  `billingPeriodKey=2026-04-26_2026-05-25`. `COUNTER_PERIOD_SOURCE` remains the
+  calendar default.
+- **Fixture drift was repaired only for repo-owned test data.** The smoke API
+  key/customer rows existed, but the matching `ORG#...` smoke envelopes were
+  missing. Dev/prod smoke envelopes were created for
+  `org_prontiq_platform_lago_smoke_dev` and
+  `org_prontiq_platform_lago_smoke_prod`; no unrelated Lago orgs or real
+  customer rows were mutated.
+
+### Next session should start with
+
+1. Start `P1B.18 — Console Billing Proxy Surfaces + Plan Changes`.
+2. Keep retained dev/prod smoke fixtures available through P1B.18, P1B.19, and
+   P1B.20.
+3. Do not switch `COUNTER_PERIOD_SOURCE=lago` unless a later cutover decision
+   explicitly approves it.
+
+## Session 38 — 2026-04-26
+
+**Focus:** P1B.18a closeout audit, superseded by Session 39 certification.
+
+### Completed
+
+- **Interim audit captured the remaining P1B.18a gap.** Dev and prod had
+  accepted delivery-ledger evidence for API-produced Lago usage smoke, empty
+  billing source queues/DLQs, healthy Lago CloudWatch alarms, and ALARM-only
+  email actions.
+- **Superseded by Session 39.** The webhook certification gap recorded here was
+  subsequently closed with completed dev/prod Lago webhook-ledger rows and
+  replay-safe duplicate checks.
 - **Smoke fixtures are inventoried as test-only data.** Dev:
   `org_prontiq_platform_lago_smoke_dev`,
   `pq_cust_01KQ3T50Z86ZKEFG8Y7N68V3QP`,
@@ -29,11 +66,10 @@
 
 ### Next session should start with
 
-1. Configure or confirm the Lago HMAC webhook endpoints for dev/prod.
-2. Set `LAGO_WEBHOOK_RECONCILIATION_ENABLED=true`, redeploy dev, send a valid
-   low-risk Lago webhook smoke event, and verify a completed dev ledger row.
-3. Repeat in prod, keeping `COUNTER_PERIOD_SOURCE=calendar`, then mark P1B.18a
-   complete only if the webhook evidence is present.
+1. See Session 39 for the completed P1B.18a evidence.
+2. Start `P1B.18 — Console Billing Proxy Surfaces + Plan Changes`.
+3. Keep `COUNTER_PERIOD_SOURCE=calendar` unless a later cutover decision
+   explicitly approves Lago-period enforcement.
 
 ## Session 37 — 2026-04-26
 

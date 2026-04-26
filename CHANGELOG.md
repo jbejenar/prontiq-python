@@ -9,12 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **P1B.18a closeout audit recorded.** The roadmap now separates completed
-  usage-forwarding smoke evidence from the remaining webhook-certification
-  blocker: dev/prod have accepted delivery-ledger rows and inventoried
-  test-only smoke fixtures, but P1B.18a stays open until
-  `LAGO_WEBHOOK_RECONCILIATION_ENABLED=true` is deployed and completed Lago
-  webhook-ledger rows exist in both stages.
+- **P1B.18a live smoke certification completed.** Dev/prod have accepted
+  Lago usage-forwarding delivery rows, completed Lago HMAC webhook-ledger rows,
+  replay-safe duplicate webhook checks, inventoried test-only smoke fixtures,
+  and retained calendar-period request enforcement for the next Lago migration
+  tickets.
 
 - **Final prod smoke-fixture retirement gate** (`P1B.21`) added after the Lago
   migration sequence. Retained prod smoke fixtures now stay available for

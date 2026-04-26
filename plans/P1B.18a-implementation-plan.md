@@ -209,19 +209,22 @@ P1B.18a.
 
 ## Closeout Audit — 2026-04-26
 
-P1B.18a must remain open after the current audit. The usage-forwarding half has
-safe evidence: dev and prod both have accepted delivery-ledger rows, empty
-billing source queues/DLQs, healthy Lago alarms, and inventoried repo-owned
-test-only smoke fixtures. The webhook half is not certified:
-`LAGO_WEBHOOK_RECONCILIATION_ENABLED=false` is still deployed in both
-`PqLagoWebhook` Lambdas, and both `prontiq-lago-webhook-events-dev` and
-`prontiq-lago-webhook-events` have zero completed rows.
+P1B.18a is complete after the current audit. Dev and prod both have accepted
+usage-forwarding delivery-ledger rows, empty billing source queues/DLQs, healthy
+Lago alarms, inventoried repo-owned test-only smoke fixtures, and completed
+HMAC webhook-ledger rows.
 
-The next execution step is not P1B.18 implementation. It is to configure or
-confirm the Lago HMAC webhook endpoints, enable
-`LAGO_WEBHOOK_RECONCILIATION_ENABLED=true` through GitHub Environment deploys,
-send one valid low-risk webhook smoke event per stage, and record completed
-ledger rows without exposing webhook secrets or raw key material.
+Webhook evidence:
+
+- dev unique key `prontiq-platform-dev-smoke-20260426T051602Z` completed in
+  `prontiq-lago-webhook-events-dev`
+- prod unique key `prontiq-platform-prod-smoke-20260426T051812Z` completed in
+  `prontiq-lago-webhook-events`
+- replaying both signed unique keys returned `200 duplicate`
+- both stages reconciled smoke key/envelope state to Lago `payg`, active
+  subscription status, and `billingPeriodKey=2026-04-26_2026-05-25`
+- no raw API keys, API-key hashes, Lago API keys, or webhook secrets are part of
+  the recorded evidence
 
 ## Estimate
 

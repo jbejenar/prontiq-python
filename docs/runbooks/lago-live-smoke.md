@@ -288,10 +288,10 @@ P1B.19, and P1B.20 unless they become unsafe or ambiguous. Final retirement,
 disablement, relabelling, or explicit retention belongs to
 `docs/runbooks/prod-go-live-cleanup.md` in P1B.21 after P1B.20.
 
-## Current Closeout Audit
+## Current Certification Evidence
 
-The 2026-04-26 audit did not close P1B.18a. Safe evidence exists for the
-usage-forwarding portion, but webhook certification is still missing.
+The 2026-04-26 audit closed P1B.18a. Safe evidence exists for usage forwarding,
+webhook reconciliation, replay safety, fixture governance, and alarm health.
 
 Confirmed safe evidence:
 
@@ -308,14 +308,19 @@ Confirmed safe evidence:
     `pq_cust_01KQ3TT9XZZDR2CAZTV1TX1KBS`,
     `pq_sub_01KQ3TT9XZZDR2CAZTV1TX1KBS`, key prefix `pq_live_4a85`
 
-Open blocker:
+Webhook evidence:
 
-- `LAGO_WEBHOOK_RECONCILIATION_ENABLED=false` is still deployed in both Lago
-  webhook Lambdas
-- `prontiq-lago-webhook-events-dev` and `prontiq-lago-webhook-events` both have
-  zero completed rows
+- `LAGO_WEBHOOK_RECONCILIATION_ENABLED=true` is configured for dev and prod
+  GitHub Environments and deployed Lago webhook Lambdas
+- dev unsigned route preflight returned `400 invalid_signature`
+- prod unsigned route preflight returned `400 invalid_signature`
+- dev signed unique key `prontiq-platform-dev-smoke-20260426T051602Z`
+  completed in `prontiq-lago-webhook-events-dev`
+- prod signed unique key `prontiq-platform-prod-smoke-20260426T051812Z`
+  completed in `prontiq-lago-webhook-events`
+- replaying both signed unique keys returned `200 duplicate`
+- dev/prod smoke envelope and key rows reconciled to Lago `payg`, active
+  subscription status, and `billingPeriodKey=2026-04-26_2026-05-25`
 
-Do not mark P1B.18a complete until dev and prod have completed webhook-ledger
-rows from valid low-risk Lago HMAC events. Do not paste or commit raw API keys,
-API-key hashes, Lago API keys, webhook HMAC secrets, or local ignored evidence
-files while completing this audit.
+Continue to avoid pasting or committing raw API keys, API-key hashes, Lago API
+keys, webhook HMAC secrets, or local ignored evidence files.
