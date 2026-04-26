@@ -300,11 +300,15 @@ test("Lago account billing client upserts AUD customer with payment provider con
 
 test("Lago account billing client submits subscription plan change with stable external IDs", async () => {
   let body: unknown;
+  let method: string | undefined;
+  let url: string | undefined;
   const client = new HttpLagoAccountBillingClient({
     apiKey: "lago_test",
     baseUrl: "https://billing.example.test",
-    fetchImpl: async (_url, init) => {
+    fetchImpl: async (requestUrl, init) => {
       body = JSON.parse(String(init?.body)) as unknown;
+      method = init?.method;
+      url = String(requestUrl);
       return response({
         subscription: {
           external_customer_id: "pq_cust_01HYZ6Q4X6DJP2X9Q9FQKX4T7A",
@@ -330,7 +334,83 @@ test("Lago account billing client submits subscription plan change with stable e
       plan_code: "free",
     },
   });
+  assert.equal(method, "POST");
+  assert.equal(url, "https://billing.example.test/api/v1/subscriptions");
   assert.equal(subscription.nextPlanCode, "free");
+});
+
+test("Lago account billing client rejects mismatched plan-change responses", async (t) => {
+  const cases = [
+    {
+      actual: {
+        externalCustomerId: CUSTOMER_ID,
+        externalSubscriptionId: SUBSCRIPTION_ID,
+        nextPlanCode: null,
+        planCode: "free",
+      },
+      name: "target plan mismatch",
+    },
+    {
+      actual: {
+        externalCustomerId: CUSTOMER_ID,
+        externalSubscriptionId: "pq_sub_01HYZ6Q4X6DJP2X9Q9FQKX4T7B",
+        nextPlanCode: null,
+        planCode: "payg",
+      },
+      name: "subscription identity mismatch",
+    },
+    {
+      actual: {
+        externalCustomerId: "pq_cust_01HYZ6Q4X6DJP2X9Q9FQKX4T7B",
+        externalSubscriptionId: SUBSCRIPTION_ID,
+        nextPlanCode: null,
+        planCode: "payg",
+      },
+      name: "customer identity mismatch",
+    },
+  ] as const;
+
+  for (const item of cases) {
+    await t.test(item.name, async () => {
+      const client = new HttpLagoAccountBillingClient({
+        apiKey: "lago_test",
+        baseUrl: "https://billing.example.test",
+        fetchImpl: async () =>
+          response({
+            subscription: {
+              external_customer_id: item.actual.externalCustomerId,
+              external_id: item.actual.externalSubscriptionId,
+              next_plan: item.actual.nextPlanCode ? { code: item.actual.nextPlanCode } : null,
+              plan_code: item.actual.planCode,
+              status: "active",
+            },
+          }),
+      });
+
+      await assert.rejects(
+        client.upsertSubscription({
+          externalCustomerId: CUSTOMER_ID,
+          externalSubscriptionId: SUBSCRIPTION_ID,
+          planCode: "payg",
+        }),
+        (error: unknown) => {
+          assert.ok(error instanceof AccountBillingError);
+          assert.equal(error.code, "LAGO_CONFIGURATION_ERROR");
+          assert.equal(error.httpStatus, 500);
+          assert.deepEqual(error.details, {
+            actualExternalCustomerId: item.actual.externalCustomerId,
+            actualExternalSubscriptionId: item.actual.externalSubscriptionId,
+            actualNextPlanCode: null,
+            actualPlanCode: item.actual.planCode,
+            expectedExternalCustomerId: CUSTOMER_ID,
+            expectedExternalSubscriptionId: SUBSCRIPTION_ID,
+            expectedPlanCode: "payg",
+          });
+          return true;
+        },
+      );
+    });
+  }
 });
 
 test("Lago account billing client maps rejected fetch to retryable Lago unavailable", async () => {
@@ -683,6 +763,75 @@ test("account billing summary surfaces pending status from Lago when local metad
   const summary = await service.getBillingSummary({ orgId: ORG_ID });
 
   assert.equal(summary.plan.pending.status, "pending");
+});
+
+test("account billing service records mismatched Lago plan-change outcomes as permanent failures", async () => {
+  let failedStatus: string | undefined;
+  let completed = false;
+  const ledger: BillingActionLedger = {
+    async complete() {
+      completed = true;
+    },
+    async fail(input) {
+      failedStatus = input.status;
+    },
+    async lookup() {
+      return { kind: "not_found" };
+    },
+    async start() {
+      return { actionId: "bact_mismatched_lago_outcome", kind: "started" };
+    },
+  };
+  const lagoClient: LagoAccountBillingClient & { upsertSubscriptionCalls: number } = {
+    upsertSubscriptionCalls: 0,
+    async getCustomerPortalUrl() {
+      return { expiresAt: null, url: "https://portal.example.test/session" };
+    },
+    async getSubscription() {
+      return {
+        downgradePlanDate: null,
+        externalCustomerId: CUSTOMER_ID,
+        externalSubscriptionId: SUBSCRIPTION_ID,
+        nextPlanCode: null,
+        planCode: "payg",
+        previousPlanCode: null,
+        status: "active",
+      };
+    },
+    async upsertCustomer() {},
+    async upsertSubscription() {
+      this.upsertSubscriptionCalls += 1;
+      throw new AccountBillingError(
+        "LAGO_CONFIGURATION_ERROR",
+        "Lago subscription response did not apply the requested subscription change",
+        500,
+      );
+    },
+  };
+  const service = createAccountBillingService({
+    actionLedger: ledger,
+    customersTableName: "customers",
+    ddb: makeDdb({ envelope: makeEnvelope() }),
+    enabled: true,
+    keysTableName: "keys",
+    lagoClient,
+    lagoPaymentProviderCode: undefined,
+    logger: console,
+    now: () => new Date("2026-04-26T00:00:00.000Z"),
+    planChangeAllowedOrgIds: new Set([ORG_ID]),
+  });
+
+  await assert.rejects(
+    service.requestPlanChange({
+      idempotencyKey: "idem_mismatched_lago_outcome",
+      principal: { orgId: ORG_ID, userId: USER_ID },
+      targetPlanCode: "free",
+    }),
+    { code: "LAGO_CONFIGURATION_ERROR", httpStatus: 500 },
+  );
+  assert.equal(lagoClient.upsertSubscriptionCalls, 1);
+  assert.equal(completed, false);
+  assert.equal(failedStatus, "failed_permanent");
 });
 
 test("account billing service records submitted pending transition metadata on envelope and API keys", async () => {

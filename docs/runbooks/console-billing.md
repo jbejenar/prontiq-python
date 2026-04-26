@@ -26,6 +26,13 @@ All routes run in the `PqAccount` Lambda and require Clerk org-admin auth.
 - `CONSOLE_BILLING_PLAN_CHANGES_ENABLED=true` only when mutation is intended.
 - `CONSOLE_BILLING_PLAN_CHANGE_ALLOWED_ORG_IDS` includes only repo-owned test
   orgs until production cutover.
+- Lago self-service plans for `free` and `payg` exist in the same currency as
+  account-billing customers. The platform upserts account-billing customers as
+  AUD, so Lago plan currency must be AUD for live plan-change smoke.
+- Lago subscription changes are submitted through the subscription assignment
+  path. A successful Prontiq response requires Lago to return the requested
+  customer id, subscription id, and target as the active plan or pending next
+  plan.
 
 ## Smoke
 
@@ -37,29 +44,32 @@ All routes run in the `PqAccount` Lambda and require Clerk org-admin auth.
 5. Confirm the returned URL opens the Lago portal.
 6. Call `POST /v1/account/billing/plan-change` with `targetPlanCode` set to the
    intended `free` or `payg` target and an `Idempotency-Key`.
-7. Replay the same request and confirm the same response is returned.
-8. Replay the same idempotency key with a different body and confirm
+7. Confirm Lago shows the same customer external id, subscription external id,
+   and the requested plan as either the active `plan_code` or pending
+   `next_plan_code`.
+8. Replay the same request and confirm the same response is returned.
+9. Replay the same idempotency key with a different body and confirm
    `IDEMPOTENCY_CONFLICT`.
-9. If Lago is temporarily unavailable, retry the same idempotency key and same
+10. If Lago is temporarily unavailable, retry the same idempotency key and same
    body; retryable ledger rows are reclaimable, but permanent failures replay
    as stored failures.
-10. Confirm `prontiq-billing-actions` contains the action record.
-11. Replay the same successful scheduled plan-change after pending metadata is
+11. Confirm `prontiq-billing-actions` contains the action record.
+12. Replay the same successful scheduled plan-change after pending metadata is
     visible locally; it must return the stored response rather than
     `PLAN_CHANGE_ALREADY_PENDING`.
-12. Temporarily unavailable Lago must not prevent stored successful replay,
+13. Temporarily unavailable Lago must not prevent stored successful replay,
     stored failure replay, or provider-accepted resume from returning from the
     local ledger.
-13. If Lago accepted the mutation but local metadata repair failed, retry the
+14. If Lago accepted the mutation but local metadata repair failed, retry the
     same idempotency key and same body; the action should resume from stored
     provider outcome without resubmitting Lago.
-14. Confirm a fresh request for the current local plan still returns
+15. Confirm a fresh request for the current local plan still returns
     `PLAN_CHANGE_ALREADY_PENDING` when a different transition is already
     scheduled; it must not return `noop`.
-15. Confirm pending transition metadata is present on both the org envelope and
+16. Confirm pending transition metadata is present on both the org envelope and
     active API-key records, with enforcement fields unchanged until Lago reports
     the active replacement state.
-16. Confirm Lago webhooks reconcile local state without putting Lago on the API
+17. Confirm Lago webhooks reconcile local state without putting Lago on the API
     request hot path.
 
 ## Rollback

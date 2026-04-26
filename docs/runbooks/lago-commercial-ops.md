@@ -21,6 +21,8 @@ In the target architecture:
 
 - confirm plan metadata in Lago matches the intended commercial surface
 - confirm plan codes exactly match Prontiq tiers (`free`, `payg`, etc.)
+- confirm self-service billing plans use the account-billing customer currency
+  before enabling plan changes; Prontiq upserts account-billing customers as AUD
 - confirm account billing plan changes use `docs/runbooks/console-billing.md`
   and are gated by stage flags/allowlists until cutover
 - confirm each enabled metric code matches the platform `meterEventName`

@@ -1757,6 +1757,10 @@ Mutation safety:
 - retryable Lago transport/provider-unavailable failures and stale in-flight
   rows can be conditionally reclaimed only by the same idempotency key plus the
   same request hash
+- plan-change mutations use Lago's subscription assignment endpoint for
+  upgrades/downgrades and treat a 2xx provider response as accepted only when
+  the returned subscription matches the requested customer id, subscription id,
+  and shows the requested target as the active plan or pending next plan
 - after Lago accepts a plan-change mutation, the ledger records the provider
   subscription outcome before local metadata repair so same-key retry can
   resume repair without resubmitting the mutation

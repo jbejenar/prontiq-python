@@ -81,6 +81,8 @@ customer primary key.
 - confirm Clerk org resolves to one active `prontiq-customers` row
 - confirm Lago customer exists with `external_id = customerId`
 - confirm Lago customer currency is AUD for account billing mutations
+- confirm all self-service target plans used by account billing have matching
+  AUD currency before enabling `CONSOLE_BILLING_PLAN_CHANGES_ENABLED`
 - confirm Lago subscription external id is derived from the same customer ULID
 - confirm Lago `lago_id` is cached only as `lagoCustomerId`
 - confirm no customer-table read is required by API-key request auth

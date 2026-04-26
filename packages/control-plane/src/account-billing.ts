@@ -548,20 +548,38 @@ export class HttpLagoAccountBillingClient implements LagoAccountBillingClient {
   }
 
   async upsertSubscription(input: LagoSubscriptionInput): Promise<LagoSubscriptionState> {
-    const payload = await this.request(
-      `/subscriptions/${encodeURIComponent(input.externalSubscriptionId)}`,
-      {
-        body: JSON.stringify({
-          subscription: {
-            external_customer_id: input.externalCustomerId,
-            external_id: input.externalSubscriptionId,
-            plan_code: input.planCode,
-          },
-        }),
-        method: "PUT",
-      },
-    );
-    return parseLagoSubscription(payload);
+    const payload = await this.request(`/subscriptions`, {
+      body: JSON.stringify({
+        subscription: {
+          external_customer_id: input.externalCustomerId,
+          external_id: input.externalSubscriptionId,
+          plan_code: input.planCode,
+        },
+      }),
+      method: "POST",
+    });
+    const subscription = parseLagoSubscription(payload);
+    if (
+      subscription.externalSubscriptionId !== input.externalSubscriptionId ||
+      subscription.externalCustomerId !== input.externalCustomerId ||
+      (subscription.planCode !== input.planCode && subscription.nextPlanCode !== input.planCode)
+    ) {
+      throw new AccountBillingError(
+        "LAGO_CONFIGURATION_ERROR",
+        "Lago subscription response did not apply the requested subscription change",
+        500,
+        {
+          actualExternalCustomerId: subscription.externalCustomerId,
+          actualExternalSubscriptionId: subscription.externalSubscriptionId,
+          actualNextPlanCode: subscription.nextPlanCode,
+          actualPlanCode: subscription.planCode,
+          expectedExternalCustomerId: input.externalCustomerId,
+          expectedExternalSubscriptionId: input.externalSubscriptionId,
+          expectedPlanCode: input.planCode,
+        },
+      );
+    }
+    return subscription;
   }
 }
 
