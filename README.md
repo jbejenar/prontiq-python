@@ -11,13 +11,13 @@ It is generated with [Stainless](https://www.stainless.com/).
 
 ## Documentation
 
-The full API of this library can be found in [api.md](api.md).
+The REST API documentation can be found on [docs.prontiq.dev](https://docs.prontiq.dev). The full API of this library can be found in [api.md](api.md).
 
 ## Installation
 
 ```sh
-# install from the production repo
-pip install git+ssh://git@github.com/jbejenar/prontiq-platform.git
+# install from this staging repo
+pip install git+ssh://git@github.com/stainless-sdks/prontiq-python.git
 ```
 
 > [!NOTE]
@@ -32,20 +32,18 @@ import os
 from prontiq import Prontiq
 
 client = Prontiq(
-    api_key=os.environ.get("PETSTORE_API_KEY"),  # This is the default and can be omitted
+    api_key=os.environ.get("PRONTIQ_API_KEY"),  # This is the default and can be omitted
 )
 
-order = client.store.orders.create(
-    pet_id=1,
-    quantity=1,
-    status="placed",
+response = client.address.autocomplete(
+    q="200 George Street Sydney",
 )
-print(order.id)
+print(response.suggestions)
 ```
 
 While you can provide an `api_key` keyword argument,
 we recommend using [python-dotenv](https://pypi.org/project/python-dotenv/)
-to add `PETSTORE_API_KEY="My API Key"` to your `.env` file
+to add `PRONTIQ_API_KEY="My API Key"` to your `.env` file
 so that your API Key is not stored in source control.
 
 ## Async usage
@@ -58,17 +56,15 @@ import asyncio
 from prontiq import AsyncProntiq
 
 client = AsyncProntiq(
-    api_key=os.environ.get("PETSTORE_API_KEY"),  # This is the default and can be omitted
+    api_key=os.environ.get("PRONTIQ_API_KEY"),  # This is the default and can be omitted
 )
 
 
 async def main() -> None:
-    order = await client.store.orders.create(
-        pet_id=1,
-        quantity=1,
-        status="placed",
+    response = await client.address.autocomplete(
+        q="200 George Street Sydney",
     )
-    print(order.id)
+    print(response.suggestions)
 
 
 asyncio.run(main())
@@ -83,8 +79,8 @@ By default, the async client uses `httpx` for HTTP requests. However, for improv
 You can enable this by installing `aiohttp`:
 
 ```sh
-# install from the production repo
-pip install 'prontiq[aiohttp] @ git+ssh://git@github.com/jbejenar/prontiq-platform.git'
+# install from this staging repo
+pip install 'prontiq[aiohttp] @ git+ssh://git@github.com/stainless-sdks/prontiq-python.git'
 ```
 
 Then you can enable it by instantiating the client with `http_client=DefaultAioHttpClient()`:
@@ -98,15 +94,13 @@ from prontiq import AsyncProntiq
 
 async def main() -> None:
     async with AsyncProntiq(
-        api_key=os.environ.get("PETSTORE_API_KEY"),  # This is the default and can be omitted
+        api_key=os.environ.get("PRONTIQ_API_KEY"),  # This is the default and can be omitted
         http_client=DefaultAioHttpClient(),
     ) as client:
-        order = await client.store.orders.create(
-            pet_id=1,
-            quantity=1,
-            status="placed",
+        response = await client.address.autocomplete(
+            q="200 George Street Sydney",
         )
-        print(order.id)
+        print(response.suggestions)
 
 
 asyncio.run(main())
@@ -120,23 +114,6 @@ Nested request parameters are [TypedDicts](https://docs.python.org/3/library/typ
 - Converting to a dictionary, `model.to_dict()`
 
 Typed requests and responses provide autocomplete and documentation within your editor. If you would like to see type errors in VS Code to help catch bugs earlier, set `python.analysis.typeCheckingMode` to `basic`.
-
-## Nested params
-
-Nested parameters are dictionaries, typed using `TypedDict`, for example:
-
-```python
-from prontiq import Prontiq
-
-client = Prontiq()
-
-pet = client.pets.create(
-    name="doggie",
-    photo_urls=["string"],
-    category={},
-)
-print(pet.category)
-```
 
 ## Handling errors
 
@@ -154,7 +131,9 @@ from prontiq import Prontiq
 client = Prontiq()
 
 try:
-    client.store.list_inventory()
+    client.address.autocomplete(
+        q="200 George Street Sydney",
+    )
 except prontiq.APIConnectionError as e:
     print("The server could not be reached")
     print(e.__cause__)  # an underlying Exception, likely raised within httpx.
@@ -197,7 +176,9 @@ client = Prontiq(
 )
 
 # Or, configure per-request:
-client.with_options(max_retries=5).store.list_inventory()
+client.with_options(max_retries=5).address.autocomplete(
+    q="200 George Street Sydney",
+)
 ```
 
 ### Timeouts
@@ -220,7 +201,9 @@ client = Prontiq(
 )
 
 # Override per-request:
-client.with_options(timeout=5.0).store.list_inventory()
+client.with_options(timeout=5.0).address.autocomplete(
+    q="200 George Street Sydney",
+)
 ```
 
 On timeout, an `APITimeoutError` is thrown.
@@ -261,16 +244,18 @@ The "raw" Response object can be accessed by prefixing `.with_raw_response.` to 
 from prontiq import Prontiq
 
 client = Prontiq()
-response = client.store.with_raw_response.list_inventory()
+response = client.address.with_raw_response.autocomplete(
+    q="200 George Street Sydney",
+)
 print(response.headers.get('X-My-Header'))
 
-store = response.parse()  # get the object that `store.list_inventory()` would have returned
-print(store)
+address = response.parse()  # get the object that `address.autocomplete()` would have returned
+print(address.suggestions)
 ```
 
-These methods return an [`APIResponse`](https://github.com/jbejenar/prontiq-platform/tree/main/src/prontiq/_response.py) object.
+These methods return an [`APIResponse`](https://github.com/stainless-sdks/prontiq-python/tree/main/src/prontiq/_response.py) object.
 
-The async client returns an [`AsyncAPIResponse`](https://github.com/jbejenar/prontiq-platform/tree/main/src/prontiq/_response.py) with the same structure, the only difference being `await`able methods for reading the response content.
+The async client returns an [`AsyncAPIResponse`](https://github.com/stainless-sdks/prontiq-python/tree/main/src/prontiq/_response.py) with the same structure, the only difference being `await`able methods for reading the response content.
 
 #### `.with_streaming_response`
 
@@ -279,7 +264,9 @@ The above interface eagerly reads the full response body when you make the reque
 To stream the response body, use `.with_streaming_response` instead, which requires a context manager and only reads the response body once you call `.read()`, `.text()`, `.json()`, `.iter_bytes()`, `.iter_text()`, `.iter_lines()` or `.parse()`. In the async client, these are async methods.
 
 ```python
-with client.store.with_streaming_response.list_inventory() as response:
+with client.address.with_streaming_response.autocomplete(
+    q="200 George Street Sydney",
+) as response:
     print(response.headers.get("X-My-Header"))
 
     for line in response.iter_lines():
@@ -374,7 +361,7 @@ This package generally follows [SemVer](https://semver.org/spec/v2.0.0.html) con
 
 We take backwards-compatibility seriously and work hard to ensure you can rely on a smooth upgrade experience.
 
-We are keen for your feedback; please open an [issue](https://www.github.com/jbejenar/prontiq-platform/issues) with questions, bugs, or suggestions.
+We are keen for your feedback; please open an [issue](https://www.github.com/stainless-sdks/prontiq-python/issues) with questions, bugs, or suggestions.
 
 ### Determining the installed version
 

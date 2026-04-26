@@ -21,7 +21,6 @@ from ._types import (
 )
 from ._utils import is_given, get_async_library
 from ._compat import cached_property
-from ._models import SecurityOptions
 from ._version import __version__
 from ._streaming import Stream as Stream, AsyncStream as AsyncStream
 from ._exceptions import ProntiqError, APIStatusError
@@ -32,10 +31,8 @@ from ._base_client import (
 )
 
 if TYPE_CHECKING:
-    from .resources import pets, store, users
-    from .resources.pets import PetsResource, AsyncPetsResource
-    from .resources.users import UsersResource, AsyncUsersResource
-    from .resources.store.store import StoreResource, AsyncStoreResource
+    from .resources import address
+    from .resources.address.address import AddressResource, AsyncAddressResource
 
 __all__ = ["Timeout", "Transport", "ProxiesTypes", "RequestOptions", "Prontiq", "AsyncProntiq", "Client", "AsyncClient"]
 
@@ -69,20 +66,20 @@ class Prontiq(SyncAPIClient):
     ) -> None:
         """Construct a new synchronous Prontiq client instance.
 
-        This automatically infers the `api_key` argument from the `PETSTORE_API_KEY` environment variable if it is not provided.
+        This automatically infers the `api_key` argument from the `PRONTIQ_API_KEY` environment variable if it is not provided.
         """
         if api_key is None:
-            api_key = os.environ.get("PETSTORE_API_KEY")
+            api_key = os.environ.get("PRONTIQ_API_KEY")
         if api_key is None:
             raise ProntiqError(
-                "The api_key client option must be set either by passing api_key to the client or by setting the PETSTORE_API_KEY environment variable"
+                "The api_key client option must be set either by passing api_key to the client or by setting the PRONTIQ_API_KEY environment variable"
             )
         self.api_key = api_key
 
         if base_url is None:
             base_url = os.environ.get("PRONTIQ_BASE_URL")
         if base_url is None:
-            base_url = f"https://petstore3.swagger.io/api/v3"
+            base_url = f"https://api.prontiq.dev"
 
         super().__init__(
             version=__version__,
@@ -96,25 +93,10 @@ class Prontiq(SyncAPIClient):
         )
 
     @cached_property
-    def pets(self) -> PetsResource:
-        """Everything about your Pets"""
-        from .resources.pets import PetsResource
+    def address(self) -> AddressResource:
+        from .resources.address import AddressResource
 
-        return PetsResource(self)
-
-    @cached_property
-    def store(self) -> StoreResource:
-        """Access to Petstore orders"""
-        from .resources.store import StoreResource
-
-        return StoreResource(self)
-
-    @cached_property
-    def users(self) -> UsersResource:
-        """Operations about user"""
-        from .resources.users import UsersResource
-
-        return UsersResource(self)
+        return AddressResource(self)
 
     @cached_property
     def with_raw_response(self) -> ProntiqWithRawResponse:
@@ -129,16 +111,11 @@ class Prontiq(SyncAPIClient):
     def qs(self) -> Querystring:
         return Querystring(array_format="comma")
 
-    @override
-    def _auth_headers(self, security: SecurityOptions) -> dict[str, str]:
-        return {
-            **(self._api_key if security.get("api_key", False) else {}),
-        }
-
     @property
-    def _api_key(self) -> dict[str, str]:
+    @override
+    def auth_headers(self) -> dict[str, str]:
         api_key = self.api_key
-        return {"api_key": api_key}
+        return {"X-Api-Key": api_key}
 
     @property
     @override
@@ -263,20 +240,20 @@ class AsyncProntiq(AsyncAPIClient):
     ) -> None:
         """Construct a new async AsyncProntiq client instance.
 
-        This automatically infers the `api_key` argument from the `PETSTORE_API_KEY` environment variable if it is not provided.
+        This automatically infers the `api_key` argument from the `PRONTIQ_API_KEY` environment variable if it is not provided.
         """
         if api_key is None:
-            api_key = os.environ.get("PETSTORE_API_KEY")
+            api_key = os.environ.get("PRONTIQ_API_KEY")
         if api_key is None:
             raise ProntiqError(
-                "The api_key client option must be set either by passing api_key to the client or by setting the PETSTORE_API_KEY environment variable"
+                "The api_key client option must be set either by passing api_key to the client or by setting the PRONTIQ_API_KEY environment variable"
             )
         self.api_key = api_key
 
         if base_url is None:
             base_url = os.environ.get("PRONTIQ_BASE_URL")
         if base_url is None:
-            base_url = f"https://petstore3.swagger.io/api/v3"
+            base_url = f"https://api.prontiq.dev"
 
         super().__init__(
             version=__version__,
@@ -290,25 +267,10 @@ class AsyncProntiq(AsyncAPIClient):
         )
 
     @cached_property
-    def pets(self) -> AsyncPetsResource:
-        """Everything about your Pets"""
-        from .resources.pets import AsyncPetsResource
+    def address(self) -> AsyncAddressResource:
+        from .resources.address import AsyncAddressResource
 
-        return AsyncPetsResource(self)
-
-    @cached_property
-    def store(self) -> AsyncStoreResource:
-        """Access to Petstore orders"""
-        from .resources.store import AsyncStoreResource
-
-        return AsyncStoreResource(self)
-
-    @cached_property
-    def users(self) -> AsyncUsersResource:
-        """Operations about user"""
-        from .resources.users import AsyncUsersResource
-
-        return AsyncUsersResource(self)
+        return AsyncAddressResource(self)
 
     @cached_property
     def with_raw_response(self) -> AsyncProntiqWithRawResponse:
@@ -323,16 +285,11 @@ class AsyncProntiq(AsyncAPIClient):
     def qs(self) -> Querystring:
         return Querystring(array_format="comma")
 
-    @override
-    def _auth_headers(self, security: SecurityOptions) -> dict[str, str]:
-        return {
-            **(self._api_key if security.get("api_key", False) else {}),
-        }
-
     @property
-    def _api_key(self) -> dict[str, str]:
+    @override
+    def auth_headers(self) -> dict[str, str]:
         api_key = self.api_key
-        return {"api_key": api_key}
+        return {"X-Api-Key": api_key}
 
     @property
     @override
@@ -435,25 +392,10 @@ class ProntiqWithRawResponse:
         self._client = client
 
     @cached_property
-    def pets(self) -> pets.PetsResourceWithRawResponse:
-        """Everything about your Pets"""
-        from .resources.pets import PetsResourceWithRawResponse
+    def address(self) -> address.AddressResourceWithRawResponse:
+        from .resources.address import AddressResourceWithRawResponse
 
-        return PetsResourceWithRawResponse(self._client.pets)
-
-    @cached_property
-    def store(self) -> store.StoreResourceWithRawResponse:
-        """Access to Petstore orders"""
-        from .resources.store import StoreResourceWithRawResponse
-
-        return StoreResourceWithRawResponse(self._client.store)
-
-    @cached_property
-    def users(self) -> users.UsersResourceWithRawResponse:
-        """Operations about user"""
-        from .resources.users import UsersResourceWithRawResponse
-
-        return UsersResourceWithRawResponse(self._client.users)
+        return AddressResourceWithRawResponse(self._client.address)
 
 
 class AsyncProntiqWithRawResponse:
@@ -463,25 +405,10 @@ class AsyncProntiqWithRawResponse:
         self._client = client
 
     @cached_property
-    def pets(self) -> pets.AsyncPetsResourceWithRawResponse:
-        """Everything about your Pets"""
-        from .resources.pets import AsyncPetsResourceWithRawResponse
+    def address(self) -> address.AsyncAddressResourceWithRawResponse:
+        from .resources.address import AsyncAddressResourceWithRawResponse
 
-        return AsyncPetsResourceWithRawResponse(self._client.pets)
-
-    @cached_property
-    def store(self) -> store.AsyncStoreResourceWithRawResponse:
-        """Access to Petstore orders"""
-        from .resources.store import AsyncStoreResourceWithRawResponse
-
-        return AsyncStoreResourceWithRawResponse(self._client.store)
-
-    @cached_property
-    def users(self) -> users.AsyncUsersResourceWithRawResponse:
-        """Operations about user"""
-        from .resources.users import AsyncUsersResourceWithRawResponse
-
-        return AsyncUsersResourceWithRawResponse(self._client.users)
+        return AsyncAddressResourceWithRawResponse(self._client.address)
 
 
 class ProntiqWithStreamedResponse:
@@ -491,25 +418,10 @@ class ProntiqWithStreamedResponse:
         self._client = client
 
     @cached_property
-    def pets(self) -> pets.PetsResourceWithStreamingResponse:
-        """Everything about your Pets"""
-        from .resources.pets import PetsResourceWithStreamingResponse
+    def address(self) -> address.AddressResourceWithStreamingResponse:
+        from .resources.address import AddressResourceWithStreamingResponse
 
-        return PetsResourceWithStreamingResponse(self._client.pets)
-
-    @cached_property
-    def store(self) -> store.StoreResourceWithStreamingResponse:
-        """Access to Petstore orders"""
-        from .resources.store import StoreResourceWithStreamingResponse
-
-        return StoreResourceWithStreamingResponse(self._client.store)
-
-    @cached_property
-    def users(self) -> users.UsersResourceWithStreamingResponse:
-        """Operations about user"""
-        from .resources.users import UsersResourceWithStreamingResponse
-
-        return UsersResourceWithStreamingResponse(self._client.users)
+        return AddressResourceWithStreamingResponse(self._client.address)
 
 
 class AsyncProntiqWithStreamedResponse:
@@ -519,25 +431,10 @@ class AsyncProntiqWithStreamedResponse:
         self._client = client
 
     @cached_property
-    def pets(self) -> pets.AsyncPetsResourceWithStreamingResponse:
-        """Everything about your Pets"""
-        from .resources.pets import AsyncPetsResourceWithStreamingResponse
+    def address(self) -> address.AsyncAddressResourceWithStreamingResponse:
+        from .resources.address import AsyncAddressResourceWithStreamingResponse
 
-        return AsyncPetsResourceWithStreamingResponse(self._client.pets)
-
-    @cached_property
-    def store(self) -> store.AsyncStoreResourceWithStreamingResponse:
-        """Access to Petstore orders"""
-        from .resources.store import AsyncStoreResourceWithStreamingResponse
-
-        return AsyncStoreResourceWithStreamingResponse(self._client.store)
-
-    @cached_property
-    def users(self) -> users.AsyncUsersResourceWithStreamingResponse:
-        """Operations about user"""
-        from .resources.users import AsyncUsersResourceWithStreamingResponse
-
-        return AsyncUsersResourceWithStreamingResponse(self._client.users)
+        return AsyncAddressResourceWithStreamingResponse(self._client.address)
 
 
 Client = Prontiq

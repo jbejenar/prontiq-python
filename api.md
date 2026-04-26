@@ -1,69 +1,32 @@
-# Shared Types
-
-```python
-from prontiq.types import Order
-```
-
-# Pets
+# Address
 
 Types:
 
 ```python
 from prontiq.types import (
-    Category,
-    Pet,
-    Tag,
-    PetFindByStatusResponse,
-    PetFindByTagsResponse,
-    PetUploadImageResponse,
+    AddressAutocompleteResponse,
+    AddressEnrichResponse,
+    AddressReverseGeocodeResponse,
+    AddressValidateResponse,
 )
 ```
 
 Methods:
 
-- <code title="post /pet">client.pets.<a href="./src/prontiq/resources/pets.py">create</a>(\*\*<a href="src/prontiq/types/pet_create_params.py">params</a>) -> <a href="./src/prontiq/types/pet.py">Pet</a></code>
-- <code title="get /pet/{petId}">client.pets.<a href="./src/prontiq/resources/pets.py">retrieve</a>(pet_id) -> <a href="./src/prontiq/types/pet.py">Pet</a></code>
-- <code title="put /pet">client.pets.<a href="./src/prontiq/resources/pets.py">update</a>(\*\*<a href="src/prontiq/types/pet_update_params.py">params</a>) -> <a href="./src/prontiq/types/pet.py">Pet</a></code>
-- <code title="delete /pet/{petId}">client.pets.<a href="./src/prontiq/resources/pets.py">delete</a>(pet_id) -> None</code>
-- <code title="get /pet/findByStatus">client.pets.<a href="./src/prontiq/resources/pets.py">find_by_status</a>(\*\*<a href="src/prontiq/types/pet_find_by_status_params.py">params</a>) -> <a href="./src/prontiq/types/pet_find_by_status_response.py">PetFindByStatusResponse</a></code>
-- <code title="get /pet/findByTags">client.pets.<a href="./src/prontiq/resources/pets.py">find_by_tags</a>(\*\*<a href="src/prontiq/types/pet_find_by_tags_params.py">params</a>) -> <a href="./src/prontiq/types/pet_find_by_tags_response.py">PetFindByTagsResponse</a></code>
-- <code title="post /pet/{petId}">client.pets.<a href="./src/prontiq/resources/pets.py">update_by_id</a>(pet_id, \*\*<a href="src/prontiq/types/pet_update_by_id_params.py">params</a>) -> None</code>
-- <code title="post /pet/{petId}/uploadImage">client.pets.<a href="./src/prontiq/resources/pets.py">upload_image</a>(pet_id, image, \*\*<a href="src/prontiq/types/pet_upload_image_params.py">params</a>) -> <a href="./src/prontiq/types/pet_upload_image_response.py">PetUploadImageResponse</a></code>
+- <code title="get /v1/address/autocomplete">client.address.<a href="./src/prontiq/resources/address/address.py">autocomplete</a>(\*\*<a href="src/prontiq/types/address_autocomplete_params.py">params</a>) -> <a href="./src/prontiq/types/address_autocomplete_response.py">AddressAutocompleteResponse</a></code>
+- <code title="get /v1/address/enrich">client.address.<a href="./src/prontiq/resources/address/address.py">enrich</a>(\*\*<a href="src/prontiq/types/address_enrich_params.py">params</a>) -> <a href="./src/prontiq/types/address_enrich_response.py">AddressEnrichResponse</a></code>
+- <code title="get /v1/address/reverse">client.address.<a href="./src/prontiq/resources/address/address.py">reverse_geocode</a>(\*\*<a href="src/prontiq/types/address_reverse_geocode_params.py">params</a>) -> <a href="./src/prontiq/types/address_reverse_geocode_response.py">AddressReverseGeocodeResponse</a></code>
+- <code title="get /v1/address/validate">client.address.<a href="./src/prontiq/resources/address/address.py">validate</a>(\*\*<a href="src/prontiq/types/address_validate_params.py">params</a>) -> <a href="./src/prontiq/types/address_validate_response.py">AddressValidateResponse</a></code>
 
-# Store
+## Lookup
 
 Types:
 
 ```python
-from prontiq.types import StoreListInventoryResponse
+from prontiq.types.address import LookupByPostcodeResponse, LookupBySuburbResponse
 ```
 
 Methods:
 
-- <code title="get /store/inventory">client.store.<a href="./src/prontiq/resources/store/store.py">list_inventory</a>() -> <a href="./src/prontiq/types/store_list_inventory_response.py">StoreListInventoryResponse</a></code>
-
-## Orders
-
-Methods:
-
-- <code title="post /store/order">client.store.orders.<a href="./src/prontiq/resources/store/orders.py">create</a>(\*\*<a href="src/prontiq/types/store/order_create_params.py">params</a>) -> <a href="./src/prontiq/types/shared/order.py">Order</a></code>
-- <code title="get /store/order/{orderId}">client.store.orders.<a href="./src/prontiq/resources/store/orders.py">retrieve</a>(order_id) -> <a href="./src/prontiq/types/shared/order.py">Order</a></code>
-- <code title="delete /store/order/{orderId}">client.store.orders.<a href="./src/prontiq/resources/store/orders.py">delete</a>(order_id) -> None</code>
-
-# Users
-
-Types:
-
-```python
-from prontiq.types import User, UserLoginResponse
-```
-
-Methods:
-
-- <code title="post /user">client.users.<a href="./src/prontiq/resources/users.py">create</a>(\*\*<a href="src/prontiq/types/user_create_params.py">params</a>) -> <a href="./src/prontiq/types/user.py">User</a></code>
-- <code title="get /user/{username}">client.users.<a href="./src/prontiq/resources/users.py">retrieve</a>(username) -> <a href="./src/prontiq/types/user.py">User</a></code>
-- <code title="put /user/{username}">client.users.<a href="./src/prontiq/resources/users.py">update</a>(existing_username, \*\*<a href="src/prontiq/types/user_update_params.py">params</a>) -> None</code>
-- <code title="delete /user/{username}">client.users.<a href="./src/prontiq/resources/users.py">delete</a>(username) -> None</code>
-- <code title="post /user/createWithList">client.users.<a href="./src/prontiq/resources/users.py">create_with_list</a>(\*\*<a href="src/prontiq/types/user_create_with_list_params.py">params</a>) -> <a href="./src/prontiq/types/user.py">User</a></code>
-- <code title="get /user/login">client.users.<a href="./src/prontiq/resources/users.py">login</a>(\*\*<a href="src/prontiq/types/user_login_params.py">params</a>) -> str</code>
-- <code title="get /user/logout">client.users.<a href="./src/prontiq/resources/users.py">logout</a>() -> None</code>
+- <code title="get /v1/address/lookup/postcode">client.address.lookup.<a href="./src/prontiq/resources/address/lookup.py">by_postcode</a>(\*\*<a href="src/prontiq/types/address/lookup_by_postcode_params.py">params</a>) -> <a href="./src/prontiq/types/address/lookup_by_postcode_response.py">LookupByPostcodeResponse</a></code>
+- <code title="get /v1/address/lookup/suburb">client.address.lookup.<a href="./src/prontiq/resources/address/lookup.py">by_suburb</a>(\*\*<a href="src/prontiq/types/address/lookup_by_suburb_params.py">params</a>) -> <a href="./src/prontiq/types/address/lookup_by_suburb_response.py">LookupBySuburbResponse</a></code>

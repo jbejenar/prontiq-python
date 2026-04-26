@@ -400,10 +400,10 @@ class TestProntiq:
     def test_validate_headers(self) -> None:
         client = Prontiq(base_url=base_url, api_key=api_key, _strict_response_validation=True)
         request = client._build_request(FinalRequestOptions(method="get", url="/foo"))
-        assert request.headers.get("api_key") == api_key
+        assert request.headers.get("X-Api-Key") == api_key
 
         with pytest.raises(ProntiqError):
-            with update_env(**{"PETSTORE_API_KEY": Omit()}):
+            with update_env(**{"PRONTIQ_API_KEY": Omit()}):
                 client2 = Prontiq(base_url=base_url, api_key=None, _strict_response_validation=True)
             _ = client2
 
@@ -873,20 +873,20 @@ class TestProntiq:
     @mock.patch("prontiq._base_client.BaseClient._calculate_retry_timeout", _low_retry_timeout)
     @pytest.mark.respx(base_url=base_url)
     def test_retrying_timeout_errors_doesnt_leak(self, respx_mock: MockRouter, client: Prontiq) -> None:
-        respx_mock.get("/store/inventory").mock(side_effect=httpx.TimeoutException("Test timeout error"))
+        respx_mock.get("/v1/address/autocomplete").mock(side_effect=httpx.TimeoutException("Test timeout error"))
 
         with pytest.raises(APITimeoutError):
-            client.store.with_streaming_response.list_inventory().__enter__()
+            client.address.with_streaming_response.autocomplete(q="x").__enter__()
 
         assert _get_open_connections(client) == 0
 
     @mock.patch("prontiq._base_client.BaseClient._calculate_retry_timeout", _low_retry_timeout)
     @pytest.mark.respx(base_url=base_url)
     def test_retrying_status_errors_doesnt_leak(self, respx_mock: MockRouter, client: Prontiq) -> None:
-        respx_mock.get("/store/inventory").mock(return_value=httpx.Response(500))
+        respx_mock.get("/v1/address/autocomplete").mock(return_value=httpx.Response(500))
 
         with pytest.raises(APIStatusError):
-            client.store.with_streaming_response.list_inventory().__enter__()
+            client.address.with_streaming_response.autocomplete(q="x").__enter__()
         assert _get_open_connections(client) == 0
 
     @pytest.mark.parametrize("failures_before_success", [0, 2, 4])
@@ -913,9 +913,9 @@ class TestProntiq:
                 return httpx.Response(500)
             return httpx.Response(200)
 
-        respx_mock.get("/store/inventory").mock(side_effect=retry_handler)
+        respx_mock.get("/v1/address/autocomplete").mock(side_effect=retry_handler)
 
-        response = client.store.with_raw_response.list_inventory()
+        response = client.address.with_raw_response.autocomplete(q="x")
 
         assert response.retries_taken == failures_before_success
         assert int(response.http_request.headers.get("x-stainless-retry-count")) == failures_before_success
@@ -937,9 +937,11 @@ class TestProntiq:
                 return httpx.Response(500)
             return httpx.Response(200)
 
-        respx_mock.get("/store/inventory").mock(side_effect=retry_handler)
+        respx_mock.get("/v1/address/autocomplete").mock(side_effect=retry_handler)
 
-        response = client.store.with_raw_response.list_inventory(extra_headers={"x-stainless-retry-count": Omit()})
+        response = client.address.with_raw_response.autocomplete(
+            q="x", extra_headers={"x-stainless-retry-count": Omit()}
+        )
 
         assert len(response.http_request.headers.get_list("x-stainless-retry-count")) == 0
 
@@ -960,9 +962,9 @@ class TestProntiq:
                 return httpx.Response(500)
             return httpx.Response(200)
 
-        respx_mock.get("/store/inventory").mock(side_effect=retry_handler)
+        respx_mock.get("/v1/address/autocomplete").mock(side_effect=retry_handler)
 
-        response = client.store.with_raw_response.list_inventory(extra_headers={"x-stainless-retry-count": "42"})
+        response = client.address.with_raw_response.autocomplete(q="x", extra_headers={"x-stainless-retry-count": "42"})
 
         assert response.http_request.headers.get("x-stainless-retry-count") == "42"
 
@@ -1315,10 +1317,10 @@ class TestAsyncProntiq:
     def test_validate_headers(self) -> None:
         client = AsyncProntiq(base_url=base_url, api_key=api_key, _strict_response_validation=True)
         request = client._build_request(FinalRequestOptions(method="get", url="/foo"))
-        assert request.headers.get("api_key") == api_key
+        assert request.headers.get("X-Api-Key") == api_key
 
         with pytest.raises(ProntiqError):
-            with update_env(**{"PETSTORE_API_KEY": Omit()}):
+            with update_env(**{"PRONTIQ_API_KEY": Omit()}):
                 client2 = AsyncProntiq(base_url=base_url, api_key=None, _strict_response_validation=True)
             _ = client2
 
@@ -1805,20 +1807,20 @@ class TestAsyncProntiq:
     async def test_retrying_timeout_errors_doesnt_leak(
         self, respx_mock: MockRouter, async_client: AsyncProntiq
     ) -> None:
-        respx_mock.get("/store/inventory").mock(side_effect=httpx.TimeoutException("Test timeout error"))
+        respx_mock.get("/v1/address/autocomplete").mock(side_effect=httpx.TimeoutException("Test timeout error"))
 
         with pytest.raises(APITimeoutError):
-            await async_client.store.with_streaming_response.list_inventory().__aenter__()
+            await async_client.address.with_streaming_response.autocomplete(q="x").__aenter__()
 
         assert _get_open_connections(async_client) == 0
 
     @mock.patch("prontiq._base_client.BaseClient._calculate_retry_timeout", _low_retry_timeout)
     @pytest.mark.respx(base_url=base_url)
     async def test_retrying_status_errors_doesnt_leak(self, respx_mock: MockRouter, async_client: AsyncProntiq) -> None:
-        respx_mock.get("/store/inventory").mock(return_value=httpx.Response(500))
+        respx_mock.get("/v1/address/autocomplete").mock(return_value=httpx.Response(500))
 
         with pytest.raises(APIStatusError):
-            await async_client.store.with_streaming_response.list_inventory().__aenter__()
+            await async_client.address.with_streaming_response.autocomplete(q="x").__aenter__()
         assert _get_open_connections(async_client) == 0
 
     @pytest.mark.parametrize("failures_before_success", [0, 2, 4])
@@ -1845,9 +1847,9 @@ class TestAsyncProntiq:
                 return httpx.Response(500)
             return httpx.Response(200)
 
-        respx_mock.get("/store/inventory").mock(side_effect=retry_handler)
+        respx_mock.get("/v1/address/autocomplete").mock(side_effect=retry_handler)
 
-        response = await client.store.with_raw_response.list_inventory()
+        response = await client.address.with_raw_response.autocomplete(q="x")
 
         assert response.retries_taken == failures_before_success
         assert int(response.http_request.headers.get("x-stainless-retry-count")) == failures_before_success
@@ -1869,10 +1871,10 @@ class TestAsyncProntiq:
                 return httpx.Response(500)
             return httpx.Response(200)
 
-        respx_mock.get("/store/inventory").mock(side_effect=retry_handler)
+        respx_mock.get("/v1/address/autocomplete").mock(side_effect=retry_handler)
 
-        response = await client.store.with_raw_response.list_inventory(
-            extra_headers={"x-stainless-retry-count": Omit()}
+        response = await client.address.with_raw_response.autocomplete(
+            q="x", extra_headers={"x-stainless-retry-count": Omit()}
         )
 
         assert len(response.http_request.headers.get_list("x-stainless-retry-count")) == 0
@@ -1894,9 +1896,11 @@ class TestAsyncProntiq:
                 return httpx.Response(500)
             return httpx.Response(200)
 
-        respx_mock.get("/store/inventory").mock(side_effect=retry_handler)
+        respx_mock.get("/v1/address/autocomplete").mock(side_effect=retry_handler)
 
-        response = await client.store.with_raw_response.list_inventory(extra_headers={"x-stainless-retry-count": "42"})
+        response = await client.address.with_raw_response.autocomplete(
+            q="x", extra_headers={"x-stainless-retry-count": "42"}
+        )
 
         assert response.http_request.headers.get("x-stainless-retry-count") == "42"
 
