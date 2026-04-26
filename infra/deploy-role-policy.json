@@ -102,6 +102,7 @@
         "iam:AttachRolePolicy",
         "iam:DetachRolePolicy",
         "iam:ListAttachedRolePolicies",
+        "iam:ListInstanceProfilesForRole",
         "iam:PutRolePolicy",
         "iam:DeleteRolePolicy",
         "iam:GetRolePolicy",
