@@ -180,8 +180,8 @@ Nobody else bundles Australian address validation with ABN verification with LEI
 **All figures in this section are USD/month.** The table below is the **current
 shipped runtime cost model** for the live AWS + legacy-Stripe stack. It does
 **not** include the separate Lago infra layer, because the Lago migration
-sequence (`P1B.14`–`P1B.20`) is underway and is being stood up in the
-separate `prontiq-lago` repo.
+sequence (`P1B.14`–`P1B.20`, including `P1B.18a`) is underway and is being
+stood up in the separate `prontiq-lago` repo.
 
 | Stage                     | OpenSearch                                 | Clerk                    | Mintlify                 | Speakeasy | Stripe          | SES        | Total               |
 | ------------------------- | ------------------------------------------ | ------------------------ | ------------------------ | --------- | --------------- | ---------- | ------------------- |
@@ -1471,6 +1471,10 @@ Prontiq is in a migration window:
 - **Target v-next path:** Lago-centered commercial architecture with
   org-scoped `customerId`, SQS billing-event buffering, Lago event forwarding,
   and webhook reconciliation back into Prontiq enforcement state.
+- **Current Lago rollout state:** platform-side Lago forwarding and webhook
+  reconciliation are deployed in dev and prod, but live commercial traffic is
+  rollout-gated until P1B.18a certifies canonical Lago setup, HMAC webhooks,
+  replay-safe usage forwarding, and rollout flags.
 
 The subsections below retain the **legacy shipped Stripe path** for migration
 and operational history. They are not the forward-looking commercial source of
@@ -1618,11 +1622,11 @@ Timeout budget:
 - invariant: `batch_size * lago_timeout` leaves at least 15 seconds for DynamoDB
   writes, logging, and returning partial batch responses before Lambda deadline
 
-`BILLING_EVENTS_ENABLED` remains default-off until each environment has the
-canonical Lago organization, metric, customer, subscription, and replay smoke
-checks in place. Existing non-canonical Lago organizations are not migration
-targets for this repo; they are left untouched unless explicitly created as
-P1B.16-only test fixtures.
+`BILLING_EVENTS_ENABLED` remains default-off until P1B.18a proves each
+environment has the canonical Lago organization, metric, customer,
+subscription, and replay smoke checks in place. Existing non-canonical Lago
+organizations are not migration targets for this repo; they are left untouched
+unless explicitly created as repo-owned test fixtures for live smoke isolation.
 
 #### 5.6.0.4 Lago Webhook Reconciliation Contract
 

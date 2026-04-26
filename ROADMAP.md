@@ -1,7 +1,7 @@
 # Prontiq Platform — Roadmap
 
 > A unified data API platform for Australian and global open data.
-> Last updated: 2026-04-25 · v1.7
+> Last updated: 2026-04-26 · v1.7
 >
 > **Reference:** `ARCHITECTURE.MD` is the authoritative design doc. This roadmap is the execution plan.
 
@@ -29,8 +29,8 @@
 | Phase     | Epic                       | Tickets | Done      | Target      |
 | --------- | -------------------------- | ------- | --------- | ----------- |
 | **P0**    | Infrastructure Foundation  | 6       | 6/6 ✅    | Week 1      |
-| **P1A**   | API Core (Address)         | 13      | 10/13     | Weeks 2-3   |
-| **P1B**   | Auth & Billing             | 22      | 16/22     | Weeks 3-4   |
+| **P1A**   | API Core (Address)         | 13      | 11/13     | Weeks 2-3   |
+| **P1B**   | Auth & Billing             | 23      | 17/23     | Weeks 3-4   |
 | **P1C**   | Frontend Surfaces          | 9       | 3/9       | Weeks 4-6   |
 | **P1D**   | Docs & SDK                 | 5       | 2/5       | Week 5      |
 | **P1E**   | Ingestion (Phase 1)        | 6       | 4/6       | Week 6      |
@@ -39,7 +39,7 @@
 | **P3**    | GLEIF/LEI + Full Dashboard | 7       | 0/7       | Weeks 11-13 |
 | **P4**    | Shopify + WooCommerce      | 5       | 0/5       | Weeks 14-17 |
 | **P5**    | CVE/NVD + Patents          | 4       | 0/4       | Weeks 18-21 |
-| **Total** |                            | **88**  | **43/88** |             |
+| **Total** |                            | **89**  | **46/89** |             |
 
 ---
 
@@ -1077,13 +1077,13 @@ Options:
 
 > **Goal:** Sign-up → DDB-native API key → hash-verified requests → rate-limited with burst limiter → usage tracked per-month → migrate the commercial layer from the shipped Stripe path to the Lago target architecture.
 >
-> **Current state.** P1B.02, P1B.04, P1B.04b, P1B.05, P1B.06, P1B.07, P1B.08, P1B.09, P1B.10, P1B.11, P1B.12, P1B.14, P1B.15, P1B.16, and P1B.17 are shipped. The DynamoDB-native key model is live in prod, the prod migration was executed on 2026-04-16, the legacy Stripe billing path is live, per-key burst limiting is enforced in the API middleware, SES feedback / quota-email delivery is live in dev + prod, previous-month scopes are now explicitly finalized and closed by the monthly `PqMonthClose` sweep, the auth integration suite is reconciled to the real post-cutover middleware contract, and the Lago migration now has a platform-owned `customerId` contract, feature-flagged SQS billing-event buffer, replay-safe Lago event forwarder, and Lago webhook reconciliation into local enforcement state. SES deliverability hardening is tracked separately in P1B.08a. The next Lago migration ticket is P1B.18.
+> **Current state.** P1B.02, P1B.04, P1B.04b, P1B.05, P1B.06, P1B.07, P1B.08, P1B.09, P1B.10, P1B.11, P1B.12, P1B.14, P1B.15, P1B.16, and P1B.17 are shipped. The DynamoDB-native key model is live in prod, the prod migration was executed on 2026-04-16, the legacy Stripe billing path is live, per-key burst limiting is enforced in the API middleware, SES feedback / quota-email delivery is live in dev + prod, previous-month scopes are now explicitly finalized and closed by the monthly `PqMonthClose` sweep, the auth integration suite is reconciled to the real post-cutover middleware contract, and the Lago migration now has a platform-owned `customerId` contract, feature-flagged SQS billing-event buffer, replay-safe Lago event forwarder, and Lago webhook reconciliation into local enforcement state. The Lago runtime is deployed but rollout-gated until P1B.18a proves canonical Lago setup and replay-safe smoke checks. SES deliverability hardening is tracked separately in P1B.08a. The next Lago migration ticket is P1B.18a.
 >
-> **Lago migration progress.** `3/7` complete for `P1B.14`–`P1B.20`. The `P1B` epic rollup includes completed historical Stripe-path work, so treat the Lago migration sequence as a separate track until the new commercial runtime is implemented.
+> **Lago migration progress.** `4/8` complete for `P1B.14`–`P1B.20` plus `P1B.18a`. The `P1B` epic rollup includes completed historical Stripe-path work, so treat the Lago migration sequence as a separate track until the new commercial runtime is implemented.
 >
 > **Scope boundary.** The hot-path middleware rewrite (hash-based lookup, REDIRECT fallback, new usage-table writes) ships in **P1B.04b** (cutover), NOT in P1B.02. P1B.02 is pure crypto primitives only — no DDB dependency — which is why it remains parallel-safe. P1B.04b flips schema + code atomically once P1B.02 and P1B.04 are both done.
 >
-> **Dependency graph:** P1B.01/.02/.03/.04 can run in parallel. P1B.04b depends on .02 + .04 (needs the crypto module + the tables to write the code cutover). P1B.05 depends on .01/.02/.03/.04. P1B.06 depends on .03/.04. P1B.07/.08 depend on .04. P1B.08a depends on .08. **P1B.09 depends on .02 + .04b** (the burst limiter middleware reads `record.rateLimit` from context — that context is established by the post-cutover auth middleware in .04b, not by the pure crypto module). P1B.10 depends on .03/.04/.06. P1B.11 depends on .10. P1B.12 depends on .05/.09/.04b (tests the cutover end-to-end). The Lago migration sequence is intentionally linear enough to pin the commercial contract before the console UI builds on it: `P1B.14` → `P1B.15/.16` → `P1B.17/.18` → `P1B.19` → `P1B.20`, with `P1C.05` consuming the backend contract from `P1B.18`.
+> **Dependency graph:** P1B.01/.02/.03/.04 can run in parallel. P1B.04b depends on .02 + .04 (needs the crypto module + the tables to write the code cutover). P1B.05 depends on .01/.02/.03/.04. P1B.06 depends on .03/.04. P1B.07/.08 depend on .04. P1B.08a depends on .08. **P1B.09 depends on .02 + .04b** (the burst limiter middleware reads `record.rateLimit` from context — that context is established by the post-cutover auth middleware in .04b, not by the pure crypto module). P1B.10 depends on .03/.04/.06. P1B.11 depends on .10. P1B.12 depends on .05/.09/.04b (tests the cutover end-to-end). The Lago migration sequence is intentionally linear enough to pin the commercial contract before the console UI builds on it: `P1B.14` → `P1B.15/.16` → `P1B.17` → `P1B.18a` → `P1B.18` → `P1B.19` → `P1B.20`, with `P1C.05` consuming the backend contract from `P1B.18`.
 >
 > **Repo-wide Unkey removal** completed in PR #68 (`chore(webhooks): remove Unkey code`) — `packages/webhooks/src/unkey.ts`, `unkeyWebhook` export, `lastSyncedFromUnkey` field, and `UNKEY_*` env vars all gone from main. **No P1B ticket owns this cleanup.** Going forward, P1B tickets only need to guarantee no NEW Unkey references are introduced.
 >
@@ -1227,7 +1227,7 @@ tech_stack:
 
 > Legacy shipped path. This ticket describes the current Stripe-centric
 > implementation and is superseded as forward-looking architecture by the Lago
-> migration sequence (`P1B.14`–`P1B.20`).
+> migration sequence (`P1B.14`–`P1B.20`, including `P1B.18a`).
 
 #### User Story
 
@@ -1384,7 +1384,8 @@ path is the Lago migration sequence, not new Stripe purchase orchestration.
 
 **Out — Do Not Implement:**
 
-- all new commercial implementation work → `P1B.14`–`P1B.20`
+- all new commercial implementation work → `P1B.14`–`P1B.20`, including
+  `P1B.18a`
 
 ---
 
@@ -1455,8 +1456,8 @@ dashboard, and billing system disagreeing about who the customer actually is.
 ##### Operational
 
 - [x] Migration rules are explicit before downstream Lago tickets start
-  - `Verify:` `P1B.15`–`P1B.18` can consume `customerId` without redefining
-    identity semantics
+  - `Verify:` `P1B.15`–`P1B.18a` and `P1B.18` can consume `customerId`
+    without redefining identity semantics
   - `Evidence:` ADR-013, ADR-014, ADR-015, architecture docs, and Lago runbooks
     define the identity, table, external-id mapping, backfill, conflict, and
     hot-path denormalization contracts
@@ -1761,7 +1762,104 @@ PAYG-vs-capped reconciliation, drift handling
 
 - initial customer mapping → `P1B.14`
 - queue emitter / forwarder implementation → `P1B.15` / `P1B.16`
+- Lago live setup and replay smoke certification → `P1B.18a`
 - billing UI rendering → `P1C.05`
+
+---
+
+### Ticket P1B.18a — Lago Live Setup + Smoke Certification
+
+```yaml
+id: P1B.18a
+title: Lago Live Setup + Smoke Certification
+status: pending
+priority: p0-critical
+epic: P1B
+persona: [ops, builder]
+depends_on: [P1B.17]
+completed: null
+tech_stack:
+  billing: Lago + GitHub Environments + SST
+```
+
+#### User Story
+
+As an operator, I need the deployed Lago event-forwarding and webhook
+reconciliation paths certified against real dev/prod Lago configuration before
+the console billing contract or Stripe-retirement cutover depends on them.
+
+#### Problem Statement
+
+P1B.15, P1B.16, and P1B.17 shipped the platform-side Lago runtime, but the live
+commercial path is intentionally rollout-gated. `BILLING_EVENTS_ENABLED`,
+`LAGO_WEBHOOK_RECONCILIATION_ENABLED`, and `COUNTER_PERIOD_SOURCE` must not be
+flipped by assumption. Without a dedicated certification ticket, the roadmap
+jumps from deployed-but-disabled plumbing to console billing APIs without proof
+that canonical Lago orgs, metrics, customers, subscriptions, webhook delivery,
+and replay safety work end to end.
+
+#### Definition of Done
+
+##### Functional
+
+- [ ] Canonical Lago setup is verified in dev and prod
+  - `Verify:` Lago has canonical environment organizations `prontiq-dev` and
+    `prontiq`
+  - `Evidence:` no unrelated Lago organizations are mutated; any test orgs are
+    created specifically for this repo and environment
+- [ ] Lago metric and plan contracts match platform constants
+  - `Verify:` metric code is `prontiq_address_requests` and sums
+    `properties.credits`
+  - `Evidence:` Lago plan codes used by smoke customers are platform tier codes
+    such as `free` and `payg`
+- [ ] Customer and subscription external IDs match the platform contract
+  - `Verify:` test Lago customers use `external_id = pq_cust_<ulid>`
+  - `Evidence:` subscriptions use `external_id = pq_sub_<same ulid>`
+- [ ] Lago webhook endpoint is configured with HMAC
+  - `Verify:` endpoint targets `{api-url}/webhooks/lago`, uses HMAC, and
+    subscribes only to consumed events from P1B.17
+  - `Evidence:` unsigned requests still return `400 invalid_signature`; valid
+    low-risk test events complete in `prontiq-lago-webhook-events`
+- [ ] Lago event forwarding is replay-safe against the live service
+  - `Verify:` a smoke billing event reaches Lago once; the event is generated
+    by a repo-owned helper or documented command that derives `eventId` through
+    the production billing-event contract
+  - `Evidence:` replaying the same event uses the same `transaction_id`, does
+    not double-count usage, and does not rely on hand-built event IDs
+- [ ] Rollout flags are enabled only after evidence exists
+  - `Verify:` `LAGO_WEBHOOK_RECONCILIATION_ENABLED=true` is set only after
+    unsigned-route preflight and Lago endpoint configuration are ready, then a
+    valid webhook smoke must complete; `BILLING_EVENTS_ENABLED=true` is set
+    only after controlled forwarder replay smoke passes while the API producer
+    is still off
+  - `Evidence:` prod keeps `COUNTER_PERIOD_SOURCE=calendar` unless a later
+    cutover decision explicitly approves Lago billing-period scopes
+
+##### Operational
+
+- [ ] Live smoke evidence is recorded without secrets
+  - `Verify:` PR/session notes include run IDs, table status names, and Lago
+    object identifiers where safe
+  - `Evidence:` no API keys, webhook secrets, raw API keys, or private customer
+    data are committed or pasted into docs
+- [ ] Observability is checked after enabling flags
+  - `Verify:` SQS age/DLQ alarms, `PqLagoEventForwarderErrors`, and
+    `PqLagoWebhookErrors` remain healthy after smoke
+  - `Evidence:` accepted delivery-ledger rows and completed webhook-ledger rows
+    exist for the smoke customer
+
+#### Scope
+
+**In:** canonical Lago setup verification, live smoke customers/subscriptions,
+webhook endpoint configuration, replay-safe usage-event smoke, rollout flag
+enablement, evidence capture, and runbook updates.
+
+**Out — Do Not Implement:**
+
+- console billing proxy/API contract → `P1B.18`
+- legacy Stripe retirement/cutover → `P1B.19`
+- legacy Stripe config/surface cleanup → `P1B.20`
+- browser billing UI rendering → `P1C.05`
 
 ---
 
@@ -1774,7 +1872,7 @@ status: pending
 priority: p1-high
 epic: P1B
 persona: [api-consumer]
-depends_on: [P1B.17]
+depends_on: [P1B.18a]
 completed: null
 tech_stack:
   billing: Lago + account APIs
@@ -1875,9 +1973,11 @@ rollback plan.
 ##### Functional
 
 - [ ] Cutover preconditions are defined and satisfied
-  - `Verify:` ticket requires `P1B.14`–`P1B.18` to be shipped and verified
+  - `Verify:` ticket requires `P1B.14`–`P1B.18a` and `P1B.18` to be shipped
+    and verified
   - `Evidence:` cutover checklist references customer mapping, event buffer,
-    forwarder, reconciliation, and console billing contract as prerequisites
+    forwarder, reconciliation, live Lago smoke certification, and console
+    billing contract as prerequisites
 - [ ] Retirement scope is explicit
   - `Verify:` roadmap names the legacy Stripe cron / month-close /
     control-plane billing path being retired
@@ -1912,7 +2012,8 @@ post-cutover documentation and operations cleanup
 
 **Out — Do Not Implement:**
 
-- initial customer / event / reconciliation contract work → `P1B.14`–`P1B.18`
+- initial customer / event / reconciliation / live-smoke contract work →
+  `P1B.14`–`P1B.18a` and `P1B.18`
 - legacy config / env / frontend-surface cleanup → `P1B.20`
 - future commercial model expansion beyond Free + PAYG
 
@@ -5244,4 +5345,4 @@ At completion of Phase 5:
 - **Zero-downtime** data updates via manifest-driven ingestion
 - **Full dashboard** with key management, usage, billing, team, playground
 - **Comprehensive docs** auto-generated from OpenAPI spec
-- **88 tickets completed**
+- **89 tickets completed**

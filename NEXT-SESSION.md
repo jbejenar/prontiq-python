@@ -4,9 +4,33 @@
 > the time they were written, not the current source of truth. Use
 > `ROADMAP.md`, `NEXT-WORK.md`, and `README.md` for current execution status.
 
+## Session 35 — 2026-04-26
+
+**Focus:** P1B.18a Lago live setup + smoke certification; next up P1B.18
+console billing proxy surfaces.
+
+### Completed
+
+- **P1B.18a was added as the missing roadmap owner.** The deployed Lago runtime
+  is no longer treated as implicitly ready just because P1B.16 and P1B.17 are
+  shipped.
+- **Rollout evidence is explicit.** Canonical Lago orgs, metric
+  `prontiq_address_requests`, customer/subscription external IDs, HMAC webhook
+  delivery, forwarder replay safety, and rollout flags are all owned by
+  P1B.18a.
+- **P1B.18 remains product/API contract work.** Console billing proxy surfaces
+  should start only after live Lago setup and smoke certification are complete.
+
+### Next session should start with
+
+1. Start `P1B.18a — Lago Live Setup + Smoke Certification`.
+2. Use `docs/runbooks/lago-live-smoke.md` as the operator checklist.
+3. Leave unrelated Lago organizations untouched; create repo-owned smoke
+   customers/subscriptions only for this repo and environment.
+
 ## Session 34 — 2026-04-25
 
-**Focus:** P1B.17 Lago webhook sync + credit-counter reconciliation; next up P1B.18 console billing proxy surfaces.
+**Focus:** P1B.17 Lago webhook sync + credit-counter reconciliation; next up P1B.18a Lago live setup + smoke certification.
 
 ### Completed
 
@@ -30,7 +54,7 @@
 
 ### Next session should start with
 
-1. Start `P1B.18 — Console Billing Proxy Surfaces + Plan Changes`.
+1. Start `P1B.18a — Lago Live Setup + Smoke Certification`.
 2. Use the P1B.17 local-state contract; do not call Lago directly from browser
    clients or address API request auth.
 3. Keep legacy Stripe surfaces treated as migration context, not target UX.
@@ -127,7 +151,7 @@
 ### Completed
 
 - **Canonical commercial architecture direction changed.** `ARCHITECTURE.MD` now presents Lago as the target commercial system of record, while the currently shipped Stripe webhook / billing cron / month-close path is retained only as legacy implementation context.
-- **Roadmap and handoff docs are now migration-oriented.** The forward workstream is no longer Stripe Checkout-session orchestration. It is the Lago migration sequence: `P1B.14` through `P1B.20`.
+- **Roadmap and handoff docs are now migration-oriented.** The forward workstream is no longer Stripe Checkout-session orchestration. It is the Lago migration sequence: `P1B.14` through `P1B.20`; current planning now also includes inserted certification ticket `P1B.18a`.
 - **Repo guidance is now normalized.** README, AGENTS, frontend strategy,
   Mintlify guides, app README/HINTS, ADRs, and runbooks now align to the Lago
   target architecture, and the absorbed source draft was removed from the repo

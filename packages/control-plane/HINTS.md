@@ -17,5 +17,6 @@
   closed; do not silently downgrade to Free or grant PAYG.
 - Do not mutate Stripe registries from Lago webhook reconciliation.
 - Do not mutate existing non-canonical Lago organizations during platform
-  tests. Create P1B.16-specific test orgs only when a live Lago smoke test needs
-  isolation.
+  tests. P1B.18a live smoke work may create repo-owned test
+  customers/subscriptions in the canonical environment orgs, or dedicated
+  repo-owned test orgs only when isolation is required.

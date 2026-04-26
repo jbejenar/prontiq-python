@@ -140,6 +140,10 @@ Lago.
 
 ## Backfill and rollout
 
+For full P1B.18a live certification, use
+`docs/runbooks/lago-live-smoke.md`. The checklist below remains the
+forwarder-specific portion.
+
 Before setting `BILLING_EVENTS_ENABLED=true` in a deployed stage:
 
 1. deploy the `prontiq-customers` table and billing queues
