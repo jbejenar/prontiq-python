@@ -1,9 +1,9 @@
 # NEXT-WORK.md — Active Sprint
 
 > Extracted from ROADMAP.md. This is what agents should work on NOW.
-> Last updated: 2026-04-26 (P1B.18b prod go-live cleanup gate added)
+> Last updated: 2026-04-26 (P1B.21 final prod cleanup gate moved after Lago work)
 
-## Current Phase: P1B.18a / P1B.18b Go-Live Readiness
+## Current Phase: P1B.18a / P1B.18
 
 ### What's Live
 
@@ -57,13 +57,9 @@
   repo-owned smoke helper is in place, API-produced billing events have been
   smoke-tested in dev and prod, prod `BILLING_EVENTS_ENABLED=true` is deployed,
   `COUNTER_PERIOD_SOURCE` remains `calendar`, and alert policy is ALARM-only
-  for email-backed operational alarms. Do not treat this as full customer
-  go-live readiness until remaining certification and cleanup checks are closed.
-- **P1B.18b pending prod go-live cleanup/readiness.** Before customer-facing
-  billing surfaces or Stripe retirement depend on prod Lago, inventory and
-  clean or explicitly retain smoke/test artifacts, recheck prod Lago catalog,
-  flags, queues, alarms, DNS/TLS, and SES auth, then run one post-cleanup prod
-  smoke per `docs/runbooks/prod-go-live-cleanup.md`.
+  for email-backed operational alarms. Retained prod smoke fixtures should stay
+  available for the remaining Lago migration tickets, but must be clearly
+  labelled/inventoried as test-only.
 - **P1F.02 complete (2026-04-19).** The prod observability baseline is live and verified: `PqIngestAlerts` prod email subscriptions via `ALERT_EMAILS`, `prontiq-production` dashboard, prod alarms for address API 5xx/Lambda error rate and OpenSearch yellow/red/low-storage, `PqApi` X-Ray tracing with DynamoDB + OpenSearch segments, and structured JSON logs across Lambda execution paths. SNS email delivery was verified by forcing `PqApiLambdaErrorRate` to `ALARM` and confirming receipt on a confirmed subscriber.
 - **P1F.03 complete (2026-04-20).** `@prontiq/observability` is live in `dev` and `prod`, Honeycomb traces are verified for `prontiq-api`, `prontiq-webhooks`, `prontiq-billing`, and `prontiq-ingestion` in both environments, and the deployed-stage rollback path is `HONEYCOMB_ENABLED=false` rather than secret removal.
 - **P1C.07 complete (2026-04-20).** `apps/landing` and `apps/console` now have Tailwind v3.4, app-local shadcn/ui primitives, dark mode, responsive shell foundations, and app-local Vitest + Testing Library. `apps/console` now carries an env-gated real Clerk auth boundary that builds/tests cleanly without Clerk keys and enables real sign-in when they are present.
@@ -131,14 +127,10 @@ POST /v1/account/setup  (Clerk JWT; not API key — recovery provisioning)
 - **P1B.18a — Lago live setup + smoke certification**
   - Repo-owned helper and API-produced usage smoke are in place.
   - Remaining evidence must not be skipped or papered over before go-live.
-- **P1B.18b — Prod go-live cleanup + readiness audit**
-  - Must inventory and clean/disable/relabel/retain repo-owned prod smoke
-    artifacts before customer go-live.
-  - Must re-run one controlled post-cleanup prod smoke and prove queue/DLQ and
-    alarm health.
 - **P1B.18 — Console billing proxy surfaces + plan changes**
 - **P1B.19 — Stripe legacy billing retirement and cutover**
 - **P1B.20 — Legacy Stripe config and surface cleanup**
+- **P1B.21 — Final prod go-live cleanup + smoke fixture retirement**
 
 ### 2. Finish ingestion hardening
 
@@ -155,18 +147,15 @@ POST /v1/account/setup  (Clerk JWT; not API key — recovery provisioning)
 
 Recommended priority:
 
-1. P1B.18b — clean or explicitly retain prod smoke/test artifacts and prove
-   prod Lago is go-live ready after cleanup. Start only if the P1B.18a smoke
-   subset exists: repo-owned prod smoke customer/key/subscription, at least one
-   API-originated accepted delivery row, empty source queue/DLQ, and no active
-   CloudWatch alarms.
-2. P1B.18a — close any remaining live-certification evidence that P1B.18b
-   exposes as incomplete.
-3. P1B.18 — expose console billing surfaces on top of the Lago-backed contract.
-4. P1B.19 / P1B.20 — cut over the legacy Stripe billing path and remove the retired config/surfaces.
+1. P1B.18a — close remaining live-certification evidence and ensure retained
+   prod smoke fixtures are clearly labelled/inventoried as reusable test data.
+2. P1B.18 — expose console billing surfaces on top of the Lago-backed contract.
+3. P1B.19 / P1B.20 — cut over the legacy Stripe billing path and remove the retired config/surfaces.
+4. P1B.21 — retire or explicitly retain prod smoke fixtures after Lago work is complete.
 5. P1C.02 / P1C.03 — continue the console overview and API-key experience after the commercial event path is underway.
 
-Before starting `P1B.18b`, read:
+After closing the remaining `P1B.18a` evidence and before starting `P1B.18`,
+read:
 
 - `ARCHITECTURE.MD` (commercial implementation-status section + Lago target flow)
 - `docs/decisions/013-platform-owned-customer-id.md`
@@ -182,7 +171,6 @@ Before starting `P1B.18b`, read:
 - `docs/decisions/023-lago-billing-period-counter-scopes.md`
 - `docs/decisions/024-lago-plan-code-equals-tier.md`
 - `docs/runbooks/lago-live-smoke.md`
-- `docs/runbooks/prod-go-live-cleanup.md`
 - `docs/runbooks/lago-billing-events.md`
 - `docs/runbooks/lago-webhook-reconciliation.md`
 - `docs/FRONTEND-STRATEGY.md`
@@ -193,10 +181,10 @@ Reason:
 - The legacy Stripe auth/billing path is effectively complete, but the forward
   commercial workstream is now the Lago migration sequence.
 - Honeycomb backend tracing is now implemented and verified in deployed `dev` and `prod`.
-- The next product milestone still needs Lago-backed billing state and plan
-  changes in the console, but prod smoke/test residue must be cleaned or
-  explicitly retained first so `P1B.18` does not build on ambiguous go-live
-  state.
+- The next product milestone needs Lago-backed billing state and plan changes
+  in the console. Since there are no real customers yet, retained prod smoke
+  fixtures are useful validation data for the remaining Lago tickets and should
+  not be destructively cleaned until `P1B.21`.
 - `P1C.02` and `P1C.03` still matter, but they should follow the commercial
   contract work instead of preceding it.
 - API Gateway caching remains a pragmatic performance/cost option if platform work is preferred over dashboard work.

@@ -180,7 +180,7 @@ Nobody else bundles Australian address validation with ABN verification with LEI
 **All figures in this section are USD/month.** The table below is the **current
 shipped runtime cost model** for the live AWS + legacy-Stripe stack. It does
 **not** include the separate Lago infra layer, because the Lago migration
-sequence (`P1B.14`–`P1B.20`, including `P1B.18a`/`P1B.18b`) is underway and is
+sequence (`P1B.14`–`P1B.21`, including `P1B.18a`) is underway and is
 being stood up in the separate `prontiq-lago` repo.
 
 | Stage                     | OpenSearch                                 | Clerk                    | Mintlify                 | Speakeasy | Stripe          | SES        | Total               |
@@ -1472,15 +1472,14 @@ Prontiq is in a migration window:
   org-scoped `customerId`, SQS billing-event buffering, Lago event forwarding,
   and webhook reconciliation back into Prontiq enforcement state.
 - **Current Lago rollout state:** platform-side Lago forwarding and webhook
-  reconciliation code is deployed in dev and prod. P1B.18a has the repo-owned
-  smoke-event helper and API-produced usage-forwarding smoke evidence in
-  dev/prod. P1B.18b may start once the production smoke subset has created real
-  artifacts to clean up: repo-owned smoke customer/key/subscription, at least
-  one API-originated accepted delivery row, empty queue/DLQ, and no active
-  alarms. P1B.18b is the customer go-live gate: prod smoke/test artifacts must
-  be cleaned, disabled, relabelled, or explicitly retained as audit evidence and
-  any remaining certification gaps must be closed before console billing
-  surfaces or Stripe retirement depend on the production Lago path.
+  reconciliation code is deployed in dev and prod. P1B.18a is still in
+  progress: the repo-owned smoke-event helper exists and API-produced
+  usage-forwarding smoke evidence exists in dev/prod, but remaining
+  live-certification evidence and retained fixture governance still need
+  closure. Retained prod smoke fixtures are expected to support P1B.18, P1B.19,
+  and P1B.20; they must be clearly labelled/inventoried as test-only rather
+  than destructively cleaned now. P1B.21 is the final customer go-live cleanup
+  gate after the Lago migration completes.
 
 The subsections below retain the **legacy shipped Stripe path** for migration
 and operational history. They are not the forward-looking commercial source of
@@ -1630,16 +1629,15 @@ Timeout budget:
 
 `BILLING_EVENTS_ENABLED` can be enabled only after the target environment has
 canonical Lago organization, metric, customer, subscription, and replay-smoke
-evidence in place. P1B.18b may then enable `BILLING_EVENTS_ENABLED=true` for the
-controlled post-cleanup API-originated smoke: deploy the flag, verify the live
-Lambda environment, send exactly one smoke request, confirm one accepted
-delivery with empty source queue/DLQ and healthy alarms, then either leave the
-flag enabled as the recorded go-live posture or roll it back to `false` on
-failure. Certification must use the repo-owned smoke helper or an equivalent
-command that derives `eventId` through the production billing-event contract;
-hand-built transaction IDs are not acceptable. Existing non-canonical Lago
-organizations are not migration targets for this repo; they are left untouched
-unless explicitly created as repo-owned test fixtures for live smoke isolation.
+evidence in place. Retained smoke fixtures may be reused by later Lago migration
+tickets as long as they are clearly labelled/inventoried as test-only and do not
+mutate unrelated Lago organizations. Final fixture retirement and the last
+post-cleanup API-originated smoke belong to P1B.21 after P1B.20. Certification
+must use the repo-owned smoke helper or an equivalent command that derives
+`eventId` through the production billing-event contract; hand-built transaction
+IDs are not acceptable. Existing non-canonical Lago organizations are not
+migration targets for this repo; they are left untouched unless explicitly
+created as repo-owned test fixtures for live smoke isolation.
 
 #### 5.6.0.4 Lago Webhook Reconciliation Contract
 

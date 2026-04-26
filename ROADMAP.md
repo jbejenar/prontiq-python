@@ -1077,13 +1077,13 @@ Options:
 
 > **Goal:** Sign-up → DDB-native API key → hash-verified requests → rate-limited with burst limiter → usage tracked per-month → migrate the commercial layer from the shipped Stripe path to the Lago target architecture.
 >
-> **Current state.** P1B.02, P1B.04, P1B.04b, P1B.05, P1B.06, P1B.07, P1B.08, P1B.09, P1B.10, P1B.11, P1B.12, P1B.14, P1B.15, P1B.16, and P1B.17 are shipped. The DynamoDB-native key model is live in prod, the prod migration was executed on 2026-04-16, the legacy Stripe billing path is live, per-key burst limiting is enforced in the API middleware, SES feedback / quota-email delivery is live in dev + prod, previous-month scopes are now explicitly finalized and closed by the monthly `PqMonthClose` sweep, the auth integration suite is reconciled to the real post-cutover middleware contract, and the Lago migration now has a platform-owned `customerId` contract, SQS billing-event buffer, replay-safe Lago event forwarder, and Lago webhook reconciliation code in local enforcement state. P1B.18a has shipped the repo-owned smoke helper and proved API-produced billing events in dev/prod, but it is not a customer go-live gate by itself; P1B.18b must clean or clearly isolate prod smoke/test artifacts and prove the production commercial plane is ready for real customers. SES deliverability hardening is tracked separately in P1B.08a. The next Lago migration ticket is P1B.18b.
+> **Current state.** P1B.02, P1B.04, P1B.04b, P1B.05, P1B.06, P1B.07, P1B.08, P1B.09, P1B.10, P1B.11, P1B.12, P1B.14, P1B.15, P1B.16, and P1B.17 are shipped. The DynamoDB-native key model is live in prod, the prod migration was executed on 2026-04-16, the legacy Stripe billing path is live, per-key burst limiting is enforced in the API middleware, SES feedback / quota-email delivery is live in dev + prod, previous-month scopes are now explicitly finalized and closed by the monthly `PqMonthClose` sweep, the auth integration suite is reconciled to the real post-cutover middleware contract, and the Lago migration now has a platform-owned `customerId` contract, SQS billing-event buffer, replay-safe Lago event forwarder, and Lago webhook reconciliation code in local enforcement state. P1B.18a is in progress: the repo-owned smoke helper exists and API-produced billing events have been proved in dev/prod, but remaining live-certification evidence and retained fixture governance still need closure. Retained prod smoke fixtures are expected to remain available for the remaining Lago migration work, but they must be clearly labelled/inventoried as test-only. Final destructive cleanup is deferred to P1B.21 after P1B.20. SES deliverability hardening is tracked separately in P1B.08a. The next Lago migration work is to finish P1B.18a, then start P1B.18.
 >
-> **Lago migration progress.** `4/9` complete for `P1B.14`–`P1B.20` plus `P1B.18a`/`P1B.18b`. The `P1B` epic rollup includes completed historical Stripe-path work, so treat the Lago migration sequence as a separate track until the new commercial runtime is implemented.
+> **Lago migration progress.** `4/9` complete for `P1B.14`–`P1B.21` plus `P1B.18a`. The `P1B` epic rollup includes completed historical Stripe-path work, so treat the Lago migration sequence as a separate track until the new commercial runtime is implemented.
 >
 > **Scope boundary.** The hot-path middleware rewrite (hash-based lookup, REDIRECT fallback, new usage-table writes) ships in **P1B.04b** (cutover), NOT in P1B.02. P1B.02 is pure crypto primitives only — no DDB dependency — which is why it remains parallel-safe. P1B.04b flips schema + code atomically once P1B.02 and P1B.04 are both done.
 >
-> **Dependency graph:** P1B.01/.02/.03/.04 can run in parallel. P1B.04b depends on .02 + .04 (needs the crypto module + the tables to write the code cutover). P1B.05 depends on .01/.02/.03/.04. P1B.06 depends on .03/.04. P1B.07/.08 depend on .04. P1B.08a depends on .08. **P1B.09 depends on .02 + .04b** (the burst limiter middleware reads `record.rateLimit` from context — that context is established by the post-cutover auth middleware in .04b, not by the pure crypto module). P1B.10 depends on .03/.04/.06. P1B.11 depends on .10. P1B.12 depends on .05/.09/.04b (tests the cutover end-to-end). The Lago migration sequence is intentionally linear enough to pin the commercial contract before the console UI builds on it: `P1B.14` → `P1B.15/.16` → `P1B.17` → `P1B.18a smoke subset` → `P1B.18b` → close remaining `P1B.18a` evidence → `P1B.18` → `P1B.19` → `P1B.20`, with `P1C.05` consuming the backend contract from `P1B.18`.
+> **Dependency graph:** P1B.01/.02/.03/.04 can run in parallel. P1B.04b depends on .02 + .04 (needs the crypto module + the tables to write the code cutover). P1B.05 depends on .01/.02/.03/.04. P1B.06 depends on .03/.04. P1B.07/.08 depend on .04. P1B.08a depends on .08. **P1B.09 depends on .02 + .04b** (the burst limiter middleware reads `record.rateLimit` from context — that context is established by the post-cutover auth middleware in .04b, not by the pure crypto module). P1B.10 depends on .03/.04/.06. P1B.11 depends on .10. P1B.12 depends on .05/.09/.04b (tests the cutover end-to-end). The Lago migration sequence is intentionally linear enough to pin the commercial contract before the console UI builds on it: `P1B.14` → `P1B.15/.16` → `P1B.17` → `P1B.18a` → `P1B.18` → `P1B.19` → `P1B.20` → `P1B.21`, with `P1C.05` consuming the backend contract from `P1B.18`.
 >
 > **Repo-wide Unkey removal** completed in PR #68 (`chore(webhooks): remove Unkey code`) — `packages/webhooks/src/unkey.ts`, `unkeyWebhook` export, `lastSyncedFromUnkey` field, and `UNKEY_*` env vars all gone from main. **No P1B ticket owns this cleanup.** Going forward, P1B tickets only need to guarantee no NEW Unkey references are introduced.
 >
@@ -1227,7 +1227,7 @@ tech_stack:
 
 > Legacy shipped path. This ticket describes the current Stripe-centric
 > implementation and is superseded as forward-looking architecture by the Lago
-> migration sequence (`P1B.14`–`P1B.20`, including `P1B.18a`/`P1B.18b`).
+> migration sequence (`P1B.14`–`P1B.21`, including `P1B.18a`).
 
 #### User Story
 
@@ -1384,8 +1384,8 @@ path is the Lago migration sequence, not new Stripe purchase orchestration.
 
 **Out — Do Not Implement:**
 
-- all new commercial implementation work → `P1B.14`–`P1B.20`, including
-  `P1B.18a`/`P1B.18b`
+- all new commercial implementation work → `P1B.14`–`P1B.21`, including
+  `P1B.18a`
 
 ---
 
@@ -1456,7 +1456,7 @@ dashboard, and billing system disagreeing about who the customer actually is.
 ##### Operational
 
 - [x] Migration rules are explicit before downstream Lago tickets start
-  - `Verify:` `P1B.15`–`P1B.18b` and `P1B.18` can consume `customerId`
+  - `Verify:` `P1B.15`–`P1B.18a` and `P1B.18` can consume `customerId`
     without redefining identity semantics
   - `Evidence:` ADR-013, ADR-014, ADR-015, architecture docs, and Lago runbooks
     define the identity, table, external-id mapping, backfill, conflict, and
@@ -1826,6 +1826,12 @@ and replay safety work end to end.
     the production billing-event contract
   - `Evidence:` replaying the same event uses the same `transaction_id`, does
     not double-count usage, and does not rely on hand-built event IDs
+- [ ] Retained smoke fixtures are governed as test-only data
+  - `Verify:` prod smoke customer, subscription, API key, and local evidence are
+    inventoried with safe identifiers and clearly labelled as reusable test
+    fixtures for this repo
+  - `Evidence:` retained fixtures stay available through P1B.18/P1B.19/P1B.20;
+    destructive retirement is deferred to P1B.21
 - [x] Repo-owned smoke helper exists for controlled usage events
   - `Verify:` `pnpm --filter @prontiq/control-plane lago:smoke:event` builds
     and validates a `BillingUsageEventV1` from live DynamoDB smoke state
@@ -1866,132 +1872,11 @@ enablement, evidence capture, and runbook updates.
 
 **Out — Do Not Implement:**
 
-- production go-live cleanup/readiness gate → `P1B.18b`
 - console billing proxy/API contract → `P1B.18`
 - legacy Stripe retirement/cutover → `P1B.19`
 - legacy Stripe config/surface cleanup → `P1B.20`
+- final prod smoke-fixture retirement / destructive cleanup → `P1B.21`
 - browser billing UI rendering → `P1C.05`
-
----
-
-### Ticket P1B.18b — Prod Go-Live Cleanup + Readiness Audit
-
-```yaml
-id: P1B.18b
-title: Prod Go-Live Cleanup + Readiness Audit
-status: pending
-priority: p0-critical
-epic: P1B
-persona: [ops]
-depends_on: [P1B.17]
-completed: null
-tech_stack:
-  billing: Lago + DynamoDB + SQS + CloudWatch + GitHub Environments
-```
-
-#### User Story
-
-As an operator, I need production smoke/test artifacts cleaned or explicitly
-isolated before customer go-live so that real customers start on a clean,
-observable Lago-backed commercial plane with no test data ambiguity.
-
-#### Problem Statement
-
-The P1B.18a smoke subset has deliberately created and exercised repo-owned
-smoke customers, API keys, usage counters, delivery-ledger rows, Lago
-subscriptions, and rollout flags in production to prove the API-originated
-usage path. That evidence was necessary, but it must not become ambiguous
-production residue. Before P1B.18 builds customer-facing billing surfaces or
-P1B.19 cuts over legacy Stripe operations, operators need a single
-cleanup/readiness gate that distinguishes retained audit evidence from
-deleteable test fixtures, closes any remaining P1B.18a certification gaps found
-during cleanup, and confirms all prod toggles, queues, alarms, DNS/TLS, and
-email-auth posture are ready for real customer traffic.
-
-#### Definition of Done
-
-##### Functional
-
-- [ ] Required smoke subset exists before cleanup starts
-  - `Verify:` repo-owned prod smoke customer/key/subscription exists, at least
-    one API-originated prod billing event has reached the delivery ledger, and
-    the source queue/DLQ are empty before fixture disposition begins
-  - `Evidence:` safe smoke customer/subscription/event identifiers and deploy
-    run IDs are recorded; raw API keys, hashes, secrets, and local secret files
-    are not recorded
-- [ ] Prod smoke/test inventory is complete
-  - `Verify:` inventory names every repo-owned prod smoke org/customer/API key,
-    Lago customer/subscription, `prontiq-usage` row, billing delivery-ledger
-    row, webhook-ledger row if present, and local ignored file used to drive the
-    smoke
-  - `Evidence:` inventory explicitly separates deleteable fixtures from retained
-    audit/replay evidence; no raw API keys, hashes, secrets, or private customer
-    data are recorded
-- [ ] Delete, disable, or relabel decisions are made per artifact class
-  - `Verify:` API keys used only for prod smoke are revoked or clearly retained
-    as named go-live smoke keys; Lago smoke customers/subscriptions are archived,
-    deleted, or labelled as test-only according to Lago capabilities; DynamoDB
-    usage counters are either removed or marked as retained smoke evidence
-  - `Evidence:` cleanup log references safe identifiers and final disposition
-    for each artifact class
-- [ ] Prod runtime toggles are in the intended go-live posture
-  - `Verify:` `BILLING_EVENTS_ENABLED`, `COUNTER_PERIOD_SOURCE`,
-    `LAGO_WEBHOOK_RECONCILIATION_ENABLED`, SES, Clerk, and migration-era
-    Stripe/Lago flags are checked from GitHub Environment config and the live
-    Lambda environment after deploy
-  - `Evidence:` final values are recorded without secrets, with explicit
-    rationale for any flag still disabled
-- [ ] Prod Lago catalog is canonical
-  - `Verify:` only intended production metric/plan codes are go-live relevant;
-    test-only labels do not appear on customer-facing production catalog items
-  - `Evidence:` metric `prontiq_address_requests`, plan codes such as `free` /
-    `payg`, and canonical org `prontiq` are verified; unrelated Lago orgs remain
-    untouched
-- [ ] Prod API-originated smoke is re-run after cleanup
-  - `Verify:` one controlled post-cleanup smoke uses a fresh or intentionally
-    retained go-live smoke customer/key and produces exactly one accepted Lago
-    event
-  - `Evidence:` API request returns `200`, delivery ledger is `accepted`, source
-    queue and DLQ are empty, and no CloudWatch alarms enter `ALARM`
-
-##### Operational
-
-- [ ] Queue and DLQ state is clean
-  - `Verify:` prod billing-event source queue, billing-event DLQ, Lago webhook
-    failure signals, and any SES feedback queues/topics relevant to billing
-    notifications have no unexpected backlog
-  - `Evidence:` queue attributes and alarm states are recorded in PR/session
-    notes without message payloads
-- [ ] Alerting is actionable
-  - `Verify:` Lago, SES, API, and billing alarms notify on `ALARM` only where
-    email-backed SNS is used; no OK-state spam is configured
-  - `Evidence:` CloudWatch alarm-action query shows empty `OKActions` /
-    `InsufficientDataActions` for email-backed alarms
-- [ ] DNS/TLS/email-auth posture is rechecked
-  - `Verify:` `api.prontiq.dev`, `billing.prontiq.dev`, SES DKIM, SPF, DMARC,
-    and custom MAIL FROM remain valid
-  - `Evidence:` checks are documented as safe status summaries, not copied
-    secrets or private DNS-provider tokens
-- [ ] Cleanup is documented and repeatable
-  - `Verify:` `docs/runbooks/prod-go-live-cleanup.md` contains the exact
-    cleanup sequence, what must not be deleted, rollback steps, and evidence
-    expectations
-  - `Evidence:` `NEXT-WORK.md` and `NEXT-SESSION.md` point operators at the
-    runbook before P1B.18 starts
-
-#### Scope
-
-**In:** production smoke/test inventory, fixture cleanup or explicit retention,
-go-live flag posture, prod Lago catalog audit, queue/DLQ/alarm health, DNS/TLS
-and SES-auth recheck, post-cleanup smoke, runbook/documentation updates.
-
-**Out — Do Not Implement:**
-
-- the full Lago live-smoke certification ticket → remaining `P1B.18a` evidence
-- console billing proxy/API contract → `P1B.18`
-- legacy Stripe retirement/cutover → `P1B.19`
-- legacy Stripe config/surface cleanup → `P1B.20`
-- deleting real customer/org rows, real audit evidence, or unrelated Lago orgs
 
 ---
 
@@ -2004,7 +1889,7 @@ status: pending
 priority: p1-high
 epic: P1B
 persona: [api-consumer]
-depends_on: [P1B.18a, P1B.18b]
+depends_on: [P1B.18a]
 completed: null
 tech_stack:
   billing: Lago + account APIs
@@ -2105,11 +1990,11 @@ rollback plan.
 ##### Functional
 
 - [ ] Cutover preconditions are defined and satisfied
-  - `Verify:` ticket requires `P1B.14`–`P1B.18b` and `P1B.18` to be shipped
+  - `Verify:` ticket requires `P1B.14`–`P1B.18a` and `P1B.18` to be shipped
     and verified
   - `Evidence:` cutover checklist references customer mapping, event buffer,
-    forwarder, reconciliation, live Lago smoke certification, prod go-live
-    cleanup/readiness, and console billing contract as prerequisites
+    forwarder, reconciliation, live Lago smoke certification, retained smoke
+    fixture governance, and console billing contract as prerequisites
 - [ ] Retirement scope is explicit
   - `Verify:` roadmap names the legacy Stripe cron / month-close /
     control-plane billing path being retired
@@ -2144,9 +2029,10 @@ post-cutover documentation and operations cleanup
 
 **Out — Do Not Implement:**
 
-- initial customer / event / reconciliation / live-smoke / go-live cleanup
-  contract work → `P1B.14`–`P1B.18b` and `P1B.18`
+- initial customer / event / reconciliation / live-smoke contract work →
+  `P1B.14`–`P1B.18a` and `P1B.18`
 - legacy config / env / frontend-surface cleanup → `P1B.20`
+- final smoke-fixture retirement → `P1B.21`
 - future commercial model expansion beyond Free + PAYG
 
 ---
@@ -2233,6 +2119,103 @@ post-cutover secret/env cleanup, doc/runbook reconciliation, grep-based proof
 - removing Stripe payment-rail responsibilities that still exist in the final
   Lago architecture
 - broader frontend redesign work beyond removing migration-only surfaces
+
+---
+
+### Ticket P1B.21 — Final Prod Go-Live Cleanup + Smoke Fixture Retirement
+
+```yaml
+id: P1B.21
+title: Final Prod Go-Live Cleanup + Smoke Fixture Retirement
+status: pending
+priority: p0-critical
+epic: P1B
+persona: [ops]
+depends_on: [P1B.20]
+completed: null
+tech_stack:
+  billing: Lago + DynamoDB + SQS + CloudWatch + GitHub Environments
+```
+
+#### User Story
+
+As an operator, I need retained production smoke fixtures retired or explicitly
+kept as labelled operational probes only after the Lago migration is complete,
+so real customers start on a clean commercial plane without losing useful test
+coverage during migration.
+
+#### Problem Statement
+
+The Lago migration intentionally uses repo-owned production smoke customers,
+API keys, usage counters, delivery-ledger rows, and Lago subscriptions to prove
+the commercial path while there are no real customers. Those fixtures are useful
+for `P1B.18`, `P1B.19`, and `P1B.20`, so destructive cleanup before those
+tickets would remove needed validation data. Final cleanup belongs after the
+Lago-backed billing contract, cutover, and legacy Stripe cleanup are complete.
+
+#### Definition of Done
+
+##### Functional
+
+- [ ] Retained smoke fixture inventory is complete
+  - `Verify:` inventory names every repo-owned prod smoke customer/API key,
+    Lago customer/subscription, `prontiq-usage` row, billing delivery-ledger
+    row, webhook-ledger row if present, and local ignored file used to drive the
+    smoke
+  - `Evidence:` inventory records safe identifiers only; no raw API keys,
+    hashes, secrets, local secret-file contents, or private customer data are
+    recorded
+- [ ] Final disposition is explicit
+  - `Verify:` each fixture is deleted, disabled, relabelled as a retained
+    operational probe, or retained as audit/replay evidence with a named reason
+  - `Evidence:` smoke API keys are revoked unless intentionally retained as
+    labelled go-live probes; Lago smoke customers/subscriptions are archived,
+    deleted, or clearly labelled test-only according to Lago capabilities
+- [ ] Prod commercial runtime is in final go-live posture
+  - `Verify:` `BILLING_EVENTS_ENABLED`, `COUNTER_PERIOD_SOURCE`,
+    `LAGO_WEBHOOK_RECONCILIATION_ENABLED`, SES, Clerk, and migration-era
+    Stripe/Lago flags are checked from GitHub Environment config and the live
+    Lambda environment after final deploy
+  - `Evidence:` final values are recorded without secrets, with explicit
+    rationale for any retained test/probe config
+- [ ] Final post-cleanup smoke passes
+  - `Verify:` one controlled post-cleanup smoke uses a fresh or intentionally
+    retained go-live probe and produces exactly one accepted Lago event
+  - `Evidence:` API request returns `200`, delivery ledger is `accepted`, source
+    queue and DLQ are empty, and no CloudWatch alarms enter `ALARM`
+
+##### Operational
+
+- [ ] Queue, DLQ, and alarm state is clean
+  - `Verify:` billing-event source queue, billing-event DLQ, Lago webhook
+    failure signals, and SES feedback paths have no unexpected backlog; email
+    backed alarms still notify on `ALARM` only
+  - `Evidence:` queue attributes and alarm states are recorded without payloads
+- [ ] DNS/TLS/email-auth posture is rechecked
+  - `Verify:` `api.prontiq.dev`, `billing.prontiq.dev`, SES DKIM, SPF, DMARC,
+    and custom MAIL FROM remain valid
+  - `Evidence:` checks are documented as safe status summaries, not copied
+    secrets or private DNS-provider tokens
+- [ ] Final cleanup is documented and repeatable
+  - `Verify:` `docs/runbooks/prod-go-live-cleanup.md` describes final fixture
+    retirement, what must not be deleted, rollback steps, and evidence
+    expectations
+  - `Evidence:` `NEXT-WORK.md` and `NEXT-SESSION.md` point operators at the
+    runbook only after P1B.20
+
+#### Scope
+
+**In:** final production smoke-fixture inventory, fixture deletion/disablement
+or explicit retention, final go-live flag posture, prod Lago catalog audit,
+queue/DLQ/alarm health, DNS/TLS and SES-auth recheck, final post-cleanup smoke,
+runbook/documentation updates.
+
+**Out — Do Not Implement:**
+
+- console billing proxy/API contract → `P1B.18`
+- legacy Stripe retirement/cutover → `P1B.19`
+- legacy Stripe config/surface cleanup → `P1B.20`
+- deleting real customer/org rows, real audit evidence, or unrelated Lago orgs
 
 ---
 

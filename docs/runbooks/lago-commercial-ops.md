@@ -30,12 +30,15 @@ In the target architecture:
 - confirm Prontiq endpoint credit weights match the published Credits guide
 - confirm docs, roadmap, and console messaging stay aligned
 
-## Production Go-Live Gate
+## Final Production Go-Live Gate
 
-Before customer-facing billing surfaces or Stripe retirement depend on the
-production Lago path, complete `docs/runbooks/prod-go-live-cleanup.md`.
+Retained repo-owned production smoke fixtures may support the remaining Lago
+migration work if they are clearly labelled/inventoried as test-only. Do not
+mutate unrelated Lago organizations or delete useful migration fixtures before
+P1B.18, P1B.19, and P1B.20 unless a safety issue requires it.
 
-That gate must inventory repo-owned prod smoke artifacts, decide whether each is
-deleted/disabled/relabelled/retained, recheck production flags and catalog
-state, and run one post-cleanup smoke. Do not treat P1B.18a smoke evidence alone
-as permission to expose production billing UX to customers.
+Before real customer go-live after P1B.20, complete
+`docs/runbooks/prod-go-live-cleanup.md`. That gate must inventory repo-owned
+prod smoke artifacts, decide whether each is deleted/disabled/relabelled/
+retained, recheck production flags and catalog state, and run one final
+post-cleanup smoke.

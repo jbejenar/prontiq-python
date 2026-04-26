@@ -1,22 +1,24 @@
-# Prod Go-Live Cleanup Runbook
+# Final Prod Go-Live Cleanup Runbook
 
-Operator checklist for `P1B.18b`. Use this after the production smoke path has
-created real artifacts and before customer-facing billing surfaces or Stripe
-retirement depend on the production Lago path.
+Operator checklist for `P1B.21`. Use this after `P1B.20` has completed, when
+the Lago-backed commercial path is ready for real customer go-live and retained
+production smoke fixtures no longer need to support migration work.
 
 ## Scope
 
-This runbook owns the production cleanup/readiness gate for smoke artifacts and
-commercial-plane posture.
+This runbook owns final production smoke-fixture retirement and commercial-plane
+go-live posture.
 
 It covers:
 
-- inventorying repo-owned prod smoke/test artifacts
-- deciding whether each artifact is deleted, disabled, relabelled, or retained
-  as audit evidence
+- inventorying repo-owned prod smoke/test artifacts retained through the Lago
+  migration
+- deciding whether each artifact is deleted, disabled, relabelled as an
+  operational probe, or retained as audit evidence
 - verifying production Lago catalog and runtime flags
 - checking queues, DLQs, alarms, DNS/TLS, and SES authentication
-- running one post-cleanup smoke through the production API and Lago forwarder
+- running one final post-cleanup smoke through the production API and Lago
+  forwarder
 
 It does not cover:
 
@@ -33,16 +35,20 @@ It does not cover:
 - Do not delete real customer/org rows.
 - Do not delete billing delivery-ledger or webhook-ledger rows unless a ticket
   explicitly decides that retained audit evidence is no longer required.
-- Prefer revoking or disabling smoke API keys over hard-deleting evidence needed
-  for replay/drift analysis.
+- Retain smoke fixtures during `P1B.18`, `P1B.19`, and `P1B.20` unless they are
+  unsafe; they are expected to support migration validation.
+- Prefer revoking or disabling smoke API keys at final go-live over
+  hard-deleting evidence needed for replay/drift analysis.
 - Keep `COUNTER_PERIOD_SOURCE=calendar` unless a later cutover decision
   explicitly approves Lago billing-period enforcement scopes.
 
 ## Preconditions
 
-Do not start fixture cleanup until the production smoke subset exists:
+Do not start final fixture retirement until:
 
-- repo-owned prod smoke API key/customer/subscription exists
+- `P1B.18`, `P1B.19`, and `P1B.20` are complete
+- repo-owned prod smoke API key/customer/subscription exists or has documented
+  prior evidence from the migration
 - at least one API-originated prod billing event has been accepted in
   `prontiq-billing-event-deliveries`
 - prod billing-event source queue and DLQ are empty
@@ -50,7 +56,8 @@ Do not start fixture cleanup until the production smoke subset exists:
 - the smoke artifact identifiers can be recorded safely without raw API keys,
   hashes, webhook secrets, or local secret-file contents
 
-If these preconditions are not true, continue P1B.18a live smoke work first.
+If these preconditions are not true, continue the relevant Lago migration ticket
+instead of retiring fixtures early.
 
 ## Artifact Inventory
 
@@ -72,14 +79,15 @@ For each artifact, choose one disposition:
 
 - `delete`: only for disposable fixture data that is not replay/audit evidence
 - `disable`: for API keys or subscriptions that should not be usable at go-live
-- `relabel`: for retained test fixtures that must remain visibly non-customer
+- `relabel`: for retained operational probes that must remain visibly
+  non-customer
 - `retain`: for audit/replay evidence, with a reason and retention owner
 
 ## Runtime Flag Check
 
 Check GitHub Environment config and the deployed Lambda environment.
 
-Expected go-live posture before Stripe retirement:
+Expected final go-live posture:
 
 - `BILLING_EVENTS_ENABLED` may be `false` during inventory/cleanup if operators
   want to prevent accidental new emissions
@@ -90,7 +98,7 @@ Expected go-live posture before Stripe retirement:
   recorded go-live posture unless the release owner explicitly chooses to keep
   customer billing disabled until a later launch window
 - if post-cleanup smoke fails, set `BILLING_EVENTS_ENABLED=false`, redeploy, and
-  stop before customer-facing billing work continues
+  stop before real customer go-live proceeds
 - `COUNTER_PERIOD_SOURCE=calendar`
 - `LAGO_WEBHOOK_RECONCILIATION_ENABLED=false` unless the Lago webhook endpoint is
   actively configured and valid webhook smoke has passed
@@ -172,7 +180,7 @@ Verify status without copying provider tokens or secrets:
 
 Record pass/fail status only.
 
-## Post-Cleanup Smoke
+## Final Post-Cleanup Smoke
 
 After cleanup/disposition decisions are applied and prechecks are green:
 
@@ -180,7 +188,8 @@ After cleanup/disposition decisions are applied and prechecks are green:
    already true.
 2. Redeploy prod and verify the live API Lambda environment shows
    `BILLING_EVENTS_ENABLED=true`.
-3. Use a fresh or intentionally retained repo-owned prod smoke API key.
+3. Use a fresh go-live probe or intentionally retained repo-owned prod smoke API
+   key.
 4. Confirm the matching customer row is active and mapped to the intended Lago
    customer/subscription.
 5. Send exactly one low-risk address API request.
@@ -191,7 +200,7 @@ After cleanup/disposition decisions are applied and prechecks are green:
 10. Record the safe event ID and run IDs only.
 
 If the smoke would reuse a previously sent cumulative count, advance or recreate
-the smoke fixture first. Do not create a same-`eventId`/different-payload
+the retained probe first. Do not create a same-`eventId`/different-payload
 collision as part of the go-live check.
 
 ## Rollback
@@ -203,13 +212,13 @@ If cleanup or post-cleanup smoke fails:
 - leave existing delivery-ledger rows intact for diagnosis
 - do not replay DLQ messages until the root cause is understood
 - if a smoke API key was created, revoke or disable it
-- record the failure mode and stop before P1B.18/P1B.19 work proceeds
+- record the failure mode and stop before real customer go-live proceeds
 
 ## Evidence Checklist
 
 Record these in PR/session notes:
 
-- cleanup ticket ID: `P1B.18b`
+- cleanup ticket ID: `P1B.21`
 - prod deploy/run IDs used for flag changes
 - final rollout flag values
 - artifact inventory with disposition

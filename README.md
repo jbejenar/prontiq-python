@@ -144,19 +144,16 @@ See [`ROADMAP.md`](ROADMAP.md) for the current execution plan.
 |         |                           | **90**  | **46/90** |
 
 `P1B` includes completed legacy Stripe-path work. The Lago migration sequence is
-`P1B.14`–`P1B.20` plus `P1B.18a`/`P1B.18b`, currently `4/9`, and is called out
+`P1B.14`–`P1B.21` plus `P1B.18a`, currently `4/9`, and is called out
 separately in the Phase 1B section of [`ROADMAP.md`](ROADMAP.md).
 
 P1B.17 adds Lago webhook reconciliation. P1B.18a owns live Lago setup and smoke
 paths before console billing APIs depend on them. Use
 `pnpm --filter @prontiq/control-plane lago:smoke:event` to generate controlled
-usage smoke events; do not hand-build Lago transaction IDs. P1B.18b is the
-production go-live cleanup gate: clean, disable, relabel, or explicitly retain
-prod smoke artifacts and run one post-cleanup prod smoke before customer-facing
-billing surfaces depend on the production Lago path. It starts only after the
-prod smoke subset has real artifacts to inventory: smoke customer/key,
-subscription, accepted API-originated delivery evidence, empty queues, and no
-active alarms.
+usage smoke events; do not hand-build Lago transaction IDs. Retained prod smoke
+fixtures are expected to support the remaining Lago migration work and must stay
+clearly labelled/inventoried as test-only. Final smoke-fixture retirement and
+destructive cleanup is deferred to `P1B.21` after `P1B.20`.
 
 ## Commands
 

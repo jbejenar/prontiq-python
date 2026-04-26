@@ -9,12 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Prod go-live cleanup gate** (`P1B.18b`) added between Lago smoke
-  certification and console billing contract work. The roadmap and runbooks now
-  require inventorying repo-owned prod smoke artifacts, deciding
-  delete/disable/relabel/retain disposition, rechecking prod Lago catalog,
-  flags, queues, alarms, DNS/TLS, and SES auth, then running one post-cleanup
-  prod smoke before customer-facing billing surfaces depend on Lago.
+- **Final prod smoke-fixture retirement gate** (`P1B.21`) added after the Lago
+  migration sequence. Retained prod smoke fixtures now stay available for
+  `P1B.18`–`P1B.20` validation but must be clearly labelled/inventoried as
+  test-only; destructive cleanup and final post-cleanup smoke are deferred until
+  after legacy Stripe cleanup.
 
 - **Lago live smoke certification tooling** (`P1B.18a`) added for the
   rollout-gated Lago migration. `@prontiq/control-plane` now has

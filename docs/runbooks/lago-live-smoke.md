@@ -1,8 +1,8 @@
 # Lago Live Smoke Certification Runbook
 
 Operator checklist for P1B.18a. This runbook proves the deployed Lago runtime
-is actually wired to the canonical Lago environments before console billing
-contracts or Stripe retirement depend on it.
+is actually wired to the canonical Lago environments before downstream Lago
+migration tickets rely on it.
 
 ## Scope
 
@@ -24,8 +24,8 @@ It does not replace:
 - `docs/runbooks/lago-billing-events.md` for worker internals and replay
   semantics
 - `docs/runbooks/lago-webhook-reconciliation.md` for webhook drift handling
-- `docs/runbooks/prod-go-live-cleanup.md` for the production cleanup/readiness
-  gate after smoke certification
+- `docs/runbooks/prod-go-live-cleanup.md` for final production smoke-fixture
+  retirement after P1B.20
 - P1B.18 console billing proxy/API contract work
 - P1B.19 Stripe legacy retirement
 
@@ -282,7 +282,8 @@ the return to OK in CloudWatch rather than expecting a recovery email.
 
 ## After Certification
 
-Before treating production as customer-ready, complete
-`docs/runbooks/prod-go-live-cleanup.md`. P1B.18a proves the integration works;
-P1B.18b decides what to do with production smoke artifacts and proves the
-post-cleanup state is safe for real customer traffic.
+P1B.18a proves the integration works and governs retained smoke fixtures as
+test-only data. Keep repo-owned production smoke fixtures available for P1B.18,
+P1B.19, and P1B.20 unless they become unsafe or ambiguous. Final retirement,
+disablement, relabelling, or explicit retention belongs to
+`docs/runbooks/prod-go-live-cleanup.md` in P1B.21 after P1B.20.

@@ -10,8 +10,9 @@
   DynamoDB usage enforcement succeeds.
 - Enable `BILLING_EVENTS_ENABLED` only for deployed stages that have completed
   P1B.18a Lago metric/subscription/replay smoke checks with the repo-owned
-  smoke helper and alert health verified. Before customer-facing prod go-live,
-  P1B.18b must also prove smoke artifacts are cleaned or explicitly retained
-  and a post-cleanup prod smoke passes.
+  smoke helper and alert health verified. Retained prod smoke fixtures may be
+  reused by P1B.18, P1B.19, and P1B.20 only while clearly labelled/inventoried
+  as test-only. P1B.21 owns final fixture retirement and post-cleanup prod
+  smoke before real customer go-live.
 - Never include raw API keys, query strings, headers, IP addresses, user agents,
   or response payloads in billing events.

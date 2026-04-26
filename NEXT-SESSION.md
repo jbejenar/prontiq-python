@@ -6,31 +6,28 @@
 
 ## Session 37 — 2026-04-26
 
-**Focus:** P1B.18b planning for production go-live cleanup and readiness.
+**Focus:** Re-sequencing production smoke-fixture cleanup after remaining Lago
+migration work.
 
 ### Completed
 
 - **P1B.18a has partial safe evidence.** Dev and prod API-produced billing
   events were accepted, billing queues/DLQs were empty, prod
   `BILLING_EVENTS_ENABLED=true` was deployed, and `COUNTER_PERIOD_SOURCE`
-  remains `calendar`. Do not mark full customer go-live readiness until P1B.18b
-  inventory/cleanup and any remaining certification gaps are closed.
-- **P1B.18b added as the go-live gate.** The roadmap now inserts prod cleanup
-  and readiness between live smoke certification and console billing proxy work.
-- **Runbook added.** `docs/runbooks/prod-go-live-cleanup.md` defines inventory,
-  cleanup/disposition, prod flag/catalog/queue/alarm/DNS/TLS/SES checks, and a
-  post-cleanup smoke.
+  remains `calendar`.
+- **Prod smoke fixtures should be retained for now.** There are no real
+  customers yet, and the repo-owned prod smoke customer/key/subscription are
+  useful validation data for `P1B.18`, `P1B.19`, and `P1B.20`.
+- **Final cleanup moved to P1B.21.** The roadmap now defers destructive
+  smoke-fixture retirement until after the Lago-backed billing contract,
+  cutover, and legacy Stripe cleanup are complete.
 
 ### Next session should start with
 
-1. Execute `P1B.18b — Prod Go-Live Cleanup + Readiness Audit`.
-2. Use `docs/runbooks/prod-go-live-cleanup.md` as the checklist.
-3. Confirm the required smoke subset exists before fixture cleanup starts:
-   repo-owned prod smoke customer/key/subscription, at least one API-originated
-   accepted delivery row, empty source queue/DLQ, and no active CloudWatch
-   alarms.
-4. Do not delete real customer rows, unrelated Lago orgs, or replay/drift
-   ledger evidence while cleaning smoke artifacts.
+1. Finish `P1B.18a` evidence and smoke-fixture governance.
+2. Start `P1B.18 — Console Billing Proxy Surfaces + Plan Changes`.
+3. Do not delete or disable repo-owned prod smoke fixtures unless they become
+   unsafe; they are retained test fixtures until `P1B.21`.
 
 ## Session 36 — 2026-04-26
 
@@ -204,7 +201,7 @@ console billing proxy surfaces.
 ### Completed
 
 - **Canonical commercial architecture direction changed.** `ARCHITECTURE.MD` now presents Lago as the target commercial system of record, while the currently shipped Stripe webhook / billing cron / month-close path is retained only as legacy implementation context.
-- **Roadmap and handoff docs are now migration-oriented.** The forward workstream is no longer Stripe Checkout-session orchestration. It is the Lago migration sequence: `P1B.14` through `P1B.20`; current planning now also includes inserted certification ticket `P1B.18a`.
+- **Roadmap and handoff docs are now migration-oriented.** The forward workstream is no longer Stripe Checkout-session orchestration. It is the Lago migration sequence. Current source-of-truth docs now track that sequence as `P1B.14` through `P1B.21`, including inserted certification ticket `P1B.18a`.
 - **Repo guidance is now normalized.** README, AGENTS, frontend strategy,
   Mintlify guides, app README/HINTS, ADRs, and runbooks now align to the Lago
   target architecture, and the absorbed source draft was removed from the repo
