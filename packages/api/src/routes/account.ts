@@ -23,8 +23,8 @@ import { createLogger } from "@prontiq/shared";
  *      `@prontiq/control-plane` (Bug 2 + Bug 4 invariants enforced
  *      once at the package boundary, shared with the webhook).
  *   2. Call `createProvisioningService().provisionOrg(...)` — same
- *      `Idempotency-Key`-protected Stripe customer create + atomic
- *      `TransactWriteItems` for ORG envelope + audit row.
+ *      atomic ORG/customer envelope + audit row, with forward-mode Lago
+ *      Free subscription bootstrap.
  *
  * Why this endpoint exists (per ARCHITECTURE.MD §5.7.1 "Manual
  * recovery path"): the future `/account` page (P1C.03) detects "no
@@ -33,9 +33,7 @@ import { createLogger } from "@prontiq/shared";
  * endpoint as the user-driven fallback. Idempotent by construction:
  * a successful webhook delivery + a subsequent dashboard recovery
  * call collapse to the same envelope (same `ORG#{orgId}` key, same
- * Stripe customer via the deterministic idempotency-key, single audit
- * row). The canonical commercial architecture is moving toward Lago,
- * but that migration has not landed in this endpoint yet.
+ * Prontiq `customerId`, same Lago subscription, single audit row).
  *
  * Auth contract is enforced by the upstream `clerkJwt()` middleware
  * mounted on `app.use("/v1/account/*")` in `account-handler.ts`. The
@@ -44,11 +42,12 @@ import { createLogger } from "@prontiq/shared";
  *
  * Response code mapping (matches webhook semantics so failure modes
  * are uniform across both ingress paths):
- *   - 201 created      → fresh org, envelope written, Stripe customer
- *                        created, welcome email best-effort sent
+ *   - 201 created      → fresh org, envelope written, Lago Free
+ *                        subscription bootstrapped, welcome email best-effort
+ *                        sent
  *   - 200 already_exists → idempotent replay; webhook already
  *                        provisioned this org
- *   - 503 retryable    → DDB throttle / Clerk API blip / Stripe 5xx;
+ *   - 503 retryable    → DDB throttle / Clerk API blip / Lago 5xx;
  *                        client retries (or the dashboard surfaces
  *                        "we're having trouble — try again")
  *   - 500 fatal        → user has no primary email / primary email
@@ -58,12 +57,23 @@ import { createLogger } from "@prontiq/shared";
 
 const accountSetupSuccessSchema = z.object({
   status: z.enum(["created", "already_exists"]),
-  stripeCustomerId: z.string(),
+  customerId: z.string().openapi({
+    description: "Prontiq-owned platform customer id.",
+  }),
+  stripeCustomerId: z.string().nullable().openapi({
+    description:
+      "Legacy/payment-rail Stripe linkage. Null after Lago cutover when Stripe is used only through Lago.",
+  }),
   emailSent: z.boolean().optional().openapi({
     description:
       "True only when the welcome email was best-effort sent for a freshly-created envelope. Absent on already_exists replays.",
   }),
 });
+
+function provisionedCustomerId(result: ProvisioningResult): string | undefined {
+  const value = result.customerId ?? result.orgEnvelope?.customerId;
+  return value && value.length > 0 ? value : undefined;
+}
 
 const billingSummarySchema = z.object({
   allowedActions: z.object({
@@ -267,7 +277,7 @@ export function createAccountRoutes(overrides: AccountRouteOverrides = {}) {
     path: "/setup",
     summary: "Recover or initialise an org envelope (Clerk JWT auth)",
     description:
-      "Idempotent. Resolves the caller's verified primary email via the Clerk Backend API and provisions the org's Stripe customer + envelope + audit row. Mirrors the Clerk webhook's provisioning path so a delayed/missed webhook is recoverable from the dashboard.",
+      "Idempotent. Resolves the caller's verified primary email via the Clerk Backend API and provisions the org's Prontiq customer envelope, Lago Free subscription in forward mode, and audit row. Mirrors the Clerk webhook's provisioning path so a delayed/missed webhook is recoverable from the dashboard.",
     security: clerkJwtSecurity,
     request: {},
     responses: {
@@ -278,8 +288,9 @@ export function createAccountRoutes(overrides: AccountRouteOverrides = {}) {
       201: jsonResponse(accountSetupSuccessSchema, "Org envelope freshly created"),
       400: jsonResponse(apiErrorResponseSchema, "JWT missing org_id claim (NO_ACTIVE_ORG)"),
       401: jsonResponse(apiErrorResponseSchema, "Missing/invalid/expired JWT"),
+      409: jsonResponse(apiErrorResponseSchema, "Legacy org envelope is missing customerId"),
       500: jsonResponse(apiErrorResponseSchema, "Fatal failure — operator-facing fix required"),
-      503: jsonResponse(apiErrorResponseSchema, "Retryable failure — Stripe/Clerk/DDB transient"),
+      503: jsonResponse(apiErrorResponseSchema, "Retryable failure — Lago/Clerk/DDB transient"),
     },
   });
 
@@ -384,7 +395,27 @@ export function createAccountRoutes(overrides: AccountRouteOverrides = {}) {
     });
 
     switch (result.status) {
-      case "already_exists":
+      case "already_exists": {
+        const customerId = provisionedCustomerId(result);
+        if (!customerId) {
+          logger.error("ORG envelope missing customerId (account-setup replay)", {
+            request_id: requestId,
+            orgId: principal.orgId,
+            stripeCustomerId: result.stripeCustomerId,
+          });
+          return c.json(
+            {
+              error: {
+                code: "CUSTOMER_MAPPING_MISSING",
+                message:
+                  "This organization needs customer mapping backfill before account setup can complete.",
+                status: 409,
+                request_id: requestId,
+              },
+            },
+            409,
+          );
+        }
         logger.info("ORG envelope exists (account-setup replay)", {
           request_id: requestId,
           orgId: principal.orgId,
@@ -393,11 +424,33 @@ export function createAccountRoutes(overrides: AccountRouteOverrides = {}) {
         return c.json(
           {
             status: "already_exists" as const,
-            stripeCustomerId: result.stripeCustomerId ?? "",
+            customerId,
+            stripeCustomerId: result.stripeCustomerId ?? null,
           },
           200,
         );
-      case "created":
+      }
+      case "created": {
+        const customerId = provisionedCustomerId(result);
+        if (!customerId) {
+          logger.error("Created ORG envelope missing customerId (account-setup)", {
+            request_id: requestId,
+            orgId: principal.orgId,
+            stripeCustomerId: result.stripeCustomerId,
+          });
+          return c.json(
+            {
+              error: {
+                code: "CUSTOMER_MAPPING_MISSING",
+                message:
+                  "Provisioning created an org envelope without a customer mapping. Retry after operator backfill.",
+                status: 409,
+                request_id: requestId,
+              },
+            },
+            409,
+          );
+        }
         logger.info("ORG envelope created (account-setup)", {
           request_id: requestId,
           orgId: principal.orgId,
@@ -407,11 +460,13 @@ export function createAccountRoutes(overrides: AccountRouteOverrides = {}) {
         return c.json(
           {
             status: "created" as const,
-            stripeCustomerId: result.stripeCustomerId ?? "",
+            customerId,
+            stripeCustomerId: result.stripeCustomerId ?? null,
             emailSent: result.emailSent,
           },
           201,
         );
+      }
       case "retryable_failure":
         logger.error("ORG envelope provisioning retryable failure (account-setup)", {
           request_id: requestId,

@@ -101,9 +101,7 @@ function getRawBody(event: APIGatewayProxyEventV2): string {
   return event.body;
 }
 
-function getSvixHeaders(
-  rawHeaders: APIGatewayProxyEventV2["headers"],
-): Record<string, string> {
+function getSvixHeaders(rawHeaders: APIGatewayProxyEventV2["headers"]): Record<string, string> {
   // APIGW v2 lowercases header names but the Svix verifier accepts
   // arbitrary case via Record<string, string>; keep the lookup
   // case-insensitive defensively.
@@ -123,7 +121,11 @@ function isOrganizationMembershipCreated(
   const data = parsed.data as Partial<ClerkOrganizationMembershipPayload["data"]>;
   if (!data || typeof data !== "object") return false;
   if (typeof data.organization?.id !== "string" || data.organization.id.length === 0) return false;
-  if (typeof data.public_user_data?.user_id !== "string" || data.public_user_data.user_id.length === 0) return false;
+  if (
+    typeof data.public_user_data?.user_id !== "string" ||
+    data.public_user_data.user_id.length === 0
+  )
+    return false;
   if (typeof data.role !== "string" || data.role.length === 0) return false;
   return true;
 }
@@ -265,12 +267,14 @@ export function createClerkHandler(overrides: HandlerOverrides = {}) {
     switch (result.status) {
       case "already_exists":
         logger.info("ORG envelope exists", {
+          customerId: result.customerId,
           orgId: data.organization.id,
           stripeCustomerId: result.stripeCustomerId,
         });
         return reply(200, { ok: true, status: "already_exists" });
       case "created":
         logger.info("ORG envelope created", {
+          customerId: result.customerId,
           orgId: data.organization.id,
           stripeCustomerId: result.stripeCustomerId,
           emailSent: result.emailSent,
@@ -278,12 +282,14 @@ export function createClerkHandler(overrides: HandlerOverrides = {}) {
         return reply(200, { ok: true, status: "created", emailSent: result.emailSent });
       case "retryable_failure":
         logger.error("ORG envelope provisioning retryable failure", {
+          customerId: result.customerId,
           orgId: data.organization.id,
           stripeCustomerId: result.stripeCustomerId,
         });
         return reply(500, { error: "retryable_failure" });
       case "fatal_failure":
         logger.error("ORG envelope provisioning fatal failure", {
+          customerId: result.customerId,
           orgId: data.organization.id,
           stripeCustomerId: result.stripeCustomerId,
         });

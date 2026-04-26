@@ -52,18 +52,24 @@ override this for the `PqAccount` Lambda and Clerk webhook together.
 `POST /v1/account/setup` is the idempotent recovery path when the Clerk webhook
 missed delivery. It runs the same `createProvisioningService().provisionOrg(...)`
 path as `POST /webhooks/clerk`, so a delayed webhook plus a recovery call
-collapse to one envelope, one Stripe customer during the current migration
-state, and one audit row.
+collapse to one envelope, one Prontiq `customerId`, one Lago Free subscription
+in forward mode, and one audit row. The migration-era `stripeCustomerId` field
+is nullable because Stripe is the payment rail, not the customer source of
+truth.
 
 Response contract:
 
-- `201 { "status": "created", "stripeCustomerId": "...", "emailSent": true }`
-  means a new envelope was committed. `emailSent: false` is non-fatal.
-- `200 { "status": "already_exists", "stripeCustomerId": "..." }` means the
-  envelope already existed and no new side effects occurred.
+- `201 { "status": "created", "customerId": "pq_cust_...", "stripeCustomerId": null, "emailSent": true }`
+  means a new envelope was committed and forward-mode Lago bootstrap completed.
+  `emailSent: false` is non-fatal.
+- `200 { "status": "already_exists", "customerId": "pq_cust_...", "stripeCustomerId": null }`
+  means the envelope already existed and no duplicate side effects occurred.
+  During explicit rollback, `stripeCustomerId` can be a `cus_...` value.
 - `400 NO_ACTIVE_ORG` or `400 NO_ROLE_CLAIM` are Clerk session/template fixes.
 - `401 INVALID_TOKEN` is a missing, expired, or invalid session token.
 - `403 INSUFFICIENT_ROLE` means the caller is not an org admin.
+- `409 CUSTOMER_MAPPING_MISSING` means a legacy org envelope exists without
+  `customerId`; run the customer backfill/repair path before retrying.
 - `503 RETRYABLE_FAILURE` can be retried with the same active org.
 - `500 FATAL_FAILURE` requires operator investigation.
 

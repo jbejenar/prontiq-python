@@ -1,9 +1,9 @@
 # API Agent Hints
 
 - Do not call Lago or Stripe from the address API hot path.
-- `COUNTER_PERIOD_SOURCE=calendar` is the safe default. If set to `lago`, use
-  only denormalized `billingPeriodKey` from the key record; never fetch a period
-  from Lago during request auth.
+- P1B.19 cutover posture is `COUNTER_PERIOD_SOURCE=lago`. Calendar remains the
+  rollback fallback. In either mode, use only denormalized fields from the key
+  record; never fetch a period from Lago during request auth.
 - PAYG and Enterprise are uncapped but tracked. Do not reintroduce
   `tier === "free"` quota branching; use plan enforcement mode.
 - Billing event emission is allowed only through `BillingUsageEventV1` after
@@ -17,6 +17,8 @@
 - P1B.18a is closed. Future billing API work may rely on dev/prod Lago
   forwarding and webhook smoke evidence, but must keep Lago and Stripe off the
   API hot path.
+- Account setup responses expose platform `customerId` and nullable
+  `stripeCustomerId`. New console code must not assume Stripe linkage exists.
 - Account billing routes belong in `account-handler.ts` / `routes/account.ts`,
   not the address API `$default` app. Update `openapi-private.ts` when adding
   account routes; never mount `/v1/account/*` in the public `openapi.ts` or

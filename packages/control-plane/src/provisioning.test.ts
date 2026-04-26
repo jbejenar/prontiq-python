@@ -1,12 +1,17 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
-import { GetCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
+import {
+  GetCommand,
+  QueryCommand,
+  TransactWriteCommand,
+  UpdateCommand,
+} from "@aws-sdk/lib-dynamodb";
 import Stripe from "stripe";
 import { createProvisioningService, type EmailSender } from "./provisioning.js";
 
 interface CommandLog {
-  type: "Get" | "TransactWrite";
+  type: "Get" | "Query" | "TransactWrite" | "Update";
   args: unknown;
 }
 
@@ -34,12 +39,20 @@ function makeDdbStub(options: DdbStubOptions = {}): {
         }
         return { Item: next };
       }
+      if (command instanceof QueryCommand) {
+        log.push({ type: "Query", args: command.input });
+        return { Items: [] };
+      }
       if (command instanceof TransactWriteCommand) {
         log.push({ type: "TransactWrite", args: command.input });
         const next = txQueue.shift() ?? "ok";
         if (next instanceof Error) {
           throw next;
         }
+        return {};
+      }
+      if (command instanceof UpdateCommand) {
+        log.push({ type: "Update", args: command.input });
         return {};
       }
       throw new Error(
@@ -66,10 +79,10 @@ function makeAwsFatalReadError(): Error {
   return err;
 }
 
-function makeStripeStub(options: {
-  customerId?: string;
-  throwOnCreate?: Error;
-}): { stripe: Stripe; createCalls: unknown[] } {
+function makeStripeStub(options: { customerId?: string; throwOnCreate?: Error }): {
+  stripe: Stripe;
+  createCalls: unknown[];
+} {
   const createCalls: unknown[] = [];
   const stripe = {
     customers: {
@@ -92,18 +105,20 @@ function makeStripeStub(options: {
  * ProvisionedThroughputExceeded, ThrottlingError, ValidationError,
  * ItemCollectionSizeLimitExceeded, None.
  */
-function makeTransactionCanceledException(
-  reasonCodes: (string | "None")[],
-): Error {
-  const err = new Error("Transaction cancelled, please refer to cancellation reasons for specific reasons");
+function makeTransactionCanceledException(reasonCodes: (string | "None")[]): Error {
+  const err = new Error(
+    "Transaction cancelled, please refer to cancellation reasons for specific reasons",
+  );
   err.name = "TransactionCanceledException";
-  (err as { CancellationReasons?: { Code: string }[] }).CancellationReasons =
-    reasonCodes.map((code) => ({ Code: code }));
+  (err as { CancellationReasons?: { Code: string }[] }).CancellationReasons = reasonCodes.map(
+    (code) => ({ Code: code }),
+  );
   return err;
 }
 
-const completeEnvelope = (orgId: string, customerId = "cus_existing") => ({
+const completeEnvelope = (orgId: string, customerId: string | null = "cus_existing") => ({
   apiKeyHash: `ORG#${orgId}`,
+  customerId: "pq_cust_01HYZ6Q4X6DJP2X9Q9FQKX4T7A",
   stripeCustomerId: customerId,
   ownerEmail: "owner@example.com",
   paymentOverdue: false,
@@ -114,6 +129,64 @@ const completeEnvelope = (orgId: string, customerId = "cus_existing") => ({
   hasFirstKey: false,
   completedAt: "2026-04-17T00:00:00.000Z",
 });
+
+const completeEnvelopeWithoutCustomerId = (
+  orgId: string,
+  customerId: string | null = "cus_existing",
+) => {
+  const { customerId: _unused, ...record } = completeEnvelope(orgId, customerId);
+  return record;
+};
+
+const lagoBootstrappedEnvelope = (orgId: string) => ({
+  ...completeEnvelope(orgId, null),
+  billingPeriodEndingAt: "2026-05-26T00:00:00.000Z",
+  billingPeriodKey: "2026-04-26T00:00:00.000Z__2026-05-26T00:00:00.000Z",
+  billingPeriodStartedAt: "2026-04-26T00:00:00.000Z",
+  lagoPaymentOverdueInvoiceId: null,
+  lagoPlanCode: "free",
+  lagoSubscriptionExternalId: "pq_sub_01HYZ6Q4X6DJP2X9Q9FQKX4T7A",
+  lagoSubscriptionStatus: "active",
+  stripeCustomerId: null,
+});
+
+function makeLagoProvisioningClient(
+  options: {
+    getSubscriptionResponses?: Array<"snapshot" | null>;
+    throwIfCalled?: boolean;
+  } = {},
+) {
+  const calls: { method: string; args: unknown }[] = [];
+  const getSubscriptionResponses = [...(options.getSubscriptionResponses ?? ["snapshot"])];
+  return {
+    calls,
+    client: {
+      async upsertCustomer(args: unknown) {
+        if (options.throwIfCalled) throw new Error("Lago must not be called");
+        calls.push({ method: "upsertCustomer", args });
+      },
+      async upsertSubscription(args: unknown) {
+        if (options.throwIfCalled) throw new Error("Lago must not be called");
+        calls.push({ method: "upsertSubscription", args });
+      },
+      async getSubscription(args: unknown) {
+        if (options.throwIfCalled) throw new Error("Lago must not be called");
+        calls.push({ method: "getSubscription", args });
+        const next =
+          getSubscriptionResponses.length > 0 ? getSubscriptionResponses.shift() : "snapshot";
+        if (next === null) return null;
+        return {
+          billingPeriodEndingAt: "2026-05-26T00:00:00.000Z",
+          billingPeriodStartedAt: "2026-04-26T00:00:00.000Z",
+          externalCustomerId: "pq_cust_01HYZ6Q4X6DJP2X9Q9FQKX4T7A",
+          externalSubscriptionId: "pq_sub_01HYZ6Q4X6DJP2X9Q9FQKX4T7A",
+          planCode: "free",
+          status: "active",
+        };
+      },
+    },
+  };
+}
 
 const noopLogger = { error: () => {}, info: () => {}, warn: () => {} };
 const noopSleep = async () => {};
@@ -145,6 +218,158 @@ test("returns already_exists when ORG envelope is already present", async () => 
   assert.equal(result.stripeCustomerId, "cus_existing");
   assert.equal(createCalls.length, 0, "Stripe must not be called when envelope exists");
   assert.equal(log.length, 1, "only one Get is needed");
+});
+
+test("legacy replay accepts older ORG envelopes without customerId", async () => {
+  const { client, log } = makeDdbStub({
+    getResponses: [completeEnvelopeWithoutCustomerId("org_legacy")],
+  });
+  const { stripe, createCalls } = makeStripeStub({});
+  const service = createProvisioningService({ ...baseDeps, ddb: client, stripe });
+  const result = await service.provisionOrg({
+    orgId: "org_legacy",
+    ownerEmail: "owner@example.com",
+    actorId: "user_x",
+    source: "clerk-webhook",
+  });
+  assert.equal(result.status, "already_exists");
+  assert.equal(result.customerId, undefined);
+  assert.equal(result.stripeCustomerId, "cus_existing");
+  assert.equal(createCalls.length, 0, "legacy replay must not create a second Stripe customer");
+  assert.equal(log.length, 1, "legacy replay needs only the idempotency Get");
+});
+
+test("forward replay surfaces legacy ORG envelopes without customerId without retrying Lago", async () => {
+  const { client, log } = makeDdbStub({
+    getResponses: [completeEnvelopeWithoutCustomerId("org_legacy_forward")],
+  });
+  const { stripe, createCalls } = makeStripeStub({});
+  const lago = makeLagoProvisioningClient();
+  const service = createProvisioningService({
+    ...baseDeps,
+    ddb: client,
+    lagoClient: lago.client,
+    lagoPaymentProviderCode: "stripe-main",
+    legacyStripeRuntimeEnabled: false,
+    stripe,
+  });
+  const result = await service.provisionOrg({
+    orgId: "org_legacy_forward",
+    ownerEmail: "owner@example.com",
+    actorId: "user_x",
+    source: "account-setup",
+  });
+  assert.equal(result.status, "already_exists");
+  assert.equal(result.customerId, undefined);
+  assert.equal(result.stripeCustomerId, "cus_existing");
+  assert.equal(createCalls.length, 0, "forward replay must not create Stripe customers");
+  assert.equal(
+    lago.calls.length,
+    0,
+    "missing customerId is an operator backfill issue, not a Lago retry",
+  );
+  assert.equal(log.length, 1, "legacy replay needs only the idempotency Get");
+});
+
+test("forward replay of a complete Lago envelope is local-only even if Lago is unavailable", async () => {
+  const orgId = "org_lago_complete_replay";
+  const { client, log } = makeDdbStub({
+    getResponses: [lagoBootstrappedEnvelope(orgId)],
+  });
+  const { stripe, createCalls } = makeStripeStub({ customerId: "cus_must_not_create" });
+  const lago = makeLagoProvisioningClient({ throwIfCalled: true });
+  const service = createProvisioningService({
+    ...baseDeps,
+    ddb: client,
+    lagoClient: lago.client,
+    lagoPaymentProviderCode: "stripe-main",
+    legacyStripeRuntimeEnabled: false,
+    stripe,
+  });
+  const result = await service.provisionOrg({
+    orgId,
+    ownerEmail: "lago@example.com",
+    actorId: "user_lago",
+    source: "account-setup",
+  });
+  assert.equal(result.status, "already_exists");
+  assert.equal(result.customerId, "pq_cust_01HYZ6Q4X6DJP2X9Q9FQKX4T7A");
+  assert.equal(result.stripeCustomerId, null);
+  assert.equal(createCalls.length, 0, "complete forward replay must not create Stripe customers");
+  assert.equal(lago.calls.length, 0, "complete forward replay must not call Lago");
+  assert.equal(log.length, 1, "complete forward replay needs only the idempotency Get");
+});
+
+test("forward provisioning bootstraps Lago Free subscription and skips Stripe", async () => {
+  const orgId = "org_lago_forward";
+  const { client, log } = makeDdbStub({
+    getResponses: [undefined, completeEnvelope(orgId, null), lagoBootstrappedEnvelope(orgId)],
+  });
+  const { stripe, createCalls } = makeStripeStub({ customerId: "cus_must_not_create" });
+  const lago = makeLagoProvisioningClient({ getSubscriptionResponses: [null, "snapshot"] });
+  const service = createProvisioningService({
+    ...baseDeps,
+    ddb: client,
+    lagoClient: lago.client,
+    lagoPaymentProviderCode: "stripe-main",
+    legacyStripeRuntimeEnabled: false,
+    stripe,
+  });
+  const result = await service.provisionOrg({
+    orgId,
+    ownerEmail: "lago@example.com",
+    actorId: "user_lago",
+    source: "account-setup",
+  });
+  assert.equal(result.status, "created");
+  assert.equal(result.customerId, "pq_cust_01HYZ6Q4X6DJP2X9Q9FQKX4T7A");
+  assert.equal(result.stripeCustomerId, null);
+  assert.equal(createCalls.length, 0, "Stripe customer creation is retired in forward mode");
+  assert.deepEqual(
+    lago.calls.map((call) => call.method),
+    ["upsertCustomer", "getSubscription", "upsertSubscription", "getSubscription"],
+  );
+  assert.equal(
+    (lago.calls[0]?.args as { paymentProviderCode?: string }).paymentProviderCode,
+    "stripe-main",
+  );
+  assert.equal(log.filter((entry) => entry.type === "TransactWrite").length, 1);
+  assert.equal(log.filter((entry) => entry.type === "Query").length, 1);
+  assert.equal(log.filter((entry) => entry.type === "Update").length, 1);
+});
+
+test("forward replay repairs incomplete local Lago state from existing provider subscription", async () => {
+  const orgId = "org_lago_provider_exists";
+  const { client, log } = makeDdbStub({
+    getResponses: [completeEnvelope(orgId, null), lagoBootstrappedEnvelope(orgId)],
+  });
+  const { stripe, createCalls } = makeStripeStub({ customerId: "cus_must_not_create" });
+  const lago = makeLagoProvisioningClient({ getSubscriptionResponses: ["snapshot"] });
+  const service = createProvisioningService({
+    ...baseDeps,
+    ddb: client,
+    lagoClient: lago.client,
+    lagoPaymentProviderCode: "stripe-main",
+    legacyStripeRuntimeEnabled: false,
+    stripe,
+  });
+  const result = await service.provisionOrg({
+    orgId,
+    ownerEmail: "lago@example.com",
+    actorId: "user_lago",
+    source: "account-setup",
+  });
+  assert.equal(result.status, "already_exists");
+  assert.equal(result.customerId, "pq_cust_01HYZ6Q4X6DJP2X9Q9FQKX4T7A");
+  assert.equal(result.stripeCustomerId, null);
+  assert.equal(createCalls.length, 0, "forward replay must not create Stripe customers");
+  assert.deepEqual(
+    lago.calls.map((call) => call.method),
+    ["upsertCustomer", "getSubscription"],
+  );
+  assert.equal(log.filter((entry) => entry.type === "TransactWrite").length, 0);
+  assert.equal(log.filter((entry) => entry.type === "Query").length, 1);
+  assert.equal(log.filter((entry) => entry.type === "Update").length, 1);
 });
 
 test("ALL ORG envelope reads use ConsistentRead: true (Bug 1 regression)", async () => {
@@ -203,14 +428,19 @@ test("happy path: creates Stripe customer and writes envelope + audit transactio
   const txEntries = log.filter((e) => e.type === "TransactWrite");
   assert.equal(txEntries.length, 1);
   const tx = txEntries[0]?.args as {
-    TransactItems: { Put: { TableName: string; Item?: Record<string, unknown>; ConditionExpression: string } }[];
+    TransactItems: {
+      Put: { TableName: string; Item?: Record<string, unknown>; ConditionExpression: string };
+    }[];
   };
   assert.equal(tx.TransactItems.length, 3);
   assert.equal(tx.TransactItems[0]?.Put.TableName, "keys");
   assert.equal(tx.TransactItems[0]?.Put.Item?.customerId, "pq_cust_01HYZ6Q4X6DJP2X9Q9FQKX4T7A");
   assert.equal(tx.TransactItems[0]?.Put.ConditionExpression, "attribute_not_exists(apiKeyHash)");
   assert.equal(tx.TransactItems[1]?.Put.TableName, "customers");
-  assert.equal(tx.TransactItems[1]?.Put.Item?.lagoExternalCustomerId, "pq_cust_01HYZ6Q4X6DJP2X9Q9FQKX4T7A");
+  assert.equal(
+    tx.TransactItems[1]?.Put.Item?.lagoExternalCustomerId,
+    "pq_cust_01HYZ6Q4X6DJP2X9Q9FQKX4T7A",
+  );
   assert.equal(tx.TransactItems[1]?.Put.ConditionExpression, "attribute_not_exists(orgId)");
   assert.equal(tx.TransactItems[2]?.Put.TableName, "audit");
 });
@@ -231,11 +461,7 @@ test("Stripe network/5xx errors (StripeAPIError, StripeConnectionError, StripeRa
       actorId: "u",
       source: "clerk-webhook",
     });
-    assert.equal(
-      result.status,
-      "retryable_failure",
-      `${err.constructor.name} should be retryable`,
-    );
+    assert.equal(result.status, "retryable_failure", `${err.constructor.name} should be retryable`);
   }
 });
 
@@ -257,26 +483,15 @@ test("Stripe 4xx errors (StripeInvalidRequestError, StripeCardError, StripeAuthe
       actorId: "u",
       source: "clerk-webhook",
     });
-    assert.equal(
-      result.status,
-      "fatal_failure",
-      `${err.constructor.name} should be fatal`,
-    );
+    assert.equal(result.status, "fatal_failure", `${err.constructor.name} should be fatal`);
   }
 });
 
 test("TransactionCanceledException with TransactionConflict reason → retry succeeds (Bug 2 regression)", async () => {
   const orgId = "org_retry";
   const { client, log } = makeDdbStub({
-    getResponses: [
-      undefined,
-      undefined,
-      completeEnvelope(orgId, "cus_retry"),
-    ],
-    transactWriteBehaviours: [
-      makeTransactionCanceledException(["TransactionConflict"]),
-      "ok",
-    ],
+    getResponses: [undefined, undefined, completeEnvelope(orgId, "cus_retry")],
+    transactWriteBehaviours: [makeTransactionCanceledException(["TransactionConflict"]), "ok"],
   });
   const { stripe } = makeStripeStub({ customerId: "cus_retry" });
   const service = createProvisioningService({ ...baseDeps, ddb: client, stripe });
@@ -316,10 +531,7 @@ test("TransactionCanceledException with ThrottlingError reason is transient (Bug
   const orgId = "org_throttle2";
   const { client, log } = makeDdbStub({
     getResponses: [undefined, undefined, completeEnvelope(orgId, "cus_t2")],
-    transactWriteBehaviours: [
-      makeTransactionCanceledException(["ThrottlingError"]),
-      "ok",
-    ],
+    transactWriteBehaviours: [makeTransactionCanceledException(["ThrottlingError"]), "ok"],
   });
   const { stripe } = makeStripeStub({ customerId: "cus_t2" });
   const service = createProvisioningService({ ...baseDeps, ddb: client, stripe });
@@ -340,9 +552,7 @@ test("ConditionalCheckFailed during a race → reconciliation read finds envelop
       undefined, // preflight: nothing yet
       completeEnvelope(orgId), // reconciliation after ConditionalCheckFailed: competing writer won
     ],
-    transactWriteBehaviours: [
-      makeTransactionCanceledException(["ConditionalCheckFailed", "None"]),
-    ],
+    transactWriteBehaviours: [makeTransactionCanceledException(["ConditionalCheckFailed", "None"])],
   });
   const { stripe } = makeStripeStub({ customerId: "cus_race" });
   const service = createProvisioningService({ ...baseDeps, ddb: client, stripe });
@@ -528,9 +738,7 @@ test("Bug 4: reconciliation read failure after a TransactWrite cancellation → 
       undefined, // preflight
       makeAwsTransientReadError(), // reconciliation read after cancel
     ],
-    transactWriteBehaviours: [
-      makeTransactionCanceledException(["TransactionConflict"]),
-    ],
+    transactWriteBehaviours: [makeTransactionCanceledException(["TransactionConflict"])],
   });
   const { stripe } = makeStripeStub({ customerId: "cus_rec" });
   const service = createProvisioningService({ ...baseDeps, ddb: client, stripe });
@@ -546,13 +754,8 @@ test("Bug 4: reconciliation read failure after a TransactWrite cancellation → 
 
 test("Bug 4: reconciliation read fatal failure after a TransactWrite error → fatal_failure preserving stripeCustomerId", async () => {
   const { client } = makeDdbStub({
-    getResponses: [
-      undefined,
-      makeAwsFatalReadError(),
-    ],
-    transactWriteBehaviours: [
-      makeTransactionCanceledException(["TransactionConflict"]),
-    ],
+    getResponses: [undefined, makeAwsFatalReadError()],
+    transactWriteBehaviours: [makeTransactionCanceledException(["TransactionConflict"])],
   });
   const { stripe } = makeStripeStub({ customerId: "cus_rec_f" });
   const service = createProvisioningService({ ...baseDeps, ddb: client, stripe });
@@ -875,7 +1078,9 @@ test("Bug 6: rejecting injected sender after envelope commit → created + email
   };
   const previous = process.env.WELCOME_EMAIL_FROM;
   process.env.WELCOME_EMAIL_FROM = "noreply@prontiq.dev";
-  let result: Awaited<ReturnType<ReturnType<typeof createProvisioningService>["provisionOrg"]>> | undefined;
+  let result:
+    | Awaited<ReturnType<ReturnType<typeof createProvisioningService>["provisionOrg"]>>
+    | undefined;
   let threw = false;
   try {
     const service = createProvisioningService({
@@ -901,13 +1106,21 @@ test("Bug 6: rejecting injected sender after envelope commit → created + email
       process.env.WELCOME_EMAIL_FROM = previous;
     }
   }
-  assert.equal(threw, false, "provisionOrg MUST NOT throw when an injected sender rejects post-commit");
+  assert.equal(
+    threw,
+    false,
+    "provisionOrg MUST NOT throw when an injected sender rejects post-commit",
+  );
   assert.ok(result, "result must be defined");
   assert.equal(result.status, "created", "org IS provisioned — status must be created");
   assert.equal(result.emailSent, false, "rejecting sender → emailSent: false");
   assert.equal(result.stripeCustomerId, "cus_email_throw");
   assert.ok(result.orgEnvelope, "envelope must be returned");
-  assert.equal(senderCalled, true, "sender was actually invoked (verify the guard caught it, not the env-var early-out)");
+  assert.equal(
+    senderCalled,
+    true,
+    "sender was actually invoked (verify the guard caught it, not the env-var early-out)",
+  );
 });
 
 test("Bug 6: synchronously-throwing sender (not a promise rejection) is also caught", async () => {
@@ -926,7 +1139,9 @@ test("Bug 6: synchronously-throwing sender (not a promise rejection) is also cau
   }) as unknown as EmailSender;
   const previous = process.env.WELCOME_EMAIL_FROM;
   process.env.WELCOME_EMAIL_FROM = "noreply@prontiq.dev";
-  let result: Awaited<ReturnType<ReturnType<typeof createProvisioningService>["provisionOrg"]>> | undefined;
+  let result:
+    | Awaited<ReturnType<ReturnType<typeof createProvisioningService>["provisionOrg"]>>
+    | undefined;
   let threw = false;
   try {
     const service = createProvisioningService({

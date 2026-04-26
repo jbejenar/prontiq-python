@@ -24,12 +24,14 @@ import {
 export interface BillingCronDependencies {
   ddb: DynamoDBDocumentClient;
   keysTableName: string;
+  legacyStripeRuntimeEnabled: boolean;
   logger: BillingLogger;
   stripe: Stripe;
   usageTableName: string;
 }
 
 export interface BillingCronSummary {
+  disabled?: boolean;
   keysProcessed: number;
   meterEventsSent: number;
   negativeDeltas: number;
@@ -62,9 +64,13 @@ function getDefaultStripe(): Stripe {
   return cachedStripe;
 }
 
-export function createBillingCronService(
-  overrides: Partial<BillingCronDependencies> = {},
-): { handleTick: (now?: Date) => Promise<BillingCronSummary> } {
+function legacyStripeRuntimeEnabled(): boolean {
+  return process.env.LEGACY_STRIPE_RUNTIME_ENABLED !== "false";
+}
+
+export function createBillingCronService(overrides: Partial<BillingCronDependencies> = {}): {
+  handleTick: (now?: Date) => Promise<BillingCronSummary>;
+} {
   async function resolveStripe(): Promise<Stripe> {
     if (overrides.stripe) {
       return overrides.stripe;
@@ -73,9 +79,26 @@ export function createBillingCronService(
   }
 
   async function handleTick(now = new Date()): Promise<BillingCronSummary> {
+    const runtimeEnabled = overrides.legacyStripeRuntimeEnabled ?? legacyStripeRuntimeEnabled();
+    if (!runtimeEnabled) {
+      const logger = overrides.logger ?? defaultLogger;
+      const summary: BillingCronSummary = {
+        disabled: true,
+        keysProcessed: 0,
+        meterEventsSent: 0,
+        negativeDeltas: 0,
+        scopesSkipped: 0,
+      };
+      logger.info("Billing cron skipped because legacy Stripe runtime is retired", {
+        ...summary,
+        at: now.toISOString(),
+      });
+      return summary;
+    }
     const dependencies: BillingCronDependencies = {
       ddb: overrides.ddb ?? getDefaultDdb(),
       keysTableName: overrides.keysTableName ?? getRequiredEnv("KEYS_TABLE_NAME"),
+      legacyStripeRuntimeEnabled: runtimeEnabled,
       logger: overrides.logger ?? defaultLogger,
       stripe: await resolveStripe(),
       usageTableName: overrides.usageTableName ?? getRequiredEnv("USAGE_TABLE_NAME"),
@@ -121,15 +144,28 @@ export function createBillingCronService(
       }
 
       summary.keysProcessed += 1;
-      const chain = await discoverAttributionChain(dependencies.ddb, dependencies.usageTableName, apiKeyHash);
+      const chain = await discoverAttributionChain(
+        dependencies.ddb,
+        dependencies.usageTableName,
+        apiKeyHash,
+      );
       const usageRowsByHash = new Map<string, Map<string, UsageCounterRecord>>();
       for (const hash of chain) {
-        const rows = await loadUsageRowsForHash(dependencies.ddb, dependencies.usageTableName, hash);
+        const rows = await loadUsageRowsForHash(
+          dependencies.ddb,
+          dependencies.usageTableName,
+          hash,
+        );
         usageRowsByHash.set(hash, buildUsageScopeIndex(rows));
       }
 
       for (const monthKey of monthKeys) {
-        const productsToProcess = discoverProductsForMonth(key.products, usageRowsByHash, chain, monthKey);
+        const productsToProcess = discoverProductsForMonth(
+          key.products,
+          usageRowsByHash,
+          chain,
+          monthKey,
+        );
         if (productsToProcess.length === 0) {
           summary.scopesSkipped += 1;
           continue;
@@ -157,7 +193,12 @@ export function createBillingCronService(
 
       if (
         registryStatus.retired &&
-        !hasOutstandingBillableUsage(apiKeyHash, retirementBlockingMonthKeys, usageRowsByHash, chain)
+        !hasOutstandingBillableUsage(
+          apiKeyHash,
+          retirementBlockingMonthKeys,
+          usageRowsByHash,
+          chain,
+        )
       ) {
         await updateRegistryMembership(
           dependencies.ddb,

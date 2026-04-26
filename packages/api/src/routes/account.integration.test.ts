@@ -27,11 +27,7 @@ import {
   DeleteTableCommand,
   DescribeTableCommand,
 } from "@aws-sdk/client-dynamodb";
-import {
-  DynamoDBDocumentClient,
-  GetCommand,
-  QueryCommand,
-} from "@aws-sdk/lib-dynamodb";
+import { DynamoDBDocumentClient, GetCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
 import { OpenAPIHono } from "@hono/zod-openapi";
 import type Stripe from "stripe";
 import type { ClerkClient } from "@clerk/backend";
@@ -173,7 +169,12 @@ function makeStripeStub(idCounter: { value: number }): StripeStubControl {
 
 const noopEmail: EmailSender = async () => true;
 const noopLogger = { error: () => {}, info: () => {}, warn: () => {} };
-type BillingServiceOverride = NonNullable<Parameters<typeof createAccountRoutes>[0]>["billingService"];
+type BillingServiceOverride = NonNullable<
+  Parameters<typeof createAccountRoutes>[0]
+>["billingService"];
+type ProvisioningServiceOverride = NonNullable<
+  Parameters<typeof createAccountRoutes>[0]
+>["service"];
 
 interface BuildAppOpts {
   orgId: string;
@@ -190,6 +191,7 @@ interface BuildAppOpts {
   clerkClient: ClerkClient;
   ddbOverride?: DynamoDBDocumentClient;
   billingService?: BillingServiceOverride;
+  provisioningService?: ProvisioningServiceOverride;
 }
 
 function buildApp(opts: BuildAppOpts) {
@@ -205,16 +207,18 @@ function buildApp(opts: BuildAppOpts) {
     return claims;
   };
 
-  const service = createProvisioningService({
-    ddb: opts.ddbOverride ?? ddb,
-    keysTableName: KEYS_TABLE,
-    customersTableName: CUSTOMERS_TABLE,
-    auditTableName: AUDIT_TABLE,
-    stripe: opts.stripe,
-    sendWelcomeEmail: noopEmail,
-    logger: noopLogger,
-    sleep: async () => {},
-  });
+  const service =
+    opts.provisioningService ??
+    createProvisioningService({
+      ddb: opts.ddbOverride ?? ddb,
+      keysTableName: KEYS_TABLE,
+      customersTableName: CUSTOMERS_TABLE,
+      auditTableName: AUDIT_TABLE,
+      stripe: opts.stripe,
+      sendWelcomeEmail: noopEmail,
+      logger: noopLogger,
+      sleep: async () => {},
+    });
 
   const accountRoutes = createAccountRoutes({
     billingService: opts.billingService,
@@ -247,7 +251,9 @@ function buildApp(opts: BuildAppOpts) {
   return app;
 }
 
-async function callSetup(app: OpenAPIHono): Promise<{ status: number; body: Record<string, unknown> }> {
+async function callSetup(
+  app: OpenAPIHono,
+): Promise<{ status: number; body: Record<string, unknown> }> {
   const res = await app.request("/v1/account/setup", {
     method: "POST",
     headers: { Authorization: "Bearer good_token" },
@@ -265,6 +271,7 @@ test("DoD scenario (a): fresh org → 201 created + envelope + audit row", async
   const { status, body } = await callSetup(app);
   assert.equal(status, 201);
   assert.equal(body.status, "created");
+  assert.equal(typeof body.customerId, "string");
   assert.equal(typeof body.stripeCustomerId, "string");
   assert.match(body.stripeCustomerId as string, /^cus_acct_/);
 
@@ -303,6 +310,7 @@ test("DoD scenario (b): replay → 200 already_exists + zero new side-effects (i
   const replay = await callSetup(app);
   assert.equal(replay.status, 200);
   assert.equal(replay.body.status, "already_exists");
+  assert.equal(replay.body.customerId, first.body.customerId);
   assert.equal(replay.body.stripeCustomerId, first.body.stripeCustomerId);
   assert.equal(callCount(), 1, "replay MUST NOT create a second Stripe customer");
 
@@ -314,6 +322,85 @@ test("DoD scenario (b): replay → 200 already_exists + zero new side-effects (i
     }),
   );
   assert.equal(auditRows.Count, 1, "no new audit rows on replay");
+});
+
+test("account setup fails closed when an existing legacy envelope lacks customerId", async () => {
+  const orgId = `org_acct_missing_customer_${SUFFIX}`;
+  const counter = { value: 0 };
+  const { stripe } = makeStripeStub(counter);
+  const app = buildApp({
+    orgId,
+    stripe,
+    clerkClient: makeClerkClientStub(VERIFIED_USER),
+    provisioningService: {
+      async provisionOrg() {
+        return {
+          emailSent: false,
+          orgEnvelope: {
+            apiKeyHash: `ORG#${orgId}`,
+            completedAt: "2026-04-26T00:00:00.000Z",
+            hasFirstKey: false,
+            ownerEmail: "owner@example.com",
+            paymentOverdue: false,
+            products: ["address"],
+            stripeCustomerId: "cus_legacy_missing_customer",
+            stripeSubscriptionId: null,
+            subscriptionItems: {},
+            tier: "free",
+          },
+          status: "already_exists",
+          stripeCustomerId: "cus_legacy_missing_customer",
+        };
+      },
+    },
+  });
+
+  const { status, body } = await callSetup(app);
+  assert.equal(status, 409);
+  const error = body.error as Record<string, unknown> | undefined;
+  assert.equal(error?.code, "CUSTOMER_MAPPING_MISSING");
+});
+
+test("account setup returns forward-mode customer contract with nullable Stripe linkage", async () => {
+  const orgId = `org_acct_forward_${SUFFIX}`;
+  const customerId = "pq_cust_01HYZ6Q4X6DJP2X9Q9FQKX4T7A";
+  const counter = { value: 0 };
+  const { stripe } = makeStripeStub(counter);
+  const app = buildApp({
+    orgId,
+    stripe,
+    clerkClient: makeClerkClientStub(VERIFIED_USER),
+    provisioningService: {
+      async provisionOrg() {
+        return {
+          customerId,
+          emailSent: true,
+          orgEnvelope: {
+            apiKeyHash: `ORG#${orgId}`,
+            completedAt: "2026-04-26T00:00:00.000Z",
+            customerId,
+            hasFirstKey: false,
+            ownerEmail: "owner@example.com",
+            paymentOverdue: false,
+            products: ["address"],
+            stripeCustomerId: null,
+            stripeSubscriptionId: null,
+            subscriptionItems: {},
+            tier: "free",
+          },
+          status: "created",
+          stripeCustomerId: null,
+        };
+      },
+    },
+  });
+
+  const { status, body } = await callSetup(app);
+  assert.equal(status, 201);
+  assert.equal(body.status, "created");
+  assert.equal(body.customerId, customerId);
+  assert.equal(body.stripeCustomerId, null);
+  assert.equal(body.emailSent, true);
 });
 
 test("DoD scenario (c): DDB transient on first attempt → retry succeeds; exactly 1 Stripe customer + 1 envelope", async () => {
@@ -357,8 +444,15 @@ test("DoD scenario (c): DDB transient on first attempt → retry succeeds; exact
 
   const result = await callSetup(app);
   assert.equal(result.status, 201, "retry must succeed after the simulated transient");
-  assert.equal(callCount(), 1, "Stripe customer created exactly once across both attempts (idempotency-key reuse)");
-  assert.ok(transactWriteAttempts >= 2, "TransactWrite was retried at least once after the transient");
+  assert.equal(
+    callCount(),
+    1,
+    "Stripe customer created exactly once across both attempts (idempotency-key reuse)",
+  );
+  assert.ok(
+    transactWriteAttempts >= 2,
+    "TransactWrite was retried at least once after the transient",
+  );
 
   const envelope = await ddb.send(
     new GetCommand({ TableName: KEYS_TABLE, Key: { apiKeyHash: `ORG#${orgId}` } }),
@@ -402,7 +496,10 @@ test("not_verified email → 500 fatal_failure with primary_email_unverified rea
 
   const { status, body } = await callSetup(app);
   assert.equal(status, 500);
-  const error = body.error as { code: string; details: { reason: string; verificationStatus: string } };
+  const error = body.error as {
+    code: string;
+    details: { reason: string; verificationStatus: string };
+  };
   assert.equal(error.code, "FATAL_FAILURE");
   assert.equal(error.details.reason, "primary_email_unverified");
   assert.equal(error.details.verificationStatus, "unverified");

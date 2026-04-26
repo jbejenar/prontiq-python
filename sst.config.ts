@@ -360,10 +360,9 @@ export default $config({
       "HONEYCOMB_API_KEY",
       "LAGO_API_KEY",
       "LAGO_WEBHOOK_HMAC_SECRET",
-      "STRIPE_SECRET_KEY",
       "STRIPE_WEBHOOK_SECRET",
     ] as const;
-    const REQUIRED_DEPLOY_VARS = ["LAGO_API_URL"] as const;
+    const REQUIRED_DEPLOY_VARS = ["LAGO_API_URL", "LAGO_PAYMENT_PROVIDER_CODE"] as const;
     function readGithubSecret(name: string): string {
       const raw = process.env[name];
       if (raw === undefined) return "";
@@ -380,7 +379,11 @@ export default $config({
     }
     const isDeployedStage = $app.stage === "dev" || $app.stage === "prod";
     if (isDeployedStage) {
-      const missing = REQUIRED_DEPLOY_SECRETS.filter((name) => readGithubSecret(name).length === 0);
+      const legacyStripeEnabled = readGithubVar("LEGACY_STRIPE_RUNTIME_ENABLED") !== "false";
+      const requiredDeploySecrets = legacyStripeEnabled
+        ? [...REQUIRED_DEPLOY_SECRETS, "STRIPE_SECRET_KEY" as const]
+        : REQUIRED_DEPLOY_SECRETS;
+      const missing = requiredDeploySecrets.filter((name) => readGithubSecret(name).length === 0);
       if (missing.length > 0) {
         throw new Error(
           `Missing or whitespace-only GitHub Environment secrets for stage "${$app.stage}": ` +
@@ -1164,6 +1167,10 @@ export default $config({
         CLERK_ADMIN_ROLES: process.env.CLERK_ADMIN_ROLES ?? "",
         AUDIT_TABLE_NAME: auditTable.name,
         CUSTOMERS_TABLE_NAME: customersTable.name,
+        LAGO_API_KEY: $util.secret(readGithubSecret("LAGO_API_KEY")),
+        LAGO_API_URL: readGithubVar("LAGO_API_URL"),
+        LAGO_PAYMENT_PROVIDER_CODE: readGithubVar("LAGO_PAYMENT_PROVIDER_CODE") || "",
+        LEGACY_STRIPE_RUNTIME_ENABLED: readGithubVar("LEGACY_STRIPE_RUNTIME_ENABLED") || "true",
         ...sharedEmailEnv(),
         PRONTIQ_ACCOUNT_URL: process.env.PRONTIQ_ACCOUNT_URL ?? DEFAULT_ACCOUNT_URL,
       };
@@ -1180,13 +1187,7 @@ export default $config({
       runtime: "nodejs24.x",
       memory: "512 MB",
       timeout: "30 seconds",
-      link: [
-        authKeysTable,
-        authUsageTable,
-        auditTable,
-        customersTable,
-        suppressionsTable,
-      ],
+      link: [authKeysTable, authUsageTable, auditTable, customersTable, suppressionsTable],
       permissions: [
         {
           actions: ["ses:SendEmail", "ses:SendRawEmail"],
@@ -1374,6 +1375,7 @@ export default $config({
         environment: {
           ...observabilityEnv(),
           KEYS_TABLE_NAME: authKeysTable.name,
+          LEGACY_STRIPE_RUNTIME_ENABLED: readGithubVar("LEGACY_STRIPE_RUNTIME_ENABLED") || "true",
           STRIPE_SECRET_KEY: $util.secret(readGithubSecret("STRIPE_SECRET_KEY")),
           USAGE_TABLE_NAME: authUsageTable.name,
         },
@@ -1410,6 +1412,7 @@ export default $config({
         environment: {
           ...observabilityEnv(),
           KEYS_TABLE_NAME: authKeysTable.name,
+          LEGACY_STRIPE_RUNTIME_ENABLED: readGithubVar("LEGACY_STRIPE_RUNTIME_ENABLED") || "true",
           STRIPE_SECRET_KEY: $util.secret(readGithubSecret("STRIPE_SECRET_KEY")),
           USAGE_TABLE_NAME: authUsageTable.name,
         },
@@ -1453,9 +1456,10 @@ export default $config({
     // signature. CLERK_ADMIN_ROLES IS shared (via controlPlaneEnv())
     // so any custom-role override applies uniformly to both this
     // Lambda's clerkAdminOnly() gate and the webhook's role gate.
-    // The existing deployed-stage secret guard above validates the secrets
-    // this Lambda needs (CLERK_SECRET_KEY, STRIPE_SECRET_KEY, and LAGO_API_KEY)
-    // for dev/prod stages.
+    // The existing deployed-stage guard above validates the secrets/vars this
+    // Lambda needs (CLERK_SECRET_KEY, LAGO_API_KEY, LAGO_API_URL, and
+    // LAGO_PAYMENT_PROVIDER_CODE) for dev/prod stages. Stripe remains present
+    // only for explicit legacy rollback.
     const accountFn = new sst.aws.Function("PqAccount", {
       handler: "packages/api/src/account-handler.bootstrap.handler",
       architecture: "arm64",
@@ -1483,9 +1487,6 @@ export default $config({
           readGithubVar("CONSOLE_BILLING_PLAN_CHANGE_ALLOWED_ORG_IDS") || "",
         CONSOLE_BILLING_PLAN_CHANGES_ENABLED:
           readGithubVar("CONSOLE_BILLING_PLAN_CHANGES_ENABLED") || "false",
-        LAGO_API_KEY: $util.secret(readGithubSecret("LAGO_API_KEY")),
-        LAGO_API_URL: readGithubVar("LAGO_API_URL"),
-        LAGO_PAYMENT_PROVIDER_CODE: readGithubVar("LAGO_PAYMENT_PROVIDER_CODE") || "",
       },
     });
 

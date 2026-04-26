@@ -14,8 +14,9 @@ In the target commercial architecture:
 
 ## Scope
 
-This runbook is for `POST /webhooks/lago`. It does not replace the current
-legacy Stripe webhook while the migration is in progress.
+This runbook is for `POST /webhooks/lago`, the active commercial
+reconciliation path after P1B.19. The legacy Stripe webhook is rollback-only
+while P1B.20 cleanup has not removed its configuration.
 
 ## Preconditions
 
@@ -24,9 +25,9 @@ legacy Stripe webhook while the migration is in progress.
 - GitHub Environment variable `LAGO_WEBHOOK_RECONCILIATION_ENABLED` is set
   deliberately. Keep it `false` until the Lago endpoint is ready to retry
   503 responses during rollout.
-- GitHub Environment variable `COUNTER_PERIOD_SOURCE` is `calendar` until
-  webhook reconciliation has populated billing-period fields for the target
-  environment.
+- GitHub Environment variable `COUNTER_PERIOD_SOURCE` is `lago` for the
+  P1B.19 post-cutover posture. Use `calendar` only as the rollback fallback or
+  before a stage has verified billing-period fields.
 - Lago webhook endpoint is configured with `signature_algo = hmac`, not JWT.
 - Lago plans use codes that exactly match Prontiq tiers, currently `free` and
   `payg` for the forward commercial surface.
@@ -93,8 +94,9 @@ below remains the webhook-specific portion.
 7. Verify `prontiq-lago-webhook-events.status = completed`.
 8. Verify matching `prontiq-keys` org/key rows have Lago plan, subscription,
    and billing-period fields.
-9. Only after several successful reconciliations, consider
-   `COUNTER_PERIOD_SOURCE=lago`.
+9. For P1B.19 cutover, set `COUNTER_PERIOD_SOURCE=lago` only after successful
+   reconciliation and preflight evidence confirms active orgs have
+   billing-period fields.
 
 Do not configure the Lago endpoint while the flag is false unless you are
 intentionally testing Lago retries.

@@ -103,7 +103,7 @@ Use Clerk Organizations, not user-only identity.
 This matches the live backend contract today:
 
 - org-scoped keys
-- org-scoped org-envelope and legacy Stripe customer linkage
+- org-scoped org-envelope and platform-owned customer identity
 - org-scoped usage and audit
 
 Target commercial identity contract:
@@ -113,9 +113,8 @@ Target commercial identity contract:
 - `customerId` maps across Clerk orgs, Prontiq, Lago `external_id`, and
   migration-era Stripe linkage
 
-Frontend work may rely on `customerId` as the target contract, but must not
-assume every runtime API exposes it until the later Lago migration tickets ship
-the customer table, backfill, and console billing endpoints.
+Frontend work may rely on `customerId` as the commercial identity contract.
+Stripe customer IDs are migration/payment-rail linkage only.
 
 ### Agentic optimization
 
@@ -140,7 +139,7 @@ packages/
   api/            Hono API on Lambda
   control-plane/  provisioning, billing, email, audit helpers
   ingestion/      indexing workflows
-  webhooks/       Clerk / Stripe webhook handlers
+  webhooks/       Clerk / Lago / rollback-only Stripe webhook handlers
   docs/           Mintlify content
   plugins/        Shopify / WooCommerce / web component
 

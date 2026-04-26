@@ -4,6 +4,34 @@
 > the time they were written, not the current source of truth. Use
 > `ROADMAP.md`, `NEXT-WORK.md`, and `README.md` for current execution status.
 
+## Session 41 — 2026-04-26
+
+**Focus:** P1B.19 Stripe legacy billing runtime retirement.
+
+### Completed
+
+- **P1B.19 is implemented for review.** `LEGACY_STRIPE_RUNTIME_ENABLED=false`
+  is now the cutover posture for provisioning, Stripe webhook dispatch,
+  `PqBillingCron`, and `PqMonthClose`.
+- **Forward provisioning is Lago-backed.** New org setup writes the Prontiq
+  customer envelope, skips Stripe customer creation, upserts the Lago customer
+  and Free subscription, and denormalizes Lago billing-period fields locally.
+- **Legacy Stripe paths are rollback-only.** Stripe webhooks still verify
+  signatures but return `retired`; cron and month-close return disabled
+  summaries instead of pushing meter events.
+- **Docs and runbooks are aligned.** Architecture, roadmap, handoff docs,
+  private API docs, and Stripe/Lago runbooks now distinguish active Lago runtime
+  from rollback-only Stripe code.
+
+### Next session should start with
+
+1. Deploy/verify P1B.19 in dev and prod before starting P1B.20 cleanup.
+2. Confirm `LEGACY_STRIPE_RUNTIME_ENABLED=false`,
+   `COUNTER_PERIOD_SOURCE=lago`, `BILLING_EVENTS_ENABLED=true`, and
+   `LAGO_WEBHOOK_RECONCILIATION_ENABLED=true` in each target environment.
+3. Preserve repo-owned smoke fixtures until P1B.21 unless they become unsafe or
+   ambiguous.
+
 ## Session 40 — 2026-04-26
 
 **Focus:** P1B.18 account billing API contract.

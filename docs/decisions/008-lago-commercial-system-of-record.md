@@ -6,10 +6,11 @@ Accepted
 
 ## Context
 
-The repo currently ships a Stripe-centric billing path, but the commercial
-architecture direction has changed. The target system needs plans, pricing,
-metering, invoicing, and commercial reporting to live outside the Prontiq hot
-path and outside founder-operated billing logic.
+The repo previously shipped a Stripe-centric billing path. P1B.19 cuts runtime
+billing over to the Lago-centered model while retaining Stripe as the payment
+rail and rollback-only legacy runtime. Plans, pricing, metering, invoicing, and
+commercial reporting need to live outside the Prontiq hot path and outside
+founder-operated billing logic.
 
 ## Decision
 

@@ -159,21 +159,21 @@ Nobody else bundles Australian address validation with ABN verification with LEI
 
 ### 3.2 Stack Decision Table
 
-| Layer                 | Tool                                                  | Free Tier                                                                  | First Paid Tier         | Why This One                                                                                                                                                                            |
-| --------------------- | ----------------------------------------------------- | -------------------------------------------------------------------------- | ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Infrastructure**    | SST v4 + Pulumi                                       | —                                                                          | —                       | Deploys API + dashboard from one repo. `sst dev` for live Lambda dev. No CloudFormation synth step.                                                                                     |
-| **API framework**     | Hono + `@hono/zod-openapi` on Lambda (ARM64)          | —                                                                          | —                       | Route groups per product, shared middleware, auto OpenAPI 3.1 spec from Zod route schemas. The spec is the atom from which docs and SDKs are derived.                                   |
-| **Search**            | OpenSearch managed                                    | ~$35/mo (t3.small)                                                         | ~$150/mo (2× t3.medium) | One cluster, index per product, alias-swap for zero-downtime updates.                                                                                                                   |
-| **Data pipelines**    | Independent per product                               | —                                                                          | —                       | Each ships NDJSON + manifest.json to S3. Platform reacts.                                                                                                                               |
-| **Ingestion**         | EventBridge → Step Functions                          | AWS free tier                                                              | —                       | S3 manifest trigger → parallel bulk index → health check → alias swap.                                                                                                                  |
-| **Auth (portal)**     | Clerk                                                 | **50,000 MAUs free**                                                       | $20/mo (Pro)            | Sign-up, login, OAuth, orgs, teams. Pre-built Next.js components. Won't hit paid for years.                                                                                             |
-| **API keys**          | DynamoDB (+ DAX from Phase 3)                         | AWS free tier                                                              | —                       | DynamoDB-native: generate, SHA-256 hash, verify. Raw key never stored. ~80 LOC (see §7). No vendor in the hot path. DAX when sub-ms matters at scale.                                   |
-| **Billing**           | Lago (target) + Stripe (payments)                     | **Current live:** processing fees only. **Target:** see Lago add-on below. | 2.9% + 30¢/txn          | Target model: Lago owns plans, pricing, metering, and invoicing; Stripe handles payment collection only. Current repo still contains a legacy Stripe-centric billing path.              |
-| **Docs**              | Mintlify                                              | **Free Hobby plan** (1 editor, custom domain, playground)                  | ~$250-300/mo (Pro)      | Beautiful docs from OpenAPI spec. Free tier covers a solo founder. AI assistant and team collaboration only on paid.                                                                    |
-| **SDKs**              | Speakeasy                                             | **1 SDK, up to 50 API methods, free forever**                              | Contact for pricing     | Auto-generated typed SDKs. 50 methods covers entire address + ABN + LEI surface.                                                                                                        |
-| **Authenticated app** | `apps/console` on `console.prontiq.dev` + Clerk shell | Deployed via Next.js app hosting                                           | —                       | Two-app architecture: `apps/landing` for acquisition, `apps/console` for authenticated usage, keys, billing, and account-management surfaces. Legacy `/account` language is superseded. |
-| **CI/CD**             | GitHub Actions + OIDC                                 | Free tier                                                                  | —                       | No stored AWS credentials. Short-lived STS tokens per run.                                                                                                                              |
-| **Monitoring**        | CloudWatch + Honeycomb + X-Ray (transition)           | Included with AWS + Honeycomb                                              | —                       | CloudWatch/SNS remains the ops plane; Honeycomb is the backend trace-analysis plane; `PqApi` X-Ray remains during transition.                                                           |
+| Layer                 | Tool                                                  | Free Tier                                                                                  | First Paid Tier         | Why This One                                                                                                                                                                            |
+| --------------------- | ----------------------------------------------------- | ------------------------------------------------------------------------------------------ | ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Infrastructure**    | SST v4 + Pulumi                                       | —                                                                                          | —                       | Deploys API + dashboard from one repo. `sst dev` for live Lambda dev. No CloudFormation synth step.                                                                                     |
+| **API framework**     | Hono + `@hono/zod-openapi` on Lambda (ARM64)          | —                                                                                          | —                       | Route groups per product, shared middleware, auto OpenAPI 3.1 spec from Zod route schemas. The spec is the atom from which docs and SDKs are derived.                                   |
+| **Search**            | OpenSearch managed                                    | ~$35/mo (t3.small)                                                                         | ~$150/mo (2× t3.medium) | One cluster, index per product, alias-swap for zero-downtime updates.                                                                                                                   |
+| **Data pipelines**    | Independent per product                               | —                                                                                          | —                       | Each ships NDJSON + manifest.json to S3. Platform reacts.                                                                                                                               |
+| **Ingestion**         | EventBridge → Step Functions                          | AWS free tier                                                                              | —                       | S3 manifest trigger → parallel bulk index → health check → alias swap.                                                                                                                  |
+| **Auth (portal)**     | Clerk                                                 | **50,000 MAUs free**                                                                       | $20/mo (Pro)            | Sign-up, login, OAuth, orgs, teams. Pre-built Next.js components. Won't hit paid for years.                                                                                             |
+| **API keys**          | DynamoDB (+ DAX from Phase 3)                         | AWS free tier                                                                              | —                       | DynamoDB-native: generate, SHA-256 hash, verify. Raw key never stored. ~80 LOC (see §7). No vendor in the hot path. DAX when sub-ms matters at scale.                                   |
+| **Billing**           | Lago + Stripe payment rail                            | Lago owns plans, pricing, metering, and invoicing; Stripe handles payment collection only. | 2.9% + 30¢/txn          | Current runtime is Lago-centered after P1B.19. The repo still contains a rollback-only legacy Stripe-centric billing path.                                                              |
+| **Docs**              | Mintlify                                              | **Free Hobby plan** (1 editor, custom domain, playground)                                  | ~$250-300/mo (Pro)      | Beautiful docs from OpenAPI spec. Free tier covers a solo founder. AI assistant and team collaboration only on paid.                                                                    |
+| **SDKs**              | Speakeasy                                             | **1 SDK, up to 50 API methods, free forever**                                              | Contact for pricing     | Auto-generated typed SDKs. 50 methods covers entire address + ABN + LEI surface.                                                                                                        |
+| **Authenticated app** | `apps/console` on `console.prontiq.dev` + Clerk shell | Deployed via Next.js app hosting                                                           | —                       | Two-app architecture: `apps/landing` for acquisition, `apps/console` for authenticated usage, keys, billing, and account-management surfaces. Legacy `/account` language is superseded. |
+| **CI/CD**             | GitHub Actions + OIDC                                 | Free tier                                                                                  | —                       | No stored AWS credentials. Short-lived STS tokens per run.                                                                                                                              |
+| **Monitoring**        | CloudWatch + Honeycomb + X-Ray (transition)           | Included with AWS + Honeycomb                                                              | —                       | CloudWatch/SNS remains the ops plane; Honeycomb is the backend trace-analysis plane; `PqApi` X-Ray remains during transition.                                                           |
 
 ### 3.3 Monthly Cost Model
 
@@ -198,11 +198,11 @@ being stood up in the separate `prontiq-lago` repo.
 | Prod only (post-cutover target)        | ~US$71/mo       |
 | Temporary dev + prod overlap/migration | ~US$95/mo       |
 
-So the **current shipped runtime** stays at **~$35/mo** in Phase 1, while the
-**target v-next stack after Lago prod cutover** should be planned as roughly
-**~$106/mo** at the same Phase 1 traffic shape (`$35` current runtime + `~$71`
-Lago prod infra). During migration overlap, plan for roughly **~$130/mo**
-(`$35` + `~$95`) until the legacy Stripe-only path is retired.
+The non-Lago core platform stays at **~$35/mo** in Phase 1, while the Lago
+prod cutover stack should be planned as roughly **~$106/mo** at the same Phase
+1 traffic shape (`$35` core runtime + `~$71` Lago prod infra). During migration
+overlap, plan for roughly **~$130/mo** (`$35` + `~$95`) until the extra
+dev/prod Lago overlap is no longer needed.
 
 > **OpenSearch HA scaling trigger:** Scale from t3.small × 1 (no replicas) to t3.medium × 2 (1 replica) when ANY of these conditions is met: (1) 10 paying customers, (2) $500 MRR, (3) second product (ABN) goes live. Phase 1 on a single node is acceptable pre-revenue — a few hours of downtime during an AZ outage or maintenance window is tolerable. Once there are paying customers relying on SLA-adjacent uptime, single-node is not. The scaling trigger is a business decision, not a technical one — define it now, execute it at the threshold. Note: OpenSearch managed service has mandatory maintenance windows even on multi-node clusters; schedule them for low-traffic hours (e.g., Sunday 03:00 AEST).
 
@@ -1253,19 +1253,19 @@ PK:   apiKeyHash           "WEBHOOK#stripe#{eventId}"   (reserved — not a real
 
 ##### Provisioning Lock Item (stored in `prontiq-keys`)
 
-Records that an org has been provisioned (Stripe customer created, org envelope written). The Clerk webhook (§5.7.1) writes this to mark the org as ready for the user to sign in and create their first key.
+Records that an org has been provisioned (Prontiq customer envelope written and, in forward mode, Lago Free subscription bootstrapped). The Clerk webhook (§5.7.1) writes this to mark the org as ready for the user to sign in and create their first key.
 
 ```
 PK:   apiKeyHash           "ORG#{orgId}"             (reserved — not a real key hash)
 
-      stripeCustomerId     string                    "cus_..." created by webhook with
-                                                     Idempotency-Key: "clerk-provision-{orgId}"
+      customerId           string                    "pq_cust_..." platform-owned commercial ID
+      stripeCustomerId     string | null             "cus_..." only for migration/rollback linkage
       ownerEmail           string                    Resolved from the Clerk org-admin
                                                      membership provisioning flow
-      tier                 string                    "free" until first upgrade webhook
+      tier                 string                    "free" until Lago subscription reconciliation
       products             list                      Current enabled API products for the org.
                                                      Starts as ["address"] on free and is updated
-                                                     dynamically from Stripe metadata so a later
+                                                     dynamically from Lago reconciliation so a later
                                                      first-key flow does not infer products from
                                                      tier alone.
       hasFirstKey          boolean                   false until the user creates their first key
@@ -1278,7 +1278,7 @@ PK:   apiKeyHash           "ORG#{orgId}"             (reserved — not a real ke
 
 > **Why an "org envelope" instead of a provisioning lock that holds a key hash?** The raw API key cannot be safely minted in a webhook — there's no in-flight HTTP response to the user, and DDB stores only the hash. The Clerk webhook provisions everything _except_ the key. The user's first sign-in to `apps/console` on `console.prontiq.dev` calls `/v1/account/keys/create`, which mints the key and returns the raw value in the HTTP response (shown once). See §5.7.1 + §10 Developer Journey.
 
-Stripe customer creation upstream of the TransactWriteItems uses `Idempotency-Key: clerk-provision-{orgId}` so webhook retries return the same `cus_...` without duplicates. See §5.7.1 for the full flow and §12.2 for failure modes.
+Forward-mode provisioning writes the local envelope/customer row first, then idempotently bootstraps the Lago customer and `pq_sub_<ulid>` Free subscription before returning success. Legacy rollback mode can still create a Stripe customer upstream of the TransactWriteItems with `Idempotency-Key: clerk-provision-{orgId}` so webhook retries return the same `cus_...` without duplicates. See §5.7.1 for the full flow and §12.2 for failure modes.
 
 ##### REDIRECT Record (stored in `prontiq-usage`)
 
@@ -1464,26 +1464,30 @@ Canonical target posture: **Lago-centered commercial architecture**.
 
 #### 5.6.0 Implementation Status
 
-Prontiq is in a migration window:
+Prontiq is cutting over from the legacy Stripe runtime to the Lago-centered
+runtime in P1B.19:
 
-- **Current shipped path:** Stripe-backed provisioning, Stripe webhook sync,
-  hourly billing cron, and month-close finalisation.
-- **Target v-next path:** Lago-centered commercial architecture with
+- **Active target path:** Lago-centered commercial architecture with
   org-scoped `customerId`, SQS billing-event buffering, Lago event forwarding,
-  and webhook reconciliation back into Prontiq enforcement state.
-- **Current Lago rollout state:** platform-side Lago forwarding and webhook
-  reconciliation code is deployed in dev and prod. P1B.18a closed on
-  2026-04-26: the repo-owned smoke-event helper exists, API-produced
-  usage-forwarding smoke evidence exists in dev/prod, valid HMAC Lago webhook
-  smoke completed in both webhook ledgers, replaying the same webhook unique
-  keys returns duplicate no-ops, and retained smoke fixtures are inventoried as
-  test-only data. Retained prod smoke fixtures are expected to support P1B.18,
-  P1B.19, and P1B.20; they must remain clearly labelled/inventoried as
-  test-only rather than destructively cleaned now. P1B.21 is the final customer
-  go-live cleanup gate after the Lago migration completes.
+  Lago webhook reconciliation, and private account billing APIs.
+- **Stripe role:** Stripe remains the payment rail behind Lago. It is not the
+  commercial source of truth and must not be called from the API hot path.
+- **Legacy rollback path:** Stripe-backed provisioning, Stripe webhook sync,
+  hourly billing cron, and month-close finalisation remain in code only behind
+  `LEGACY_STRIPE_RUNTIME_ENABLED=true` until P1B.20 removes stale config and
+  surfaces.
+- **Current Lago rollout state:** platform-side Lago forwarding, webhook
+  reconciliation, live smoke certification, and account billing APIs are
+  deployed in dev and prod. P1B.19 adds Lago Free subscription bootstrap during
+  provisioning, retired Stripe webhook behavior, disabled legacy cron/month
+  close behavior, and the post-cutover `COUNTER_PERIOD_SOURCE=lago` posture.
+  Retained prod smoke fixtures are expected to support P1B.20; they must remain
+  clearly labelled/inventoried as test-only rather than destructively cleaned
+  now. P1B.21 is the final customer go-live cleanup gate after the Lago
+  migration completes.
 
-The subsections below retain the **legacy shipped Stripe path** for migration
-and operational history. They are not the forward-looking commercial source of
+The subsections below retain the **legacy shipped Stripe path** for rollback and
+operational history. They are not the forward-looking commercial source of
 truth.
 
 #### 5.6.0.1 Target Customer Identity Contract
@@ -1663,8 +1667,9 @@ Webhook certification evidence:
   `prontiq-lago-webhook-events`, replay returned `200 duplicate`
 - both stages reconciled the smoke envelope/key to Lago `payg` and
   `billingPeriodKey=2026-04-26_2026-05-25`
-- `COUNTER_PERIOD_SOURCE` remains the calendar default for request-time
-  enforcement
+- P1B.19 changes the post-cutover request-time posture to
+  `COUNTER_PERIOD_SOURCE=lago` after preflight verification; calendar remains
+  the rollback fallback.
 
 #### 5.6.0.4 Lago Webhook Reconciliation Contract
 
@@ -1721,9 +1726,9 @@ Rollout flags:
 - `LAGO_WEBHOOK_RECONCILIATION_ENABLED=false` returns 503 after signature
   verification and before ledger claim. Operators must not configure the Lago
   endpoint while this flag is false, because Lago will retry valid events.
-- `COUNTER_PERIOD_SOURCE=calendar` is the safe default. Set
-  `COUNTER_PERIOD_SOURCE=lago` only after webhook reconciliation is enabled and
-  current billing-period fields are populated for the environment.
+- `COUNTER_PERIOD_SOURCE=lago` is the P1B.19 post-cutover posture after webhook
+  reconciliation is enabled and current billing-period fields are populated for
+  the environment. `calendar` remains the rollback fallback.
 
 #### 5.6.0.5 Console Account Billing Contract
 
@@ -1797,13 +1802,15 @@ Drift and idempotency:
 - reconciliation failures finalize the ledger as `drift`, write an error, and
   return 500 so the Lago retry/log surface remains the operator work queue
 
-#### 5.6.1 Legacy Stripe Billing Model (Current Shipped Path)
+#### 5.6.1 Legacy Stripe Billing Model (Rollback Path)
 
-The current live implementation still uses Stripe metadata, Stripe webhooks,
-the hourly billing cron, and month-close. This section documents that shipped
-path only.
+The legacy implementation used Stripe metadata, Stripe webhooks, the hourly
+billing cron, and month-close. After P1B.19 this path is retained only as a
+rollback path behind `LEGACY_STRIPE_RUNTIME_ENABLED=true`; the default runtime
+keeps Stripe as payment rail only and uses Lago plus local DynamoDB enforcement
+state for billing.
 
-In the shipped Stripe path, the runtime still carries a legacy plan ladder in
+In the retired Stripe path, the runtime still carries a legacy plan ladder in
 `packages/shared/src/constants.ts` alongside endpoint credit weights in
 `BILLING_ENDPOINTS`.
 
@@ -1852,8 +1859,8 @@ The same fail-closed rule applies to Stripe metering: the billing cron derives e
 - cancellation downgraded the org back to Free at period end
 - failed renewals entered the grace-period path in §5.6.3
 
-**Legacy customer-management surface:** the current shipped Stripe path still
-links a billing tab to hosted Stripe customer-management surfaces. Treat that as
+**Legacy customer-management surface:** the retired Stripe path linked a billing
+tab to hosted Stripe customer-management surfaces. Treat that as
 legacy migration context only; the canonical target architecture is Lago-backed
 commercial state exposed through Prontiq-owned surfaces.
 
@@ -1867,7 +1874,17 @@ request after the webhook processes.
 
 #### 5.6.2 Legacy Hourly Billing Cron
 
-Scheduled Lambda (EventBridge cron, hourly). Targeted reads, not a table scan. **Push state is single-rooted**: only the current hash in a rotation chain holds `lastPushedCumulativeCount`. Old hashes' counters are read for usage attribution only — their `lastPushedCumulativeCount` is dead state and ignored. **Replay safety is explicit on the current-hash usage row**: before calling Stripe, the cron reserves `pendingMeterEventIdentifier` + `pendingMeterTargetCumulativeCount`; after Stripe accepts the event, the cron finalizes by advancing `lastPushedCumulativeCount` and clearing the pending marker.
+Scheduled Lambda (EventBridge cron, hourly), retained only for rollback. With
+`LEGACY_STRIPE_RUNTIME_ENABLED=false`, it returns a disabled summary before
+resolving Stripe dependencies or reading usage rows. In rollback mode it uses
+targeted reads, not a table scan. **Push state is single-rooted**: only the
+current hash in a rotation chain holds `lastPushedCumulativeCount`. Old hashes'
+counters are read for usage attribution only — their `lastPushedCumulativeCount`
+is dead state and ignored. **Replay safety is explicit on the current-hash usage
+row**: before calling Stripe, the cron reserves `pendingMeterEventIdentifier` +
+`pendingMeterTargetCumulativeCount`; after Stripe accepts the event, the cron
+finalizes by advancing `lastPushedCumulativeCount` and clearing the pending
+marker.
 
 **Authoritative billing model:** customer-facing billing is in credits. The cron's job is:
 
@@ -2031,9 +2048,17 @@ When a paid developer's card fails on renewal, their production app must not bre
 
 ### 5.7 Webhook Chain
 
-Two Lambda handlers, five event types. All verify signatures. All write to the audit table. The provisioning handler is **idempotent by completion-marker semantics, not by attempt-marker** — see §5.7.1.
+The live webhook chain has three ingress classes: Clerk provisioning, Lago
+commercial-state reconciliation, and rollback-only Stripe handling. All verify
+signatures. State-changing handlers write audit or ledger rows. The provisioning
+handler is **idempotent by completion-marker semantics, not by attempt-marker** —
+see §5.7.1.
 
-**orgId resolution in Stripe handlers:** Stripe webhook events carry a `customer` field as a string ID (e.g., `"cus_abc123"`), not an expanded customer object. The provisioning flow stores `orgId` in the Stripe customer's `metadata` at creation time. Every Stripe webhook handler retrieves the full customer to read it:
+**Legacy orgId resolution in Stripe handlers:** Stripe webhook events carry a
+`customer` field as a string ID (e.g., `"cus_abc123"`), not an expanded customer
+object. In the rollback-only Stripe path, provisioning stores `orgId` in the
+Stripe customer's `metadata` at creation time. Every Stripe webhook handler
+retrieves the full customer to read it:
 
 ```typescript
 const stripeCustomerId = event.data.object.customer; // "cus_abc123"
@@ -2041,11 +2066,14 @@ const customer = await stripe.customers.retrieve(stripeCustomerId); // full obje
 const orgId = customer.metadata.orgId; // "org_clerk_xyz"
 ```
 
-One extra Stripe API call per webhook invocation. Webhooks fire rarely (signup, upgrade, downgrade, payment failure — never the hot path), so the latency is irrelevant. Optimisation using `client_reference_id` on Checkout is deferred.
+One extra Stripe API call per webhook invocation. Stripe webhooks are retained
+only for rollback, never the hot path, so the latency is irrelevant.
+Optimisation using `client_reference_id` on Checkout remains deferred unless the
+legacy runtime is reactivated.
 
 #### 5.7.1 Clerk: `organizationMembership.created`
 
-**Critical invariant (post-review):** the **raw API key is never minted in a webhook**. A webhook response goes to Clerk, not to the user's browser, so any raw key generated server-side has no in-flight HTTP response to ride back on. Combined with hash-only storage, an SES failure would leave the org provisioned with a key whose raw value is unrecoverable. Instead, the webhook provisions the **org envelope** (Stripe customer + provisioning marker), and the **first API key is minted by an authenticated `/v1/account/keys/create` call** where the raw value is returned in the HTTP response and shown to the user once.
+**Critical invariant (post-review):** the **raw API key is never minted in a webhook**. A webhook response goes to Clerk, not to the user's browser, so any raw key generated server-side has no in-flight HTTP response to ride back on. Combined with hash-only storage, an SES failure would leave the org provisioned with a key whose raw value is unrecoverable. Instead, the webhook provisions the **org envelope** (Prontiq customer identity, entitlement snapshot, and Lago Free bootstrap), and the **first API key is minted by an authenticated `/v1/account/keys/create` call** where the raw value is returned in the HTTP response and shown to the user once.
 
 ```
 1. Verify Svix signature                                          (invalid → 400)
@@ -2054,26 +2082,32 @@ One extra Stripe API call per webhook invocation. Webhooks fire rarely (signup, 
    ├─ Found  → return 200 (already provisioned; idempotent no-op)
    └─ Missing → continue to step 3
 
-3. Create Stripe customer with Idempotency-Key: "clerk-provision-{orgId}"
-   metadata: { orgId, source: "clerk-webhook" }
-   → returns stripeCustomerId. Stripe's idempotency layer guarantees
-     repeated calls with the same key return the same customer
-     (24-hour window — well beyond any retry burst).
-
-4. TransactWriteItems (DDB):
+3. TransactWriteItems (DDB):
    a. ConditionalPut prontiq-keys/ORG#{orgId} where attribute_not_exists(apiKeyHash)
-      Item: { stripeCustomerId, ownerEmail, tier="free",
+      Item: { customerId="pq_cust_<ulid>", stripeCustomerId=null, ownerEmail, tier="free",
               products=["address"], completedAt, hasFirstKey: false }
       // ORG#{orgId} is the org-envelope record. No raw API key
-      // material lives here — only Stripe linkage and provisioning state.
-   b. ConditionalPut prontiq-audit/{orgId}/{timestamp#eventId}
+      // material lives here — only customer identity, billing linkage,
+      // entitlement snapshot, and provisioning state.
+   b. ConditionalPut prontiq-keys/CUSTOMER#{customerId}
+      Item: { customerId, orgId, clerkOrgId=orgId, ownerEmail, createdAt }
+   c. ConditionalPut prontiq-audit/{orgId}/{timestamp#eventId}
       where attribute_not_exists(orgId) AND attribute_not_exists(SK)
       Item: { action="ORG_PROVISIONED", actorId="clerk-webhook",
-              metadata={ source: "organizationMembership.created", stripeCustomerId },
+              metadata={ source: "organizationMembership.created", customerId },
               ttl }
 
    On TransactionCanceled (concurrent provisioning):
      Re-read ORG#{orgId} → return 200. The competing call already won.
+
+4. Forward-mode billing bootstrap:
+   a. Upsert Lago customer using `external_id=customerId`.
+   b. Ensure Lago Free subscription using `external_subscription_id=pq_sub_<customer ulid>`.
+   c. Write local Lago linkage and billing-period fields back to the org
+      envelope for local enforcement reads.
+   Legacy rollback mode (`LEGACY_STRIPE_RUNTIME_ENABLED=true`) creates the
+   Stripe customer before the DDB transaction with Idempotency-Key
+   `clerk-provision-{orgId}` and stores `stripeCustomerId` on the envelope.
 
 5. Send welcome email via SES — best-effort and suppression-aware. Subject: "Welcome to Prontiq."
    Body: "Your account is ready. Sign in at https://console.prontiq.dev
@@ -2110,15 +2144,15 @@ The `/v1/account/keys/create` endpoint (P1C.03):
 
 **Why this works:**
 
-- The webhook provisions only what the user can't see anyway (Stripe customer ID, org envelope). No secret material is generated server-side without a user-visible HTTP response.
+- The webhook provisions only what the user can't see anyway (Prontiq customer identity, org envelope, and Lago Free bootstrap). No secret material is generated server-side without a user-visible HTTP response.
 - The first-key flow is just a normal `/v1/account/keys/create` call — no special "first-time" code path. Treats "first key" as the same operation as "Nth key".
 - SES failure is no longer load-bearing. The user can sign in regardless and create their key from the UI.
-- Stripe customer creation remains idempotent in the webhook so retries are safe.
-- ORG#{orgId} item replaces the previous PROVISION#{orgId}: no more `provisionedKeyHash` field (no key exists yet), just `stripeCustomerId` + a cached entitlement snapshot (`tier`, `products`) + `hasFirstKey`.
+- Lago bootstrap uses stable `customerId` and `external_subscription_id` values so retries are safe. Legacy Stripe rollback mode still uses the historical `clerk-provision-{orgId}` idempotency key.
+- ORG#{orgId} item replaces the previous PROVISION#{orgId}: no more `provisionedKeyHash` field (no key exists yet), just `customerId`, nullable `stripeCustomerId`, Lago linkage/billing-period fields, a cached entitlement snapshot (`tier`, `products`), and `hasFirstKey`.
 
-**Manual recovery path** (the rare case where the Clerk webhook never fires at all): the console app detects no `ORG#{orgId}` record and shows a "Set up your account" CTA. Clicking it calls `POST /v1/account/setup` (Clerk-authenticated) which runs steps 2–5 above against the user's session-derived `orgId`. Same code path as the webhook, just triggered by the user instead of Clerk. The user then creates their first key normally via `/v1/account/keys/create`.
+**Manual recovery path** (the rare case where the Clerk webhook never fires at all): the console app detects no `ORG#{orgId}` record and shows a "Set up your account" CTA. Clicking it calls `POST /v1/account/setup` (Clerk-authenticated) which runs the same Prontiq customer-envelope and Lago Free bootstrap flow against the user's session-derived `orgId`. Same code path as the webhook, just triggered by the user instead of Clerk. The user then creates their first key normally via `/v1/account/keys/create`.
 
-#### 5.7.2 Stripe: `checkout.session.completed` (initial upgrade from free)
+#### 5.7.2 Legacy Stripe: `checkout.session.completed` (rollback-only upgrade from free)
 
 ```
 1. Verify stripe-signature                                       (invalid → 400 INVALID_SIGNATURE)
@@ -2256,7 +2290,7 @@ Stripe is configured with `cancel_at_period_end: true` on user-initiated cancell
    10 seconds. They land on console.prontiq.dev.
 
 3. CONSOLE APP — first visit
-   Org auto-provisioned (Clerk webhook → Stripe customer → ORG#{orgId}).
+   Org auto-provisioned (Clerk webhook or account setup → Prontiq customer envelope + Lago Free subscription).
    No API key exists yet. Sees: "Welcome to Prontiq. Create your first
    API key to get started." CTA button.
 
@@ -2280,10 +2314,10 @@ Stripe is configured with `cancel_at_period_end: true` on user-initiated cancell
    + async SES threshold email via `PqQuotaEmailWorker`.
 
 7. UPGRADE
-   Current live path: Stripe-backed hosted upgrade flow updates tier/quota
-   after webhook reconciliation.
-   Target path: Prontiq-owned billing surface proxies Lago-backed plan changes
-   while keeping request-time enforcement in DynamoDB.
+   Current Lago path: Prontiq-owned billing surface proxies Lago-backed plan
+   changes while keeping request-time enforcement in DynamoDB.
+   Rollback-only legacy path: Stripe-backed hosted upgrade flow updates
+   tier/quota after Stripe webhook reconciliation.
 
 8. SHOPIFY (optional)
    Clicks "Integrations" → Shopify card → OAuth install flow
@@ -2514,12 +2548,12 @@ prontiq-platform/
 │   │   └── package.json
 │   ├── control-plane/                  # @prontiq/control-plane — provisionOrg service + audit + clerk helpers
 │   │   ├── src/
-│   │   │   ├── provisioning.ts         # createProvisioningService() — Stripe customer create + TransactWriteItems envelope+audit + best-effort SES welcome email; exception-free public surface (read-result discriminated union); strong reads on every envelope check
+│   │   │   ├── provisioning.ts         # createProvisioningService() — Prontiq customer envelope + Lago Free bootstrap + best-effort SES welcome email; legacy Stripe customer create only when rollback flag is enabled; exception-free public surface (read-result discriminated union); strong reads on every envelope check
 │   │   │   ├── audit.ts                # buildAuditTransactItem (atomic grouping) + writeAudit (standalone) + monotonic ULID + idempotent on eventId
 │   │   │   ├── clerk.ts                # resolvePrimaryEmail (verified-primary-email invariant — shared by webhook + /v1/account/setup)
 │   │   │   └── index.ts
 │   │   └── package.json                # Consumed by webhooks AND api
-│   ├── webhooks/                       # Lambdas: clerk.ts (live) + stripe.ts (P1B.06 stub)
+│   ├── webhooks/                       # Lambdas: clerk.ts (live) + lago.ts (live reconciliation) + stripe.ts (rollback-only legacy runtime)
 │   │   ├── src/
 │   │   │   ├── clerk.ts                # organizationMembership.created (admin role) → resolvePrimaryEmail (from @prontiq/control-plane) → provisionOrg
 │   │   │   ├── stripe.ts               # 4 events (§5.7) — stub; P1B.06
@@ -2985,13 +3019,13 @@ On account deletion, purge: `prontiq-customers`, `prontiq-keys` (all org keys + 
 
 **Idempotency.**
 
-- **Clerk provisioning** (`organizationMembership.created`): writes the `ORG#{orgId}` envelope record after creating the Stripe customer (§5.7.1). A retry that hits an existing `ORG#{orgId}` returns 200 immediately. Stripe customer creation uses `Idempotency-Key: clerk-provision-{orgId}` so retries reuse the same `cus_...`. **The webhook does NOT mint API keys** — those are user-driven via `/v1/account/keys/create` after sign-in, which puts the raw key in a user-visible HTTP response (the only safe place for hash-only-stored secrets).
+- **Clerk provisioning** (`organizationMembership.created`): writes the `ORG#{orgId}` envelope record and `CUSTOMER#{customerId}` row, then bootstraps Lago Free (§5.7.1). A retry that hits an existing `ORG#{orgId}` returns 200 immediately. Legacy Stripe rollback mode uses `Idempotency-Key: clerk-provision-{orgId}` so retries reuse the same `cus_...`. **The webhook does NOT mint API keys** — those are user-driven via `/v1/account/keys/create` after sign-in, which puts the raw key in a user-visible HTTP response (the only safe place for hash-only-stored secrets).
 - **Stripe webhooks**: dedupe on `event.id` via a claim/finalize reserved item in `prontiq-keys` (`WEBHOOK#stripe#{eventId}`). The handler claims the item as `processing`, applies replay-safe target-state writes, then finalizes it as `completed`. Stripe duplicates that arrive while a fresh `processing` claim exists return 500 so Stripe retries later; completed markers return 200 no-op.
 - **Lago webhooks**: dedupe on `X-Lago-Unique-Key` via `prontiq-lago-webhook-events`. Same unique key plus same payload hash replays completed/ignored events as 200 no-op. Same unique key plus a different payload hash is drift and returns 500. Fresh in-flight duplicates return 500 so Lago retries after the active worker finishes.
 
 **Clerk webhook failure → manual recovery.** Two independent failure cases, both fully recoverable from the user side:
 
-1. **Webhook never created the org envelope** (e.g., Svix delivery failure during a Lambda outage). The console app detects "no `ORG#{orgId}` record" and shows a "Set up your account" CTA. Clicking it calls `POST /v1/account/setup` (Clerk-authenticated), which runs the same Stripe-customer-create + ORG-envelope-PutItem flow as the webhook (same `Idempotency-Key`, same atomic write). Same code, two triggers.
+1. **Webhook never created the org envelope** (e.g., Svix delivery failure during a Lambda outage). The console app detects "no `ORG#{orgId}` record" and shows a "Set up your account" CTA. Clicking it calls `POST /v1/account/setup` (Clerk-authenticated), which runs the same Prontiq customer-envelope + Lago Free bootstrap flow as the webhook. Legacy Stripe rollback mode uses the same Stripe idempotency key as the webhook. Same code, two triggers.
 2. **Org envelope exists but the user has no keys** (e.g., SES failed so no welcome email arrived, but webhook succeeded). The standard `/v1/account/keys/create` flow handles this — there's nothing special about a "first" key. The `hasFirstKey` flag flips on the first successful create.
 
 In both cases, the user owns recovery. No operator paging required for SES outages or single-shot webhook misses.
@@ -3129,7 +3163,7 @@ Three products. One platform. One API key. One SDK. One invoice.
    consumes the private account API spec. Change a route, regenerate the
    matching spec, and keep the boundary explicit.
 
-4. **Free tiers are marketing spend, not lost revenue.** Clerk (50K MAUs), Mintlify (Hobby plan), Speakeasy (50 methods), Stripe (processing only), SES (62K/month Lambda-emitted). The **current shipped runtime** costs about $35/month to run at Phase 1 scale. The **target Lago cutover** adds a separate billing-infra layer on top of that, so post-migration planning should assume roughly $106/month at the same traffic shape.
+4. **Free tiers are marketing spend, not lost revenue.** Clerk (50K MAUs), Mintlify (Hobby plan), Speakeasy (50 methods), Stripe (processing only), SES (62K/month Lambda-emitted). The legacy Stripe-only runtime cost about $35/month at Phase 1 scale. The Lago cutover adds a separate billing-infra layer on top of that, so post-migration planning should assume roughly $106/month at the same traffic shape.
 
 5. **Ship what validates, build what earns.** Phase 1 is the API, docs, and an SDK. The dashboard, plugins, and additional products follow demand, not assumptions.
 

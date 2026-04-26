@@ -2,14 +2,18 @@ import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import {
   DynamoDBDocumentClient,
   GetCommand,
+  QueryCommand,
   TransactWriteCommand,
+  UpdateCommand,
 } from "@aws-sdk/lib-dynamodb";
 import {
   DEFAULT_ACCOUNT_URL,
   PLANS,
   createLogger,
+  deriveLagoExternalSubscriptionId,
   type CustomerRecord,
   type OrgEnvelopeRecord,
+  type ApiKeyRecord,
 } from "@prontiq/shared";
 import Stripe from "stripe";
 import { buildAuditTransactItem } from "./audit.js";
@@ -90,8 +94,9 @@ export interface ProvisioningInput {
 export interface ProvisioningResult {
   status: ProvisioningStatus;
   emailSent: boolean;
+  customerId?: string;
   orgEnvelope?: OrgEnvelopeRecord;
-  stripeCustomerId?: string;
+  stripeCustomerId?: string | null;
 }
 
 export interface EmailInput {
@@ -104,12 +109,40 @@ export interface EmailInput {
 
 export type EmailSender = (input: EmailInput) => Promise<boolean>;
 
+export interface LagoProvisioningSubscriptionSnapshot {
+  billingPeriodEndingAt: string | null;
+  billingPeriodStartedAt: string | null;
+  externalCustomerId: string;
+  externalSubscriptionId: string;
+  planCode: string;
+  status: string;
+}
+
+export interface LagoProvisioningClient {
+  getSubscription(
+    externalSubscriptionId: string,
+  ): Promise<LagoProvisioningSubscriptionSnapshot | null>;
+  upsertCustomer(input: {
+    customerId: string;
+    email: string;
+    paymentProviderCode: string;
+  }): Promise<void>;
+  upsertSubscription(input: {
+    externalCustomerId: string;
+    externalSubscriptionId: string;
+    planCode: "free";
+  }): Promise<void>;
+}
+
 export interface ProvisioningDependencies {
   ddb: DynamoDBDocumentClient;
   keysTableName: string;
   customersTableName: string;
   auditTableName: string;
-  stripe: Stripe;
+  legacyStripeRuntimeEnabled: boolean;
+  lagoClient?: LagoProvisioningClient;
+  lagoPaymentProviderCode: string;
+  stripe?: Stripe;
   sendWelcomeEmail: EmailSender;
   generateCustomerId: CustomerIdGenerator;
   logger: Logger;
@@ -118,6 +151,7 @@ export interface ProvisioningDependencies {
 
 let cachedDdb: DynamoDBDocumentClient | undefined;
 let cachedStripe: Stripe | undefined;
+let cachedLagoClient: LagoProvisioningClient | undefined;
 const defaultLogger = createLogger("control-plane-provisioning");
 
 function getDefaultDdb(): DynamoDBDocumentClient {
@@ -135,6 +169,167 @@ function getDefaultStripe(): Stripe {
   return cachedStripe;
 }
 
+function normalizeLagoApiUrl(value: string): string {
+  const trimmed = value
+    .trim()
+    .replace(/\/+$/, "")
+    .replace(/\/api\/v1$/, "");
+  if (!trimmed.startsWith("https://") && !trimmed.startsWith("http://")) {
+    throw new Error("LAGO_API_URL must include http:// or https://");
+  }
+  return `${trimmed}/api/v1`;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function firstString(value: unknown, paths: string[][]): string | null {
+  for (const path of paths) {
+    let cursor = value;
+    for (const segment of path) {
+      if (isRecord(cursor)) {
+        cursor = cursor[segment];
+      } else {
+        cursor = undefined;
+        break;
+      }
+    }
+    if (typeof cursor === "string" && cursor.length > 0) return cursor;
+  }
+  return null;
+}
+
+function parseLagoSubscription(payload: unknown): LagoProvisioningSubscriptionSnapshot {
+  const subscription =
+    isRecord(payload) && isRecord(payload.subscription) ? payload.subscription : payload;
+  const externalCustomerId = firstString(subscription, [
+    ["customer", "external_id"],
+    ["external_customer_id"],
+  ]);
+  const externalSubscriptionId = firstString(subscription, [
+    ["external_id"],
+    ["external_subscription_id"],
+  ]);
+  const planCode = firstString(subscription, [["plan_code"], ["plan", "code"]]);
+  if (!externalCustomerId || !externalSubscriptionId || !planCode) {
+    throw new Error("Lago subscription response is missing required identifiers");
+  }
+  return {
+    billingPeriodEndingAt: firstString(subscription, [
+      ["current_billing_period_ending_at"],
+      ["current_billing_period_ends_at"],
+    ]),
+    billingPeriodStartedAt: firstString(subscription, [
+      ["current_billing_period_started_at"],
+      ["current_billing_period_starts_at"],
+    ]),
+    externalCustomerId,
+    externalSubscriptionId,
+    planCode,
+    status: firstString(subscription, [["status"]]) ?? "unknown",
+  };
+}
+
+class HttpLagoProvisioningClient implements LagoProvisioningClient {
+  private readonly apiKey: string;
+  private readonly baseUrl: string;
+  private readonly fetchImpl: typeof fetch;
+
+  constructor(input: { apiKey: string; baseUrl: string; fetchImpl?: typeof fetch }) {
+    this.apiKey = input.apiKey;
+    this.baseUrl = normalizeLagoApiUrl(input.baseUrl);
+    this.fetchImpl = input.fetchImpl ?? fetch;
+  }
+
+  private async request(path: string, init: RequestInit): Promise<unknown> {
+    const response = await this.fetchImpl(`${this.baseUrl}${path}`, {
+      ...init,
+      headers: {
+        Authorization: `Bearer ${this.apiKey}`,
+        "Content-Type": "application/json",
+        ...(init.headers ?? {}),
+      },
+      signal: AbortSignal.timeout(10_000),
+    });
+    const text = await response.text();
+    const payload = text ? (JSON.parse(text) as unknown) : {};
+    if (!response.ok) {
+      throw new Error(`Lago request failed with HTTP ${response.status}`);
+    }
+    return payload;
+  }
+
+  async upsertCustomer(input: {
+    customerId: string;
+    email: string;
+    paymentProviderCode: string;
+  }): Promise<void> {
+    await this.request("/customers", {
+      body: JSON.stringify({
+        customer: {
+          billing_configuration: {
+            invoice_grace_period: 0,
+            payment_provider: "stripe",
+            payment_provider_code: input.paymentProviderCode,
+          },
+          currency: "AUD",
+          email: input.email,
+          external_id: input.customerId,
+          name: input.email,
+        },
+      }),
+      method: "POST",
+    });
+  }
+
+  async upsertSubscription(input: {
+    externalCustomerId: string;
+    externalSubscriptionId: string;
+    planCode: "free";
+  }): Promise<void> {
+    await this.request("/subscriptions", {
+      body: JSON.stringify({
+        subscription: {
+          external_customer_id: input.externalCustomerId,
+          external_id: input.externalSubscriptionId,
+          plan_code: input.planCode,
+        },
+      }),
+      method: "POST",
+    });
+  }
+
+  async getSubscription(
+    externalSubscriptionId: string,
+  ): Promise<LagoProvisioningSubscriptionSnapshot | null> {
+    const response = await this.fetchImpl(
+      `${this.baseUrl}/subscriptions/${encodeURIComponent(externalSubscriptionId)}`,
+      {
+        headers: { Authorization: `Bearer ${this.apiKey}` },
+        method: "GET",
+        signal: AbortSignal.timeout(10_000),
+      },
+    );
+    if (response.status === 404) return null;
+    const text = await response.text();
+    const payload = text ? (JSON.parse(text) as unknown) : {};
+    if (!response.ok)
+      throw new Error(`Lago subscription lookup failed with HTTP ${response.status}`);
+    return parseLagoSubscription(payload);
+  }
+}
+
+function getDefaultLagoClient(): LagoProvisioningClient {
+  if (!cachedLagoClient) {
+    cachedLagoClient = new HttpLagoProvisioningClient({
+      apiKey: getRequiredEnv("LAGO_API_KEY"),
+      baseUrl: getRequiredEnv("LAGO_API_URL"),
+    });
+  }
+  return cachedLagoClient;
+}
+
 function getRequiredEnv(name: string): string {
   const value = process.env[name];
   if (!value) {
@@ -147,22 +342,23 @@ function getOptionalEnv(name: string, fallback: string): string {
   return process.env[name] ?? fallback;
 }
 
+function legacyStripeRuntimeEnabled(): boolean {
+  return process.env.LEGACY_STRIPE_RUNTIME_ENABLED !== "false";
+}
+
 function getOrgEnvelopeKey(orgId: string): string {
   return `ORG#${orgId}`;
 }
 
-function isCompleteOrgEnvelope(
-  record: unknown,
-  orgId: string,
-): record is OrgEnvelopeRecord {
+function isCompleteOrgEnvelope(record: unknown, orgId: string): record is OrgEnvelopeRecord {
   if (!record || typeof record !== "object") {
     return false;
   }
   const candidate = record as Partial<OrgEnvelopeRecord>;
   return (
     candidate.apiKeyHash === getOrgEnvelopeKey(orgId) &&
-    typeof candidate.stripeCustomerId === "string" &&
-    candidate.stripeCustomerId.length > 0 &&
+    (candidate.stripeCustomerId === null ||
+      (typeof candidate.stripeCustomerId === "string" && candidate.stripeCustomerId.length > 0)) &&
     typeof candidate.ownerEmail === "string" &&
     candidate.ownerEmail.length > 0 &&
     typeof candidate.tier === "string" &&
@@ -241,7 +437,7 @@ async function readOrgEnvelope(
 
 function buildProvisioningTransactWrite(
   input: ProvisioningInput,
-  stripeCustomerId: string,
+  stripeCustomerId: string | null,
   customerId: string,
   keysTableName: string,
   customersTableName: string,
@@ -310,6 +506,213 @@ function buildProvisioningTransactWrite(
       auditItem,
     ],
   });
+}
+
+function buildBillingPeriodKey(snapshot: LagoProvisioningSubscriptionSnapshot): string | null {
+  if (!snapshot.billingPeriodStartedAt || !snapshot.billingPeriodEndingAt) return null;
+  return `${snapshot.billingPeriodStartedAt.slice(0, 10)}_${snapshot.billingPeriodEndingAt.slice(0, 10)}`;
+}
+
+function isCompleteLagoBootstrap(envelope: OrgEnvelopeRecord): boolean {
+  return (
+    envelope.lagoPlanCode === FREE_TIER &&
+    typeof envelope.lagoSubscriptionExternalId === "string" &&
+    envelope.lagoSubscriptionExternalId.length > 0 &&
+    typeof envelope.lagoSubscriptionStatus === "string" &&
+    envelope.lagoSubscriptionStatus.length > 0 &&
+    typeof envelope.billingPeriodStartedAt === "string" &&
+    envelope.billingPeriodStartedAt.length > 0 &&
+    typeof envelope.billingPeriodEndingAt === "string" &&
+    envelope.billingPeriodEndingAt.length > 0 &&
+    typeof envelope.billingPeriodKey === "string" &&
+    envelope.billingPeriodKey.length > 0
+  );
+}
+
+function resultForExistingEnvelope(envelope: OrgEnvelopeRecord): ProvisioningResult {
+  return {
+    status: "already_exists",
+    emailSent: false,
+    customerId: envelope.customerId,
+    orgEnvelope: envelope,
+    stripeCustomerId: envelope.stripeCustomerId ?? null,
+  };
+}
+
+function isApiKeyRecord(item: unknown): item is ApiKeyRecord {
+  if (!isRecord(item)) return false;
+  return (
+    typeof item.apiKeyHash === "string" &&
+    !item.apiKeyHash.startsWith("ORG#") &&
+    !item.apiKeyHash.startsWith("REGISTRY#") &&
+    typeof item.orgId === "string" &&
+    typeof item.keyPrefix === "string"
+  );
+}
+
+async function loadOrgKeys(
+  ddb: DynamoDBDocumentClient,
+  keysTableName: string,
+  orgId: string,
+): Promise<ApiKeyRecord[]> {
+  const response = await ddb.send(
+    new QueryCommand({
+      TableName: keysTableName,
+      IndexName: "orgId-index",
+      KeyConditionExpression: "orgId = :orgId",
+      ExpressionAttributeValues: { ":orgId": orgId },
+    }),
+  );
+  return ((response.Items as unknown[] | undefined) ?? []).filter(isApiKeyRecord);
+}
+
+async function writeLagoBootstrapState(
+  dependencies: ProvisioningDependencies,
+  orgId: string,
+  snapshot: LagoProvisioningSubscriptionSnapshot,
+): Promise<OrgEnvelopeRecord> {
+  if (snapshot.externalCustomerId.length === 0) {
+    throw new Error("Lago subscription snapshot is missing external customer id");
+  }
+  if (snapshot.planCode !== FREE_TIER) {
+    throw new Error(`Lago bootstrap subscription must use plan ${FREE_TIER}`);
+  }
+  const periodKey = buildBillingPeriodKey(snapshot);
+  if (!periodKey || !snapshot.billingPeriodStartedAt || !snapshot.billingPeriodEndingAt) {
+    throw new Error("Lago bootstrap subscription is missing billing period fields");
+  }
+  const keys = await loadOrgKeys(dependencies.ddb, dependencies.keysTableName, orgId);
+  const plan = PLANS[FREE_TIER];
+  if (!plan) throw new Error(`Plan ${FREE_TIER} is not configured`);
+
+  const commonNames = {
+    "#billingPeriodEndingAt": "billingPeriodEndingAt",
+    "#billingPeriodKey": "billingPeriodKey",
+    "#billingPeriodStartedAt": "billingPeriodStartedAt",
+    "#lagoPaymentOverdueInvoiceId": "lagoPaymentOverdueInvoiceId",
+    "#lagoPlanCode": "lagoPlanCode",
+    "#lagoSubscriptionExternalId": "lagoSubscriptionExternalId",
+    "#lagoSubscriptionStatus": "lagoSubscriptionStatus",
+    "#paymentOverdue": "paymentOverdue",
+    "#products": "products",
+    "#tier": "tier",
+  };
+  const commonValues = {
+    ":externalSubscriptionId": snapshot.externalSubscriptionId,
+    ":overdueInvoiceId": null,
+    ":paymentOverdue": false,
+    ":periodEnd": snapshot.billingPeriodEndingAt,
+    ":periodKey": periodKey,
+    ":periodStart": snapshot.billingPeriodStartedAt,
+    ":planCode": FREE_TIER,
+    ":products": plan.products,
+    ":subscriptionStatus": snapshot.status,
+    ":tier": FREE_TIER,
+  };
+
+  await dependencies.ddb.send(
+    new UpdateCommand({
+      TableName: dependencies.keysTableName,
+      Key: { apiKeyHash: getOrgEnvelopeKey(orgId) },
+      UpdateExpression: [
+        "SET #tier = :tier",
+        "#products = :products",
+        "#paymentOverdue = :paymentOverdue",
+        "#lagoPlanCode = :planCode",
+        "#lagoSubscriptionExternalId = :externalSubscriptionId",
+        "#lagoSubscriptionStatus = :subscriptionStatus",
+        "#billingPeriodStartedAt = :periodStart",
+        "#billingPeriodEndingAt = :periodEnd",
+        "#billingPeriodKey = :periodKey",
+        "#lagoPaymentOverdueInvoiceId = :overdueInvoiceId",
+      ].join(", "),
+      ExpressionAttributeNames: commonNames,
+      ExpressionAttributeValues: commonValues,
+    }),
+  );
+
+  await Promise.all(
+    keys.map((key) =>
+      dependencies.ddb.send(
+        new UpdateCommand({
+          TableName: dependencies.keysTableName,
+          Key: { apiKeyHash: key.apiKeyHash },
+          UpdateExpression: [
+            "SET #tier = :tier",
+            "#products = :products",
+            "#quotaPerProduct = :quota",
+            "#rateLimit = :rateLimit",
+            "#paymentOverdue = :paymentOverdue",
+            "#lagoPlanCode = :planCode",
+            "#lagoSubscriptionExternalId = :externalSubscriptionId",
+            "#lagoSubscriptionStatus = :subscriptionStatus",
+            "#billingPeriodStartedAt = :periodStart",
+            "#billingPeriodEndingAt = :periodEnd",
+            "#billingPeriodKey = :periodKey",
+            "#lagoPaymentOverdueInvoiceId = :overdueInvoiceId",
+          ].join(", "),
+          ExpressionAttributeNames: {
+            ...commonNames,
+            "#quotaPerProduct": "quotaPerProduct",
+            "#rateLimit": "rateLimit",
+          },
+          ExpressionAttributeValues: {
+            ...commonValues,
+            ":quota": plan.quotaPerProduct,
+            ":rateLimit": plan.rateLimit,
+          },
+        }),
+      ),
+    ),
+  );
+
+  const confirm = await readOrgEnvelope(dependencies.ddb, dependencies.keysTableName, orgId);
+  if (confirm.kind !== "found") {
+    throw new Error(`failed to confirm Lago bootstrap state for ${orgId}`);
+  }
+  return confirm.record;
+}
+
+async function bootstrapLagoFreeSubscription(
+  dependencies: ProvisioningDependencies,
+  input: ProvisioningInput,
+  envelope: OrgEnvelopeRecord,
+): Promise<OrgEnvelopeRecord> {
+  if (isCompleteLagoBootstrap(envelope)) {
+    return envelope;
+  }
+  if (dependencies.legacyStripeRuntimeEnabled) {
+    return envelope;
+  }
+  if (!dependencies.lagoClient) {
+    throw new Error("Lago provisioning client is required when legacy Stripe runtime is disabled");
+  }
+  const customerId = envelope.customerId;
+  if (!customerId) throw new Error("ORG envelope is missing customerId");
+  const externalSubscriptionId = deriveLagoExternalSubscriptionId(customerId);
+  await dependencies.lagoClient.upsertCustomer({
+    customerId,
+    email: input.ownerEmail,
+    paymentProviderCode: dependencies.lagoPaymentProviderCode,
+  });
+  let snapshot = await dependencies.lagoClient.getSubscription(externalSubscriptionId);
+  if (!snapshot) {
+    await dependencies.lagoClient.upsertSubscription({
+      externalCustomerId: customerId,
+      externalSubscriptionId,
+      planCode: FREE_TIER,
+    });
+    snapshot = await dependencies.lagoClient.getSubscription(externalSubscriptionId);
+  }
+  if (!snapshot)
+    throw new Error(`Lago subscription ${externalSubscriptionId} was not found after upsert`);
+  if (
+    snapshot.externalCustomerId !== customerId ||
+    snapshot.externalSubscriptionId !== externalSubscriptionId
+  ) {
+    throw new Error("Lago bootstrap subscription identifiers do not match Prontiq customer");
+  }
+  return writeLagoBootstrapState(dependencies, input.orgId, snapshot);
 }
 
 type DdbClassification = "transient" | "fatal" | "ambiguous";
@@ -479,29 +882,40 @@ async function sendWelcomeEmailSafely(
       toEmail: input.ownerEmail,
     });
   } catch (error) {
-    logger.warn("Welcome email send threw after envelope commit (treating as best-effort failure)", {
-      error: error instanceof Error ? error.message : String(error),
-      orgId: input.orgId,
-      toEmail: input.ownerEmail,
-    });
+    logger.warn(
+      "Welcome email send threw after envelope commit (treating as best-effort failure)",
+      {
+        error: error instanceof Error ? error.message : String(error),
+        orgId: input.orgId,
+        toEmail: input.ownerEmail,
+      },
+    );
     return false;
   }
 }
 
-export function createProvisioningService(
-  overrides: Partial<ProvisioningDependencies> = {},
-): { provisionOrg: (input: ProvisioningInput) => Promise<ProvisioningResult> } {
+export function createProvisioningService(overrides: Partial<ProvisioningDependencies> = {}): {
+  provisionOrg: (input: ProvisioningInput) => Promise<ProvisioningResult>;
+} {
   const logger = overrides.logger ?? defaultLogger;
+  const runtimeEnabled = overrides.legacyStripeRuntimeEnabled ?? legacyStripeRuntimeEnabled();
   const dependencies: ProvisioningDependencies = {
     auditTableName: overrides.auditTableName ?? getRequiredEnv("AUDIT_TABLE_NAME"),
     customersTableName: overrides.customersTableName ?? getRequiredEnv("CUSTOMERS_TABLE_NAME"),
     ddb: overrides.ddb ?? getDefaultDdb(),
     generateCustomerId: overrides.generateCustomerId ?? generateCustomerIdDefault,
     keysTableName: overrides.keysTableName ?? getRequiredEnv("KEYS_TABLE_NAME"),
+    lagoClient: overrides.lagoClient ?? (runtimeEnabled ? undefined : getDefaultLagoClient()),
+    lagoPaymentProviderCode:
+      overrides.lagoPaymentProviderCode ??
+      (runtimeEnabled
+        ? (process.env.LAGO_PAYMENT_PROVIDER_CODE ?? "")
+        : getRequiredEnv("LAGO_PAYMENT_PROVIDER_CODE")),
+    legacyStripeRuntimeEnabled: runtimeEnabled,
     logger,
     sendWelcomeEmail: overrides.sendWelcomeEmail ?? getDefaultEmailSender(logger),
     sleep: overrides.sleep ?? sleepDefault,
-    stripe: overrides.stripe ?? getDefaultStripe(),
+    stripe: overrides.stripe ?? (runtimeEnabled ? getDefaultStripe() : undefined),
   };
 
   async function provisionOrg(input: ProvisioningInput): Promise<ProvisioningResult> {
@@ -512,12 +926,28 @@ export function createProvisioningService(
     );
     switch (preflight.kind) {
       case "found":
-        return {
-          status: "already_exists",
-          emailSent: false,
-          orgEnvelope: preflight.record,
-          stripeCustomerId: preflight.record.stripeCustomerId ?? undefined,
-        };
+        if (!preflight.record.customerId) {
+          return resultForExistingEnvelope(preflight.record);
+        }
+        try {
+          const orgEnvelope = await bootstrapLagoFreeSubscription(
+            dependencies,
+            input,
+            preflight.record,
+          );
+          return resultForExistingEnvelope(orgEnvelope);
+        } catch (error) {
+          dependencies.logger.error("Existing ORG envelope Lago bootstrap failed", {
+            error: error instanceof Error ? error.message : String(error),
+            orgId: input.orgId,
+          });
+          return {
+            status: "retryable_failure",
+            emailSent: false,
+            customerId: preflight.record.customerId,
+            stripeCustomerId: preflight.record.stripeCustomerId ?? null,
+          };
+        }
       case "transient_failure":
         dependencies.logger.error("Preflight ORG envelope read failed (transient)", {
           error: preflight.error.message,
@@ -534,35 +964,44 @@ export function createProvisioningService(
         break;
     }
 
-    let stripeCustomerId: string;
-    try {
-      const customer = await dependencies.stripe.customers.create(
-        {
-          email: input.ownerEmail,
-          metadata: {
-            orgId: input.orgId,
-            source: input.source,
+    let stripeCustomerId: string | null = null;
+    if (dependencies.legacyStripeRuntimeEnabled) {
+      if (!dependencies.stripe) {
+        dependencies.logger.error("Legacy Stripe runtime is enabled but Stripe client is missing", {
+          orgId: input.orgId,
+        });
+        return { status: "fatal_failure", emailSent: false };
+      }
+      try {
+        const customer = await dependencies.stripe.customers.create(
+          {
+            email: input.ownerEmail,
+            metadata: {
+              orgId: input.orgId,
+              source: input.source,
+            },
           },
-        },
-        {
-          idempotencyKey: `clerk-provision-${input.orgId}`,
-        },
-      );
-      stripeCustomerId = customer.id;
-    } catch (error) {
-      const fatal = isFatalStripeError(error);
-      dependencies.logger.error("Stripe customer creation failed", {
-        error: error instanceof Error ? error.message : String(error),
-        fatal,
-        orgId: input.orgId,
-      });
-      return { status: fatal ? "fatal_failure" : "retryable_failure", emailSent: false };
+          {
+            idempotencyKey: `clerk-provision-${input.orgId}`,
+          },
+        );
+        stripeCustomerId = customer.id;
+      } catch (error) {
+        const fatal = isFatalStripeError(error);
+        dependencies.logger.error("Stripe customer creation failed", {
+          error: error instanceof Error ? error.message : String(error),
+          fatal,
+          orgId: input.orgId,
+        });
+        return { status: fatal ? "fatal_failure" : "retryable_failure", emailSent: false };
+      }
     }
 
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
+      let customerId: string | undefined;
       try {
         const now = new Date();
-        const customerId = dependencies.generateCustomerId(now);
+        customerId = dependencies.generateCustomerId(now);
         await dependencies.ddb.send(
           buildProvisioningTransactWrite(
             input,
@@ -590,6 +1029,29 @@ export function createProvisioningService(
         );
         switch (confirm.kind) {
           case "found": {
+            let orgEnvelope: OrgEnvelopeRecord;
+            try {
+              orgEnvelope = await bootstrapLagoFreeSubscription(
+                dependencies,
+                input,
+                confirm.record,
+              );
+            } catch (error) {
+              dependencies.logger.error("Post-commit Lago bootstrap failed", {
+                attempt,
+                customerId,
+                error: error instanceof Error ? error.message : String(error),
+                orgId: input.orgId,
+                stripeCustomerId,
+              });
+              return {
+                status: "retryable_failure",
+                emailSent: false,
+                customerId,
+                orgEnvelope: confirm.record,
+                stripeCustomerId,
+              };
+            }
             // The org is durably committed at this point. The welcome
             // email is genuinely best-effort — ANY failure here (a
             // rejecting injected sender, a misconfigured SES identity,
@@ -614,7 +1076,8 @@ export function createProvisioningService(
             return {
               status: "created",
               emailSent,
-              orgEnvelope: confirm.record,
+              customerId: orgEnvelope.customerId,
+              orgEnvelope,
               stripeCustomerId,
             };
           }
@@ -623,19 +1086,19 @@ export function createProvisioningService(
               "Post-commit confirmation read failed (transient) — envelope likely committed; caller should retry to confirm",
               { attempt, orgId: input.orgId, stripeCustomerId, error: confirm.error.message },
             );
-            return { status: "retryable_failure", emailSent: false, stripeCustomerId };
+            return { status: "retryable_failure", emailSent: false, customerId, stripeCustomerId };
           case "fatal_failure":
             dependencies.logger.error(
               "Post-commit confirmation read failed (fatal) — envelope likely committed but cannot be verified",
               { attempt, orgId: input.orgId, stripeCustomerId, error: confirm.error.message },
             );
-            return { status: "fatal_failure", emailSent: false, stripeCustomerId };
+            return { status: "fatal_failure", emailSent: false, customerId, stripeCustomerId };
           case "missing":
             dependencies.logger.error(
               "Post-commit confirmation read returned no envelope despite successful TransactWriteItems",
               { attempt, orgId: input.orgId, stripeCustomerId },
             );
-            return { status: "fatal_failure", emailSent: false, stripeCustomerId };
+            return { status: "fatal_failure", emailSent: false, customerId, stripeCustomerId };
         }
       } catch (error) {
         // After a write failure, we must read to distinguish "competing
@@ -651,17 +1114,34 @@ export function createProvisioningService(
           input.orgId,
         );
         if (reconcile.kind === "found") {
-          return {
-            status: "already_exists",
-            emailSent: false,
-            orgEnvelope: reconcile.record,
-            stripeCustomerId: reconcile.record.stripeCustomerId ?? undefined,
-          };
+          if (!reconcile.record.customerId) {
+            return resultForExistingEnvelope(reconcile.record);
+          }
+          try {
+            const orgEnvelope = await bootstrapLagoFreeSubscription(
+              dependencies,
+              input,
+              reconcile.record,
+            );
+            return resultForExistingEnvelope(orgEnvelope);
+          } catch (bootstrapError) {
+            dependencies.logger.error("Reconciled ORG envelope Lago bootstrap failed", {
+              attempt,
+              error:
+                bootstrapError instanceof Error ? bootstrapError.message : String(bootstrapError),
+              orgId: input.orgId,
+              stripeCustomerId,
+            });
+            return {
+              status: "retryable_failure",
+              emailSent: false,
+              customerId: reconcile.record.customerId,
+              orgEnvelope: reconcile.record,
+              stripeCustomerId,
+            };
+          }
         }
-        if (
-          reconcile.kind === "transient_failure" ||
-          reconcile.kind === "fatal_failure"
-        ) {
+        if (reconcile.kind === "transient_failure" || reconcile.kind === "fatal_failure") {
           dependencies.logger.error("Reconciliation read after write failure also failed", {
             attempt,
             orgId: input.orgId,
@@ -673,6 +1153,7 @@ export function createProvisioningService(
           return {
             status: reconcile.kind === "transient_failure" ? "retryable_failure" : "fatal_failure",
             emailSent: false,
+            customerId,
             stripeCustomerId,
           };
         }
@@ -712,6 +1193,7 @@ export function createProvisioningService(
         return {
           status: isFatal ? "fatal_failure" : "retryable_failure",
           emailSent: false,
+          customerId,
           stripeCustomerId,
         };
       }

@@ -112,23 +112,81 @@ test("processed duplicate event -> 200", async () => {
     stripeClient: makeStripeClient(),
     service: fake.service,
   });
-  const result = await handler(signedEvent({
-    id: "evt_duplicate",
-    object: "event",
-    type: "customer.subscription.deleted",
-    data: {
-      object: {
-        id: "sub_123",
-        object: "subscription",
-        customer: "cus_123",
+  const result = await handler(
+    signedEvent({
+      id: "evt_duplicate",
+      object: "event",
+      type: "customer.subscription.deleted",
+      data: {
+        object: {
+          id: "sub_123",
+          object: "subscription",
+          customer: "cus_123",
+        },
       },
-    },
-  }));
+    }),
+  );
   const decoded = decodeBody(result);
   assert.equal(decoded.statusCode, 200);
   assert.equal(decoded.body.status, "duplicate");
   assert.equal(fake.events.length, 1);
   assert.equal(fake.events[0]?.id, "evt_duplicate");
+});
+
+test("retired legacy Stripe runtime verifies signature but skips billing dispatch", async () => {
+  const fake = makeService({
+    status: "retryable_failure",
+    httpStatus: 500,
+    body: { error: "must_not_dispatch" },
+  });
+  const handler = createStripeHandler({
+    legacyStripeRuntimeEnabled: false,
+    webhookSecret: TEST_SECRET,
+    stripeClient: makeStripeClient(),
+    service: fake.service,
+  });
+  const result = await handler(
+    signedEvent({
+      id: "evt_retired",
+      object: "event",
+      type: "invoice.payment_failed",
+      data: {
+        object: {
+          id: "in_retired",
+          object: "invoice",
+          customer: "cus_retired",
+        },
+      },
+    }),
+  );
+  const decoded = decodeBody(result);
+  assert.equal(decoded.statusCode, 200);
+  assert.equal(decoded.body.status, "retired");
+  assert.equal(fake.events.length, 0);
+});
+
+test("retired legacy Stripe runtime still rejects invalid signatures", async () => {
+  const handler = createStripeHandler({
+    legacyStripeRuntimeEnabled: false,
+    webhookSecret: TEST_SECRET,
+    stripeClient: makeStripeClient(),
+    service: makeService({
+      status: "processed",
+      httpStatus: 200,
+      body: { ok: true },
+    }).service,
+  });
+  const event = signedEvent({
+    id: "evt_retired_invalid_sig",
+    object: "event",
+    type: "invoice.payment_failed",
+    data: { object: { id: "in_123", object: "invoice", customer: "cus_123" } },
+  });
+  event.headers["stripe-signature"] = "bogus";
+  const result = await handler(event);
+  const decoded = decodeBody(result);
+  assert.equal(decoded.statusCode, 400);
+  assert.equal(decoded.body.error, "invalid_signature");
 });
 
 test("retryable failure from billing service -> 500", async () => {
@@ -142,19 +200,21 @@ test("retryable failure from billing service -> 500", async () => {
     stripeClient: makeStripeClient(),
     service: fake.service,
   });
-  const result = await handler(signedEvent({
-    id: "evt_retryable",
-    object: "event",
-    type: "checkout.session.completed",
-    data: {
-      object: {
-        id: "cs_123",
-        object: "checkout.session",
-        customer: "cus_123",
-        subscription: "sub_123",
+  const result = await handler(
+    signedEvent({
+      id: "evt_retryable",
+      object: "event",
+      type: "checkout.session.completed",
+      data: {
+        object: {
+          id: "cs_123",
+          object: "checkout.session",
+          customer: "cus_123",
+          subscription: "sub_123",
+        },
       },
-    },
-  }));
+    }),
+  );
   const decoded = decodeBody(result);
   assert.equal(decoded.statusCode, 500);
   assert.equal(decoded.body.error, "retryable_failure");

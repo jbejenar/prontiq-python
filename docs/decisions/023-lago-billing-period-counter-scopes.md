@@ -19,8 +19,9 @@ Lago webhook reconciliation denormalizes current billing-period fields onto
 - `billingPeriodEndingAt`
 - `billingPeriodKey`
 
-The API keeps `COUNTER_PERIOD_SOURCE=calendar` as the default. When operators
-set `COUNTER_PERIOD_SOURCE=lago`, auth middleware increments
+The code keeps `COUNTER_PERIOD_SOURCE=calendar` as the safe default when the
+variable is unset. After the P1B.19 cutover, deployed dev/prod environments set
+`COUNTER_PERIOD_SOURCE=lago`, so auth middleware increments
 `{product}#period#{billingPeriodKey}` if the key has a period key; otherwise it
 falls back to calendar scope.
 
@@ -35,8 +36,8 @@ falls back to calendar scope.
 
 ## Consequences
 
-- Enabling Lago-period scopes is a separate rollout step from deploying the
-  webhook.
+- Enabling Lago-period scopes was a separate rollout step from deploying the
+  webhook; P1B.19 is that rollout step for deployed dev/prod.
 - Prior Lago-period rows can be marked `closed=true` by reconciliation when a
   new period key appears.
 - PAYG remains uncapped but tracked in the active local scope.

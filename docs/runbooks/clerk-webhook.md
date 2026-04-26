@@ -2,7 +2,7 @@
 
 ## Scope
 
-Operating, debugging, and recovering the `POST /webhooks/clerk` endpoint that consumes Clerk's `organizationMembership.created` events and provisions the ORG envelope for the **current live provisioning path** (Stripe customer + DDB record + audit row + best-effort welcome email). Per ARCHITECTURE.MD §5.7.1, this handler does NOT mint API keys — that's the user-driven `POST /v1/account/keys/create` (P1C.03).
+Operating, debugging, and recovering the `POST /webhooks/clerk` endpoint that consumes Clerk's `organizationMembership.created` events and provisions the ORG envelope for the live Lago-centered provisioning path (Prontiq customer envelope + Lago Free subscription bootstrap + audit row + best-effort welcome email). Per ARCHITECTURE.MD §5.7.1, this handler does NOT mint API keys — that's the user-driven `POST /v1/account/keys/create` (P1C.03). Legacy Stripe customer creation is rollback-only behind `LEGACY_STRIPE_RUNTIME_ENABLED=true`.
 
 ## Endpoint
 
@@ -17,10 +17,14 @@ The Clerk dashboard's webhook configuration points at the dev URL today. The pro
 
 1. **SES sender posture healthy** for `prontiq.dev` in `ap-southeast-2`. The welcome email path now uses the shared suppression-aware SES helper and the stage-specific SES configuration set for this stack. Domain verification, DKIM, SPF, DMARC, custom MAIL FROM, and sandbox / production-access status should be managed via `docs/runbooks/ses-suppression.md`.
 2. **SES recipients may still be skipped intentionally.** `emailSent: false` no longer means only "SES is not configured"; it can also mean the recipient is currently suppressed because of an SES bounce or complaint record. Provisioning durability is unaffected in all of those cases.
-3. **GitHub Environment secrets set per environment** (Settings → Environments → `dev` / `prod` → Environment secrets) — ALL THREE are required by the webhook Lambda. CLERK_SECRET_KEY is no longer PR-3-only; the handler resolves the verified primary email via the Clerk Backend API.
+3. **GitHub Environment secrets set per environment** (Settings → Environments → `dev` / `prod` → Environment secrets) — required by the webhook Lambda. CLERK_SECRET_KEY is no longer PR-3-only; the handler resolves the verified primary email via the Clerk Backend API.
    - `CLERK_WEBHOOK_SECRET` — Svix signing secret. Clerk dashboard → Webhooks → endpoint detail → Signing Secret. Format: `whsec_...`.
    - `CLERK_SECRET_KEY` — Clerk Backend API key. Clerk dashboard → API Keys → Backend (Secret Keys). Format: `sk_test_...` for dev, `sk_live_...` for prod.
-   - `STRIPE_SECRET_KEY` — Stripe restricted key. Format: `sk_test_...` for dev, `sk_live_...` for prod.
+   - `LAGO_API_KEY` — Lago API key for the stage.
+   - `LAGO_API_URL` — Lago base URL for the stage.
+   - `LAGO_PAYMENT_PROVIDER_CODE` — Lago payment provider code that points at Stripe as the payment rail.
+   - `STRIPE_SECRET_KEY` — required only while `LEGACY_STRIPE_RUNTIME_ENABLED=true` for rollback-mode provisioning.
+   - `LEGACY_STRIPE_RUNTIME_ENABLED` — GitHub Environment variable; set to `false` for P1B.19 cutover, `true` only for explicit rollback.
 
    The values flow: GitHub Environment secret → workflow `env:` block → `process.env.X` at SST-config time → baked into the Lambda's environment variable. The handler reads `process.env.CLERK_WEBHOOK_SECRET` etc. at runtime.
 
@@ -59,16 +63,18 @@ The Clerk dashboard's webhook configuration points at the dev URL today. The pro
 
 1. Clerk fires `organizationMembership.created` with `data.role === "admin"` (org creator).
 2. Handler verifies Svix signature, extracts `orgId / userId / ownerEmail`, calls `provisionOrg`.
-3. Service creates a Stripe customer (idempotency-keyed `clerk-provision-{orgId}`) and TransactWriteItems the ORG envelope + audit row.
-4. Strong-read confirmation, optional best-effort suppression-aware SES welcome email, response: `200 { ok: true, status: "created", emailSent: true|false }`.
-5. CloudWatch log: `ORG envelope created`. Stripe Dashboard shows the customer with `metadata.orgId`. DDB `prontiq-keys` has `ORG#{orgId}`. DDB `prontiq-audit` has the `ORG_PROVISIONED` row.
+3. Service writes the Prontiq customer mapping and ORG envelope atomically with the audit row.
+4. In forward mode, service upserts the Lago customer/subscription, confirms the Free subscription, and writes Lago billing-period fields onto local state before returning success.
+5. Strong-read confirmation, optional best-effort suppression-aware SES welcome email, response: `200 { ok: true, status: "created", emailSent: true|false }`.
+6. CloudWatch log: `ORG envelope created`. Lago shows the customer external ID `pq_cust_...` and subscription external ID `pq_sub_...`. DDB `prontiq-keys` has `ORG#{orgId}` with `customerId`, `lagoSubscriptionExternalId`, and billing-period fields. DDB `prontiq-audit` has the `ORG_PROVISIONED` row.
 
 ## Healthy redelivery (Svix retry)
 
 The handler is idempotent at every layer:
 
 - Preflight read finds the existing envelope → `200 { ok: true, status: "already_exists" }`. Zero side effects.
-- Stripe `Idempotency-Key` returns the cached customer (24h window).
+- Legacy rollback mode: Stripe `Idempotency-Key` returns the cached customer (24h window).
+- Forward mode: Lago customer/subscription upserts are idempotent on `customerId` and `pq_sub_<ulid>`.
 - Envelope `attribute_not_exists(apiKeyHash)` rejects duplicate writes.
 - Audit row's conditional write rejects duplicate inserts.
 
@@ -105,9 +111,9 @@ Recovery:
    - For `prod`: trigger the "Deploy to Production" workflow (`gh workflow run deploy-prod.yml`)
 3. **Check Lambda time vs UTC** if values match: `aws logs tail "/aws/lambda/$FUNC" --follow --region ap-southeast-2` and look at log timestamps for clock-skew evidence.
 
-### 5xx after Stripe customer creation (retryable_failure)
+### 5xx after local commit or Lago bootstrap (retryable_failure)
 
-Logged as `ORG envelope provisioning retryable failure`. The Stripe customer was created (or reused via idempotency-key). The DDB write hit a transient error (throughput, throttling, network).
+Logged as `ORG envelope provisioning retryable failure`, `Existing ORG envelope Lago bootstrap failed`, or `Post-commit Lago bootstrap failed`. The local envelope may already be committed; retries are safe because the ORG envelope, customer mapping, Lago customer, and Lago subscription are all idempotent.
 
 Svix retry schedule (default): 5s, 5min, 30min, 2h, 5h, 10h, 16h, 24h, 48h. The next retry should succeed.
 
@@ -120,16 +126,16 @@ If the alarm `PqClerkWebhookErrors` fires (>5 errors in 15min), check:
 
 The org creator's Clerk user has no primary email at all (phone-first / OAuth-only signup, or operator deleted the email post-signup). The handler refuses to proceed because:
 
-- Stripe `customers.create` requires `email` for receipts and dunning.
+- Lago customer bootstrap needs a stable billing/contact email.
 - The welcome email path can't run without a target.
 
 Recovery: add a primary email to the user in the Clerk dashboard (Users → user detail → Email addresses → Add → set as primary), then "Resend" the failed message from the webhook endpoint detail.
 
 ### 5xx fatal_failure with `reason: "primary_email_unverified"`
 
-The user has a primary email set, but it hasn't completed verification (`status: unverified | failed | expired | transferable | null`). The handler refuses to proceed because forwarding an unverified email to Stripe would create a customer record against a typoed or unconfirmed address, and SES would silently bounce.
+The user has a primary email set, but it hasn't completed verification (`status: unverified | failed | expired | transferable | null`). The handler refuses to proceed because forwarding an unverified email to Lago would create a billing contact against a typoed or unconfirmed address, and SES would silently bounce.
 
-**No fallback policy:** even if the user has another verified email, the handler does NOT fall back. The primary is the user's explicit identity choice, and falling back would make Stripe customer email unpredictable from the operator's view.
+**No fallback policy:** even if the user has another verified email, the handler does NOT fall back. The primary is the user's explicit identity choice, and falling back would make Lago customer email unpredictable from the operator's view.
 
 Recovery options (the `verificationStatus` from CloudWatch logs tells you which case applies):
 
@@ -156,14 +162,14 @@ Svix still redelivers, but a real fatal will exhaust retries. Then:
 
 ### Manual recovery — webhook never arrived
 
-Rare case where Clerk's webhook delivery system loses the event entirely. The user signs in to `/account` and sees no envelope. **Recovery: `POST /v1/account/setup`** — Clerk-JWT-authenticated, runs the same `createProvisioningService().provisionOrg(...)` code path as this webhook. Same idempotency invariant: a delayed webhook + a recovery call collapse to one envelope, one Stripe customer, one audit row.
+Rare case where Clerk's webhook delivery system loses the event entirely. The user signs in to `/account` and sees no envelope. **Recovery: `POST /v1/account/setup`** — Clerk-JWT-authenticated, runs the same `createProvisioningService().provisionOrg(...)` code path as this webhook. Same idempotency invariant: a delayed webhook + a recovery call collapse to one envelope, one Prontiq `customerId`, one Lago Free subscription in forward mode, and one audit row.
 
 **Operator preconditions** (BOTH dev and prod tenants — these are not caught by the deployed-stage secret guard because they're Clerk-dashboard config, not env vars):
 
 1. **Clerk session token JWT template must include BOTH `org_id` AND `org_role`.** Clerk Dashboard → Sessions → Customize session token → add `{ "org_id": "{{org.id}}", "org_role": "{{org.role}}" }` to the template. Missing `org_id` → `400 NO_ACTIVE_ORG`. Missing `org_role` → `400 NO_ROLE_CLAIM`.
 2. **Frontend must call `setActive({ organization })`** before invoking `/v1/account/setup`. Even with the JWT template above, `org_id` and `org_role` are only populated when the session has an active organization.
 
-**Authorization mirrors the webhook's role gate.** The endpoint is admin-only. `org_role` must be in `getAdminRoles()` (defaults to `org:admin` + `admin`; operator-overridable via the `CLERK_ADMIN_ROLES` env var on the `PqAccount` Lambda — same env var the webhook uses). Non-admin callers receive `403 INSUFFICIENT_ROLE` with the role surfaced in `details.role`. This prevents an invited org member from racing a delayed webhook and becoming the recorded `ownerEmail` / Stripe customer for the org.
+**Authorization mirrors the webhook's role gate.** The endpoint is admin-only. `org_role` must be in `getAdminRoles()` (defaults to `org:admin` + `admin`; operator-overridable via the `CLERK_ADMIN_ROLES` env var on the `PqAccount` Lambda — same env var the webhook uses). Non-admin callers receive `403 INSUFFICIENT_ROLE` with the role surfaced in `details.role`. This prevents an invited org member from racing a delayed webhook and becoming the recorded `ownerEmail` / billing owner for the org.
 
 **Failure modes mirror this webhook's** (`primary_email_unverified`, `user_has_no_primary_email`, `clerk_api_lookup_failed`) — same operator-facing fixes apply (verify primary email in Clerk, add a primary email, retry). Distinct from the webhook: a transient Clerk Backend API failure surfaces as `503 RETRYABLE_FAILURE` (sync HTTP) rather than 500 (which would trigger Svix redelivery in the webhook flow).
 
@@ -202,4 +208,4 @@ See also: `docs/runbooks/monitoring-alerting.md` for the shared Phase 1 alerting
 1. Disable the endpoint in the Clerk dashboard (do NOT delete — keeps the audit history of past deliveries).
 2. Remove the `api.route("POST /webhooks/clerk", ...)` line + `clerkWebhookFn` declaration + alarm from `sst.config.ts`.
 3. Deploy. SST will delete the Lambda, the route, and the alarm. The DDB tables and SNS topic remain (used by other consumers).
-4. Optionally remove the GitHub Environment secrets (`CLERK_WEBHOOK_SECRET`, `CLERK_SECRET_KEY`, `STRIPE_SECRET_KEY`, and `vars.CLERK_ADMIN_ROLES`) for the corresponding environment once you're sure no other code reads them: Settings → Environments → `<stage>` → Environment secrets / Variables → "Remove secret".
+4. Optionally remove the GitHub Environment secrets / vars for this surface (`CLERK_WEBHOOK_SECRET`, `CLERK_SECRET_KEY`, `LAGO_API_KEY`, `LAGO_API_URL`, `LAGO_PAYMENT_PROVIDER_CODE`, `LEGACY_STRIPE_RUNTIME_ENABLED`, and `CLERK_ADMIN_ROLES`) once you're sure no other code reads them. Keep `STRIPE_SECRET_KEY` only while legacy rollback remains possible.

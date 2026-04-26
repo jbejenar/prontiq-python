@@ -7,6 +7,13 @@
   runs before `--apply`.
 - Do not add generated `customerId` to Stripe customer-create metadata while
   Stripe idempotency keys are still based only on `orgId`.
+- P1B.19 forward provisioning runs with `LEGACY_STRIPE_RUNTIME_ENABLED=false`.
+  In that mode, do not instantiate Stripe for provisioning; bootstrap the Lago
+  Free subscription, write denormalized Lago period fields onto the org
+  envelope/API keys, and return nullable `stripeCustomerId`.
+- Legacy Stripe webhook, billing cron, and month-close code paths are
+  rollback-only after P1B.19. If touched, preserve the disabled-summary /
+  retired-webhook behavior and signature verification.
 - Lago event forwarding must remain replay-safe: use `eventId` as Lago
   `transaction_id`, derive `external_subscription_id` from `customerId`, and
   write delivery evidence before/after send attempts.

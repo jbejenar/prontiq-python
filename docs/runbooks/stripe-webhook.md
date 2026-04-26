@@ -1,12 +1,14 @@
 # Stripe Webhook Runbook
 
-> Legacy Stripe billing path.
+> Legacy Stripe billing path; rollback-only after P1B.19.
 >
-> This runbook documents the **currently shipped** Stripe billing-state webhook.
-> It is retained for migration and operational history, not as the target
-> commercial architecture.
+> With `LEGACY_STRIPE_RUNTIME_ENABLED=false`, the webhook still verifies
+> `stripe-signature` but returns `200 { "ok": true, "status": "retired" }`
+> without dispatching billing mutations. Re-enable only for an explicit rollback
+> while P1B.20 cleanup has not removed the legacy configuration.
 
-`POST /webhooks/stripe` is the billing-state control-plane webhook for Prontiq.
+`POST /webhooks/stripe` was the billing-state control-plane webhook for
+Prontiq's Stripe-centric migration-era runtime.
 
 Implemented in P1B.06:
 
@@ -38,13 +40,14 @@ Current production Stripe destination:
 For `dev` and `prod`, set these before deploy:
 
 - `STRIPE_WEBHOOK_SECRET` — Stripe endpoint signing secret (`whsec_...`)
-- `STRIPE_SECRET_KEY` — Stripe secret API key
+- `STRIPE_SECRET_KEY` — Stripe secret API key; required only while `LEGACY_STRIPE_RUNTIME_ENABLED=true`
+- `LEGACY_STRIPE_RUNTIME_ENABLED` — set to `false` for the post-P1B.19 cutover posture; set to `true` only for explicit legacy rollback
 - `PRONTIQ_BILLING_URL` — optional account/billing-management URL used in `past_due` emails
 - `WELCOME_EMAIL_FROM` — SES sender identity used for best-effort billing emails
 
 `PRONTIQ_BILLING_URL` falls back to `https://console.prontiq.dev/billing` if it is not set. `PRONTIQ_ACCOUNT_URL` remains the sign-in / account entrypoint and does not override billing email links.
 
-The SST deploy guard now fails if either required Stripe secret is missing or whitespace-only.
+The SST deploy guard always requires `STRIPE_WEBHOOK_SECRET` while the route exists because retired mode still verifies signatures. It requires `STRIPE_SECRET_KEY` only when `LEGACY_STRIPE_RUNTIME_ENABLED` is not exactly `false`.
 
 SES delivery behavior for billing emails is covered by `docs/runbooks/ses-suppression.md`. `past_due` notifications now use the same suppression-aware SES helper and configuration-set path as welcome and quota emails.
 
@@ -140,6 +143,8 @@ Check:
 ### 500 responses / alarm firing
 
 Alarm: `PqStripeWebhookErrors`
+
+If `LEGACY_STRIPE_RUNTIME_ENABLED=false`, normal signed Stripe deliveries should return `200 retired` and should not fire this alarm. A 500 in retired mode points to route/bootstrap configuration drift, not billing-state reconciliation.
 
 Check:
 

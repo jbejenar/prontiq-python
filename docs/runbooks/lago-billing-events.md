@@ -167,8 +167,10 @@ Before setting `BILLING_EVENTS_ENABLED=true` in a deployed stage:
     second replay does not double-count
 12. configure Lago webhook reconciliation per
     `docs/runbooks/lago-webhook-reconciliation.md`
-13. keep `COUNTER_PERIOD_SOURCE=calendar` until webhook reconciliation has
-    populated billing-period fields
+13. before P1B.19, keep `COUNTER_PERIOD_SOURCE=calendar` until webhook
+    reconciliation has populated billing-period fields, then use P1B.19 to cut
+    the stage to `COUNTER_PERIOD_SOURCE=lago`; after P1B.19, deployed dev/prod
+    should already be on `COUNTER_PERIOD_SOURCE=lago`
 14. enable `BILLING_EVENTS_ENABLED=true` and redeploy
 
 ## Verification

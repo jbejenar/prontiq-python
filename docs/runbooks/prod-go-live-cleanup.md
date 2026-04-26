@@ -39,8 +39,8 @@ It does not cover:
   unsafe; they are expected to support migration validation.
 - Prefer revoking or disabling smoke API keys at final go-live over
   hard-deleting evidence needed for replay/drift analysis.
-- Keep `COUNTER_PERIOD_SOURCE=calendar` unless a later cutover decision
-  explicitly approves Lago billing-period enforcement scopes.
+- Keep `COUNTER_PERIOD_SOURCE=lago` after P1B.19 unless an explicit rollback
+  sets the platform back to calendar scopes.
 
 ## Preconditions
 
@@ -99,9 +99,9 @@ Expected final go-live posture:
   customer billing disabled until a later launch window
 - if post-cleanup smoke fails, set `BILLING_EVENTS_ENABLED=false`, redeploy, and
   stop before real customer go-live proceeds
-- `COUNTER_PERIOD_SOURCE=calendar`
-- `LAGO_WEBHOOK_RECONCILIATION_ENABLED=false` unless the Lago webhook endpoint is
-  actively configured and valid webhook smoke has passed
+- `COUNTER_PERIOD_SOURCE=lago`
+- `LAGO_WEBHOOK_RECONCILIATION_ENABLED=true` unless an active incident or
+  explicit rollback has disabled Lago reconciliation
 
 Record final flag values without secrets.
 

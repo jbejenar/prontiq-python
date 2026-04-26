@@ -21,12 +21,14 @@ import {
 export interface MonthCloseDependencies {
   ddb: DynamoDBDocumentClient;
   keysTableName: string;
+  legacyStripeRuntimeEnabled: boolean;
   logger: BillingLogger;
   stripe: Stripe;
   usageTableName: string;
 }
 
 export interface MonthCloseSummary {
+  disabled?: boolean;
   closedScopes: number;
   keysProcessed: number;
   meterEventsSent: number;
@@ -60,13 +62,19 @@ function getDefaultStripe(): Stripe {
   return cachedStripe;
 }
 
-export function createMonthCloseService(
-  overrides: Partial<MonthCloseDependencies> = {},
-): { handleTick: (now?: Date) => Promise<MonthCloseSummary> } {
+function legacyStripeRuntimeEnabled(): boolean {
+  return process.env.LEGACY_STRIPE_RUNTIME_ENABLED !== "false";
+}
+
+export function createMonthCloseService(overrides: Partial<MonthCloseDependencies> = {}): {
+  handleTick: (now?: Date) => Promise<MonthCloseSummary>;
+} {
   function resolveDependencies(): MonthCloseDependencies {
+    const runtimeEnabled = overrides.legacyStripeRuntimeEnabled ?? legacyStripeRuntimeEnabled();
     return {
       ddb: overrides.ddb ?? getDefaultDdb(),
       keysTableName: overrides.keysTableName ?? getRequiredEnv("KEYS_TABLE_NAME"),
+      legacyStripeRuntimeEnabled: runtimeEnabled,
       logger: overrides.logger ?? defaultLogger,
       stripe: overrides.stripe ?? getDefaultStripe(),
       usageTableName: overrides.usageTableName ?? getRequiredEnv("USAGE_TABLE_NAME"),
@@ -74,6 +82,25 @@ export function createMonthCloseService(
   }
 
   async function handleTick(now = new Date()): Promise<MonthCloseSummary> {
+    const runtimeEnabled = overrides.legacyStripeRuntimeEnabled ?? legacyStripeRuntimeEnabled();
+    if (!runtimeEnabled) {
+      const summary: MonthCloseSummary = {
+        closedScopes: 0,
+        disabled: true,
+        keysProcessed: 0,
+        meterEventsSent: 0,
+        negativeDeltas: 0,
+        scopesSkipped: 0,
+      };
+      (overrides.logger ?? defaultLogger).info(
+        "Month-close skipped because legacy Stripe runtime is retired",
+        {
+          ...summary,
+          at: now.toISOString(),
+        },
+      );
+      return summary;
+    }
     const dependencies = resolveDependencies();
     const summary: MonthCloseSummary = {
       closedScopes: 0,
@@ -116,14 +143,27 @@ export function createMonthCloseService(
       }
 
       summary.keysProcessed += 1;
-      const chain = await discoverAttributionChain(dependencies.ddb, dependencies.usageTableName, apiKeyHash);
+      const chain = await discoverAttributionChain(
+        dependencies.ddb,
+        dependencies.usageTableName,
+        apiKeyHash,
+      );
       const usageRowsByHash = new Map<string, Map<string, UsageCounterRecord>>();
       for (const hash of chain) {
-        const rows = await loadUsageRowsForHash(dependencies.ddb, dependencies.usageTableName, hash);
+        const rows = await loadUsageRowsForHash(
+          dependencies.ddb,
+          dependencies.usageTableName,
+          hash,
+        );
         usageRowsByHash.set(hash, buildUsageScopeIndex(rows));
       }
 
-      const productsToProcess = discoverProductsForMonth(key.products, usageRowsByHash, chain, previousMonthKey);
+      const productsToProcess = discoverProductsForMonth(
+        key.products,
+        usageRowsByHash,
+        chain,
+        previousMonthKey,
+      );
       if (productsToProcess.length === 0) {
         summary.scopesSkipped += 1;
         continue;

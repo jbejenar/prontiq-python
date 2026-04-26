@@ -27,7 +27,8 @@ It does not replace:
 - `docs/runbooks/prod-go-live-cleanup.md` for final production smoke-fixture
   retirement after P1B.20
 - P1B.18 console billing proxy/API contract work
-- P1B.19 Stripe legacy retirement
+- P1B.19 Stripe legacy retirement. After P1B.19, use
+  `docs/runbooks/stripe-legacy-cutover.md` for the active cutover posture.
 
 ## Safety Rules
 
@@ -37,8 +38,9 @@ It does not replace:
   a clearly named repo-owned test org for this repo only.
 - Do not commit or paste Lago API keys, webhook secrets, raw API keys, private
   customer emails, or local secret files.
-- Keep prod `COUNTER_PERIOD_SOURCE=calendar` unless a later cutover decision
-  explicitly approves Lago billing-period scopes.
+- Before P1B.19, keep prod `COUNTER_PERIOD_SOURCE=calendar` unless a separate
+  cutover decision explicitly approves Lago billing-period scopes. After
+  P1B.19, `COUNTER_PERIOD_SOURCE=lago` is the expected deployed posture.
 
 ## Environment Preconditions
 
@@ -50,7 +52,8 @@ For the target GitHub Environment:
 - `BILLING_EVENTS_ENABLED` is unset or `false` before forwarder smoke.
 - `LAGO_WEBHOOK_RECONCILIATION_ENABLED` is unset or `false` before unsigned
   route preflight.
-- `COUNTER_PERIOD_SOURCE` is unset or `calendar` before billing-period cutover.
+- Before P1B.19, `COUNTER_PERIOD_SOURCE` is unset or `calendar` before
+  billing-period cutover. After P1B.19, expect `COUNTER_PERIOD_SOURCE=lago`.
 
 ## Repo-Owned Smoke Helper
 
@@ -222,12 +225,9 @@ Prod may enable:
 - `BILLING_EVENTS_ENABLED=true` after controlled forwarder replay smoke passes
   with the API producer still off
 
-Prod should keep:
-
-- `COUNTER_PERIOD_SOURCE=calendar`
-
-until P1B.19 or a separate explicit cutover decision approves Lago
-billing-period enforcement scopes.
+Before P1B.19, prod should keep `COUNTER_PERIOD_SOURCE=calendar` until P1B.19
+or a separate explicit cutover decision approves Lago billing-period enforcement
+scopes. After P1B.19, prod should use `COUNTER_PERIOD_SOURCE=lago`.
 
 ## Evidence To Record
 
@@ -275,8 +275,9 @@ the return to OK in CloudWatch rather than expecting a recovery email.
   emission.
 - Set `LAGO_WEBHOOK_RECONCILIATION_ENABLED=false` and redeploy to make valid
   Lago deliveries return retryable 503 before ledger claim.
-- Keep `COUNTER_PERIOD_SOURCE=calendar` or restore it and redeploy if it was
-  enabled too early.
+- Before P1B.19, keep `COUNTER_PERIOD_SOURCE=calendar` or restore it and
+  redeploy if Lago-period scopes were enabled too early. After P1B.19, restore
+  `calendar` only as part of an explicit rollback.
 - Do not delete `prontiq-billing-event-deliveries` or
   `prontiq-lago-webhook-events` rows; they are replay and drift evidence.
 

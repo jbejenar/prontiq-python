@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **P1B.19 Stripe legacy billing runtime retirement implemented.** Provisioning
+  can now run in Lago-forward mode behind `LEGACY_STRIPE_RUNTIME_ENABLED=false`,
+  bootstrapping Lago Free subscriptions without creating Stripe customers.
+  Stripe webhooks verify signatures but return `retired`, legacy billing cron
+  and month-close return disabled summaries, `COUNTER_PERIOD_SOURCE=lago` is the
+  post-cutover posture, and rollback/config cleanup are documented separately.
+
 - **P1B.18 account billing API contract implemented.** `PqAccount` now exposes
   Prontiq-owned billing summary, Lago portal session, and gated Free/PAYG
   plan-change routes with Clerk org-admin auth, `Idempotency-Key` replay

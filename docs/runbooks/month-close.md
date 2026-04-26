@@ -1,12 +1,14 @@
 # Month-Close Runbook
 
-> Legacy Stripe billing path.
+> Legacy Stripe billing path; rollback-only after P1B.19.
 >
-> This runbook documents the **currently shipped** Stripe month-close flow. It
-> is retained for migration and operational history, not as the forward-looking
-> commercial operating model.
+> With `LEGACY_STRIPE_RUNTIME_ENABLED=false`, `PqMonthClose` exits before
+> constructing Stripe or reading billing rows and returns a disabled summary.
+> Re-enable only for an explicit rollback while P1B.20 cleanup has not removed
+> the legacy configuration.
 
-`PqMonthClose` performs the final previous-month billing sweep for Prontiq.
+`PqMonthClose` performed the final previous-month Stripe billing sweep for
+Prontiq's migration-era runtime.
 
 ## Purpose
 

@@ -21,7 +21,7 @@
         "/v1/account/setup": {
             "post": {
                 "summary": "Recover or initialise an org envelope (Clerk JWT auth)",
-                "description": "Idempotent. Resolves the caller's verified primary email via the Clerk Backend API and provisions the org's Stripe customer + envelope + audit row. Mirrors the Clerk webhook's provisioning path so a delayed/missed webhook is recoverable from the dashboard.",
+                "description": "Idempotent. Resolves the caller's verified primary email via the Clerk Backend API and provisions the org's Prontiq customer envelope, Lago Free subscription in forward mode, and audit row. Mirrors the Clerk webhook's provisioning path so a delayed/missed webhook is recoverable from the dashboard.",
                 "security": [
                     {
                         "ClerkJwt": []
@@ -42,8 +42,16 @@
                                                 "already_exists"
                                             ]
                                         },
+                                        "customerId": {
+                                            "type": "string",
+                                            "description": "Prontiq-owned platform customer id."
+                                        },
                                         "stripeCustomerId": {
-                                            "type": "string"
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ],
+                                            "description": "Legacy/payment-rail Stripe linkage. Null after Lago cutover when Stripe is used only through Lago."
                                         },
                                         "emailSent": {
                                             "type": "boolean",
@@ -52,6 +60,7 @@
                                     },
                                     "required": [
                                         "status",
+                                        "customerId",
                                         "stripeCustomerId"
                                     ]
                                 }
@@ -72,8 +81,16 @@
                                                 "already_exists"
                                             ]
                                         },
+                                        "customerId": {
+                                            "type": "string",
+                                            "description": "Prontiq-owned platform customer id."
+                                        },
                                         "stripeCustomerId": {
-                                            "type": "string"
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ],
+                                            "description": "Legacy/payment-rail Stripe linkage. Null after Lago cutover when Stripe is used only through Lago."
                                         },
                                         "emailSent": {
                                             "type": "boolean",
@@ -82,6 +99,7 @@
                                     },
                                     "required": [
                                         "status",
+                                        "customerId",
                                         "stripeCustomerId"
                                     ]
                                 }
@@ -172,6 +190,48 @@
                             }
                         }
                     },
+                    "409": {
+                        "description": "Legacy org envelope is missing customerId",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "type": "object",
+                                            "properties": {
+                                                "code": {
+                                                    "type": "string"
+                                                },
+                                                "message": {
+                                                    "type": "string"
+                                                },
+                                                "status": {
+                                                    "type": "integer"
+                                                },
+                                                "request_id": {
+                                                    "type": "string"
+                                                },
+                                                "details": {
+                                                    "type": "object",
+                                                    "additionalProperties": {}
+                                                }
+                                            },
+                                            "required": [
+                                                "code",
+                                                "message",
+                                                "status",
+                                                "request_id"
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "error"
+                                    ]
+                                }
+                            }
+                        }
+                    },
                     "500": {
                         "description": "Fatal failure — operator-facing fix required",
                         "content": {
@@ -215,7 +275,7 @@
                         }
                     },
                     "503": {
-                        "description": "Retryable failure — Stripe/Clerk/DDB transient",
+                        "description": "Retryable failure — Lago/Clerk/DDB transient",
                         "content": {
                             "application/json": {
                                 "schema": {

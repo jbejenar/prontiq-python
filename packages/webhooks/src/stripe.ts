@@ -55,9 +55,14 @@ function reply(statusCode: number, body: Record<string, unknown>): APIGatewayPro
 }
 
 export interface StripeHandlerOverrides {
+  legacyStripeRuntimeEnabled?: boolean;
   service?: ReturnType<typeof createStripeBillingService>;
   stripeClient?: Stripe;
   webhookSecret?: string;
+}
+
+function legacyStripeRuntimeEnabled(): boolean {
+  return process.env.LEGACY_STRIPE_RUNTIME_ENABLED !== "false";
 }
 
 export function createStripeHandler(overrides: StripeHandlerOverrides = {}) {
@@ -84,6 +89,14 @@ export function createStripeHandler(overrides: StripeHandlerOverrides = {}) {
         error: error instanceof Error ? error.message : String(error),
       });
       return reply(500, { error: "internal_error" });
+    }
+
+    if ((overrides.legacyStripeRuntimeEnabled ?? legacyStripeRuntimeEnabled()) === false) {
+      logger.info("Stripe webhook received after legacy runtime retirement", {
+        eventId: stripeEvent.id,
+        eventType: stripeEvent.type,
+      });
+      return reply(200, { ok: true, status: "retired" });
     }
 
     const service = overrides.service ?? getStripeBillingService();

@@ -50,14 +50,20 @@ jobs:
           HONEYCOMB_API_KEY: ${{ secrets.HONEYCOMB_API_KEY }}
           LAGO_API_KEY: ${{ secrets.LAGO_API_KEY }}
           LAGO_API_URL: ${{ vars.LAGO_API_URL }}
+          LAGO_PAYMENT_PROVIDER_CODE: ${{ vars.LAGO_PAYMENT_PROVIDER_CODE }}
           LAGO_WEBHOOK_HMAC_SECRET: ${{ secrets.LAGO_WEBHOOK_HMAC_SECRET }}
+          LEGACY_STRIPE_RUNTIME_ENABLED: ${{ vars.LEGACY_STRIPE_RUNTIME_ENABLED }}
           STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
           STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
         shell: bash
         run: |
           set -euo pipefail
           missing=()
-          for name in CLERK_WEBHOOK_SECRET CLERK_SECRET_KEY HONEYCOMB_API_KEY LAGO_API_KEY LAGO_API_URL LAGO_WEBHOOK_HMAC_SECRET STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET; do
+          required=(CLERK_WEBHOOK_SECRET CLERK_SECRET_KEY HONEYCOMB_API_KEY LAGO_API_KEY LAGO_API_URL LAGO_PAYMENT_PROVIDER_CODE LAGO_WEBHOOK_HMAC_SECRET STRIPE_WEBHOOK_SECRET)
+          if [[ "${LEGACY_STRIPE_RUNTIME_ENABLED:-}" != "false" ]]; then
+            required+=(STRIPE_SECRET_KEY)
+          fi
+          for name in "${required[@]}"; do
             value="${!name:-}"
             trimmed="${value#"${value%%[![:space:]]*}"}"
             trimmed="${trimmed%"${trimmed##*[![:space:]]}"}"
@@ -126,8 +132,10 @@ jobs:
           HONEYCOMB_API_KEY: ${{ secrets.HONEYCOMB_API_KEY }}
           LAGO_API_KEY: ${{ secrets.LAGO_API_KEY }}
           LAGO_API_URL: ${{ vars.LAGO_API_URL }}
+          LAGO_PAYMENT_PROVIDER_CODE: ${{ vars.LAGO_PAYMENT_PROVIDER_CODE }}
           LAGO_WEBHOOK_HMAC_SECRET: ${{ secrets.LAGO_WEBHOOK_HMAC_SECRET }}
           LAGO_WEBHOOK_RECONCILIATION_ENABLED: ${{ vars.LAGO_WEBHOOK_RECONCILIATION_ENABLED }}
+          LEGACY_STRIPE_RUNTIME_ENABLED: ${{ vars.LEGACY_STRIPE_RUNTIME_ENABLED }}
           PRONTIQ_ACCOUNT_URL: ${{ vars.PRONTIQ_ACCOUNT_URL }}
           ALERT_EMAILS: ${{ vars.ALERT_EMAILS }}
           PRONTIQ_BILLING_URL: ${{ vars.PRONTIQ_BILLING_URL }}
