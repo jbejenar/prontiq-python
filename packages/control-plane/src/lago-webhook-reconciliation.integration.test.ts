@@ -497,6 +497,85 @@ test("invoice payment overdue and subsequent successful status update toggle loc
   assert.equal(afterPaid.Item?.lagoPaymentOverdueInvoiceId, null);
 });
 
+test("pending Lago transition records pending metadata without downgrading entitlements", async () => {
+  await setPaidEntitlementForTerminationRegression();
+  const lagoClient = new FakeLagoClient();
+  lagoClient.snapshot = {
+    billingPeriodEndingAt: "2026-05-25T00:00:00Z",
+    billingPeriodStartedAt: "2026-04-25T00:00:00Z",
+    downgradePlanDate: "2026-05-25",
+    externalCustomerId: CUSTOMER_ID,
+    externalSubscriptionId: deriveLagoExternalSubscriptionId(CUSTOMER_ID),
+    nextPlanCode: "free",
+    planCode: "payg",
+    previousPlanCode: "payg",
+    status: "pending",
+  };
+  const payload = {
+    webhook_type: "subscription.started",
+    subscription: {
+      external_customer_id: CUSTOMER_ID,
+      external_id: deriveLagoExternalSubscriptionId(CUSTOMER_ID),
+    },
+  };
+
+  const result = await makeService(lagoClient).handleWebhook({
+    payload,
+    uniqueKey: "lago_evt_pending_transition_preserves_entitlements",
+  });
+
+  assert.equal(result.status, "processed");
+  const key = await ddb.send(
+    new GetCommand({ TableName: KEYS_TABLE, Key: { apiKeyHash: API_KEY_HASH } }),
+  );
+  assert.equal(key.Item?.tier, "payg");
+  assert.equal(key.Item?.quotaPerProduct, null);
+  assert.equal(key.Item?.billingPeriodKey, "2026-04-25_2026-05-25");
+  assert.equal(key.Item?.lagoSubscriptionStatus, "pending");
+  assert.equal(key.Item?.lagoNextPlanCode, "free");
+
+  const envelope = await ddb.send(
+    new GetCommand({ TableName: KEYS_TABLE, Key: { apiKeyHash: `ORG#${ORG_ID}` } }),
+  );
+  assert.equal(envelope.Item?.tier, "payg");
+  assert.equal(envelope.Item?.lagoNextPlanCode, "free");
+  assert.equal(envelope.Item?.lagoPlanTransitionStatus, "pending");
+});
+
+test("subscription terminated with active replacement snapshot preserves entitlements", async () => {
+  await setPaidEntitlementForTerminationRegression();
+  const lagoClient = new FakeLagoClient();
+  lagoClient.snapshot = {
+    billingPeriodEndingAt: "2026-06-25T00:00:00Z",
+    billingPeriodStartedAt: "2026-05-25T00:00:00Z",
+    externalCustomerId: CUSTOMER_ID,
+    externalSubscriptionId: deriveLagoExternalSubscriptionId(CUSTOMER_ID),
+    planCode: "payg",
+    status: "active",
+  };
+  const payload = {
+    webhook_type: "subscription.terminated",
+    subscription: {
+      external_customer_id: CUSTOMER_ID,
+      external_id: deriveLagoExternalSubscriptionId(CUSTOMER_ID),
+    },
+  };
+
+  const result = await makeService(lagoClient).handleWebhook({
+    payload,
+    uniqueKey: "lago_evt_terminated_active_replacement",
+  });
+
+  assert.equal(result.status, "processed");
+  const key = await ddb.send(
+    new GetCommand({ TableName: KEYS_TABLE, Key: { apiKeyHash: API_KEY_HASH } }),
+  );
+  assert.equal(key.Item?.tier, "payg");
+  assert.equal(key.Item?.quotaPerProduct, null);
+  assert.equal(key.Item?.lagoSubscriptionStatus, "active");
+  assert.equal(key.Item?.billingPeriodKey, "2026-05-25_2026-06-25");
+});
+
 test("subscription terminated with a returned terminated snapshot downgrades entitlements", async () => {
   await setPaidEntitlementForTerminationRegression();
   const lagoClient = new FakeLagoClient();

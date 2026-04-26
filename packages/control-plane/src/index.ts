@@ -53,3 +53,21 @@ export type {
   LagoWebhookReconciliationInput,
   LagoWebhookReconciliationResult,
 } from "./lago-webhook-reconciliation.js";
+
+export {
+  AccountBillingError,
+  DynamoBillingActionLedger,
+  HttpLagoAccountBillingClient,
+  createAccountBillingService,
+} from "./account-billing.js";
+export type {
+  AccountBillingActionStatus,
+  AccountBillingDependencies,
+  AccountBillingPlanChangeResponse,
+  AccountBillingPortalSessionResponse,
+  AccountBillingSummary,
+  BillingActionLedger,
+  BillingActionRecord,
+  LagoAccountBillingClient,
+  LagoSubscriptionState,
+} from "./account-billing.js";

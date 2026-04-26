@@ -173,6 +173,7 @@ function makeStripeStub(idCounter: { value: number }): StripeStubControl {
 
 const noopEmail: EmailSender = async () => true;
 const noopLogger = { error: () => {}, info: () => {}, warn: () => {} };
+type BillingServiceOverride = NonNullable<Parameters<typeof createAccountRoutes>[0]>["billingService"];
 
 interface BuildAppOpts {
   orgId: string;
@@ -188,6 +189,7 @@ interface BuildAppOpts {
   stripe: Stripe;
   clerkClient: ClerkClient;
   ddbOverride?: DynamoDBDocumentClient;
+  billingService?: BillingServiceOverride;
 }
 
 function buildApp(opts: BuildAppOpts) {
@@ -215,6 +217,7 @@ function buildApp(opts: BuildAppOpts) {
   });
 
   const accountRoutes = createAccountRoutes({
+    billingService: opts.billingService,
     clerkClient: opts.clerkClient,
     service,
   });
@@ -480,4 +483,171 @@ test("admin-gate: bare 'admin' role (legacy default) → 200 (matches webhook's 
   const { status, body } = await callSetup(app);
   assert.equal(status, 201, "bare 'admin' is in DEFAULT_ADMIN_ROLES — same as webhook");
   assert.equal(body.status, "created");
+});
+
+test("billing summary route is admin-only and returns the account billing contract", async () => {
+  const orgId = `org_acct_billing_${SUFFIX}`;
+  const counter = { value: 0 };
+  const { stripe } = makeStripeStub(counter);
+  const app = buildApp({
+    orgId,
+    stripe,
+    clerkClient: makeClerkClientStub(VERIFIED_USER),
+    billingService: {
+      async getBillingSummary(principal) {
+        assert.equal(principal.orgId, orgId);
+        return {
+          allowedActions: { canOpenPortal: true, canRequestPlanChange: true },
+          billingPeriod: { endsAt: null, key: null, startsAt: null },
+          customer: {
+            customerId: "pq_cust_01HYZ6Q4X6DJP2X9Q9FQKX4T7A",
+            lagoCustomerId: null,
+            orgId,
+          },
+          invoices: { portalRequired: true },
+          payment: { overdue: false, overdueInvoiceId: null },
+          plan: {
+            current: "free",
+            lagoPlanCode: "free",
+            pending: {
+              downgradePlanDate: null,
+              nextPlanCode: null,
+              previousPlanCode: null,
+              status: null,
+            },
+            supportedSelfServeTargets: ["free", "payg"],
+          },
+          subscription: {
+            externalId: "pq_sub_01HYZ6Q4X6DJP2X9Q9FQKX4T7A",
+            status: "active",
+          },
+        };
+      },
+      async requestPlanChange() {
+        throw new Error("not used");
+      },
+      async createPortalSession() {
+        throw new Error("not used");
+      },
+    },
+  });
+
+  const res = await app.request("/v1/account/billing", {
+    method: "GET",
+    headers: { Authorization: "Bearer good_token" },
+  });
+  assert.equal(res.status, 200);
+  const body = (await res.json()) as { customer: { orgId: string }; plan: { current: string } };
+  assert.equal(body.customer.orgId, orgId);
+  assert.equal(body.plan.current, "free");
+});
+
+test("plan-change route requires Idempotency-Key and forwards target plan to billing service", async () => {
+  const orgId = `org_acct_plan_change_${SUFFIX}`;
+  const counter = { value: 0 };
+  const { stripe } = makeStripeStub(counter);
+  const app = buildApp({
+    orgId,
+    stripe,
+    clerkClient: makeClerkClientStub(VERIFIED_USER),
+    billingService: {
+      async getBillingSummary() {
+        throw new Error("not used");
+      },
+      async requestPlanChange(input) {
+        assert.equal(input.principal.orgId, orgId);
+        assert.equal(input.idempotencyKey, "idem_plan_change");
+        assert.equal(input.targetPlanCode, "payg");
+        return {
+          currentPlanCode: "free",
+          effectiveAt: null,
+          status: "submitted",
+          subscriptionExternalId: "pq_sub_01HYZ6Q4X6DJP2X9Q9FQKX4T7A",
+          targetPlanCode: "payg",
+        };
+      },
+      async createPortalSession() {
+        throw new Error("not used");
+      },
+    },
+  });
+
+  const res = await app.request("/v1/account/billing/plan-change", {
+    method: "POST",
+    headers: {
+      Authorization: "Bearer good_token",
+      "Content-Type": "application/json",
+      "Idempotency-Key": "idem_plan_change",
+    },
+    body: JSON.stringify({ targetPlanCode: "payg" }),
+  });
+  assert.equal(res.status, 200);
+  const body = (await res.json()) as { status: string; targetPlanCode: string };
+  assert.equal(body.status, "submitted");
+  assert.equal(body.targetPlanCode, "payg");
+});
+
+test("mutating billing routes reject missing or blank Idempotency-Key before service dispatch", async () => {
+  const orgId = `org_acct_billing_idem_${SUFFIX}`;
+  const counter = { value: 0 };
+  const { stripe } = makeStripeStub(counter);
+  let planChangeCalls = 0;
+  let portalSessionCalls = 0;
+  const app = buildApp({
+    orgId,
+    stripe,
+    clerkClient: makeClerkClientStub(VERIFIED_USER),
+    billingService: {
+      async getBillingSummary() {
+        throw new Error("not used");
+      },
+      async requestPlanChange() {
+        planChangeCalls += 1;
+        throw new Error("plan-change service must not be called");
+      },
+      async createPortalSession() {
+        portalSessionCalls += 1;
+        throw new Error("portal-session service must not be called");
+      },
+    },
+  });
+
+  const missingPlanChange = await app.request("/v1/account/billing/plan-change", {
+    method: "POST",
+    headers: {
+      Authorization: "Bearer good_token",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ targetPlanCode: "payg" }),
+  });
+  assert.equal(missingPlanChange.status, 400);
+
+  const blankPlanChange = await app.request("/v1/account/billing/plan-change", {
+    method: "POST",
+    headers: {
+      Authorization: "Bearer good_token",
+      "Content-Type": "application/json",
+      "Idempotency-Key": "   ",
+    },
+    body: JSON.stringify({ targetPlanCode: "payg" }),
+  });
+  assert.equal(blankPlanChange.status, 400);
+
+  const missingPortal = await app.request("/v1/account/billing/portal-session", {
+    method: "POST",
+    headers: { Authorization: "Bearer good_token" },
+  });
+  assert.equal(missingPortal.status, 400);
+
+  const blankPortal = await app.request("/v1/account/billing/portal-session", {
+    method: "POST",
+    headers: {
+      Authorization: "Bearer good_token",
+      "Idempotency-Key": "   ",
+    },
+  });
+  assert.equal(blankPortal.status, 400);
+
+  assert.equal(planChangeCalls, 0);
+  assert.equal(portalSessionCalls, 0);
 });

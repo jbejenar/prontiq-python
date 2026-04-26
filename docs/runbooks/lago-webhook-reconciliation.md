@@ -41,10 +41,10 @@ legacy Stripe webhook while the migration is in progress.
 3. The handler claims `X-Lago-Unique-Key` in `prontiq-lago-webhook-events`.
 4. The platform resolves `customerId`, fetches the current Lago subscription,
    and updates denormalized local state in `prontiq-keys`.
-5. Only Lago `active` subscriptions grant paid/local plan entitlements.
-   `subscription.terminated`, `terminated`, `canceled`, and `pending` snapshots
-   downgrade local entitlements to Free even if Lago still returns the historical
-   paid `plan_code`.
+5. Lago active snapshots grant paid/local plan entitlements. Pending snapshots
+   record pending metadata only and do not change request-time entitlements.
+   Terminated/canceled snapshots downgrade local entitlements to Free only when
+   no active replacement snapshot is returned.
 6. Prior Lago-period `prontiq-usage` rows are marked `closed=true` when a new
    billing period key appears or when local entitlements are downgraded and the
    billing-period key is cleared.

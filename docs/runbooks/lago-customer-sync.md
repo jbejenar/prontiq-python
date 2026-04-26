@@ -41,6 +41,9 @@ customer primary key.
 3. Lago subscription exists with `external_id = pq_sub_<same ulid as customerId>`.
 4. Subscription changes reconcile back into Prontiq enforcement counters through
    `POST /webhooks/lago`.
+5. Account billing plan changes upsert the Lago customer with AUD currency and
+   configured Stripe payment-provider linkage before submitting the Lago
+   subscription change.
 
 ## Backfill procedure
 
@@ -77,6 +80,7 @@ customer primary key.
 
 - confirm Clerk org resolves to one active `prontiq-customers` row
 - confirm Lago customer exists with `external_id = customerId`
+- confirm Lago customer currency is AUD for account billing mutations
 - confirm Lago subscription external id is derived from the same customer ULID
 - confirm Lago `lago_id` is cached only as `lagoCustomerId`
 - confirm no customer-table read is required by API-key request auth

@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **P1B.18 account billing API contract implemented.** `PqAccount` now exposes
+  Prontiq-owned billing summary, Lago portal session, and gated Free/PAYG
+  plan-change routes with Clerk org-admin auth, `Idempotency-Key` replay
+  safety, a `prontiq-billing-actions` ledger, public OpenAPI docs, and Lago
+  transition handling that preserves current entitlements while plan changes
+  are pending.
+
 - **P1B.18a live smoke certification completed.** Dev/prod have accepted
   Lago usage-forwarding delivery rows, completed Lago HMAC webhook-ledger rows,
   replay-safe duplicate webhook checks, inventoried test-only smoke fixtures,

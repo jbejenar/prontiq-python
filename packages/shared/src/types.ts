@@ -104,6 +104,10 @@ export interface ApiKeyRecord {
   lagoPlanCode?: string;
   lagoSubscriptionExternalId?: string | null;
   lagoSubscriptionStatus?: string | null;
+  lagoPreviousPlanCode?: string | null;
+  lagoNextPlanCode?: string | null;
+  lagoDowngradePlanDate?: string | null;
+  lagoPlanTransitionStatus?: string | null;
   billingPeriodStartedAt?: string | null;
   billingPeriodEndingAt?: string | null;
   billingPeriodKey?: string | null;
@@ -181,6 +185,10 @@ export interface OrgEnvelopeRecord {
   lagoPlanCode?: string;
   lagoSubscriptionExternalId?: string | null;
   lagoSubscriptionStatus?: string | null;
+  lagoPreviousPlanCode?: string | null;
+  lagoNextPlanCode?: string | null;
+  lagoDowngradePlanDate?: string | null;
+  lagoPlanTransitionStatus?: string | null;
   billingPeriodStartedAt?: string | null;
   billingPeriodEndingAt?: string | null;
   billingPeriodKey?: string | null;

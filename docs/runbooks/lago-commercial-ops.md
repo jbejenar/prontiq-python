@@ -21,6 +21,8 @@ In the target architecture:
 
 - confirm plan metadata in Lago matches the intended commercial surface
 - confirm plan codes exactly match Prontiq tiers (`free`, `payg`, etc.)
+- confirm account billing plan changes use `docs/runbooks/console-billing.md`
+  and are gated by stage flags/allowlists until cutover
 - confirm each enabled metric code matches the platform `meterEventName`
 - confirm credit metrics aggregate the `credits` property by sum
 - confirm subscriptions use `pq_sub_<ulid>` external IDs derived from

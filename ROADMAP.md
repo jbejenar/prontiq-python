@@ -852,12 +852,12 @@ Address data changes quarterly. The same "9 endeavour cou" query from 1000 diffe
 ```yaml
 id: P1A.10
 title: WAF + API Gateway Throttling
-status: pending
+status: completed
 priority: p1-high
 epic: P1A
 persona: [ops]
 depends_on: [P0.02]
-completed: null
+completed: 2026-04-26
 tech_stack:
   waf: AWS WAF v2
   cost: ~$5/month + $0.60/M requests
@@ -1077,9 +1077,9 @@ Options:
 
 > **Goal:** Sign-up → DDB-native API key → hash-verified requests → rate-limited with burst limiter → usage tracked per-month → migrate the commercial layer from the shipped Stripe path to the Lago target architecture.
 >
-> **Current state.** P1B.02, P1B.04, P1B.04b, P1B.05, P1B.06, P1B.07, P1B.08, P1B.09, P1B.10, P1B.11, P1B.12, P1B.14, P1B.15, P1B.16, P1B.17, and P1B.18a are shipped. The DynamoDB-native key model is live in prod, the prod migration was executed on 2026-04-16, the legacy Stripe billing path is live, per-key burst limiting is enforced in the API middleware, SES feedback / quota-email delivery is live in dev + prod, previous-month scopes are now explicitly finalized and closed by the monthly `PqMonthClose` sweep, the auth integration suite is reconciled to the real post-cutover middleware contract, and the Lago migration now has a platform-owned `customerId` contract, SQS billing-event buffer, replay-safe Lago event forwarder, Lago webhook reconciliation code, and dev/prod live-smoke certification. P1B.18a closed on 2026-04-26 with repo-owned smoke helper evidence, API-produced usage-forwarding evidence, completed Lago webhook-ledger rows in dev/prod, replay-safe webhook duplicate checks, retained smoke fixtures inventoried as test-only, and `COUNTER_PERIOD_SOURCE` kept on the calendar default. Final destructive cleanup is deferred to P1B.21 after P1B.20. SES deliverability hardening is tracked separately in P1B.08a. The next Lago migration work is P1B.18.
+> **Current state.** P1B.02, P1B.04, P1B.04b, P1B.05, P1B.06, P1B.07, P1B.08, P1B.09, P1B.10, P1B.11, P1B.12, P1B.14, P1B.15, P1B.16, P1B.17, P1B.18a, and P1B.18 are shipped. The DynamoDB-native key model is live in prod, the prod migration was executed on 2026-04-16, the legacy Stripe billing path is live, per-key burst limiting is enforced in the API middleware, SES feedback / quota-email delivery is live in dev + prod, previous-month scopes are now explicitly finalized and closed by the monthly `PqMonthClose` sweep, the auth integration suite is reconciled to the real post-cutover middleware contract, and the Lago migration now has a platform-owned `customerId` contract, SQS billing-event buffer, replay-safe Lago event forwarder, Lago webhook reconciliation code, dev/prod live-smoke certification, and Prontiq-owned account billing APIs for billing summary, Lago portal access, and gated Free/PAYG plan changes. Final destructive cleanup is deferred to P1B.21 after P1B.20. SES deliverability hardening is tracked separately in P1B.08a. The next Lago migration work is P1B.19.
 >
-> **Lago migration progress.** `5/9` complete for `P1B.14`–`P1B.21` plus `P1B.18a`. The `P1B` epic rollup includes completed historical Stripe-path work, so treat the Lago migration sequence as a separate track until the new commercial runtime is implemented.
+> **Lago migration progress.** `6/9` complete for `P1B.14`–`P1B.21` plus `P1B.18a`. The `P1B` epic rollup includes completed historical Stripe-path work, so treat the Lago migration sequence as a separate track until the new commercial runtime is implemented.
 >
 > **Scope boundary.** The hot-path middleware rewrite (hash-based lookup, REDIRECT fallback, new usage-table writes) ships in **P1B.04b** (cutover), NOT in P1B.02. P1B.02 is pure crypto primitives only — no DDB dependency — which is why it remains parallel-safe. P1B.04b flips schema + code atomically once P1B.02 and P1B.04 are both done.
 >
@@ -1899,12 +1899,12 @@ enablement, evidence capture, and runbook updates.
 ```yaml
 id: P1B.18
 title: Console Billing Proxy Surfaces + Plan Changes
-status: pending
+status: completed
 priority: p1-high
 epic: P1B
 persona: [api-consumer]
 depends_on: [P1B.18a]
-completed: null
+completed: 2026-04-26
 tech_stack:
   billing: Lago + account APIs
 ```
@@ -1929,31 +1929,30 @@ architecture.
 
 ##### Functional
 
-- [ ] Console billing/account contract is defined
+- [x] Console billing/account contract is defined
   - `Verify:` roadmap ticket specifies the backend surfaces the console will
     call
   - `Evidence:` contract covers current billing state, current plan, invoice /
     history links, payment-status messaging, and plan-change actions
-- [ ] Plan changes are modeled as Prontiq-owned actions
+- [x] Plan changes are modeled as Prontiq-owned actions
   - `Verify:` ticket does not treat Stripe Checkout or Customer Portal as the
     forward plan-change surface
   - `Evidence:` contract wording centers on platform-owned proxy/orchestration
     routes with migration-era hosted links clearly labeled if retained
-- [ ] `P1C.05` boundary is explicit
+- [x] `P1C.05` boundary is explicit
   - `Verify:` roadmap shows `P1B.18` defining the contract and `P1C.05`
     rendering the UI on top of it
   - `Evidence:` no circular dependency between backend contract and console page
-- [ ] Migration-only legacy links are explicitly constrained
+- [x] Migration-only legacy links are explicitly constrained
   - `Verify:` any retained Stripe invoice / payment / portal links are described
     as temporary compatibility surfaces
   - `Evidence:` ticket body distinguishes target contract from migration residue
 
 ##### Operational
 
-- [ ] Backend contract is stable enough for the console to build against
-  - `Verify:` `NEXT-WORK.md` sequencing remains `P1B.18` before deeper billing
-    UI work
-  - `Evidence:` roadmap dependency chain + ticket wording align
+- [x] Backend contract is stable enough for the console to build against
+  - `Verify:` `P1B.18` shipped before `P1C.05` consumes the billing UI contract
+  - `Evidence:` roadmap dependency chain, OpenAPI contract, and runbooks align
 
 #### Scope
 

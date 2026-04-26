@@ -72,6 +72,9 @@ export default $config({
     const billingEventDeliveriesTableName = isProd
       ? "prontiq-billing-event-deliveries"
       : `prontiq-billing-event-deliveries-${$app.stage}`;
+    const billingActionsTableName = isProd
+      ? "prontiq-billing-actions"
+      : `prontiq-billing-actions-${$app.stage}`;
     const lagoWebhookEventsTableName = isProd
       ? "prontiq-lago-webhook-events"
       : `prontiq-lago-webhook-events-${$app.stage}`;
@@ -139,6 +142,20 @@ export default $config({
       },
       ttl: "ttl",
       transform: { table: { name: billingEventDeliveriesTableName } },
+    });
+
+    const billingActionsTable = new sst.aws.Dynamo("PqBillingActions", {
+      fields: {
+        actionId: "string",
+        orgId: "string",
+        updatedAt: "string",
+      },
+      primaryIndex: { hashKey: "actionId" },
+      globalIndexes: {
+        "orgId-updatedAt-index": { hashKey: "orgId", rangeKey: "updatedAt" },
+      },
+      ttl: "ttl",
+      transform: { table: { name: billingActionsTableName } },
     });
 
     const lagoWebhookEventsTable = new sst.aws.Dynamo("PqLagoWebhookEvents", {
@@ -1163,7 +1180,13 @@ export default $config({
       runtime: "nodejs24.x",
       memory: "512 MB",
       timeout: "30 seconds",
-      link: [authKeysTable, authUsageTable, auditTable, customersTable, suppressionsTable],
+      link: [
+        authKeysTable,
+        authUsageTable,
+        auditTable,
+        customersTable,
+        suppressionsTable,
+      ],
       permissions: [
         {
           actions: ["ses:SendEmail", "ses:SendRawEmail"],
@@ -1430,23 +1453,40 @@ export default $config({
     // signature. CLERK_ADMIN_ROLES IS shared (via controlPlaneEnv())
     // so any custom-role override applies uniformly to both this
     // Lambda's clerkAdminOnly() gate and the webhook's role gate.
-    // The existing deployed-stage secret guard above validates the two
-    // secrets this Lambda needs (CLERK_SECRET_KEY +
-    // STRIPE_SECRET_KEY) for dev/prod stages.
+    // The existing deployed-stage secret guard above validates the secrets
+    // this Lambda needs (CLERK_SECRET_KEY, STRIPE_SECRET_KEY, and LAGO_API_KEY)
+    // for dev/prod stages.
     const accountFn = new sst.aws.Function("PqAccount", {
       handler: "packages/api/src/account-handler.bootstrap.handler",
       architecture: "arm64",
       runtime: "nodejs24.x",
       memory: "512 MB",
       timeout: "30 seconds",
-      link: [authKeysTable, authUsageTable, auditTable, customersTable, suppressionsTable],
+      link: [
+        authKeysTable,
+        authUsageTable,
+        auditTable,
+        customersTable,
+        suppressionsTable,
+        billingActionsTable,
+      ],
       permissions: [
         {
           actions: ["ses:SendEmail", "ses:SendRawEmail"],
           resources: sharedEmailSendResources(),
         },
       ],
-      environment: controlPlaneEnv(),
+      environment: {
+        ...controlPlaneEnv(),
+        BILLING_ACTIONS_TABLE_NAME: billingActionsTable.name,
+        CONSOLE_BILLING_PLAN_CHANGE_ALLOWED_ORG_IDS:
+          readGithubVar("CONSOLE_BILLING_PLAN_CHANGE_ALLOWED_ORG_IDS") || "",
+        CONSOLE_BILLING_PLAN_CHANGES_ENABLED:
+          readGithubVar("CONSOLE_BILLING_PLAN_CHANGES_ENABLED") || "false",
+        LAGO_API_KEY: $util.secret(readGithubSecret("LAGO_API_KEY")),
+        LAGO_API_URL: readGithubVar("LAGO_API_URL"),
+        LAGO_PAYMENT_PROVIDER_CODE: readGithubVar("LAGO_PAYMENT_PROVIDER_CODE") || "",
+      },
     });
 
     api.route("ANY /v1/account/{proxy+}", accountFn.arn);

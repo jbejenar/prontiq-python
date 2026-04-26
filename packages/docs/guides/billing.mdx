@@ -82,8 +82,8 @@ fields only; they are not Prontiq customer identity.
 
 <Note>
   The customer table, backfill utility, SQS billing-event producer, Lago forwarder, and webhook
-  reconciliation are now implemented behind rollout gates. Console billing APIs still land in a
-  later Lago migration ticket after live Lago certification.
+  reconciliation are now implemented behind rollout gates. Console billing APIs now expose the
+  Prontiq-owned account contract for billing state, plan changes, and Lago portal access.
 </Note>
 
 ## Usage event forwarding
@@ -92,6 +92,21 @@ Prontiq forwards billing events to Lago asynchronously. The API request path
 does not call Lago. Each accepted event uses a deterministic transaction ID and
 sends the credit delta for the request so replay cannot double-bill when Lago is
 configured with the matching subscription and metric.
+
+## Account billing APIs
+
+Console billing screens use Prontiq account APIs rather than direct Lago or
+Stripe browser integration:
+
+- `GET /v1/account/billing` reads current billing state for the active
+  organization
+- `POST /v1/account/billing/plan-change` submits an idempotent Free/PAYG plan
+  change
+- `POST /v1/account/billing/portal-session` returns a Lago portal URL for
+  invoices and payment-management actions
+
+These routes use Clerk session authentication and are intended for the signed-in
+console, not server-to-server API-key traffic.
 
 ## Related guides
 

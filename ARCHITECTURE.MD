@@ -1699,10 +1699,11 @@ Local mutation boundary:
 
 - plan code maps directly to Prontiq `Tier` (`free`, `payg`, etc.); unknown
   plan codes are drift and return 500 so Lago retries while operators fix config
-- Lago subscription lifecycle status gates entitlements. Only `active` grants
-  paid/local plan access. `subscription.terminated`, `terminated`, `canceled`,
-  and `pending` snapshots downgrade local entitlements to Free even when Lago
-  still returns the historical paid `plan_code`.
+- Lago subscription lifecycle status gates entitlements. Active snapshots grant
+  paid/local plan access. Pending snapshots record pending metadata only and do
+  not change request-time entitlements. Terminated/canceled snapshots downgrade
+  local entitlements to Free only when no active replacement snapshot is
+  returned.
 - `prontiq-keys` org envelope and API-key rows receive denormalized Lago plan,
   subscription, billing-period, and payment-overdue fields
 - `prontiq-usage` remains the request-time enforcement counter store; Lago never
@@ -1723,6 +1724,59 @@ Rollout flags:
 - `COUNTER_PERIOD_SOURCE=calendar` is the safe default. Set
   `COUNTER_PERIOD_SOURCE=lago` only after webhook reconciliation is enabled and
   current billing-period fields are populated for the environment.
+
+#### 5.6.0.5 Console Account Billing Contract
+
+`P1B.18` adds the Prontiq-owned account billing API surface that the console
+will render in `P1C.05`. These routes live in the dedicated `PqAccount` Lambda,
+not the address API hot-path Lambda.
+
+Routes:
+
+- `GET /v1/account/billing` returns current local plan/enforcement state,
+  Lago subscription metadata, payment-overdue state, pending plan-change
+  metadata, and allowed billing actions
+- `POST /v1/account/billing/plan-change` submits an org-admin, idempotent Lago
+  plan change for the self-service `free` and `payg` targets
+- `POST /v1/account/billing/portal-session` returns Lago's customer portal URL
+  for invoices, billing details, and payment-management actions
+
+Mutation safety:
+
+- all billing mutations require Clerk org-admin auth and `Idempotency-Key`
+- `prontiq-billing-actions` stores the Prontiq action id, actor, customer,
+  request hash, target plan, provider status, response body, timestamps, and TTL
+- plan-change mutations consult the idempotency ledger before no-op or pending
+  transition checks, so same-key replay/resume cannot be blocked by local state
+  that the original action wrote
+- portal-session and plan-change mutations check existing ledger evidence before
+  live Lago reads, so successful replay, stored failure replay, and
+  provider-accepted resume do not depend on provider availability
+- idempotent replay with the same request returns the stored response; reuse
+  with a different body returns `IDEMPOTENCY_CONFLICT`
+- retryable Lago transport/provider-unavailable failures and stale in-flight
+  rows can be conditionally reclaimed only by the same idempotency key plus the
+  same request hash
+- after Lago accepts a plan-change mutation, the ledger records the provider
+  subscription outcome before local metadata repair so same-key retry can
+  resume repair without resubmitting the mutation
+- permanent failure rows replay as stored failures, not successful empty
+  responses
+- fresh plan-change actions evaluate pending transition metadata before
+  returning no-op, because local entitlements intentionally remain unchanged
+  during scheduled Lago transitions
+- production plan changes remain flag/allowlist gated until later cutover
+
+Transition semantics:
+
+- Lago `pending` transitions update pending metadata only
+- pending metadata is written to both the org envelope and API-key records so
+  support/debugging views see the same scheduled transition without changing
+  enforcement fields
+- local request-time `tier`, products, quota, rate limit, billing period, and
+  overdue state remain unchanged until Lago reports the active replacement state
+- `subscription.terminated` downgrades to Free only when the current Lago
+  subscription lookup does not return an active replacement snapshot
 
 Drift and idempotency:
 

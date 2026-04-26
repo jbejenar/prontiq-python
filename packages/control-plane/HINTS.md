@@ -22,6 +22,12 @@
   and retained smoke fixtures until the P1B.21 cleanup gate.
 - Lago plan codes map directly to Prontiq tiers. Unknown plan codes must fail
   closed; do not silently downgrade to Free or grant PAYG.
+- Pending Lago plan transitions must not change local request-time entitlements.
+  Record pending metadata and wait for the active replacement snapshot before
+  changing `tier`, products, quota, rate limit, or billing-period fields.
+- Account billing mutations must use the `prontiq-billing-actions` idempotency
+  ledger and require `Idempotency-Key`; do not rely only on Lago provider
+  behavior for replay safety.
 - Do not mutate Stripe registries from Lago webhook reconciliation.
 - Do not mutate existing non-canonical Lago organizations during platform
   tests. P1B.18a live smoke work may create repo-owned test

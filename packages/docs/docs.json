@@ -57,7 +57,12 @@
           },
           {
             "group": "Account",
-            "pages": ["api-reference/account-setup"]
+            "pages": [
+              "api-reference/account-setup",
+              "api-reference/account-billing",
+              "api-reference/account-billing-plan-change",
+              "api-reference/account-billing-portal-session"
+            ]
           }
         ]
       }

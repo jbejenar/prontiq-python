@@ -34,7 +34,7 @@ jobs:
 
       - name: Verify OpenAPI spec is up to date
         run: |
-          node -e "import app from './packages/api/dist/index.js'; const r = await app.fetch(new Request('http://localhost/openapi.json')); const fs = await import('fs'); fs.writeFileSync('packages/docs/openapi.json', JSON.stringify(await r.json(), null, 4) + '\n');"
+          node -e "import app from './packages/api/dist/openapi.js'; const r = await app.fetch(new Request('http://localhost/openapi.json')); const fs = await import('fs'); fs.writeFileSync('packages/docs/openapi.json', JSON.stringify(await r.json(), null, 4) + '\n');"
           if ! git diff --exit-code packages/docs/openapi.json; then
             echo "::error::packages/docs/openapi.json is stale. Run 'pnpm generate:openapi' and commit."
             exit 1

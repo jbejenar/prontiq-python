@@ -4,6 +4,30 @@
 > the time they were written, not the current source of truth. Use
 > `ROADMAP.md`, `NEXT-WORK.md`, and `README.md` for current execution status.
 
+## Session 40 — 2026-04-26
+
+**Focus:** P1B.18 account billing API contract.
+
+### Completed
+
+- **P1B.18 is complete.** `PqAccount` now serves account billing summary,
+  Lago portal session, and gated Free/PAYG plan-change routes.
+- **Billing mutations are replay-safe.** `prontiq-billing-actions` stores
+  idempotency/action evidence for account billing mutations.
+- **Lago transition handling is safer.** Pending transitions record metadata
+  without downgrading local entitlements; terminated events preserve access when
+  Lago returns an active replacement snapshot.
+- **Docs and public API references are aligned.** Architecture, roadmap,
+  runbooks, Mintlify account API pages, and OpenAPI generation now include the
+  account billing contract.
+
+### Next session should start with
+
+1. Start `P1B.19 — Stripe Legacy Billing Retirement and Cutover`.
+2. Keep plan-change enablement allowlisted to repo-owned test orgs until the
+   later cutover path is explicitly approved.
+3. Leave retained Lago smoke fixtures in place until P1B.21 cleanup.
+
 ## Session 39 — 2026-04-26
 
 **Focus:** P1B.18a webhook certification closeout.

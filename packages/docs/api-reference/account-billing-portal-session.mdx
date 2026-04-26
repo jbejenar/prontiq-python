@@ -1,0 +1,11 @@
+---
+title: "Create billing portal session"
+description: "Create a Lago portal URL for invoices and payment-management actions."
+openapi: "POST /v1/account/billing/portal-session"
+---
+
+Creates a Lago customer portal URL for the active organization. The route is
+admin-only and requires an `Idempotency-Key` header so browser retries are safe.
+
+Use this URL for invoice history, billing details, and payment-management
+actions during the Lago migration.

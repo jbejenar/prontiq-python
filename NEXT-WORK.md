@@ -1,9 +1,9 @@
 # NEXT-WORK.md — Active Sprint
 
 > Extracted from ROADMAP.md. This is what agents should work on NOW.
-> Last updated: 2026-04-26 (P1B.18a complete; P1B.18 next)
+> Last updated: 2026-04-26 (P1B.18 complete; P1B.19 next)
 
-## Current Phase: P1B.18
+## Current Phase: P1B.19
 
 ### What's Live
 
@@ -63,6 +63,13 @@
   `prontiq-platform-dev-smoke-20260426T051602Z` and
   `prontiq-platform-prod-smoke-20260426T051812Z`; replays returned
   `200 duplicate`.
+- **P1B.18 complete (2026-04-26).** `PqAccount` now exposes Prontiq-owned
+  account billing APIs for billing summary, Lago portal access, and gated
+  Free/PAYG plan changes. Mutations are Clerk-admin-only, require
+  `Idempotency-Key`, and write `prontiq-billing-actions`. Lago webhook
+  reconciliation now preserves current entitlements during pending transitions
+  and waits for active replacement snapshots before changing local enforcement
+  state.
 - **P1F.02 complete (2026-04-19).** The prod observability baseline is live and verified: `PqIngestAlerts` prod email subscriptions via `ALERT_EMAILS`, `prontiq-production` dashboard, prod alarms for address API 5xx/Lambda error rate and OpenSearch yellow/red/low-storage, `PqApi` X-Ray tracing with DynamoDB + OpenSearch segments, and structured JSON logs across Lambda execution paths. SNS email delivery was verified by forcing `PqApiLambdaErrorRate` to `ALARM` and confirming receipt on a confirmed subscriber.
 - **P1F.03 complete (2026-04-20).** `@prontiq/observability` is live in `dev` and `prod`, Honeycomb traces are verified for `prontiq-api`, `prontiq-webhooks`, `prontiq-billing`, and `prontiq-ingestion` in both environments, and the deployed-stage rollback path is `HONEYCOMB_ENABLED=false` rather than secret removal.
 - **P1C.07 complete (2026-04-20).** `apps/landing` and `apps/console` now have Tailwind v3.4, app-local shadcn/ui primitives, dark mode, responsive shell foundations, and app-local Vitest + Testing Library. `apps/console` now carries an env-gated real Clerk auth boundary that builds/tests cleanly without Clerk keys and enables real sign-in when they are present.
@@ -89,6 +96,9 @@ GET  /v1/address/lookup/suburb?suburb=bondi+beach&state=NSW&limit=10
 POST /webhooks/clerk    (Svix-signed; no API key — control-plane provisioning)
 POST /webhooks/lago     (Lago HMAC signed; no API key — target reconciliation)
 POST /v1/account/setup  (Clerk JWT; not API key — recovery provisioning)
+GET  /v1/account/billing
+POST /v1/account/billing/plan-change
+POST /v1/account/billing/portal-session
 ```
 
 ### Recent Ships
@@ -128,7 +138,7 @@ POST /v1/account/setup  (Clerk JWT; not API key — recovery provisioning)
 - ~~P1B.16 — Lago event forwarder worker + idempotent transaction IDs~~ ✅ shipped (2026-04-25)
 - ~~P1B.17 — Lago webhook sync + credit-counter reconciliation~~ ✅ shipped (2026-04-25)
 - ~~P1B.18a — Lago live setup + smoke certification~~ ✅ shipped (2026-04-26)
-- **P1B.18 — Console billing proxy surfaces + plan changes**
+- ~~P1B.18 — Console billing proxy surfaces + plan changes~~ ✅ shipped (2026-04-26)
 - **P1B.19 — Stripe legacy billing retirement and cutover**
 - **P1B.20 — Legacy Stripe config and surface cleanup**
 - **P1B.21 — Final prod go-live cleanup + smoke fixture retirement**
@@ -148,12 +158,12 @@ POST /v1/account/setup  (Clerk JWT; not API key — recovery provisioning)
 
 Recommended priority:
 
-1. P1B.18 — expose console billing surfaces on top of the Lago-backed contract.
-2. P1B.19 / P1B.20 — cut over the legacy Stripe billing path and remove the retired config/surfaces.
+1. P1B.19 — cut over the legacy Stripe billing path now that account billing APIs exist.
+2. P1B.20 — remove retired Stripe config and surfaces after cutover.
 3. P1B.21 — retire or explicitly retain prod smoke fixtures after Lago work is complete.
 4. P1C.02 / P1C.03 — continue the console overview and API-key experience after the commercial event path is underway.
 
-Before starting `P1B.18`, read:
+Before starting `P1B.19`, read:
 
 - `ARCHITECTURE.MD` (commercial implementation-status section + Lago target flow)
 - `docs/decisions/013-platform-owned-customer-id.md`
@@ -168,6 +178,10 @@ Before starting `P1B.18`, read:
 - `docs/decisions/022-dedicated-lago-webhook-ledger.md`
 - `docs/decisions/023-lago-billing-period-counter-scopes.md`
 - `docs/decisions/024-lago-plan-code-equals-tier.md`
+- `docs/decisions/027-console-billing-account-api.md`
+- `docs/decisions/028-billing-action-ledger.md`
+- `docs/decisions/029-lago-plan-transition-semantics.md`
+- `docs/runbooks/console-billing.md`
 - `docs/runbooks/lago-live-smoke.md`
 - `docs/runbooks/lago-billing-events.md`
 - `docs/runbooks/lago-webhook-reconciliation.md`

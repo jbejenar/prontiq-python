@@ -144,7 +144,7 @@ See [`ROADMAP.md`](ROADMAP.md) for the current execution plan.
 |         |                           | **90**  | **47/90** |
 
 `P1B` includes completed legacy Stripe-path work. The Lago migration sequence is
-`P1B.14`–`P1B.21` plus `P1B.18a`, currently `5/9`, and is called out
+`P1B.14`–`P1B.21` plus `P1B.18a`, currently `6/9`, and is called out
 separately in the Phase 1B section of [`ROADMAP.md`](ROADMAP.md).
 
 P1B.17 adds Lago webhook reconciliation. P1B.18a owns live Lago setup and smoke
@@ -160,6 +160,11 @@ delivery-ledger evidence, valid HMAC Lago webhook smoke has completed
 webhook-ledger rows in both stages, replaying the same webhook unique keys
 returns `200 duplicate`, and `COUNTER_PERIOD_SOURCE` remains on the calendar
 default.
+
+P1B.18 added the Prontiq-owned account billing APIs under `/v1/account/billing`
+for billing summary, Lago portal access, and gated Free/PAYG plan changes.
+Mutations are Clerk-org-admin-only, require `Idempotency-Key`, and write
+`prontiq-billing-actions` evidence.
 
 ## Commands
 

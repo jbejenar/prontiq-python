@@ -1,0 +1,12 @@
+---
+title: "Get account billing"
+description: "Read the current Prontiq-owned billing state for the active organization."
+openapi: "GET /v1/account/billing"
+---
+
+Returns current plan, Lago subscription state, payment-overdue state, pending
+plan-change metadata, and allowed billing actions for the caller's active Clerk
+organization.
+
+This endpoint is for console/account surfaces and uses Clerk session
+authentication, not API-key authentication.

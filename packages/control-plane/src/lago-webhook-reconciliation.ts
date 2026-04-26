@@ -29,6 +29,9 @@ export interface LagoSubscriptionSnapshot {
   externalSubscriptionId: string;
   planCode: string;
   status: string;
+  previousPlanCode?: string | null;
+  nextPlanCode?: string | null;
+  downgradePlanDate?: string | null;
   billingPeriodStartedAt: string | null;
   billingPeriodEndingAt: string | null;
 }
@@ -275,14 +278,9 @@ function assertKnownLagoSubscriptionStatus(status: string): void {
   }
 }
 
-function grantsPlanEntitlements(
-  eventType: LagoWebhookEventType,
-  snapshot: LagoSubscriptionSnapshot,
-): boolean {
+function grantsPlanEntitlements(snapshot: LagoSubscriptionSnapshot): boolean {
   assertKnownLagoSubscriptionStatus(snapshot.status);
-  return (
-    eventType !== "subscription.terminated" && snapshot.status === LAGO_ACTIVE_SUBSCRIPTION_STATUS
-  );
+  return snapshot.status === LAGO_ACTIVE_SUBSCRIPTION_STATUS;
 }
 
 function downgradeSnapshotForInactiveSubscription(
@@ -419,6 +417,10 @@ async function updateEnvelopeForSubscription(
         "#lagoPlanCode = :planCode",
         "#lagoSubscriptionExternalId = :externalSubscriptionId",
         "#lagoSubscriptionStatus = :subscriptionStatus",
+        "#lagoPreviousPlanCode = :nullValue",
+        "#lagoNextPlanCode = :nullValue",
+        "#lagoDowngradePlanDate = :nullValue",
+        "#lagoPlanTransitionStatus = :nullValue",
         "#billingPeriodStartedAt = :periodStart",
         "#billingPeriodEndingAt = :periodEnd",
         "#billingPeriodKey = :periodKey",
@@ -429,7 +431,11 @@ async function updateEnvelopeForSubscription(
         "#billingPeriodKey": "billingPeriodKey",
         "#billingPeriodStartedAt": "billingPeriodStartedAt",
         "#lagoPaymentOverdueInvoiceId": "lagoPaymentOverdueInvoiceId",
+        "#lagoDowngradePlanDate": "lagoDowngradePlanDate",
+        "#lagoNextPlanCode": "lagoNextPlanCode",
         "#lagoPlanCode": "lagoPlanCode",
+        "#lagoPlanTransitionStatus": "lagoPlanTransitionStatus",
+        "#lagoPreviousPlanCode": "lagoPreviousPlanCode",
         "#lagoSubscriptionExternalId": "lagoSubscriptionExternalId",
         "#lagoSubscriptionStatus": "lagoSubscriptionStatus",
         "#paymentOverdue": "paymentOverdue",
@@ -438,6 +444,7 @@ async function updateEnvelopeForSubscription(
       },
       ExpressionAttributeValues: {
         ":externalSubscriptionId": snapshot.externalSubscriptionId,
+        ":nullValue": null,
         ":overdueInvoiceId": overdueInvoiceId,
         ":paymentOverdue": paymentOverdue,
         ":periodEnd": snapshot.billingPeriodEndingAt,
@@ -475,6 +482,10 @@ async function updateKeyForSubscription(
         "#lagoPlanCode = :planCode",
         "#lagoSubscriptionExternalId = :externalSubscriptionId",
         "#lagoSubscriptionStatus = :subscriptionStatus",
+        "#lagoPreviousPlanCode = :nullValue",
+        "#lagoNextPlanCode = :nullValue",
+        "#lagoDowngradePlanDate = :nullValue",
+        "#lagoPlanTransitionStatus = :nullValue",
         "#billingPeriodStartedAt = :periodStart",
         "#billingPeriodEndingAt = :periodEnd",
         "#billingPeriodKey = :periodKey",
@@ -485,7 +496,11 @@ async function updateKeyForSubscription(
         "#billingPeriodKey": "billingPeriodKey",
         "#billingPeriodStartedAt": "billingPeriodStartedAt",
         "#lagoPaymentOverdueInvoiceId": "lagoPaymentOverdueInvoiceId",
+        "#lagoDowngradePlanDate": "lagoDowngradePlanDate",
+        "#lagoNextPlanCode": "lagoNextPlanCode",
         "#lagoPlanCode": "lagoPlanCode",
+        "#lagoPlanTransitionStatus": "lagoPlanTransitionStatus",
+        "#lagoPreviousPlanCode": "lagoPreviousPlanCode",
         "#lagoSubscriptionExternalId": "lagoSubscriptionExternalId",
         "#lagoSubscriptionStatus": "lagoSubscriptionStatus",
         "#paymentOverdue": "paymentOverdue",
@@ -496,6 +511,7 @@ async function updateKeyForSubscription(
       },
       ExpressionAttributeValues: {
         ":externalSubscriptionId": snapshot.externalSubscriptionId,
+        ":nullValue": null,
         ":overdueInvoiceId": overdueInvoiceId,
         ":paymentOverdue": paymentOverdue,
         ":periodEnd": snapshot.billingPeriodEndingAt,
@@ -553,6 +569,88 @@ async function closePriorPeriodRows(
   return closed;
 }
 
+async function updateEnvelopeForPendingTransition(
+  ddb: DynamoDBDocumentClient,
+  keysTableName: string,
+  orgId: string,
+  snapshot: LagoSubscriptionSnapshot,
+): Promise<void> {
+  await ddb.send(
+    new UpdateCommand({
+      TableName: keysTableName,
+      Key: { apiKeyHash: getOrgEnvelopeKey(orgId) },
+      UpdateExpression: [
+        "SET #lagoPlanCode = :planCode",
+        "#lagoSubscriptionExternalId = :externalSubscriptionId",
+        "#lagoSubscriptionStatus = :subscriptionStatus",
+        "#lagoPreviousPlanCode = :previousPlanCode",
+        "#lagoNextPlanCode = :nextPlanCode",
+        "#lagoDowngradePlanDate = :downgradePlanDate",
+        "#lagoPlanTransitionStatus = :transitionStatus",
+      ].join(", "),
+      ExpressionAttributeNames: {
+        "#lagoDowngradePlanDate": "lagoDowngradePlanDate",
+        "#lagoNextPlanCode": "lagoNextPlanCode",
+        "#lagoPlanCode": "lagoPlanCode",
+        "#lagoPlanTransitionStatus": "lagoPlanTransitionStatus",
+        "#lagoPreviousPlanCode": "lagoPreviousPlanCode",
+        "#lagoSubscriptionExternalId": "lagoSubscriptionExternalId",
+        "#lagoSubscriptionStatus": "lagoSubscriptionStatus",
+      },
+      ExpressionAttributeValues: {
+        ":downgradePlanDate": snapshot.downgradePlanDate ?? null,
+        ":externalSubscriptionId": snapshot.externalSubscriptionId,
+        ":nextPlanCode": snapshot.nextPlanCode ?? null,
+        ":planCode": snapshot.planCode,
+        ":previousPlanCode": snapshot.previousPlanCode ?? null,
+        ":subscriptionStatus": snapshot.status,
+        ":transitionStatus": snapshot.nextPlanCode ? "pending" : snapshot.status,
+      },
+    }),
+  );
+}
+
+async function updateKeyForPendingTransition(
+  ddb: DynamoDBDocumentClient,
+  keysTableName: string,
+  key: ApiKeyRecord,
+  snapshot: LagoSubscriptionSnapshot,
+): Promise<void> {
+  await ddb.send(
+    new UpdateCommand({
+      TableName: keysTableName,
+      Key: { apiKeyHash: key.apiKeyHash },
+      UpdateExpression: [
+        "SET #lagoPlanCode = :planCode",
+        "#lagoSubscriptionExternalId = :externalSubscriptionId",
+        "#lagoSubscriptionStatus = :subscriptionStatus",
+        "#lagoPreviousPlanCode = :previousPlanCode",
+        "#lagoNextPlanCode = :nextPlanCode",
+        "#lagoDowngradePlanDate = :downgradePlanDate",
+        "#lagoPlanTransitionStatus = :transitionStatus",
+      ].join(", "),
+      ExpressionAttributeNames: {
+        "#lagoDowngradePlanDate": "lagoDowngradePlanDate",
+        "#lagoNextPlanCode": "lagoNextPlanCode",
+        "#lagoPlanCode": "lagoPlanCode",
+        "#lagoPlanTransitionStatus": "lagoPlanTransitionStatus",
+        "#lagoPreviousPlanCode": "lagoPreviousPlanCode",
+        "#lagoSubscriptionExternalId": "lagoSubscriptionExternalId",
+        "#lagoSubscriptionStatus": "lagoSubscriptionStatus",
+      },
+      ExpressionAttributeValues: {
+        ":downgradePlanDate": snapshot.downgradePlanDate ?? null,
+        ":externalSubscriptionId": snapshot.externalSubscriptionId,
+        ":nextPlanCode": snapshot.nextPlanCode ?? null,
+        ":planCode": snapshot.planCode,
+        ":previousPlanCode": snapshot.previousPlanCode ?? null,
+        ":subscriptionStatus": snapshot.status,
+        ":transitionStatus": snapshot.nextPlanCode ? "pending" : snapshot.status,
+      },
+    }),
+  );
+}
+
 async function reconcileSubscriptionState(
   dependencies: LagoWebhookReconciliationDependencies,
   normalized: NormalizedWebhook,
@@ -583,7 +681,26 @@ async function reconcileSubscriptionState(
   if (snapshot && snapshot.externalCustomerId !== normalized.customerId) {
     throw new Error(`Lago subscription customer mismatch for ${expectedSubscriptionId}`);
   }
-  const grantsEntitlements = snapshot ? grantsPlanEntitlements(eventType, snapshot) : false;
+  if (snapshot?.status === "pending" || snapshot?.nextPlanCode) {
+    assertKnownLagoSubscriptionStatus(snapshot.status);
+    await updateEnvelopeForPendingTransition(
+      dependencies.ddb,
+      dependencies.keysTableName,
+      resolved.customer.orgId,
+      snapshot,
+    );
+    for (const key of resolved.keys) {
+      await updateKeyForPendingTransition(
+        dependencies.ddb,
+        dependencies.keysTableName,
+        key,
+        snapshot,
+      );
+    }
+    return { customerId: normalized.customerId, orgId: resolved.customer.orgId, closedScopes: 0 };
+  }
+
+  const grantsEntitlements = snapshot ? grantsPlanEntitlements(snapshot) : false;
   if (grantsEntitlements && snapshot && !isTier(snapshot.planCode)) {
     throw new Error(`Lago plan_code ${snapshot.planCode} is not a configured Prontiq tier`);
   }
@@ -967,7 +1084,13 @@ export class HttpLagoSubscriptionClient implements LagoSubscriptionClient {
       ]),
       externalCustomerId,
       externalSubscriptionId: externalId,
+      downgradePlanDate: firstString(subscription, [["downgrade_plan_date"]]),
+      nextPlanCode: firstString(subscription, [["next_plan", "code"], ["next_plan_code"]]),
       planCode,
+      previousPlanCode: firstString(subscription, [
+        ["previous_plan", "code"],
+        ["previous_plan_code"],
+      ]),
       status: firstString(subscription, [["status"]]) ?? "unknown",
     };
   }
