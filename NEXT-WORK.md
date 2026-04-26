@@ -53,10 +53,12 @@
   tracked. The route is gated by `LAGO_WEBHOOK_RECONCILIATION_ENABLED`; the API
   counter source remains `calendar` unless `COUNTER_PERIOD_SOURCE=lago` is
   deliberately enabled after reconciliation is proven.
-- **P1B.18a pending.** The Lago runtime is deployed in dev and prod, but live
-  commercial traffic is not fully hooked up until canonical Lago orgs, metrics,
-  customers, subscriptions, HMAC webhooks, replay-safe usage events, and rollout
-  flags are smoke-certified per `docs/runbooks/lago-live-smoke.md`.
+- **P1B.18a pending live certification.** The Lago runtime is deployed in dev
+  and prod, and the repo now has a controlled smoke-event helper plus
+  ALARM-only alert policy. Live commercial traffic is not fully hooked up until
+  canonical Lago orgs, metrics, customers, subscriptions, HMAC webhooks,
+  replay-safe usage events, alarm health, and rollout flags are
+  smoke-certified per `docs/runbooks/lago-live-smoke.md`.
 - **P1F.02 complete (2026-04-19).** The prod observability baseline is live and verified: `PqIngestAlerts` prod email subscriptions via `ALERT_EMAILS`, `prontiq-production` dashboard, prod alarms for address API 5xx/Lambda error rate and OpenSearch yellow/red/low-storage, `PqApi` X-Ray tracing with DynamoDB + OpenSearch segments, and structured JSON logs across Lambda execution paths. SNS email delivery was verified by forcing `PqApiLambdaErrorRate` to `ALARM` and confirming receipt on a confirmed subscriber.
 - **P1F.03 complete (2026-04-20).** `@prontiq/observability` is live in `dev` and `prod`, Honeycomb traces are verified for `prontiq-api`, `prontiq-webhooks`, `prontiq-billing`, and `prontiq-ingestion` in both environments, and the deployed-stage rollback path is `HONEYCOMB_ENABLED=false` rather than secret removal.
 - **P1C.07 complete (2026-04-20).** `apps/landing` and `apps/console` now have Tailwind v3.4, app-local shadcn/ui primitives, dark mode, responsive shell foundations, and app-local Vitest + Testing Library. `apps/console` now carries an env-gated real Clerk auth boundary that builds/tests cleanly without Clerk keys and enables real sign-in when they are present.
@@ -124,6 +126,8 @@ POST /v1/account/setup  (Clerk JWT; not API key — recovery provisioning)
 - **P1B.18a — Lago live setup + smoke certification**
   - Must include a repo-owned helper or documented command for generating the
     controlled `BillingUsageEventV1`; do not hand-build `eventId` values.
+  - Must verify `PqIngestAlerts` alarms email on `ALARM` only, with no
+    OK-state recovery email noise.
 - **P1B.18 — Console billing proxy surfaces + plan changes**
 - **P1B.19 — Stripe legacy billing retirement and cutover**
 - **P1B.20 — Legacy Stripe config and surface cleanup**

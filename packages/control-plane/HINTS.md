@@ -10,6 +10,11 @@
 - Lago event forwarding must remain replay-safe: use `eventId` as Lago
   `transaction_id`, derive `external_subscription_id` from `customerId`, and
   write delivery evidence before/after send attempts.
+- For P1B.18a live smoke, use
+  `pnpm --filter @prontiq/control-plane lago:smoke:event` so
+  `BillingUsageEventV1.eventId` is derived through the production contract. The
+  CLI prints only the safe evidence object; do not add raw keys or API-key
+  hashes to docs, PRs, or session notes.
 - Lago webhook reconciliation must remain replay-safe: verify HMAC before
   claiming, use `X-Lago-Unique-Key` as the ledger key, and treat same-key /
   different-payload delivery as drift.

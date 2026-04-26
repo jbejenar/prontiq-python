@@ -46,7 +46,8 @@ migration:
 
 ### Live today
 
-The shared `customerId` substrate is implemented for the Lago migration, but
+The shared `customerId` substrate, SQS billing-event producer, Lago forwarder,
+and Lago webhook reconciliation are implemented for the Lago migration, but
 customer-facing Lago billing is not live yet.
 
 Today, commercial/account identity is represented by:
@@ -58,7 +59,8 @@ Today, commercial/account identity is represented by:
 That is the live implementation while the Lago migration is still in progress.
 New provisioning writes a Prontiq-owned `customerId`, legacy records are handled
 by the customer backfill utility, and API billing-event emission remains
-feature-flagged until the Lago forwarder and reconciliation tickets ship.
+feature-flagged until each environment passes live Lago setup and smoke
+certification.
 
 ### Target contract
 
@@ -79,9 +81,9 @@ provider-owned `lago_id` and migration-era Stripe `cus_...` IDs are linkage
 fields only; they are not Prontiq customer identity.
 
 <Note>
-  The customer table, backfill utility, SQS billing-event producer, and Lago forwarder are now
-  implemented behind a feature flag. Webhook reconciliation and console billing APIs still land in
-  later Lago migration tickets.
+  The customer table, backfill utility, SQS billing-event producer, Lago forwarder, and webhook
+  reconciliation are now implemented behind rollout gates. Console billing APIs still land in a
+  later Lago migration ticket after live Lago certification.
 </Note>
 
 ## Usage event forwarding

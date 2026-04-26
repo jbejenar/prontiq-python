@@ -46,15 +46,17 @@
   "scripts": {
     "build": "node ../../scripts/ts-package-build.mjs build",
     "typecheck": "node ../../scripts/ts-package-build.mjs typecheck",
-    "test": "pnpm -w build --filter @prontiq/control-plane... && node --test dist/audit.test.js dist/email.test.js dist/ses-feedback.test.js dist/provisioning.test.js dist/customer-backfill.test.js dist/clerk.test.js dist/stripe-billing-email.test.js dist/lago-event-forwarder.test.js dist/lago-webhook-reconciliation.test.js",
+    "test": "pnpm -w build --filter @prontiq/control-plane... && node --test dist/audit.test.js dist/email.test.js dist/ses-feedback.test.js dist/provisioning.test.js dist/customer-backfill.test.js dist/clerk.test.js dist/stripe-billing-email.test.js dist/lago-event-forwarder.test.js dist/lago-webhook-reconciliation.test.js dist/lago-live-smoke.test.js",
     "test:integration": "pnpm -w build --filter @prontiq/control-plane... && node --test dist/provisioning.integration.test.js dist/billing-cron.integration.test.js dist/month-close.integration.test.js dist/quota-email.integration.test.js dist/ses-feedback.integration.test.js dist/lago-event-forwarder.integration.test.js dist/lago-webhook-reconciliation.integration.test.js",
     "backfill:customers": "pnpm -w build --filter @prontiq/control-plane... && node dist/customer-backfill.js",
+    "lago:smoke:event": "pnpm -w build --filter @prontiq/control-plane... && node dist/lago-live-smoke.js",
     "lint": "eslint src/",
     "clean": "node ../../scripts/ts-package-build.mjs clean"
   },
   "dependencies": {
-    "@aws-sdk/client-sesv2": "^3.1037.0",
     "@aws-sdk/client-dynamodb": "^3.1037.0",
+    "@aws-sdk/client-sesv2": "^3.1037.0",
+    "@aws-sdk/client-sqs": "^3.1037.0",
     "@aws-sdk/lib-dynamodb": "^3.1037.0",
     "@clerk/backend": "^3.3.0",
     "@prontiq/observability": "workspace:*",

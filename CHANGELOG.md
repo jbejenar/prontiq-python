@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Lago live smoke certification tooling** (`P1B.18a`) added for the
+  rollout-gated Lago migration. `@prontiq/control-plane` now has
+  `lago:smoke:event`, which loads a stage smoke key/customer from DynamoDB,
+  validates the P1B.14 identity contract, derives `BillingUsageEventV1.eventId`
+  through the production billing-event contract, optionally sends the event to
+  SQS, and prints safe evidence for dev/prod certification.
+
 - **Lago webhook reconciliation** (`P1B.17`) **implemented behind a dedicated
   rollout gate.** Added `POST /webhooks/lago`, HMAC signature verification,
   `prontiq-lago-webhook-events` idempotency ledger, consumed subscription /
@@ -82,6 +89,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Postcode/Suburb lookups: new `limit` query parameter
 
 ### Changed
+
+- **CloudWatch email alert actions are ALARM-only.** Email-backed
+  `PqIngestAlerts` alarms no longer publish OK-state notifications, preventing
+  missing-data-to-OK spam for low-traffic webhook routes while preserving ALARM
+  emails and CloudWatch alarm-history visibility.
 
 - **Frontend architecture ratified.** Added `docs/FRONTEND-STRATEGY.md` as the canonical frontend source of truth and re-based the forward-looking docs around a two-app model: future `apps/landing` for `prontiq.dev`, future `apps/console` for `console.prontiq.dev`, and future `packages/tokens` for design tokens. `ARCHITECTURE.MD` no longer presents `packages/web`, `app.prontiq.dev`, or a single `/account` page as the target frontend architecture. `docs/BRAND.md` is now archived historical guidance only, and `ROADMAP.md` starts P1C with `P1C.00 — Frontend Foundations` before the component-library ticket.
 - **Phase 1 observability baseline** (`P1F.02`) is live and verified. `PqIngestAlerts` prod email subscriptions from `ALERT_EMAILS`, new CloudWatch alarms for address API 5xx/Lambda error rate and OpenSearch yellow/red/low-storage, dashboard `prontiq-production`, X-Ray tracing on `PqApi`, and structured JSON logs across Lambda execution paths are now deployed and operator-verified in prod. Email alert delivery was proven by forcing `PqApiLambdaErrorRate-6848399` to `ALARM` and confirming SNS delivery on a subscribed address.

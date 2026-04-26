@@ -1077,7 +1077,7 @@ Options:
 
 > **Goal:** Sign-up → DDB-native API key → hash-verified requests → rate-limited with burst limiter → usage tracked per-month → migrate the commercial layer from the shipped Stripe path to the Lago target architecture.
 >
-> **Current state.** P1B.02, P1B.04, P1B.04b, P1B.05, P1B.06, P1B.07, P1B.08, P1B.09, P1B.10, P1B.11, P1B.12, P1B.14, P1B.15, P1B.16, and P1B.17 are shipped. The DynamoDB-native key model is live in prod, the prod migration was executed on 2026-04-16, the legacy Stripe billing path is live, per-key burst limiting is enforced in the API middleware, SES feedback / quota-email delivery is live in dev + prod, previous-month scopes are now explicitly finalized and closed by the monthly `PqMonthClose` sweep, the auth integration suite is reconciled to the real post-cutover middleware contract, and the Lago migration now has a platform-owned `customerId` contract, feature-flagged SQS billing-event buffer, replay-safe Lago event forwarder, and Lago webhook reconciliation into local enforcement state. The Lago runtime is deployed but rollout-gated until P1B.18a proves canonical Lago setup and replay-safe smoke checks. SES deliverability hardening is tracked separately in P1B.08a. The next Lago migration ticket is P1B.18a.
+> **Current state.** P1B.02, P1B.04, P1B.04b, P1B.05, P1B.06, P1B.07, P1B.08, P1B.09, P1B.10, P1B.11, P1B.12, P1B.14, P1B.15, P1B.16, and P1B.17 are shipped. The DynamoDB-native key model is live in prod, the prod migration was executed on 2026-04-16, the legacy Stripe billing path is live, per-key burst limiting is enforced in the API middleware, SES feedback / quota-email delivery is live in dev + prod, previous-month scopes are now explicitly finalized and closed by the monthly `PqMonthClose` sweep, the auth integration suite is reconciled to the real post-cutover middleware contract, and the Lago migration now has a platform-owned `customerId` contract, feature-flagged SQS billing-event buffer, replay-safe Lago event forwarder, and Lago webhook reconciliation into local enforcement state. The Lago runtime is deployed but rollout-gated until P1B.18a proves canonical Lago setup, repo-owned smoke-event generation, replay safety, and alarm health. SES deliverability hardening is tracked separately in P1B.08a. The next Lago migration ticket is P1B.18a.
 >
 > **Lago migration progress.** `4/8` complete for `P1B.14`–`P1B.20` plus `P1B.18a`. The `P1B` epic rollup includes completed historical Stripe-path work, so treat the Lago migration sequence as a separate track until the new commercial runtime is implemented.
 >
@@ -1826,6 +1826,11 @@ and replay safety work end to end.
     the production billing-event contract
   - `Evidence:` replaying the same event uses the same `transaction_id`, does
     not double-count usage, and does not rely on hand-built event IDs
+- [ ] Repo-owned smoke helper exists for controlled usage events
+  - `Verify:` `pnpm --filter @prontiq/control-plane lago:smoke:event` builds
+    and validates a `BillingUsageEventV1` from live DynamoDB smoke state
+  - `Evidence:` helper output includes safe evidence and does not require raw
+    API keys or hand-built transaction IDs
 - [ ] Rollout flags are enabled only after evidence exists
   - `Verify:` `LAGO_WEBHOOK_RECONCILIATION_ENABLED=true` is set only after
     unsigned-route preflight and Lago endpoint configuration are ready, then a
@@ -1847,6 +1852,11 @@ and replay safety work end to end.
     `PqLagoWebhookErrors` remain healthy after smoke
   - `Evidence:` accepted delivery-ledger rows and completed webhook-ledger rows
     exist for the smoke customer
+- [ ] Email alert actions are alarm-only
+  - `Verify:` email-backed `PqIngestAlerts` alarms have populated
+    `AlarmActions` and empty `OKActions` / `InsufficientDataActions`
+  - `Evidence:` forced ALARM sends email; restore to OK is visible in
+    CloudWatch history without an OK-state email
 
 #### Scope
 

@@ -159,7 +159,9 @@ Before setting `BILLING_EVENTS_ENABLED=true` in a deployed stage:
    `properties.credits`
 10. verify the Lago customer and subscription external IDs match
     `pq_cust_<ulid>` and `pq_sub_<ulid>`
-11. run a replay smoke check and prove the second replay does not double-count
+11. run a replay smoke check with
+    `pnpm --filter @prontiq/control-plane lago:smoke:event` and prove the
+    second replay does not double-count
 12. configure Lago webhook reconciliation per
     `docs/runbooks/lago-webhook-reconciliation.md`
 13. keep `COUNTER_PERIOD_SOURCE=calendar` until webhook reconciliation has
@@ -190,3 +192,27 @@ Before setting `BILLING_EVENTS_ENABLED=true` in a deployed stage:
 - confirm replay after an ambiguous `422` plus successful
   `GET /api/v1/events/{transaction_id}` confirmation marks the delivery ledger
   `accepted`
+
+## Controlled Smoke Event Helper
+
+P1B.18a adds a control-plane helper for stage certification:
+
+```bash
+STAGE=<dev|prod> \
+KEYS_TABLE_NAME=<keys-table> \
+CUSTOMERS_TABLE_NAME=<customers-table> \
+BILLING_EVENTS_QUEUE_URL=<billing-events-queue-url> \
+SMOKE_API_KEY_HASH=<sha256-hash-only> \
+REQUEST_COUNT_AFTER_INCREMENT=<next-count> \
+SEND_TO_SQS=true \
+pnpm --filter @prontiq/control-plane lago:smoke:event
+```
+
+The helper validates that the smoke key is active, has `customerId`, points to an
+active customer row, and that `lagoExternalCustomerId = customerId`. It derives
+the production `eventId` and derived Lago subscription external ID; do not
+replace it with hand-built JSON during certification.
+
+Use the actual stage table names. Dev names are suffixed, for example
+`prontiq-keys-dev` and `prontiq-customers-dev`; prod names are unsuffixed, for
+example `prontiq-keys` and `prontiq-customers`.

@@ -4,6 +4,31 @@
 > the time they were written, not the current source of truth. Use
 > `ROADMAP.md`, `NEXT-WORK.md`, and `README.md` for current execution status.
 
+## Session 36 — 2026-04-26
+
+**Focus:** P1B.18a implementation support for Lago live smoke certification and
+alert hygiene.
+
+### Completed
+
+- **Repo-owned smoke-event helper added.** `@prontiq/control-plane` now exposes
+  `pnpm --filter @prontiq/control-plane lago:smoke:event` for deriving
+  controlled `BillingUsageEventV1` smoke events from live DynamoDB key/customer
+  state without hand-built Lago transaction IDs.
+- **CloudWatch OK-email spam addressed in IaC.** Email-backed
+  `PqIngestAlerts` alarms now publish on `ALARM` only; `OK` and
+  `INSUFFICIENT_DATA` transitions remain visible in CloudWatch.
+- **Docs updated for certification.** The Lago live-smoke runbook, billing-event
+  runbook, monitoring runbook, architecture docs, roadmap, and package hints now
+  require smoke helper usage, safe evidence capture, and alarm-action checks.
+
+### Next session should start with
+
+1. Deploy the P1B.18a helper/alarm-policy changes to dev.
+2. Run the dev Lago live-smoke checklist with a repo-owned smoke customer/key.
+3. Repeat in prod only after dev evidence is clean; leave unrelated Lago orgs
+   untouched.
+
 ## Session 35 — 2026-04-26
 
 **Focus:** P1B.18a Lago live setup + smoke certification; next up P1B.18

@@ -1472,9 +1472,12 @@ Prontiq is in a migration window:
   org-scoped `customerId`, SQS billing-event buffering, Lago event forwarding,
   and webhook reconciliation back into Prontiq enforcement state.
 - **Current Lago rollout state:** platform-side Lago forwarding and webhook
-  reconciliation are deployed in dev and prod, but live commercial traffic is
-  rollout-gated until P1B.18a certifies canonical Lago setup, HMAC webhooks,
-  replay-safe usage forwarding, and rollout flags.
+  reconciliation are deployed in dev and prod. P1B.18a owns live setup
+  certification, including the repo-owned smoke-event helper that derives
+  `BillingUsageEventV1.eventId` through the production contract. Live commercial
+  traffic remains rollout-gated until canonical Lago setup, HMAC webhooks,
+  replay-safe usage forwarding, alert health, and rollout flags are verified per
+  environment.
 
 The subsections below retain the **legacy shipped Stripe path** for migration
 and operational history. They are not the forward-looking commercial source of
@@ -1624,9 +1627,12 @@ Timeout budget:
 
 `BILLING_EVENTS_ENABLED` remains default-off until P1B.18a proves each
 environment has the canonical Lago organization, metric, customer,
-subscription, and replay smoke checks in place. Existing non-canonical Lago
-organizations are not migration targets for this repo; they are left untouched
-unless explicitly created as repo-owned test fixtures for live smoke isolation.
+subscription, and replay smoke checks in place. Certification must use the
+repo-owned smoke helper or an equivalent command that derives `eventId` through
+the production billing-event contract; hand-built transaction IDs are not
+acceptable. Existing non-canonical Lago organizations are not migration targets
+for this repo; they are left untouched unless explicitly created as repo-owned
+test fixtures for live smoke isolation.
 
 #### 5.6.0.4 Lago Webhook Reconciliation Contract
 
@@ -2815,6 +2821,11 @@ Honeycomb custom span attributes must stay allow-listed and bounded. The platfor
 | Tier               | Channel                        | Response Time | Examples                                                                                                                      |
 | ------------------ | ------------------------------ | ------------- | ----------------------------------------------------------------------------------------------------------------------------- |
 | **Phase 1 alarms** | SNS → email (`PqIngestAlerts`) | minutes       | API 5xx rate, API Lambda error rate, webhook/account route 5xx, OpenSearch yellow/red/low-storage, SES/control-plane failures |
+
+Email-backed alarms notify on `ALARM` only. CloudWatch still records `OK` and
+`INSUFFICIENT_DATA` transitions, but those transitions must not publish email
+actions because low-traffic webhook routes naturally move through missing-data
+states when missing data is treated as non-breaching.
 
 ### 10.3 Dashboard
 

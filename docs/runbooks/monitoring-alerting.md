@@ -59,6 +59,13 @@ New Phase 1 alarms:
 
 All prod alarms notify `PqIngestAlerts`.
 
+Email-backed operational alarms publish SNS email on `ALARM` only. `OK` and
+`INSUFFICIENT_DATA` transitions remain visible in CloudWatch and dashboards, but
+they must not have email actions. Low-traffic routes such as
+`POST /webhooks/lago` naturally move through missing-data states when
+`TreatMissingData=notBreaching`; OK-action emails create noise without adding
+operational signal.
+
 ## Email Subscription Confirmation
 
 After the first prod deploy with `ALERT_EMAILS`:
@@ -158,6 +165,8 @@ Non-request Lambdas still emit JSON, but `path` / `latency` may be absent when n
 7. verify X-Ray trace shape
 8. verify Logs Insights query returns structured fields
 9. force one alarm into `ALARM` and confirm an email is received
+10. restore the alarm to `OK` and confirm the state changes in CloudWatch
+    without an OK recovery email
 
 ## Alarm Drill
 
@@ -180,6 +189,23 @@ aws cloudwatch set-alarm-state \
   --state-reason "manual observability drill complete" \
   --region ap-southeast-2
 ```
+
+Expected result:
+
+- one email is received for the forced `ALARM`
+- no email is received for the manual `OK` restore
+- CloudWatch alarm history records both state transitions
+
+Verify alarm actions:
+
+```bash
+aws cloudwatch describe-alarms \
+  --region ap-southeast-2 \
+  --query 'MetricAlarms[?starts_with(AlarmName, `Pq`)].{AlarmName:AlarmName,AlarmActions:AlarmActions,OKActions:OKActions,InsufficientDataActions:InsufficientDataActions}'
+```
+
+Expected for email-backed `PqIngestAlerts` alarms: `AlarmActions` is populated,
+`OKActions` is empty, and `InsufficientDataActions` is empty.
 
 ## Rollback
 

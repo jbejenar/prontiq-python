@@ -131,8 +131,8 @@ See [`ROADMAP.md`](ROADMAP.md) for the current execution plan.
 | Phase   | Epic                      | Tickets | Done      |
 | ------- | ------------------------- | ------- | --------- |
 | **P0**  | Infrastructure Foundation | 6       | 6/6       |
-| **P1A** | API Core (Address)        | 13      | 10/13     |
-| **P1B** | Auth & Billing            | 22      | 17/22     |
+| **P1A** | API Core (Address)        | 13      | 11/13     |
+| **P1B** | Auth & Billing            | 23      | 17/23     |
 | **P1C** | Frontend Surfaces         | 9       | 3/9       |
 | **P1D** | Docs & SDK                | 5       | 2/5       |
 | **P1E** | Ingestion                 | 6       | 4/6       |
@@ -141,19 +141,18 @@ See [`ROADMAP.md`](ROADMAP.md) for the current execution plan.
 | **P3**  | LEI + Full Dashboard      | 7       | 0/7       |
 | **P4**  | Shopify + WooCommerce     | 5       | 0/5       |
 | **P5**  | CVE/NVD + Patents         | 4       | 0/4       |
-|         |                           | **88**  | **43/88** |
+|         |                           | **89**  | **46/89** |
 
 `P1B` includes completed legacy Stripe-path work. The Lago migration sequence is
-`P1B.14`–`P1B.20`, currently `4/7`, and is called out separately in
+`P1B.14`–`P1B.20` plus `P1B.18a`, currently `4/8`, and is called out separately in
 the Phase 1B section of [`ROADMAP.md`](ROADMAP.md).
 
-P1B.17 adds Lago webhook reconciliation. `POST /webhooks/lago` verifies Lago HMAC
-signatures, records idempotency in `prontiq-lago-webhook-events`, reconciles
-subscription/invoice state into local key records, and keeps PAYG uncapped but
-tracked. The route deploys with `LAGO_WEBHOOK_RECONCILIATION_ENABLED=false` by
-default; do not enable Lago webhooks or `COUNTER_PERIOD_SOURCE=lago` until the
-environment has canonical Lago org, metric, customer, subscription, and replay
-checks verified.
+P1B.17 adds Lago webhook reconciliation. P1B.18a owns live Lago setup and smoke
+certification before console billing APIs depend on it. Use
+`pnpm --filter @prontiq/control-plane lago:smoke:event` to generate controlled
+usage smoke events; do not enable `BILLING_EVENTS_ENABLED=true`, Lago webhooks,
+or `COUNTER_PERIOD_SOURCE=lago` until the environment has canonical Lago org,
+metric, customer, subscription, replay checks, and alert health verified.
 
 ## Commands
 

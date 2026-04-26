@@ -492,6 +492,10 @@ export default $config({
 
     // -- SNS: Ingestion failure alerts --
     const ingestAlerts = new aws.sns.Topic("PqIngestAlerts");
+    // Email-backed operational alarms notify on ALARM only. OK transitions are
+    // visible in CloudWatch and dashboards, but emailing OK state changes
+    // creates noise for low-traffic routes that naturally move through
+    // INSUFFICIENT_DATA when missing data is treated as non-breaching.
     if (isProd) {
       const alertEmails = readGithubVar("ALERT_EMAILS")
         .split(",")
@@ -560,7 +564,6 @@ export default $config({
       alarmDescription:
         "Lago event forwarder Lambda crashed in the last 15 minutes. Per-record delivery failures are surfaced through source queue age, DLQ alarms, logs, and the billing-event delivery ledger.",
       alarmActions: [ingestAlerts.arn],
-      okActions: [ingestAlerts.arn],
       dimensions: {
         FunctionName: lagoEventForwarder.nodes.function.name,
       },
@@ -579,7 +582,6 @@ export default $config({
       alarmDescription:
         "Billing events DLQ has visible messages. Do not purge; inspect failed messages and replay only after preserving billing evidence.",
       alarmActions: [ingestAlerts.arn],
-      okActions: [ingestAlerts.arn],
       dimensions: {
         QueueName: billingEventsDlq.nodes.queue.name,
       },
@@ -598,7 +600,6 @@ export default $config({
       alarmDescription:
         "Billing events queue oldest message exceeded 1 hour. P1B.16 worker may be down or not yet enabled; preserve queued messages for replay.",
       alarmActions: [ingestAlerts.arn],
-      okActions: [ingestAlerts.arn],
       dimensions: {
         QueueName: billingEventsQueue.nodes.queue.name,
       },
@@ -1255,7 +1256,6 @@ export default $config({
       alarmDescription:
         "Clerk webhook route returned more than 5 5xx responses in 15 minutes. Catches both unhandled Lambda exceptions AND handler-returned 500s (retryable_failure, fatal_failure, clerk_api_lookup_failed). Check CloudWatch Logs for the handler and the Svix message queue in the Clerk dashboard for stuck deliveries.",
       alarmActions: [ingestAlerts.arn],
-      okActions: [ingestAlerts.arn],
       dimensions: {
         ApiId: api.nodes.api.id,
         Stage: "$default",
@@ -1276,7 +1276,6 @@ export default $config({
       alarmDescription:
         "Stripe webhook route returned more than 5 5xx responses in 15 minutes. Catches both unhandled Lambda exceptions and handler-returned 500s for replay-safe Stripe retries.",
       alarmActions: [ingestAlerts.arn],
-      okActions: [ingestAlerts.arn],
       dimensions: {
         ApiId: api.nodes.api.id,
         Stage: "$default",
@@ -1297,7 +1296,6 @@ export default $config({
       alarmDescription:
         "Lago webhook route returned more than 5 5xx responses in 15 minutes. Check CloudWatch Logs, the Lago webhook logs, and the prontiq-lago-webhook-events ledger before replaying.",
       alarmActions: [ingestAlerts.arn],
-      okActions: [ingestAlerts.arn],
       dimensions: {
         ApiId: api.nodes.api.id,
         Stage: "$default",
@@ -1318,7 +1316,6 @@ export default $config({
       alarmDescription:
         "SES feedback subscriber Lambda recorded an error in the last 15 minutes. Check CloudWatch Logs before suppression drift damages SES reputation.",
       alarmActions: [ingestAlerts.arn],
-      okActions: [ingestAlerts.arn],
       dimensions: {
         FunctionName: sesFeedbackFn.name,
       },
@@ -1337,7 +1334,6 @@ export default $config({
       alarmDescription:
         "Quota email worker Lambda recorded an error in the last 15 minutes. Check CloudWatch Logs for stuck threshold emails or SES send failures.",
       alarmActions: [ingestAlerts.arn],
-      okActions: [ingestAlerts.arn],
       dimensions: {
         FunctionName: quotaEmailWorkerFn.name,
       },
@@ -1374,7 +1370,6 @@ export default $config({
       alarmDescription:
         "Billing cron Lambda recorded an error in the last hour. Check CloudWatch Logs for meter push failures before usage drift accumulates.",
       alarmActions: [ingestAlerts.arn],
-      okActions: [ingestAlerts.arn],
       dimensions: {
         FunctionName: billingCron.nodes.function.name,
       },
@@ -1411,7 +1406,6 @@ export default $config({
       alarmDescription:
         "Month-close Lambda recorded an error during the day-1 previous-month finalisation sweep. Check CloudWatch Logs before billing close drifts.",
       alarmActions: [ingestAlerts.arn],
-      okActions: [ingestAlerts.arn],
       dimensions: {
         FunctionName: monthClose.nodes.function.name,
       },
@@ -1476,7 +1470,6 @@ export default $config({
       alarmDescription:
         "Account route (/v1/account/*) returned more than 5 5xx responses in 15 minutes. Catches unhandled Lambda exceptions AND handler-returned 500/503 (RETRYABLE_FAILURE, FATAL_FAILURE). Check CloudWatch Logs for the PqAccount Lambda.",
       alarmActions: [ingestAlerts.arn],
-      okActions: [ingestAlerts.arn],
       dimensions: {
         ApiId: api.nodes.api.id,
         Stage: "$default",
@@ -1507,7 +1500,6 @@ export default $config({
         alarmDescription:
           "Address API 5xx rate exceeded 1% over 5 minutes. Check the PqApi Lambda logs and X-Ray traces for upstream failures.",
         alarmActions: [ingestAlerts.arn],
-        okActions: [ingestAlerts.arn],
         metricQueries: [
           {
             id: "e1",
@@ -1555,7 +1547,6 @@ export default $config({
         alarmDescription:
           "Address API Lambda error rate exceeded 1% over 5 minutes. Check the PqApi Lambda logs for unhandled exceptions.",
         alarmActions: [ingestAlerts.arn],
-        okActions: [ingestAlerts.arn],
         metricQueries: [
           {
             id: "e1",
@@ -1603,7 +1594,6 @@ export default $config({
         alarmDescription:
           "OpenSearch domain cluster status is yellow. Check shard allocation and node health before redundancy degrades further.",
         alarmActions: [ingestAlerts.arn],
-        okActions: [ingestAlerts.arn],
         dimensions: {
           DomainName: OPENSEARCH_DOMAIN_NAME,
           ClientId: AWS_ACCOUNT_ID,
@@ -1623,7 +1613,6 @@ export default $config({
         alarmDescription:
           "OpenSearch domain cluster status is red. Search availability is degraded or broken and needs immediate intervention.",
         alarmActions: [ingestAlerts.arn],
-        okActions: [ingestAlerts.arn],
         dimensions: {
           DomainName: OPENSEARCH_DOMAIN_NAME,
           ClientId: AWS_ACCOUNT_ID,
@@ -1643,7 +1632,6 @@ export default $config({
         alarmDescription:
           "OpenSearch per-node free storage fell below 20% of provisioned capacity. Check indexing growth before the domain enters write-protection or cluster instability.",
         alarmActions: [ingestAlerts.arn],
-        okActions: [ingestAlerts.arn],
         dimensions: {
           DomainName: OPENSEARCH_DOMAIN_NAME,
           ClientId: AWS_ACCOUNT_ID,

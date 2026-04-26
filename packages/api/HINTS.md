@@ -9,6 +9,7 @@
 - Billing event emission is allowed only through `BillingUsageEventV1` after
   DynamoDB usage enforcement succeeds.
 - Keep `BILLING_EVENTS_ENABLED` defaulted off unless the deployed stage has
-  completed P1B.18a Lago metric/subscription/replay smoke checks.
+  completed P1B.18a Lago metric/subscription/replay smoke checks with the
+  repo-owned smoke helper and alert health verified.
 - Never include raw API keys, query strings, headers, IP addresses, user agents,
   or response payloads in billing events.
