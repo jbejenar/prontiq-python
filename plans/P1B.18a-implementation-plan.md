@@ -207,6 +207,22 @@ None. The smoke API key source is locked: use existing operator-held/local
 sensitive smoke key material and do not create a new key-management path in
 P1B.18a.
 
+## Closeout Audit — 2026-04-26
+
+P1B.18a must remain open after the current audit. The usage-forwarding half has
+safe evidence: dev and prod both have accepted delivery-ledger rows, empty
+billing source queues/DLQs, healthy Lago alarms, and inventoried repo-owned
+test-only smoke fixtures. The webhook half is not certified:
+`LAGO_WEBHOOK_RECONCILIATION_ENABLED=false` is still deployed in both
+`PqLagoWebhook` Lambdas, and both `prontiq-lago-webhook-events-dev` and
+`prontiq-lago-webhook-events` have zero completed rows.
+
+The next execution step is not P1B.18 implementation. It is to configure or
+confirm the Lago HMAC webhook endpoints, enable
+`LAGO_WEBHOOK_RECONCILIATION_ENABLED=true` through GitHub Environment deploys,
+send one valid low-risk webhook smoke event per stage, and record completed
+ledger rows without exposing webhook secrets or raw key material.
+
 ## Estimate
 
 - Phase 0: 0.25 day.

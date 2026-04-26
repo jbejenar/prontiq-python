@@ -14,5 +14,8 @@
   reused by P1B.18, P1B.19, and P1B.20 only while clearly labelled/inventoried
   as test-only. P1B.21 owns final fixture retirement and post-cleanup prod
   smoke before real customer go-live.
+- Do not treat P1B.18a as closed until valid Lago HMAC webhook smoke completes
+  in dev and prod; accepted API-originated usage forwarding proves only the
+  outbound half of the migration path.
 - Never include raw API keys, query strings, headers, IP addresses, user agents,
   or response payloads in billing events.

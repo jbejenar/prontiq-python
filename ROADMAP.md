@@ -1077,7 +1077,7 @@ Options:
 
 > **Goal:** Sign-up → DDB-native API key → hash-verified requests → rate-limited with burst limiter → usage tracked per-month → migrate the commercial layer from the shipped Stripe path to the Lago target architecture.
 >
-> **Current state.** P1B.02, P1B.04, P1B.04b, P1B.05, P1B.06, P1B.07, P1B.08, P1B.09, P1B.10, P1B.11, P1B.12, P1B.14, P1B.15, P1B.16, and P1B.17 are shipped. The DynamoDB-native key model is live in prod, the prod migration was executed on 2026-04-16, the legacy Stripe billing path is live, per-key burst limiting is enforced in the API middleware, SES feedback / quota-email delivery is live in dev + prod, previous-month scopes are now explicitly finalized and closed by the monthly `PqMonthClose` sweep, the auth integration suite is reconciled to the real post-cutover middleware contract, and the Lago migration now has a platform-owned `customerId` contract, SQS billing-event buffer, replay-safe Lago event forwarder, and Lago webhook reconciliation code in local enforcement state. P1B.18a is in progress: the repo-owned smoke helper exists and API-produced billing events have been proved in dev/prod, but remaining live-certification evidence and retained fixture governance still need closure. Retained prod smoke fixtures are expected to remain available for the remaining Lago migration work, but they must be clearly labelled/inventoried as test-only. Final destructive cleanup is deferred to P1B.21 after P1B.20. SES deliverability hardening is tracked separately in P1B.08a. The next Lago migration work is to finish P1B.18a, then start P1B.18.
+> **Current state.** P1B.02, P1B.04, P1B.04b, P1B.05, P1B.06, P1B.07, P1B.08, P1B.09, P1B.10, P1B.11, P1B.12, P1B.14, P1B.15, P1B.16, and P1B.17 are shipped. The DynamoDB-native key model is live in prod, the prod migration was executed on 2026-04-16, the legacy Stripe billing path is live, per-key burst limiting is enforced in the API middleware, SES feedback / quota-email delivery is live in dev + prod, previous-month scopes are now explicitly finalized and closed by the monthly `PqMonthClose` sweep, the auth integration suite is reconciled to the real post-cutover middleware contract, and the Lago migration now has a platform-owned `customerId` contract, SQS billing-event buffer, replay-safe Lago event forwarder, and Lago webhook reconciliation code in local enforcement state. P1B.18a is in progress: the repo-owned smoke helper exists, API-produced billing events have been proved in dev/prod, and retained smoke fixtures are now safely inventoried as test-only, but the ticket is not closed because webhook certification is still missing. As of the 2026-04-26 closeout audit, `LAGO_WEBHOOK_RECONCILIATION_ENABLED=false` is still deployed in dev and prod, and both `prontiq-lago-webhook-events-dev` and `prontiq-lago-webhook-events` have zero completed rows. Final destructive cleanup is deferred to P1B.21 after P1B.20. SES deliverability hardening is tracked separately in P1B.08a. The next Lago migration work is to finish the P1B.18a webhook certification blocker, then start P1B.18.
 >
 > **Lago migration progress.** `4/9` complete for `P1B.14`–`P1B.21` plus `P1B.18a`. The `P1B` epic rollup includes completed historical Stripe-path work, so treat the Lago migration sequence as a separate track until the new commercial runtime is implemented.
 >
@@ -1820,6 +1820,9 @@ and replay safety work end to end.
     subscribes only to consumed events from P1B.17
   - `Evidence:` unsigned requests still return `400 invalid_signature`; valid
     low-risk test events complete in `prontiq-lago-webhook-events`
+  - `Blocker:` 2026-04-26 audit found
+    `LAGO_WEBHOOK_RECONCILIATION_ENABLED=false` still deployed in dev and prod,
+    and both Lago webhook ledgers have zero completed rows
 - [ ] Lago event forwarding is replay-safe against the live service
   - `Verify:` a smoke billing event reaches Lago once; the event is generated
     by a repo-owned helper or documented command that derives `eventId` through
@@ -1832,6 +1835,13 @@ and replay safety work end to end.
     fixtures for this repo
   - `Evidence:` retained fixtures stay available through P1B.18/P1B.19/P1B.20;
     destructive retirement is deferred to P1B.21
+  - `Current safe inventory:` dev fixture
+    `org_prontiq_platform_lago_smoke_dev`,
+    `pq_cust_01KQ3T50Z86ZKEFG8Y7N68V3QP`,
+    `pq_sub_01KQ3T50Z86ZKEFG8Y7N68V3QP`, key prefix `pq_live_0665`; prod
+    fixture `org_prontiq_platform_lago_smoke_prod`,
+    `pq_cust_01KQ3TT9XZZDR2CAZTV1TX1KBS`,
+    `pq_sub_01KQ3TT9XZZDR2CAZTV1TX1KBS`, key prefix `pq_live_4a85`
 - [x] Repo-owned smoke helper exists for controlled usage events
   - `Verify:` `pnpm --filter @prontiq/control-plane lago:smoke:event` builds
     and validates a `BillingUsageEventV1` from live DynamoDB smoke state
@@ -1858,6 +1868,9 @@ and replay safety work end to end.
     `PqLagoWebhookErrors` remain healthy after smoke
   - `Evidence:` accepted delivery-ledger rows and completed webhook-ledger rows
     exist for the smoke customer
+  - `Current evidence:` 2026-04-26 audit found two accepted delivery-ledger rows
+    in each stage and empty source queues/DLQs, but zero completed webhook-ledger
+    rows, so this remains open
 - [x] Email alert actions are alarm-only
   - `Verify:` email-backed `PqIngestAlerts` alarms have populated
     `AlarmActions` and empty `OKActions` / `InsufficientDataActions`

@@ -287,3 +287,35 @@ test-only data. Keep repo-owned production smoke fixtures available for P1B.18,
 P1B.19, and P1B.20 unless they become unsafe or ambiguous. Final retirement,
 disablement, relabelling, or explicit retention belongs to
 `docs/runbooks/prod-go-live-cleanup.md` in P1B.21 after P1B.20.
+
+## Current Closeout Audit
+
+The 2026-04-26 audit did not close P1B.18a. Safe evidence exists for the
+usage-forwarding portion, but webhook certification is still missing.
+
+Confirmed safe evidence:
+
+- dev and prod have API-produced Lago billing-event delivery rows with
+  `status=accepted`
+- dev and prod billing source queues and DLQs were empty at audit time
+- Lago CloudWatch alarms were `OK`
+- email-backed Lago alarm actions were ALARM-only
+- smoke fixtures are inventoried as test-only data:
+  - dev: `org_prontiq_platform_lago_smoke_dev`,
+    `pq_cust_01KQ3T50Z86ZKEFG8Y7N68V3QP`,
+    `pq_sub_01KQ3T50Z86ZKEFG8Y7N68V3QP`, key prefix `pq_live_0665`
+  - prod: `org_prontiq_platform_lago_smoke_prod`,
+    `pq_cust_01KQ3TT9XZZDR2CAZTV1TX1KBS`,
+    `pq_sub_01KQ3TT9XZZDR2CAZTV1TX1KBS`, key prefix `pq_live_4a85`
+
+Open blocker:
+
+- `LAGO_WEBHOOK_RECONCILIATION_ENABLED=false` is still deployed in both Lago
+  webhook Lambdas
+- `prontiq-lago-webhook-events-dev` and `prontiq-lago-webhook-events` both have
+  zero completed rows
+
+Do not mark P1B.18a complete until dev and prod have completed webhook-ledger
+rows from valid low-risk Lago HMAC events. Do not paste or commit raw API keys,
+API-key hashes, Lago API keys, webhook HMAC secrets, or local ignored evidence
+files while completing this audit.

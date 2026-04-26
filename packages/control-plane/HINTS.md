@@ -18,6 +18,9 @@
 - Lago webhook reconciliation must remain replay-safe: verify HMAC before
   claiming, use `X-Lago-Unique-Key` as the ledger key, and treat same-key /
   different-payload delivery as drift.
+- P1B.18a is not complete until dev and prod have valid HMAC webhook smoke with
+  completed `prontiq-lago-webhook-events` rows. Accepted usage-forwarding rows
+  alone are not enough to close the ticket.
 - Lago plan codes map directly to Prontiq tiers. Unknown plan codes must fail
   closed; do not silently downgrade to Free or grant PAYG.
 - Do not mutate Stripe registries from Lago webhook reconciliation.

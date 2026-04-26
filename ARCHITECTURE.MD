@@ -1473,13 +1473,16 @@ Prontiq is in a migration window:
   and webhook reconciliation back into Prontiq enforcement state.
 - **Current Lago rollout state:** platform-side Lago forwarding and webhook
   reconciliation code is deployed in dev and prod. P1B.18a is still in
-  progress: the repo-owned smoke-event helper exists and API-produced
-  usage-forwarding smoke evidence exists in dev/prod, but remaining
-  live-certification evidence and retained fixture governance still need
-  closure. Retained prod smoke fixtures are expected to support P1B.18, P1B.19,
-  and P1B.20; they must be clearly labelled/inventoried as test-only rather
-  than destructively cleaned now. P1B.21 is the final customer go-live cleanup
-  gate after the Lago migration completes.
+  progress. The repo-owned smoke-event helper exists; API-produced
+  usage-forwarding smoke evidence exists in dev/prod; retained smoke fixtures
+  are inventoried as test-only data. P1B.18a is not complete because webhook
+  certification is still missing: as of the 2026-04-26 audit,
+  `LAGO_WEBHOOK_RECONCILIATION_ENABLED=false` is still deployed in dev and prod,
+  and no completed Lago webhook-ledger rows exist in either stage. Retained prod
+  smoke fixtures are expected to support P1B.18, P1B.19, and P1B.20; they must
+  remain clearly labelled/inventoried as test-only rather than destructively
+  cleaned now. P1B.21 is the final customer go-live cleanup gate after the Lago
+  migration completes.
 
 The subsections below retain the **legacy shipped Stripe path** for migration
 and operational history. They are not the forward-looking commercial source of
@@ -1638,6 +1641,18 @@ must use the repo-owned smoke helper or an equivalent command that derives
 IDs are not acceptable. Existing non-canonical Lago organizations are not
 migration targets for this repo; they are left untouched unless explicitly
 created as repo-owned test fixtures for live smoke isolation.
+
+Current safe smoke fixture inventory from the 2026-04-26 closeout audit:
+
+- dev: `org_prontiq_platform_lago_smoke_dev`,
+  `pq_cust_01KQ3T50Z86ZKEFG8Y7N68V3QP`,
+  `pq_sub_01KQ3T50Z86ZKEFG8Y7N68V3QP`, key prefix `pq_live_0665`
+- prod: `org_prontiq_platform_lago_smoke_prod`,
+  `pq_cust_01KQ3TT9XZZDR2CAZTV1TX1KBS`,
+  `pq_sub_01KQ3TT9XZZDR2CAZTV1TX1KBS`, key prefix `pq_live_4a85`
+
+This inventory deliberately excludes raw API keys, API-key hashes, Lago API
+keys, webhook HMAC secrets, and local ignored evidence files.
 
 #### 5.6.0.4 Lago Webhook Reconciliation Contract
 

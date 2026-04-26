@@ -155,6 +155,12 @@ fixtures are expected to support the remaining Lago migration work and must stay
 clearly labelled/inventoried as test-only. Final smoke-fixture retirement and
 destructive cleanup is deferred to `P1B.21` after `P1B.20`.
 
+As of the 2026-04-26 closeout audit, P1B.18a is not complete: dev/prod
+usage-forwarding smoke has accepted delivery-ledger evidence, but webhook
+certification is still missing because `LAGO_WEBHOOK_RECONCILIATION_ENABLED`
+remains disabled in both deployed webhook Lambdas and no completed Lago webhook
+ledger rows exist yet.
+
 ## Commands
 
 ```bash

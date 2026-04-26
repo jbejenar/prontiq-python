@@ -4,6 +4,37 @@
 > the time they were written, not the current source of truth. Use
 > `ROADMAP.md`, `NEXT-WORK.md`, and `README.md` for current execution status.
 
+## Session 38 — 2026-04-26
+
+**Focus:** P1B.18a closeout audit.
+
+### Completed
+
+- **P1B.18a was audited but not closed.** Dev and prod have accepted
+  delivery-ledger evidence for API-produced Lago usage smoke, empty billing
+  source queues/DLQs, healthy Lago CloudWatch alarms, and ALARM-only email
+  actions.
+- **The closeout blocker is webhook certification.**
+  `LAGO_WEBHOOK_RECONCILIATION_ENABLED=false` is still deployed in both
+  `PqLagoWebhook` Lambdas, and both `prontiq-lago-webhook-events-dev` and
+  `prontiq-lago-webhook-events` have zero completed rows.
+- **Smoke fixtures are inventoried as test-only data.** Dev:
+  `org_prontiq_platform_lago_smoke_dev`,
+  `pq_cust_01KQ3T50Z86ZKEFG8Y7N68V3QP`,
+  `pq_sub_01KQ3T50Z86ZKEFG8Y7N68V3QP`, key prefix `pq_live_0665`. Prod:
+  `org_prontiq_platform_lago_smoke_prod`,
+  `pq_cust_01KQ3TT9XZZDR2CAZTV1TX1KBS`,
+  `pq_sub_01KQ3TT9XZZDR2CAZTV1TX1KBS`, key prefix `pq_live_4a85`. No raw API
+  keys, API-key hashes, Lago API keys, or webhook secrets were recorded.
+
+### Next session should start with
+
+1. Configure or confirm the Lago HMAC webhook endpoints for dev/prod.
+2. Set `LAGO_WEBHOOK_RECONCILIATION_ENABLED=true`, redeploy dev, send a valid
+   low-risk Lago webhook smoke event, and verify a completed dev ledger row.
+3. Repeat in prod, keeping `COUNTER_PERIOD_SOURCE=calendar`, then mark P1B.18a
+   complete only if the webhook evidence is present.
+
 ## Session 37 — 2026-04-26
 
 **Focus:** Re-sequencing production smoke-fixture cleanup after remaining Lago
