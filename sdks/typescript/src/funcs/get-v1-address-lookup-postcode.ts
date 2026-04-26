@@ -32,6 +32,7 @@ import { Result } from "../types/fp.js";
 export function getV1AddressLookupPostcode(
   client: ProntiqCore,
   postcode: string,
+  limit?: number | undefined,
   options?: RequestOptions,
 ): APIPromise<
   Result<
@@ -54,6 +55,7 @@ export function getV1AddressLookupPostcode(
   return new APIPromise($do(
     client,
     postcode,
+    limit,
     options,
   ));
 }
@@ -61,6 +63,7 @@ export function getV1AddressLookupPostcode(
 async function $do(
   client: ProntiqCore,
   postcode: string,
+  limit?: number | undefined,
   options?: RequestOptions,
 ): Promise<
   [
@@ -85,6 +88,7 @@ async function $do(
 > {
   const input: operations.GetV1AddressLookupPostcodeRequest = {
     postcode: postcode,
+    limit: limit,
   };
 
   const parsed = safeParse(
@@ -105,6 +109,7 @@ async function $do(
   const path = pathToFunc("/v1/address/lookup/postcode")();
 
   const query = encodeFormQuery({
+    "limit": payload.limit,
     "postcode": payload.postcode,
   });
 

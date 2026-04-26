@@ -33,6 +33,7 @@ export function getV1AddressLookupSuburb(
   client: ProntiqCore,
   suburb: string,
   state?: string | undefined,
+  limit?: number | undefined,
   options?: RequestOptions,
 ): APIPromise<
   Result<
@@ -56,6 +57,7 @@ export function getV1AddressLookupSuburb(
     client,
     suburb,
     state,
+    limit,
     options,
   ));
 }
@@ -64,6 +66,7 @@ async function $do(
   client: ProntiqCore,
   suburb: string,
   state?: string | undefined,
+  limit?: number | undefined,
   options?: RequestOptions,
 ): Promise<
   [
@@ -89,6 +92,7 @@ async function $do(
   const input: operations.GetV1AddressLookupSuburbRequest = {
     suburb: suburb,
     state: state,
+    limit: limit,
   };
 
   const parsed = safeParse(
@@ -106,6 +110,7 @@ async function $do(
   const path = pathToFunc("/v1/address/lookup/suburb")();
 
   const query = encodeFormQuery({
+    "limit": payload.limit,
     "state": payload.state,
     "suburb": payload.suburb,
   });

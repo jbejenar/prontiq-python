@@ -12,6 +12,7 @@ let value: GetV1AddressLookupPostcodeRequest = {
 
 ## Fields
 
-| Field                        | Type                         | Required                     | Description                  |
-| ---------------------------- | ---------------------------- | ---------------------------- | ---------------------------- |
-| `postcode`                   | *string*                     | :heavy_check_mark:           | Australian 4-digit postcode. |
+| Field                                   | Type                                    | Required                                | Description                             |
+| --------------------------------------- | --------------------------------------- | --------------------------------------- | --------------------------------------- |
+| `postcode`                              | *string*                                | :heavy_check_mark:                      | Australian 4-digit postcode.            |
+| `limit`                                 | *number*                                | :heavy_minus_sign:                      | Maximum number of localities to return. |

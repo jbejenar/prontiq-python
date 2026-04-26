@@ -12,7 +12,8 @@ let value: GetV1AddressLookupSuburbRequest = {
 
 ## Fields
 
-| Field                  | Type                   | Required               | Description            |
-| ---------------------- | ---------------------- | ---------------------- | ---------------------- |
-| `suburb`               | *string*               | :heavy_check_mark:     | Suburb/locality name.  |
-| `state`                | *string*               | :heavy_minus_sign:     | Australian state code. |
+| Field                                  | Type                                   | Required                               | Description                            |
+| -------------------------------------- | -------------------------------------- | -------------------------------------- | -------------------------------------- |
+| `suburb`                               | *string*                               | :heavy_check_mark:                     | Suburb/locality name.                  |
+| `state`                                | *string*                               | :heavy_minus_sign:                     | Australian state code.                 |
+| `limit`                                | *number*                               | :heavy_minus_sign:                     | Maximum number of postcodes to return. |

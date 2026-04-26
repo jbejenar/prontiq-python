@@ -14,6 +14,10 @@ export type GetV1AddressLookupPostcodeRequest = {
    * Australian 4-digit postcode.
    */
   postcode: string;
+  /**
+   * Maximum number of localities to return.
+   */
+  limit?: number | undefined;
 };
 
 export type Localities = {
@@ -45,6 +49,7 @@ export type GetV1AddressLookupPostcodeResponseBody = {
 /** @internal */
 export type GetV1AddressLookupPostcodeRequest$Outbound = {
   postcode: string;
+  limit: number;
 };
 
 /** @internal */
@@ -53,6 +58,7 @@ export const GetV1AddressLookupPostcodeRequest$outboundSchema: z.ZodMiniType<
   GetV1AddressLookupPostcodeRequest
 > = z.object({
   postcode: z.string(),
+  limit: z._default(z.int(), 10),
 });
 
 export function getV1AddressLookupPostcodeRequestToJSON(

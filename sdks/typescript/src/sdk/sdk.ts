@@ -84,11 +84,13 @@ export class Prontiq extends ClientSDK {
    */
   async getV1AddressLookupPostcode(
     postcode: string,
+    limit?: number | undefined,
     options?: RequestOptions,
   ): Promise<operations.GetV1AddressLookupPostcodeResponseBody> {
     return unwrapAsync(getV1AddressLookupPostcode(
       this,
       postcode,
+      limit,
       options,
     ));
   }
@@ -99,12 +101,14 @@ export class Prontiq extends ClientSDK {
   async getV1AddressLookupSuburb(
     suburb: string,
     state?: string | undefined,
+    limit?: number | undefined,
     options?: RequestOptions,
   ): Promise<operations.GetV1AddressLookupSuburbResponseBody> {
     return unwrapAsync(getV1AddressLookupSuburb(
       this,
       suburb,
       state,
+      limit,
       options,
     ));
   }

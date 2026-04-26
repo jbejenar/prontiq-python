@@ -18,6 +18,10 @@ export type GetV1AddressLookupSuburbRequest = {
    * Australian state code.
    */
   state?: string | undefined;
+  /**
+   * Maximum number of postcodes to return.
+   */
+  limit?: number | undefined;
 };
 
 /**
@@ -92,6 +96,7 @@ export type GetV1AddressLookupSuburbResponseBody = {
 export type GetV1AddressLookupSuburbRequest$Outbound = {
   suburb: string;
   state?: string | undefined;
+  limit: number;
 };
 
 /** @internal */
@@ -101,6 +106,7 @@ export const GetV1AddressLookupSuburbRequest$outboundSchema: z.ZodMiniType<
 > = z.object({
   suburb: z.string(),
   state: z.optional(z.string()),
+  limit: z._default(z.int(), 10),
 });
 
 export function getV1AddressLookupSuburbRequestToJSON(
