@@ -128,6 +128,44 @@ const jsonResponse = (schema: z.ZodType, description: string) => ({
   description,
 });
 
+const usageResponseHeaders = {
+  "X-Request-Id": {
+    description: "Unique request identifier for support and debugging.",
+    schema: { type: "string" as const },
+  },
+  "X-RateLimit-Product": {
+    description: "API family whose monthly credit counter was updated, for example `address`.",
+    schema: { type: "string" as const },
+  },
+  "X-RateLimit-Reset": {
+    description: "ISO timestamp when the current credit window resets.",
+    schema: { type: "string" as const, format: "date-time" },
+  },
+  "X-RateLimit-Limit": {
+    description:
+      "Configured included-credit threshold for keys with a monthly quota. Present for hard-cap and soft-overage plans; omitted for PAYG or uncapped plans.",
+    schema: { type: "integer" as const, minimum: 0 },
+  },
+  "X-RateLimit-Remaining": {
+    description:
+      "Included credits remaining in the current window, floored at zero. Present for hard-cap and soft-overage plans; omitted for PAYG or uncapped plans.",
+    schema: { type: "integer" as const, minimum: 0 },
+  },
+  "X-RateLimit-Over": {
+    description: "`true` when the request succeeded as soft-overage after included credits were exceeded.",
+    schema: { type: "string" as const, enum: ["true"] },
+  },
+  "X-Payment-Overdue": {
+    description: "`true` when the account is past due but still inside the billing grace window.",
+    schema: { type: "string" as const, enum: ["true"] },
+  },
+};
+
+const jsonResponseWithUsageHeaders = (schema: z.ZodType, description: string) => ({
+  ...jsonResponse(schema, description),
+  headers: usageResponseHeaders,
+});
+
 const errorResponses = {
   400: jsonResponse(apiErrorResponseSchema, "Invalid query parameters"),
   401: jsonResponse(apiErrorResponseSchema, "Missing or invalid API key"),
@@ -172,7 +210,7 @@ const autocompleteRoute = createRoute({
     query: autocompleteQuerySchema,
   },
   responses: {
-    200: jsonResponse(autocompleteResponseSchema, "Address suggestions"),
+    200: jsonResponseWithUsageHeaders(autocompleteResponseSchema, "Address suggestions"),
     ...errorResponses,
   },
 });
@@ -192,7 +230,7 @@ const validateRoute = createRoute({
     query: validateQuerySchema,
   },
   responses: {
-    200: jsonResponse(validateResponseSchema, "Best address match"),
+    200: jsonResponseWithUsageHeaders(validateResponseSchema, "Best address match"),
     ...errorResponses,
   },
 });
@@ -212,7 +250,7 @@ const enrichRoute = createRoute({
     query: enrichQuerySchema,
   },
   responses: {
-    200: jsonResponse(addressDocumentSchema, "Enriched address document"),
+    200: jsonResponseWithUsageHeaders(addressDocumentSchema, "Enriched address document"),
     404: jsonResponse(apiErrorResponseSchema, "Address not found"),
     ...errorResponses,
   },
@@ -248,7 +286,7 @@ const reverseRoute = createRoute({
     query: reverseQuerySchema,
   },
   responses: {
-    200: jsonResponse(reverseResponseSchema, "Nearby addresses"),
+    200: jsonResponseWithUsageHeaders(reverseResponseSchema, "Nearby addresses"),
     ...errorResponses,
   },
 });
@@ -268,7 +306,7 @@ const postcodeLookupRoute = createRoute({
     query: postcodeLookupSchema,
   },
   responses: {
-    200: jsonResponse(postcodeLookupResponseSchema, "Postcode locality summary"),
+    200: jsonResponseWithUsageHeaders(postcodeLookupResponseSchema, "Postcode locality summary"),
     ...errorResponses,
   },
 });
@@ -288,7 +326,7 @@ const suburbLookupRoute = createRoute({
     query: suburbLookupSchema,
   },
   responses: {
-    200: jsonResponse(suburbLookupResponseSchema, "Suburb postcode summary"),
+    200: jsonResponseWithUsageHeaders(suburbLookupResponseSchema, "Suburb postcode summary"),
     ...errorResponses,
   },
 });

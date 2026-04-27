@@ -65,6 +65,59 @@
                 "responses": {
                     "200": {
                         "description": "Address suggestions",
+                        "headers": {
+                            "X-Request-Id": {
+                                "description": "Unique request identifier for support and debugging.",
+                                "schema": {
+                                    "type": "string"
+                                }
+                            },
+                            "X-RateLimit-Product": {
+                                "description": "API family whose monthly credit counter was updated, for example `address`.",
+                                "schema": {
+                                    "type": "string"
+                                }
+                            },
+                            "X-RateLimit-Reset": {
+                                "description": "ISO timestamp when the current credit window resets.",
+                                "schema": {
+                                    "type": "string",
+                                    "format": "date-time"
+                                }
+                            },
+                            "X-RateLimit-Limit": {
+                                "description": "Configured included-credit threshold for keys with a monthly quota. Present for hard-cap and soft-overage plans; omitted for PAYG or uncapped plans.",
+                                "schema": {
+                                    "type": "integer",
+                                    "minimum": 0
+                                }
+                            },
+                            "X-RateLimit-Remaining": {
+                                "description": "Included credits remaining in the current window, floored at zero. Present for hard-cap and soft-overage plans; omitted for PAYG or uncapped plans.",
+                                "schema": {
+                                    "type": "integer",
+                                    "minimum": 0
+                                }
+                            },
+                            "X-RateLimit-Over": {
+                                "description": "`true` when the request succeeded as soft-overage after included credits were exceeded.",
+                                "schema": {
+                                    "type": "string",
+                                    "enum": [
+                                        "true"
+                                    ]
+                                }
+                            },
+                            "X-Payment-Overdue": {
+                                "description": "`true` when the account is past due but still inside the billing grace window.",
+                                "schema": {
+                                    "type": "string",
+                                    "enum": [
+                                        "true"
+                                    ]
+                                }
+                            }
+                        },
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -361,6 +414,59 @@
                 "responses": {
                     "200": {
                         "description": "Best address match",
+                        "headers": {
+                            "X-Request-Id": {
+                                "description": "Unique request identifier for support and debugging.",
+                                "schema": {
+                                    "type": "string"
+                                }
+                            },
+                            "X-RateLimit-Product": {
+                                "description": "API family whose monthly credit counter was updated, for example `address`.",
+                                "schema": {
+                                    "type": "string"
+                                }
+                            },
+                            "X-RateLimit-Reset": {
+                                "description": "ISO timestamp when the current credit window resets.",
+                                "schema": {
+                                    "type": "string",
+                                    "format": "date-time"
+                                }
+                            },
+                            "X-RateLimit-Limit": {
+                                "description": "Configured included-credit threshold for keys with a monthly quota. Present for hard-cap and soft-overage plans; omitted for PAYG or uncapped plans.",
+                                "schema": {
+                                    "type": "integer",
+                                    "minimum": 0
+                                }
+                            },
+                            "X-RateLimit-Remaining": {
+                                "description": "Included credits remaining in the current window, floored at zero. Present for hard-cap and soft-overage plans; omitted for PAYG or uncapped plans.",
+                                "schema": {
+                                    "type": "integer",
+                                    "minimum": 0
+                                }
+                            },
+                            "X-RateLimit-Over": {
+                                "description": "`true` when the request succeeded as soft-overage after included credits were exceeded.",
+                                "schema": {
+                                    "type": "string",
+                                    "enum": [
+                                        "true"
+                                    ]
+                                }
+                            },
+                            "X-Payment-Overdue": {
+                                "description": "`true` when the account is past due but still inside the billing grace window.",
+                                "schema": {
+                                    "type": "string",
+                                    "enum": [
+                                        "true"
+                                    ]
+                                }
+                            }
+                        },
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -844,6 +950,59 @@
                 "responses": {
                     "200": {
                         "description": "Enriched address document",
+                        "headers": {
+                            "X-Request-Id": {
+                                "description": "Unique request identifier for support and debugging.",
+                                "schema": {
+                                    "type": "string"
+                                }
+                            },
+                            "X-RateLimit-Product": {
+                                "description": "API family whose monthly credit counter was updated, for example `address`.",
+                                "schema": {
+                                    "type": "string"
+                                }
+                            },
+                            "X-RateLimit-Reset": {
+                                "description": "ISO timestamp when the current credit window resets.",
+                                "schema": {
+                                    "type": "string",
+                                    "format": "date-time"
+                                }
+                            },
+                            "X-RateLimit-Limit": {
+                                "description": "Configured included-credit threshold for keys with a monthly quota. Present for hard-cap and soft-overage plans; omitted for PAYG or uncapped plans.",
+                                "schema": {
+                                    "type": "integer",
+                                    "minimum": 0
+                                }
+                            },
+                            "X-RateLimit-Remaining": {
+                                "description": "Included credits remaining in the current window, floored at zero. Present for hard-cap and soft-overage plans; omitted for PAYG or uncapped plans.",
+                                "schema": {
+                                    "type": "integer",
+                                    "minimum": 0
+                                }
+                            },
+                            "X-RateLimit-Over": {
+                                "description": "`true` when the request succeeded as soft-overage after included credits were exceeded.",
+                                "schema": {
+                                    "type": "string",
+                                    "enum": [
+                                        "true"
+                                    ]
+                                }
+                            },
+                            "X-Payment-Overdue": {
+                                "description": "`true` when the account is past due but still inside the billing grace window.",
+                                "schema": {
+                                    "type": "string",
+                                    "enum": [
+                                        "true"
+                                    ]
+                                }
+                            }
+                        },
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -1385,6 +1544,59 @@
                 "responses": {
                     "200": {
                         "description": "Nearby addresses",
+                        "headers": {
+                            "X-Request-Id": {
+                                "description": "Unique request identifier for support and debugging.",
+                                "schema": {
+                                    "type": "string"
+                                }
+                            },
+                            "X-RateLimit-Product": {
+                                "description": "API family whose monthly credit counter was updated, for example `address`.",
+                                "schema": {
+                                    "type": "string"
+                                }
+                            },
+                            "X-RateLimit-Reset": {
+                                "description": "ISO timestamp when the current credit window resets.",
+                                "schema": {
+                                    "type": "string",
+                                    "format": "date-time"
+                                }
+                            },
+                            "X-RateLimit-Limit": {
+                                "description": "Configured included-credit threshold for keys with a monthly quota. Present for hard-cap and soft-overage plans; omitted for PAYG or uncapped plans.",
+                                "schema": {
+                                    "type": "integer",
+                                    "minimum": 0
+                                }
+                            },
+                            "X-RateLimit-Remaining": {
+                                "description": "Included credits remaining in the current window, floored at zero. Present for hard-cap and soft-overage plans; omitted for PAYG or uncapped plans.",
+                                "schema": {
+                                    "type": "integer",
+                                    "minimum": 0
+                                }
+                            },
+                            "X-RateLimit-Over": {
+                                "description": "`true` when the request succeeded as soft-overage after included credits were exceeded.",
+                                "schema": {
+                                    "type": "string",
+                                    "enum": [
+                                        "true"
+                                    ]
+                                }
+                            },
+                            "X-Payment-Overdue": {
+                                "description": "`true` when the account is past due but still inside the billing grace window.",
+                                "schema": {
+                                    "type": "string",
+                                    "enum": [
+                                        "true"
+                                    ]
+                                }
+                            }
+                        },
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -1879,6 +2091,59 @@
                 "responses": {
                     "200": {
                         "description": "Postcode locality summary",
+                        "headers": {
+                            "X-Request-Id": {
+                                "description": "Unique request identifier for support and debugging.",
+                                "schema": {
+                                    "type": "string"
+                                }
+                            },
+                            "X-RateLimit-Product": {
+                                "description": "API family whose monthly credit counter was updated, for example `address`.",
+                                "schema": {
+                                    "type": "string"
+                                }
+                            },
+                            "X-RateLimit-Reset": {
+                                "description": "ISO timestamp when the current credit window resets.",
+                                "schema": {
+                                    "type": "string",
+                                    "format": "date-time"
+                                }
+                            },
+                            "X-RateLimit-Limit": {
+                                "description": "Configured included-credit threshold for keys with a monthly quota. Present for hard-cap and soft-overage plans; omitted for PAYG or uncapped plans.",
+                                "schema": {
+                                    "type": "integer",
+                                    "minimum": 0
+                                }
+                            },
+                            "X-RateLimit-Remaining": {
+                                "description": "Included credits remaining in the current window, floored at zero. Present for hard-cap and soft-overage plans; omitted for PAYG or uncapped plans.",
+                                "schema": {
+                                    "type": "integer",
+                                    "minimum": 0
+                                }
+                            },
+                            "X-RateLimit-Over": {
+                                "description": "`true` when the request succeeded as soft-overage after included credits were exceeded.",
+                                "schema": {
+                                    "type": "string",
+                                    "enum": [
+                                        "true"
+                                    ]
+                                }
+                            },
+                            "X-Payment-Overdue": {
+                                "description": "`true` when the account is past due but still inside the billing grace window.",
+                                "schema": {
+                                    "type": "string",
+                                    "enum": [
+                                        "true"
+                                    ]
+                                }
+                            }
+                        },
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -2183,6 +2448,59 @@
                 "responses": {
                     "200": {
                         "description": "Suburb postcode summary",
+                        "headers": {
+                            "X-Request-Id": {
+                                "description": "Unique request identifier for support and debugging.",
+                                "schema": {
+                                    "type": "string"
+                                }
+                            },
+                            "X-RateLimit-Product": {
+                                "description": "API family whose monthly credit counter was updated, for example `address`.",
+                                "schema": {
+                                    "type": "string"
+                                }
+                            },
+                            "X-RateLimit-Reset": {
+                                "description": "ISO timestamp when the current credit window resets.",
+                                "schema": {
+                                    "type": "string",
+                                    "format": "date-time"
+                                }
+                            },
+                            "X-RateLimit-Limit": {
+                                "description": "Configured included-credit threshold for keys with a monthly quota. Present for hard-cap and soft-overage plans; omitted for PAYG or uncapped plans.",
+                                "schema": {
+                                    "type": "integer",
+                                    "minimum": 0
+                                }
+                            },
+                            "X-RateLimit-Remaining": {
+                                "description": "Included credits remaining in the current window, floored at zero. Present for hard-cap and soft-overage plans; omitted for PAYG or uncapped plans.",
+                                "schema": {
+                                    "type": "integer",
+                                    "minimum": 0
+                                }
+                            },
+                            "X-RateLimit-Over": {
+                                "description": "`true` when the request succeeded as soft-overage after included credits were exceeded.",
+                                "schema": {
+                                    "type": "string",
+                                    "enum": [
+                                        "true"
+                                    ]
+                                }
+                            },
+                            "X-Payment-Overdue": {
+                                "description": "`true` when the account is past due but still inside the billing grace window.",
+                                "schema": {
+                                    "type": "string",
+                                    "enum": [
+                                        "true"
+                                    ]
+                                }
+                            }
+                        },
                         "content": {
                             "application/json": {
                                 "schema": {

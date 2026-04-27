@@ -45,6 +45,39 @@ migration-era commercial path.
 
 Per-endpoint credit costs are documented in the [Credits guide](/guides/credits).
 
+## Response headers
+
+Successful API responses include request-time quota headers. These headers are
+based on Prontiq's local enforcement state and are safe to use for client-side
+"credits remaining" displays. Full billing history and invoice-grade usage are
+shown in Lago-backed account surfaces, not embedded in data API response bodies.
+
+| Header | Description |
+| ------ | ----------- |
+| `X-Request-Id` | Unique request identifier for support and debugging. |
+| `X-RateLimit-Product` | API family whose monthly credit counter was updated, for example `address`. |
+| `X-RateLimit-Reset` | ISO timestamp when the current credit window resets. |
+| `X-RateLimit-Limit` | Configured included-credit threshold for keys with a monthly quota. Present for hard-cap and soft-overage plans; omitted for PAYG or uncapped plans. |
+| `X-RateLimit-Remaining` | Included credits remaining in the current window, floored at zero. Present for hard-cap and soft-overage plans; omitted for PAYG or uncapped plans. |
+| `X-RateLimit-Over` | `true` when the request succeeded as soft-overage after included credits were exceeded. |
+| `X-Payment-Overdue` | `true` when the account is past due but still inside the billing grace window. |
+
+Example:
+
+```http
+HTTP/2 200
+X-Request-Id: req_018f4d8c-...
+X-RateLimit-Product: address
+X-RateLimit-Reset: 2026-05-01T00:00:00.000Z
+X-RateLimit-Limit: 10000
+X-RateLimit-Remaining: 9999
+```
+
+<Info>
+  Header values are expressed in credits, not raw HTTP request counts. Some
+  endpoints consume more than one credit.
+</Info>
+
 ## API Gateway throttling
 
 In addition to monthly quotas, API Gateway enforces per-route rate limits to protect the infrastructure:
@@ -79,9 +112,4 @@ Current live per-key burst defaults:
 <Info>
   The burst limiter is enforced per Lambda instance, not globally across every concurrent instance.
   API Gateway throttling still provides the outer global safety net.
-</Info>
-
-<Info>
-  Responses already include `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`, and
-  `X-RateLimit-Product` so customers can track remaining monthly credits in real time.
 </Info>

@@ -15,7 +15,7 @@ moves toward Lago.
 <CodeGroup>
 
 ```bash curl
-curl "https://api.prontiq.dev/v1/address/autocomplete?q=9+endeavour+cou" \
+curl -i "https://api.prontiq.dev/v1/address/autocomplete?q=9+endeavour+cou" \
   -H "X-Api-Key: YOUR_API_KEY"
 ```
 
@@ -43,6 +43,18 @@ print(response.json()["suggestions"][0]["addressLabel"])
 </CodeGroup>
 
 ## 3. See the response
+
+The JSON body contains address data. Quota and usage context is returned in
+response headers:
+
+```http
+HTTP/2 200
+X-Request-Id: req_018f4d8c-...
+X-RateLimit-Product: address
+X-RateLimit-Reset: 2026-05-01T00:00:00.000Z
+X-RateLimit-Limit: 10000
+X-RateLimit-Remaining: 9999
+```
 
 ```json
 {
