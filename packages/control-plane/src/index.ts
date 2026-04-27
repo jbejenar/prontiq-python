@@ -15,12 +15,6 @@ export type {
   CommercialIdentityRepairStats,
 } from "./commercial-identity-repair.js";
 
-export { backfillKeyIdsAndCounters } from "./key-id-and-counter-backfill.js";
-export type {
-  KeyIdAndCounterBackfillOptions,
-  KeyIdAndCounterBackfillStats,
-} from "./key-id-and-counter-backfill.js";
-
 export { buildAuditTransactItem, writeAudit, getAuditTtlSeconds } from "./audit.js";
 export type { AuditAction, BuildAuditInput, WriteAuditInput, WriteAuditResult } from "./audit.js";
 
