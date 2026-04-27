@@ -63,6 +63,35 @@ with the same key returned:
 - HTTP status: `401`
 - Error code: `INVALID_API_KEY`
 
+## Post-Fix Prod Verification
+
+After PR #163 fixed manual smoke event collision handling, production was
+redeployed from `main` with workflow run `24974503448`.
+
+The retired P1B.21 smoke key `pq_live_4a85` remained disabled and returned
+`401 INVALID_API_KEY`, so a fresh labelled temporary probe was created only for
+post-fix verification:
+
+- Temporary key prefix: `pq_live_03f7`
+- Label: `TEST - P1B.21 Post-Fix Prod Smoke 20260427`
+- Customer: `pq_cust_01KQ3TT9XZZDR2CAZTV1TX1KBS`
+- Subscription: `pq_sub_01KQ3TT9XZZDR2CAZTV1TX1KBS`
+
+Verification results:
+
+- Full production API smoke: `10/10` passed against `https://api.prontiq.dev`.
+- Lago-period proof event: `bevt_c0902af1ae5916a464bc40ea6758f1c5`
+- Delivery status: `accepted`
+- Accepted at: `2026-04-27T03:09:16.580Z`
+- Delivery attempts: `1`
+- Usage scope: `address#period#2026-04-26_2026-05-25`
+- Source queue and DLQ: `0` visible, `0` not visible, `0` delayed
+- Relevant CloudWatch alarm check returned `[]`
+
+After verification, the temporary key `pq_live_03f7` was disabled with reason
+`P1B.21 post-fix prod smoke complete`. Local temporary raw-key material was
+removed. Do not reactivate or reuse this key.
+
 ## Queue, DLQ, And Alarm State
 
 Post-cleanup SQS state:
@@ -101,3 +130,4 @@ SES and mail-auth checks:
 - Future production smoke tests must create a new labelled key/probe through a
   dedicated ticket, or use a real customer launch flow.
 - Do not reactivate the disabled `pq_live_4a85` key without a new decision.
+- Do not reactivate the disabled post-fix temporary probe `pq_live_03f7`.

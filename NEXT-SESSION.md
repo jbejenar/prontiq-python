@@ -25,13 +25,20 @@
 - **Go-live posture is recorded.** Prod remains
   `BILLING_EVENTS_ENABLED=true`, `COUNTER_PERIOD_SOURCE=lago`, and
   `LAGO_WEBHOOK_RECONCILIATION_ENABLED=true`.
+- **Post-fix prod billing verification is complete.** PR #163 fixed manual
+  Lago smoke event collision handling and was deployed to prod in workflow run
+  `24974503448`. A fresh temporary prod probe with prefix `pq_live_03f7`
+  produced accepted event `bevt_c0902af1ae5916a464bc40ea6758f1c5` in Lago
+  period scope `address#period#2026-04-26_2026-05-25`, then the key was
+  disabled. Source queue, DLQ, and relevant alarms were clear.
 
 ### Next session should start with
 
 1. Start P1C.02 / P1C.03 console account and API-key UX on top of the completed
    Lago backend contract.
 2. Do not reactivate or reuse the retired `pq_live_4a85` prod smoke key.
-3. If future prod smoke is needed, create a new labelled probe under a new
+3. Do not reactivate or reuse the post-fix temporary `pq_live_03f7` prod probe.
+4. If future prod smoke is needed, create a new labelled probe under a new
    ticket and record safe evidence only.
 
 ## Session 41 — 2026-04-26
