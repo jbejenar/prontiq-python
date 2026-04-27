@@ -1,4 +1,4 @@
 configured_endpoints: 6
-openapi_spec_url: https://storage.googleapis.com/stainless-sdk-openapi-specs/prontiq%2Fprontiq-da1c4904a0e3c101d9941680153da94315504da2482e030bcbfb9cf9705031f8.yml
-openapi_spec_hash: 095198085eb139e75600c40f7420714c
+openapi_spec_url: https://storage.googleapis.com/stainless-sdk-openapi-specs/prontiq%2Fprontiq-9e16a5a65561cee899e50d1da5740896a4a7701b1275ff4deab23095e50d4808.yml
+openapi_spec_hash: f71ac7e3468233f8fc9b336d4a7f81a1
 config_hash: a9469633aca99ecabbded727736c8326
