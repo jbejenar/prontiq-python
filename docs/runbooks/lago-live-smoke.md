@@ -64,6 +64,13 @@ existing smoke API-key row and matching customer row from DynamoDB, validates
 the P1B.14 identity contract, derives `eventId` through the production
 `BillingUsageEventV1` contract, and prints only non-secret evidence.
 
+By default, helper-generated manual smoke uses
+`BILLING_ENDPOINT_KEY=address.smoke` and
+`SOURCE_PATH=/internal/lago-live-smoke`. Keep those defaults for manual SQS
+replay checks. They intentionally isolate manual smoke event IDs from future
+API-produced events that use real route-derived endpoint keys such as
+`address.autocomplete`.
+
 Required inputs:
 
 - `STAGE`

@@ -388,6 +388,23 @@ test("skips duplicate accepted event without resending to Lago", async () => {
   assert.equal(lago.payloads.length, 0);
 });
 
+test("acknowledges hash-conflict events without retrying or resending to Lago", async () => {
+  const event = makeEvent();
+  const ledger = new FakeLedger();
+  ledger.records.set(event.eventId, {
+    eventId: event.eventId,
+    eventPayloadHash: "different-payload-hash",
+    status: "accepted",
+  });
+  const { lago, service } = makeService({ ledger });
+
+  const result = await service.handleSqsEvent(makeSqsEvent(event));
+
+  assert.deepEqual(result.batchItemFailures, []);
+  assert.equal(lago.payloads.length, 0);
+  assert.equal(ledger.records.get(event.eventId)?.status, "accepted");
+});
+
 test("rejects tampered event id before sending to Lago", async () => {
   const { lago, ledger, service } = makeService();
   const event = makeEvent({ eventId: "bevt_11111111111111111111111111111111" });

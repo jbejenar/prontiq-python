@@ -104,6 +104,13 @@ class RecordProcessingError extends Error {
   }
 }
 
+class NonRetryableRecordProcessingError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "NonRetryableRecordProcessingError";
+  }
+}
+
 export class LagoForwardingError extends Error {
   readonly retryable: boolean;
   readonly statusCode?: number;
@@ -741,7 +748,7 @@ async function processRecord(
   const existing = await dependencies.ledger.get(event.eventId);
   if (existing) {
     if (existing.eventPayloadHash !== eventPayloadHash) {
-      throw new RecordProcessingError(
+      throw new NonRetryableRecordProcessingError(
         "billing event id already exists with a different payload hash",
       );
     }
@@ -758,7 +765,7 @@ async function processRecord(
 
   const attemptResult = await dependencies.ledger.recordAttempt(input);
   if (attemptResult === "hash_conflict") {
-    throw new RecordProcessingError(
+    throw new NonRetryableRecordProcessingError(
       "billing event id already exists with a different payload hash",
     );
   }
@@ -832,6 +839,9 @@ export function createLagoEventForwarderService(
           error: error instanceof Error ? error.message : String(error),
           messageId: record.messageId,
         });
+        if (error instanceof NonRetryableRecordProcessingError) {
+          continue;
+        }
         batchItemFailures.push({ itemIdentifier: record.messageId });
       }
     }

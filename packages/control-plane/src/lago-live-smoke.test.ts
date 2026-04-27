@@ -66,7 +66,7 @@ test("parseLagoLiveSmokeEnv derives safe defaults", () => {
     STAGE: "dev",
   });
 
-  assert.equal(config.billingEndpointKey, "address.autocomplete");
+  assert.equal(config.billingEndpointKey, "address.smoke");
   assert.equal(config.creditDelta, 1);
   assert.equal(config.product, "address");
   assert.equal(config.sendToSqs, false);
@@ -116,7 +116,7 @@ test("buildLagoLiveSmokeEvent derives deterministic event id", () => {
     event.eventId,
     deriveBillingUsageEventId({
       apiKeyHash: key.apiKeyHash,
-      billingEndpointKey: "address.autocomplete",
+      billingEndpointKey: "address.smoke",
       creditDelta: 1,
       customerId: customer.customerId,
       requestCountAfterIncrement: 42,
@@ -124,7 +124,7 @@ test("buildLagoLiveSmokeEvent derives deterministic event id", () => {
     }),
   );
   assert.equal(event.meterEventName, "prontiq_address_requests");
-  assert.equal(event.source.path, "/v1/address/autocomplete");
+  assert.equal(event.source.path, "/internal/lago-live-smoke");
 });
 
 test("buildLagoLiveSmokeEvent fails closed on unsafe smoke state", () => {

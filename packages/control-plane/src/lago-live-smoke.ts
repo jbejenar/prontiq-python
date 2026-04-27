@@ -13,11 +13,11 @@ import {
 } from "@prontiq/shared";
 
 const DEFAULT_PRODUCT = "address";
-const DEFAULT_BILLING_ENDPOINT_KEY = "address.autocomplete";
+const DEFAULT_BILLING_ENDPOINT_KEY = "address.smoke";
 const DEFAULT_CREDIT_DELTA = 1;
 const DEFAULT_METER_EVENT_NAME = "prontiq_address_requests";
 const DEFAULT_SOURCE_METHOD = "GET";
-const DEFAULT_SOURCE_PATH = "/v1/address/autocomplete";
+const DEFAULT_SOURCE_PATH = "/internal/lago-live-smoke";
 const DEFAULT_SOURCE_REQUEST_ID = "manual-lago-smoke";
 
 export interface LagoLiveSmokeInput {

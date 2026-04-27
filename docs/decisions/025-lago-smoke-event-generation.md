@@ -16,6 +16,13 @@ DynamoDB, derive `eventId` with the production `deriveBillingUsageEventId`
 contract, validate the full `BillingUsageEventV1` schema, and optionally send
 the event to SQS.
 
+Manual helper-generated smoke events use the isolated billing endpoint key
+`address.smoke` and source path `/internal/lago-live-smoke` by default. API
+producer smoke continues to use real route-derived billing endpoint keys such
+as `address.autocomplete` and `address.validate`. This keeps manual replay
+proofs from colliding with future API-produced cumulative request counts for
+the same smoke key.
+
 ## Considered And Rejected
 
 - **Hand-written JSON.** Rejected because a single manually fabricated
@@ -35,3 +42,6 @@ the event to SQS.
   `orgId`, and `keyPrefix`, but must not print raw API keys or secrets.
 - Future billing-event smoke work must use the helper or an equivalent
   production-contract generator.
+- Manual smoke must not override `BILLING_ENDPOINT_KEY` to a real public API
+  endpoint unless the operator has first proven the derived `eventId` cannot
+  collide with an existing API-produced delivery row.
