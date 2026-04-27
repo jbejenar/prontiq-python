@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import type { AddressSuggestion } from "@prontiq/web-component";
 
 import { Badge } from "../ui/badge.js";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card.js";
+import { MetricCard } from "./metric-card.js";
 
 interface AddressDemoProps {
   autocompleteEndpoint: string;
@@ -56,19 +56,19 @@ export function AddressDemo({
   }, []);
 
   return (
-    <Card className="border-primary/20 bg-card/85 shadow-[0_0_48px_hsl(var(--accent)/0.08)]">
-      <CardHeader className="space-y-4">
-        <div className="space-y-2">
-          <p className="text-xs uppercase tracking-[0.3em] text-primary/80">{kicker}</p>
-          <CardTitle className="text-3xl sm:text-4xl">{heading}</CardTitle>
-          <CardDescription className="max-w-xl text-sm leading-6 sm:text-base">
-            Powered by the real autocomplete API through a constrained landing proxy. No client-side API key exposure.
-          </CardDescription>
+    <MetricCard heading={kicker} meta="live · landing-side proxy">
+      <div className="space-y-4">
+        <div className="space-y-1.5">
+          <h2 className="font-display text-2xl leading-tight tracking-tight text-foreground sm:text-3xl">
+            {heading}
+          </h2>
+          <p className="text-xs leading-6 text-muted-foreground sm:text-sm">
+            Powered by the real autocomplete API through a constrained landing proxy. No client-side
+            API key exposure.
+          </p>
         </div>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="rounded-lg border border-border/80 bg-background/90 p-4">
-          <Badge className="mb-4 w-fit" variant="outline">
+        <div className="rounded-md border border-border bg-background/80 p-4">
+          <Badge className="mb-3" variant="outline">
             {inputLabel}
           </Badge>
           <prontiq-address
@@ -79,15 +79,17 @@ export function AddressDemo({
             state={stateFilter}
           />
         </div>
-        <div className="rounded-lg border border-dashed border-border/80 bg-background/60 p-4">
-          <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">{resultHeading}</p>
-          <pre className="mt-3 overflow-x-auto whitespace-pre-wrap text-sm leading-6 text-foreground">
+        <div className="rounded-md border border-dashed border-border-strong bg-background/40 p-4">
+          <p className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+            {resultHeading}
+          </p>
+          <pre className="mt-2 overflow-x-auto whitespace-pre-wrap text-xs leading-6 text-foreground sm:text-sm">
             {selectedSuggestion
               ? JSON.stringify(selectedSuggestion, null, 2)
               : "Choose a suggestion to inspect the structured payload returned by the widget."}
           </pre>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </MetricCard>
   );
 }

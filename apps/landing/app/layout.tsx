@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
+import { Instrument_Serif, JetBrains_Mono } from "next/font/google";
 
 import "@prontiq/tokens/tokens.css";
 import "./globals.css";
@@ -9,6 +10,22 @@ import { env } from "../lib/env.js";
 import { getLandingClerkRuntime } from "../lib/clerk.js";
 import { serverEnv } from "../lib/server-env.js";
 import { ThemeProvider } from "../lib/theme-provider.js";
+
+const instrumentSerif = Instrument_Serif({
+  weight: ["400"],
+  style: ["normal", "italic"],
+  subsets: ["latin"],
+  variable: "--font-display",
+  display: "swap",
+});
+
+const jetBrainsMono = JetBrains_Mono({
+  weight: ["300", "400", "500", "600", "700"],
+  style: ["normal", "italic"],
+  subsets: ["latin"],
+  variable: "--font-body",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: "Prontiq",
@@ -23,7 +40,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
 
   return (
     <html lang="en" suppressHydrationWarning>
-      <body>
+      <body className={`${instrumentSerif.variable} ${jetBrainsMono.variable}`}>
         <ConditionalClerkProvider
           clerkEnabled={clerkRuntime.clerkEnabled}
           publishableKey={clerkRuntime.publishableKey}

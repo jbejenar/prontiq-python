@@ -139,18 +139,19 @@ function createProntiqAddressElementClass() {
         this.shadowRoot.innerHTML = `
       <style>
         :host {
-          --pq-demo-accent: hsl(157 100% 45%);
-          --pq-demo-bg: hsl(222 33% 7%);
-          --pq-demo-border: hsl(220 15% 20%);
-          --pq-demo-fg: hsl(0 0% 100%);
-          --pq-demo-muted: hsl(220 10% 72%);
+          --pq-demo-accent: var(--prontiq-widget-accent, hsl(157 100% 45%));
+          --pq-demo-bg: var(--prontiq-widget-bg, hsl(222 33% 7%));
+          --pq-demo-border: var(--prontiq-widget-border, hsl(220 15% 20%));
+          --pq-demo-fg: var(--prontiq-widget-fg, hsl(0 0% 100%));
+          --pq-demo-muted: var(--prontiq-widget-muted, hsl(220 10% 72%));
+          --pq-demo-accent-soft: var(--prontiq-widget-accent-soft, hsl(157 100% 45% / 0.08));
           display: block;
           width: 100%;
           font-family: var(--font-body, ui-monospace, SFMono-Regular, monospace);
         }
 
         .shell {
-          border: 1px solid color-mix(in srgb, var(--pq-demo-border) 100%, transparent);
+          border: 1px solid var(--pq-demo-border);
           background: color-mix(in srgb, var(--pq-demo-bg) 92%, transparent);
           border-radius: 0.9rem;
           box-shadow: 0 32px 80px hsl(222 33% 3% / 0.34);
@@ -162,7 +163,7 @@ function createProntiqAddressElementClass() {
           align-items: center;
           gap: 0.75rem;
           padding: 1rem 1rem 0.95rem;
-          border-bottom: 1px solid color-mix(in srgb, var(--pq-demo-border) 100%, transparent);
+          border-bottom: 1px solid var(--pq-demo-border);
         }
 
         .prompt {
@@ -181,15 +182,15 @@ function createProntiqAddressElementClass() {
         }
 
         input::placeholder {
-          color: color-mix(in srgb, var(--pq-demo-muted) 100%, transparent);
+          color: var(--pq-demo-muted);
         }
 
         .message {
           display: none;
           padding: 0.85rem 1rem;
-          color: color-mix(in srgb, var(--pq-demo-muted) 100%, transparent);
+          color: var(--pq-demo-muted);
           font-size: 0.8rem;
-          border-bottom: 1px solid color-mix(in srgb, var(--pq-demo-border) 100%, transparent);
+          border-bottom: 1px solid var(--pq-demo-border);
         }
 
         .message[data-visible="true"] {
@@ -222,11 +223,11 @@ function createProntiqAddressElementClass() {
 
         button:hover,
         button[data-active="true"] {
-          background: hsl(157 100% 45% / 0.08);
+          background: var(--pq-demo-accent-soft);
         }
 
         .secondary {
-          color: color-mix(in srgb, var(--pq-demo-muted) 100%, transparent);
+          color: var(--pq-demo-muted);
           font-size: 0.75rem;
           letter-spacing: 0.08em;
           text-transform: uppercase;

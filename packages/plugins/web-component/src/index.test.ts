@@ -497,3 +497,47 @@ test("custom element emits a querychange event when the input mutates", async ()
     dom.window.close();
   }
 });
+
+test("custom element shadow stylesheet consumes Prontiq-namespaced widget tokens", () => {
+  const dom = new JSDOM("<!doctype html><html><body></body></html>", {
+    url: "https://landing.prontiq.dev",
+  });
+
+  const originalCustomElements = globalThis.customElements;
+  const originalDocument = globalThis.document;
+  const originalHTMLElement = globalThis.HTMLElement;
+  const originalWindow = globalThis.window;
+
+  Object.assign(globalThis, {
+    customElements: dom.window.customElements,
+    document: dom.window.document,
+    HTMLElement: dom.window.HTMLElement,
+    window: dom.window,
+  });
+
+  try {
+    registerProntiqAddressElement();
+    const element = dom.window.document.createElement(
+      PRONTIQ_ADDRESS_ELEMENT_NAME,
+    ) as HTMLElement;
+    dom.window.document.body.append(element);
+
+    const styleEl = element.shadowRoot?.querySelector("style");
+    const css = styleEl?.textContent ?? "";
+
+    assert.match(css, /var\(--prontiq-widget-accent/);
+    assert.match(css, /var\(--prontiq-widget-bg/);
+    assert.match(css, /var\(--prontiq-widget-border/);
+    assert.match(css, /var\(--prontiq-widget-fg/);
+    assert.match(css, /var\(--prontiq-widget-muted/);
+    assert.match(css, /var\(--prontiq-widget-accent-soft/);
+    assert.match(css, /background: var\(--pq-demo-accent-soft\);/);
+    assert.doesNotMatch(css, /hsl\(157 100% 45% \/ 0\.08\)\s*;/);
+  } finally {
+    globalThis.customElements = originalCustomElements;
+    globalThis.document = originalDocument;
+    globalThis.HTMLElement = originalHTMLElement;
+    globalThis.window = originalWindow;
+    dom.window.close();
+  }
+});

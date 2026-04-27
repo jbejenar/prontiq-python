@@ -14,6 +14,8 @@ export interface TokenArtifacts {
 export function renderArtifacts(): TokenArtifacts {
   const dark = tokens.color.dark;
   const light = tokens.color.light;
+  const darkAtmospheric = tokens.atmospheric.dark;
+  const lightAtmospheric = tokens.atmospheric.light;
   const mintTheme = {
     colors: {
       primary: dark.primary.hex,
@@ -70,7 +72,12 @@ export function renderArtifacts(): TokenArtifacts {
           DEFAULT: "hsl(var(--card) / <alpha-value>)",
           foreground: "hsl(var(--card-foreground) / <alpha-value>)"
         },
-        surface: "hsl(var(--card) / <alpha-value>)"
+        surface: "hsl(var(--card) / <alpha-value>)",
+        info: "hsl(var(--info) / <alpha-value>)",
+        warn: "hsl(var(--warn) / <alpha-value>)",
+        "muted-2": "hsl(var(--muted-2) / <alpha-value>)",
+        "border-strong": "hsl(var(--border-strong) / <alpha-value>)",
+        "surface-hover": "hsl(var(--surface-hover) / <alpha-value>)"
       },
       fontFamily: {
         display: ["var(--font-display)"],
@@ -112,6 +119,13 @@ export default preset;
   --border: ${light.border.hsl};
   --input: ${light.input.hsl};
   --ring: ${light.ring.hsl};
+  --info: ${light.info.hsl};
+  --warn: ${light.warn.hsl};
+  --muted-2: ${light.muted2.hsl};
+  --border-strong: ${light.borderStrong.hsl};
+  --surface-hover: ${light.surfaceHover.hsl};
+  --accent-glow: ${lightAtmospheric.accentGlow};
+  --scanline: ${lightAtmospheric.scanline};
   --radius: ${tokens.radius};
   --shadow-base: ${tokens.shadow.baseLight};
   --shadow-lift: ${tokens.shadow.liftLight};
@@ -121,6 +135,12 @@ export default preset;
   --color-foreground: hsl(var(--foreground));
   --font-display: ${tokens.font.display};
   --font-body: ${tokens.font.body};
+  --prontiq-widget-accent: hsl(var(--accent));
+  --prontiq-widget-bg: hsl(var(--card));
+  --prontiq-widget-border: hsl(var(--border));
+  --prontiq-widget-fg: hsl(var(--foreground));
+  --prontiq-widget-muted: hsl(var(--muted-foreground));
+  --prontiq-widget-accent-soft: hsl(var(--accent) / 0.08);
 }
 
 .dark,
@@ -144,6 +164,13 @@ export default preset;
   --border: ${dark.border.hsl};
   --input: ${dark.input.hsl};
   --ring: ${dark.ring.hsl};
+  --info: ${dark.info.hsl};
+  --warn: ${dark.warn.hsl};
+  --muted-2: ${dark.muted2.hsl};
+  --border-strong: ${dark.borderStrong.hsl};
+  --surface-hover: ${dark.surfaceHover.hsl};
+  --accent-glow: ${darkAtmospheric.accentGlow};
+  --scanline: ${darkAtmospheric.scanline};
   --shadow-base: ${tokens.shadow.baseDark};
   --shadow-lift: ${tokens.shadow.liftDark};
 }

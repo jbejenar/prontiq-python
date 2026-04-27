@@ -27,6 +27,11 @@ export const tokens = {
       border: { hsl: "150 11% 13%", hex: "#1c2320" },
       input: { hsl: "150 11% 13%", hex: "#1c2320" },
       ring: { hsl: "162 100% 45%", hex: "#00e5a0" },
+      info: { hsl: "210 100% 71%", hex: "#6bb6ff" },
+      warn: { hsl: "43 85% 61%", hex: "#f0c048" },
+      muted2: { hsl: "147 7% 31%", hex: "#4a554f" },
+      borderStrong: { hsl: "153 12% 19%", hex: "#2a3530" },
+      surfaceHover: { hsl: "140 12% 10%", hex: "#161c18" },
     },
     light: {
       background: { hsl: "43 35% 96%", hex: "#f6f4ec" },
@@ -48,6 +53,21 @@ export const tokens = {
       border: { hsl: "45 23% 86%", hex: "#e4e0d3" },
       input: { hsl: "45 23% 86%", hex: "#e4e0d3" },
       ring: { hsl: "162 100% 29%", hex: "#009366" },
+      info: { hsl: "212 60% 45%", hex: "#2e6fb8" },
+      warn: { hsl: "43 89% 38%", hex: "#b8860b" },
+      muted2: { hsl: "74 9% 63%", hex: "#a4a897" },
+      borderStrong: { hsl: "45 17% 77%", hex: "#cfcabb" },
+      surfaceHover: { hsl: "47 47% 96%", hex: "#faf8f1" },
+    },
+  },
+  atmospheric: {
+    dark: {
+      accentGlow: "rgba(0, 229, 160, 0.18)",
+      scanline: "rgba(255, 255, 255, 0.012)",
+    },
+    light: {
+      accentGlow: "rgba(0, 147, 102, 0.12)",
+      scanline: "transparent",
     },
   },
   font: {

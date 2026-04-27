@@ -3115,6 +3115,76 @@ As a visitor, I see a hero autocomplete demo that works live so that I immediate
 - Analytics/tracking → future
 - Marketing copy refinement → ongoing
 
+**Visual reskin:** the visual treatment was rebuilt by **P1C.01a — Landing Visual Reskin (Token-Aware, Prototype-Aligned)** (2026-04-27) to match `docs/prototypes/console-dashboard-v1.html`. The functional DoD items above remain accurate; only layout, atmospherics, and component composition changed.
+
+---
+
+### Ticket P1C.01a — Landing Visual Reskin (Token-Aware, Prototype-Aligned)
+
+```yaml
+id: P1C.01a
+title: Landing Visual Reskin (Token-Aware, Prototype-Aligned)
+status: complete
+priority: p1-high
+epic: P1C
+persona: [visitor]
+depends_on: [P1C.01, P1C.07]
+completed: 2026-04-27
+```
+
+#### User Story
+
+As a visitor unlocking `prontiq.dev`, I see a landing page whose visual language is unmistakably the same product family as the console prototype, so I trust the product before I sign up.
+
+#### Problem Statement
+
+P1C.01 shipped functional surfaces (live demo, pricing, CTAs) on a generic shadcn/Tailwind layout. The brand strategy ratified in `docs/FRONTEND-STRATEGY.md` v2.4 and the canonical visual reference at `docs/prototypes/console-dashboard-v1.html` are dark-first terminal-aesthetic surfaces with KPI grids, sparklines, hairline borders, slash-prefixed card headings, and a topbar with brand + blinking cursor + version chip + status pills. The shipped landing did not load Instrument Serif or JetBrains Mono at all (no `next/font/google` import, no `@font-face`), so the page was rendering in browser-fallback Times + Courier. Closing the visual gap requires central changes — extending `@prontiq/tokens` with the additional semantic vocabulary the prototype uses, refactoring `@prontiq/web-component` to consume Prontiq-namespaced widget tokens with safe third-party-embedder fallbacks, extending the shared content schema with new optional sections, and restructuring `apps/landing` itself.
+
+#### Definition of Done
+
+##### Functional
+
+- [x] Fonts load via `next/font/google` (Instrument Serif + JetBrains Mono, self-hosted at build time)
+  - `Verify:` DevTools Network → Font shows both fonts loaded; no `fonts.googleapis.com` runtime request
+  - `Evidence:` `apps/landing/app/layout.tsx`
+- [x] Tokens extended with `--info`, `--warn`, `--muted-2`, `--border-strong`, `--surface-hover`, `--accent-glow`, `--scanline`, plus `--prontiq-widget-*` namespaced widget aliases
+  - `Verify:` `pnpm --filter @prontiq/tokens test`
+  - `Evidence:` `packages/tokens/src/tokens.ts`, `packages/tokens/src/build.ts`, `packages/tokens/dist/tokens.css`
+- [x] Web component shadow DOM consumes `var(--prontiq-widget-*)` with dark-mode fallbacks
+  - `Verify:` `pnpm --filter @prontiq/web-component test`
+  - `Evidence:` `packages/plugins/web-component/src/index.ts`
+- [x] Shared content schema gains optional `topbar`, `hero.metaItems`, `kpis`, `endpoints`, `footerStrip` sections plus a required `releases.gnaf` ISO-format source-of-truth field with cross-validation against hero g-naf metaItem and KPI deltas
+  - `Verify:` `pnpm --filter @prontiq/shared test`
+  - `Evidence:` `packages/shared/src/content.ts`
+- [x] Landing renders terminal topbar (brand + blinking cursor + version chip + status pills), hero meta strip, KPI row with sparklines, demo + endpoints 2-col, restyled pricing, health panel, foot strip
+  - `Verify:` Run `pnpm --filter @prontiq/landing dev` with `PRONTIQ_LANDING_UNLOCK_TOKEN=test`, visit `/?unlock=test`
+  - `Evidence:` `apps/landing/components/landing/{terminal-topbar,kpi-row,metric-card,endpoints-table,health-panel,app-foot-strip}.tsx`
+- [x] Tri-state theme picker (System / Light / Dark) replaces the binary toggle
+  - `Verify:` `pnpm --filter @prontiq/landing test components/theme-toggle.test.tsx`
+  - `Evidence:` `apps/landing/components/theme-toggle.tsx`
+- [x] Mobile widths 375 / 768 / 1280 still legible
+  - `Verify:` Manual test
+  - `Evidence:` Responsive grid collapses on `<KpiRow>`, `<EndpointsTable>`, demo+endpoints 2-col
+- [x] Locked-state regression: middleware still serves the noindex black page when no unlock token is present
+  - `Verify:` Clear cookies and visit `/`
+  - `Evidence:` `apps/landing/middleware.ts` + `apps/landing/lib/unlock.ts` unchanged
+
+#### Scope
+
+**In:** tokens (`packages/tokens`), embedded widget (`packages/plugins/web-component`), shared content schema (`packages/shared/src/content.ts`), landing app (`apps/landing/**`).
+
+**Out — Do Not Implement:**
+
+- Live stats endpoint → deferred follow-up; `getLandingStats()` reads `site.json` today
+- Console reskin → deferred to P1C.02 (components copied at that point per FRONTEND-STRATEGY copy-not-share rule)
+- `--color-*` helper-token emission fix on `.dark` → pre-existing limitation, separate ticket
+
+#### Cross-references
+
+- `docs/prototypes/console-dashboard-v1.html`
+- `docs/FRONTEND-STRATEGY.md` v2.4
+- P1C.07 token foundation
+
 ---
 
 ### Ticket P1C.02 — Console Overview Page
