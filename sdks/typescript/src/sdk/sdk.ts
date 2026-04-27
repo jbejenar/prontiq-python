@@ -21,7 +21,7 @@ export class Prontiq extends ClientSDK {
     state?: string | undefined,
     limit?: number | undefined,
     options?: RequestOptions,
-  ): Promise<operations.GetV1AddressAutocompleteResponseBody> {
+  ): Promise<operations.GetV1AddressAutocompleteResponse> {
     return unwrapAsync(getV1AddressAutocomplete(
       this,
       q,
@@ -37,7 +37,7 @@ export class Prontiq extends ClientSDK {
   async getV1AddressValidate(
     q: string,
     options?: RequestOptions,
-  ): Promise<operations.GetV1AddressValidateResponseBody> {
+  ): Promise<operations.GetV1AddressValidateResponse> {
     return unwrapAsync(getV1AddressValidate(
       this,
       q,
@@ -51,7 +51,7 @@ export class Prontiq extends ClientSDK {
   async getV1AddressEnrich(
     id: string,
     options?: RequestOptions,
-  ): Promise<operations.GetV1AddressEnrichResponseBody> {
+  ): Promise<operations.GetV1AddressEnrichResponse> {
     return unwrapAsync(getV1AddressEnrich(
       this,
       id,
@@ -68,7 +68,7 @@ export class Prontiq extends ClientSDK {
     radius?: number | undefined,
     limit?: number | undefined,
     options?: RequestOptions,
-  ): Promise<operations.GetV1AddressReverseResponseBody> {
+  ): Promise<operations.GetV1AddressReverseResponse> {
     return unwrapAsync(getV1AddressReverse(
       this,
       lat,
@@ -86,7 +86,7 @@ export class Prontiq extends ClientSDK {
     postcode: string,
     limit?: number | undefined,
     options?: RequestOptions,
-  ): Promise<operations.GetV1AddressLookupPostcodeResponseBody> {
+  ): Promise<operations.GetV1AddressLookupPostcodeResponse> {
     return unwrapAsync(getV1AddressLookupPostcode(
       this,
       postcode,
@@ -103,7 +103,7 @@ export class Prontiq extends ClientSDK {
     state?: string | undefined,
     limit?: number | undefined,
     options?: RequestOptions,
-  ): Promise<operations.GetV1AddressLookupSuburbResponseBody> {
+  ): Promise<operations.GetV1AddressLookupSuburbResponse> {
     return unwrapAsync(getV1AddressLookupSuburb(
       this,
       suburb,

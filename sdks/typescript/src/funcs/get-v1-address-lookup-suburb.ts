@@ -37,7 +37,7 @@ export function getV1AddressLookupSuburb(
   options?: RequestOptions,
 ): APIPromise<
   Result<
-    operations.GetV1AddressLookupSuburbResponseBody,
+    operations.GetV1AddressLookupSuburbResponse,
     | errors.GetV1AddressLookupSuburbResponseBody
     | errors.GetV1AddressLookupSuburbResponseResponseBody
     | errors.GetV1AddressLookupSuburbResponse403ResponseBody
@@ -71,7 +71,7 @@ async function $do(
 ): Promise<
   [
     Result<
-      operations.GetV1AddressLookupSuburbResponseBody,
+      operations.GetV1AddressLookupSuburbResponse,
       | errors.GetV1AddressLookupSuburbResponseBody
       | errors.GetV1AddressLookupSuburbResponseResponseBody
       | errors.GetV1AddressLookupSuburbResponse403ResponseBody
@@ -170,7 +170,7 @@ async function $do(
   };
 
   const [result] = await M.match<
-    operations.GetV1AddressLookupSuburbResponseBody,
+    operations.GetV1AddressLookupSuburbResponse,
     | errors.GetV1AddressLookupSuburbResponseBody
     | errors.GetV1AddressLookupSuburbResponseResponseBody
     | errors.GetV1AddressLookupSuburbResponse403ResponseBody
@@ -185,7 +185,10 @@ async function $do(
     | UnexpectedClientError
     | SDKValidationError
   >(
-    M.json(200, operations.GetV1AddressLookupSuburbResponseBody$inboundSchema),
+    M.json(200, operations.GetV1AddressLookupSuburbResponse$inboundSchema, {
+      hdrs: true,
+      key: "Result",
+    }),
     M.jsonErr(400, errors.GetV1AddressLookupSuburbResponseBody$inboundSchema),
     M.jsonErr(
       401,

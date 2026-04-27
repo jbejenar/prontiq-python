@@ -38,7 +38,7 @@ export function getV1AddressReverse(
   options?: RequestOptions,
 ): APIPromise<
   Result<
-    operations.GetV1AddressReverseResponseBody,
+    operations.GetV1AddressReverseResponse,
     | errors.GetV1AddressReverseResponseBody
     | errors.GetV1AddressReverseResponseResponseBody
     | errors.GetV1AddressReverseResponse403ResponseBody
@@ -74,7 +74,7 @@ async function $do(
 ): Promise<
   [
     Result<
-      operations.GetV1AddressReverseResponseBody,
+      operations.GetV1AddressReverseResponse,
       | errors.GetV1AddressReverseResponseBody
       | errors.GetV1AddressReverseResponseResponseBody
       | errors.GetV1AddressReverseResponse403ResponseBody
@@ -175,7 +175,7 @@ async function $do(
   };
 
   const [result] = await M.match<
-    operations.GetV1AddressReverseResponseBody,
+    operations.GetV1AddressReverseResponse,
     | errors.GetV1AddressReverseResponseBody
     | errors.GetV1AddressReverseResponseResponseBody
     | errors.GetV1AddressReverseResponse403ResponseBody
@@ -190,7 +190,10 @@ async function $do(
     | UnexpectedClientError
     | SDKValidationError
   >(
-    M.json(200, operations.GetV1AddressReverseResponseBody$inboundSchema),
+    M.json(200, operations.GetV1AddressReverseResponse$inboundSchema, {
+      hdrs: true,
+      key: "Result",
+    }),
     M.jsonErr(400, errors.GetV1AddressReverseResponseBody$inboundSchema),
     M.jsonErr(
       401,

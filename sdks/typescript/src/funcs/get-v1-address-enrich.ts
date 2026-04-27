@@ -35,7 +35,7 @@ export function getV1AddressEnrich(
   options?: RequestOptions,
 ): APIPromise<
   Result<
-    operations.GetV1AddressEnrichResponseBody,
+    operations.GetV1AddressEnrichResponse,
     | errors.GetV1AddressEnrichResponseBody
     | errors.GetV1AddressEnrichResponseResponseBody
     | errors.GetV1AddressEnrichResponse403ResponseBody
@@ -66,7 +66,7 @@ async function $do(
 ): Promise<
   [
     Result<
-      operations.GetV1AddressEnrichResponseBody,
+      operations.GetV1AddressEnrichResponse,
       | errors.GetV1AddressEnrichResponseBody
       | errors.GetV1AddressEnrichResponseResponseBody
       | errors.GetV1AddressEnrichResponse403ResponseBody
@@ -162,7 +162,7 @@ async function $do(
   };
 
   const [result] = await M.match<
-    operations.GetV1AddressEnrichResponseBody,
+    operations.GetV1AddressEnrichResponse,
     | errors.GetV1AddressEnrichResponseBody
     | errors.GetV1AddressEnrichResponseResponseBody
     | errors.GetV1AddressEnrichResponse403ResponseBody
@@ -178,7 +178,10 @@ async function $do(
     | UnexpectedClientError
     | SDKValidationError
   >(
-    M.json(200, operations.GetV1AddressEnrichResponseBody$inboundSchema),
+    M.json(200, operations.GetV1AddressEnrichResponse$inboundSchema, {
+      hdrs: true,
+      key: "Result",
+    }),
     M.jsonErr(400, errors.GetV1AddressEnrichResponseBody$inboundSchema),
     M.jsonErr(401, errors.GetV1AddressEnrichResponseResponseBody$inboundSchema),
     M.jsonErr(

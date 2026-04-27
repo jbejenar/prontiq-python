@@ -1,20 +1,20 @@
 lockVersion: 2.0.0
 id: 06ef29b9-49de-4184-94e1-b2052d73fcbf
 management:
-  docChecksum: 095198085eb139e75600c40f7420714c
+  docChecksum: f71ac7e3468233f8fc9b336d4a7f81a1
   docVersion: 1.0.0
   speakeasyVersion: 1.761.3
   generationVersion: 2.879.11
-  releaseVersion: 0.1.1
-  configChecksum: ee91a6d884bf232f6bc68e5cd0d37ef4
+  releaseVersion: 0.1.2
+  configChecksum: 8f5aafeba8481545816b0b43aa9063c1
   repoURL: https://github.com/jbejenar/prontiq-platform.git
   repoSubDirectory: sdks/typescript
   installationURL: https://github.com/jbejenar/prontiq-platform
   published: true
 persistentEdits:
-  generation_id: 682c0158-3f24-44c4-8aa2-4b46a57d0936
-  pristine_commit_hash: 21169a60e8288beaab26b214a951f51f0daf188c
-  pristine_tree_hash: 366c7d257e70d2ccdd6d56eea83032a9ca87f6e6
+  generation_id: 04446d54-9993-4c6a-acad-9bb501db5608
+  pristine_commit_hash: 197172ee787ee6309dde0fe260a0b8f3b72efb96
+  pristine_tree_hash: fc9fff63122c2e53f862373e0a8cc0936b3f897b
 features:
   typescript:
     additionalDependencies: 0.1.0
@@ -350,6 +350,10 @@ trackedFiles:
     id: e3edee387e51
     last_write_checksum: sha1:9e3e63f9ed29b55fa4ecfd7c7004010a00c0e870
     pristine_git_object: ddcbd1d9b300fc1d323dc8c12614b5f92bde8d97
+  docs/models/operations/get-v1-address-autocomplete-response.md:
+    id: 3d63f5f2a7f7
+    last_write_checksum: sha1:f3276ef7dd8eae8bdf3d2d2c76e02aad5f51a2e4
+    pristine_git_object: c2c8ee2489cf0889557d366a449175b4b5388c00
   docs/models/operations/get-v1-address-enrich-request.md:
     id: d0608b81aaaf
     last_write_checksum: sha1:a6eec4ef44b813aa64b4c0ec874da524cfdff244
@@ -358,6 +362,10 @@ trackedFiles:
     id: ce8afe4d2e52
     last_write_checksum: sha1:a25c9acba2aeb4231764f958ec6eff7986fcd5a5
     pristine_git_object: 5024d32279d9d1644008ff1b19d4e41206222759
+  docs/models/operations/get-v1-address-enrich-response.md:
+    id: c1fb3af56b44
+    last_write_checksum: sha1:2fd547ca9e6e1706c0ed3e656a3a1335da3a8395
+    pristine_git_object: e3a8ee975738a536880ba8e4b0dadd00b52a53c7
   docs/models/operations/get-v1-address-lookup-postcode-request.md:
     id: a859f21c39b0
     last_write_checksum: sha1:415af327c9de4b535ab73d55523a21e460ee1bb3
@@ -366,6 +374,10 @@ trackedFiles:
     id: 64de228a3e9d
     last_write_checksum: sha1:28b4689ac36a77ff59e5f2ab4098876fd3cee6f9
     pristine_git_object: e31324137c37c1936a884d9e2414760ab297b340
+  docs/models/operations/get-v1-address-lookup-postcode-response.md:
+    id: 39760c8758a4
+    last_write_checksum: sha1:e4766de471d4ea26ca688661ff906fb510fb7193
+    pristine_git_object: 47c4155916a4812a71bfc8a49cd752300bbc4f2d
   docs/models/operations/get-v1-address-lookup-suburb-request.md:
     id: 5d054b12f824
     last_write_checksum: sha1:a6c4999c915bee6aa5bc921c57076f5f71871753
@@ -374,6 +386,10 @@ trackedFiles:
     id: eecf8c84a260
     last_write_checksum: sha1:2b9392e50cd408067145d07082120a4df0d1cc9d
     pristine_git_object: ae295921b95b6d66f516cd6042ea6d80789aba5d
+  docs/models/operations/get-v1-address-lookup-suburb-response.md:
+    id: 4ac0b0806ba7
+    last_write_checksum: sha1:d3cd03910dafec43e8d2d60e8888f9a667f06ff1
+    pristine_git_object: 0d6c239d20e54569594b1e5dab77eb637d340c44
   docs/models/operations/get-v1-address-reverse-boundaries.md:
     id: c04f60b7fb46
     last_write_checksum: sha1:37ea7d5302c9c950ea4bccbe625ad11f0fdb3229
@@ -410,6 +426,10 @@ trackedFiles:
     id: 22ba501a7f3d
     last_write_checksum: sha1:1ee92704ca74b16b1a280cfde211db7cae9294ec
     pristine_git_object: 4b1fc97b8206c0ad7f15d8732b1fca90a1016ba2
+  docs/models/operations/get-v1-address-reverse-response.md:
+    id: f9c0cfbc897a
+    last_write_checksum: sha1:32547b4b33e63ef2eeea6446b35682a6556d2770
+    pristine_git_object: 56d748c134da8dd90e05c3bfd0c332f227a1322a
   docs/models/operations/get-v1-address-reverse-sa2.md:
     id: 58a77d8dd579
     last_write_checksum: sha1:ce52e5889bdefd361107fc343e6782163a98fe0f
@@ -462,6 +482,10 @@ trackedFiles:
     id: f2eeafeedb2d
     last_write_checksum: sha1:29bf877577a7550abbe3d84338c5169993b8cdba
     pristine_git_object: 35e935e55a4e32d8339b62347d1f39a3507fca27
+  docs/models/operations/get-v1-address-validate-response.md:
+    id: e4ca9d4f7c27
+    last_write_checksum: sha1:5fba70623f61824ed8c01bdaeda4ce555acb1544
+    pristine_git_object: 4313a4e9d432879e08f4528b41016910a2b17214
   docs/models/operations/get-v1-address-validate-sa2.md:
     id: a73514d6fbbc
     last_write_checksum: sha1:bcadc17cd4bb67bf914070ca903d704bcc9359e7
@@ -528,8 +552,8 @@ trackedFiles:
     pristine_git_object: 6d371715312c6ad02af9cf88ebabaf0fbb7bc645
   docs/sdks/prontiq/README.md:
     id: df798d9eed8f
-    last_write_checksum: sha1:29f3fb551dd7d36bb6b1de8d18e532cd032aa3bc
-    pristine_git_object: 86f571b8f41c1aadc76786fe228b826db36377d4
+    last_write_checksum: sha1:d0317875294f9e2333e808c1f19471c6487b9ab7
+    pristine_git_object: 148cf0ff8cd21c5f458c7096556351ff37a00fe9
   examples/.env.template:
     id: 52cbe5afed92
     last_write_checksum: sha1:d0881ee64f677c90c34c57ff9473122884365e41
@@ -548,40 +572,40 @@ trackedFiles:
     pristine_git_object: 864b61f0b0516a6eaf65b87d91647c82b888ad0c
   jsr.json:
     id: 7f6ab7767282
-    last_write_checksum: sha1:57271a454a1f2346c5ed5f8811198479b85e34e0
-    pristine_git_object: 8ddff9a53f1702a0b062218156c3587e9c71f0a9
+    last_write_checksum: sha1:77cb96ebec8100ba1355b9c64367d0dd82dc5f7f
+    pristine_git_object: 7d2742fad5b3b28439ada27103a793c1f09a205c
   package.json:
     id: 7030d0b2f71b
-    last_write_checksum: sha1:bbec32f0897c4ad3b2e5ac65c9485d2ef212cb86
-    pristine_git_object: 313beb2f198b9a3e3ca1ab00dae8080bb2dd4bb1
+    last_write_checksum: sha1:98cc2bc6c6bbb5b56f51ba23fbdb44761a22138c
+    pristine_git_object: e623242dbba428e5b39ee1e6b5cef1247c33ab5e
   src/core.ts:
     id: f431fdbcd144
     last_write_checksum: sha1:e07dd49fc633c766a3740c7b9634ce8f9bd447ff
     pristine_git_object: 4b330c91b87f29619a7efd317f17d8318bc625f1
   src/funcs/get-v1-address-autocomplete.ts:
     id: f186fdade887
-    last_write_checksum: sha1:22a4dae797390aa233a8668150acc884b65f6d31
-    pristine_git_object: 357b39b27471b8994147d32794720495a66c4e39
+    last_write_checksum: sha1:ea7fb339127966b973ed1253773648c5ce76df0e
+    pristine_git_object: 6600d82f8e18c3f45c79711c87261afd9447769a
   src/funcs/get-v1-address-enrich.ts:
     id: 4fe494646a55
-    last_write_checksum: sha1:36158d5a48d1ba0560d1800ee934e5fef29b4bcc
-    pristine_git_object: 8d20e01482ceedfbd5dae6e5088212073bb86ede
+    last_write_checksum: sha1:cb160c2b3bebeb761d7557c5364257ca18877a01
+    pristine_git_object: baee82f1f7a2b4e4afda509cd7a34c7dde12bbd6
   src/funcs/get-v1-address-lookup-postcode.ts:
     id: 3d8d5cec76ae
-    last_write_checksum: sha1:53cf2ba18f576319f2fb8c77fb4813449aed5abe
-    pristine_git_object: f0591de1bd37892eac641a61d15091bb9ed299c4
+    last_write_checksum: sha1:aa43deeabefe1b2189e56f28590d0a0b7f8bcfd8
+    pristine_git_object: 52c072453b25a6b37ab642321585eef7ce4df3a7
   src/funcs/get-v1-address-lookup-suburb.ts:
     id: 75c7c64c5703
-    last_write_checksum: sha1:af6afbefa225c747861c09fe0a7961aef44284eb
-    pristine_git_object: 4e52d884d9bce989ba6fe2e00cd8c28db613c3bd
+    last_write_checksum: sha1:8f7ee157274962b31770b32246215d71a5261e42
+    pristine_git_object: 06b37d44addca132efc7f6de62014045389d59b8
   src/funcs/get-v1-address-reverse.ts:
     id: 53bfee7231e2
-    last_write_checksum: sha1:edfdfc2ba00756ca3b5885542c0134563a3bf75d
-    pristine_git_object: 1f5c84458ab3fa37839515b06669b92a5b4e4b4e
+    last_write_checksum: sha1:994ac6039813e43bc84e48ec58982c49c7c673ed
+    pristine_git_object: 9e0226fb519337245db30076e88b691d3535c504
   src/funcs/get-v1-address-validate.ts:
     id: 8f8c5238e0b5
-    last_write_checksum: sha1:e08fd51ae1613395fd8fb6259e446fe43893c760
-    pristine_git_object: 99ad3b39d09a2bfc60564c3f9e2655a2259326ef
+    last_write_checksum: sha1:858bb0255c7c3ec9f8e9d21ffcb0fdab47b8e674
+    pristine_git_object: 55d3646d3015f6dd62274554a0cb95981674f419
   src/hooks/hooks.ts:
     id: a2463fc6f69b
     last_write_checksum: sha1:3a90d88b4c6c07247db8e5f6441a79538232394e
@@ -604,8 +628,8 @@ trackedFiles:
     pristine_git_object: 44be0eae8246521b230e8e711a88eff738fc015d
   src/lib/config.ts:
     id: 320761608fb3
-    last_write_checksum: sha1:5f1a976cb97b7c1e35a7bfbd2fab2eab72caa254
-    pristine_git_object: 5072e27d4aaaf5eb5f2fea5834db7bc6107c20fa
+    last_write_checksum: sha1:33b166e60eb7d4552b19f7993e73e42a021b0ce4
+    pristine_git_object: 7e0c960948f8d33dc3b131ce211ba5025f8fe36c
   src/lib/dlv.ts:
     id: b1988214835a
     last_write_checksum: sha1:1dd3e3fbb4550c4bf31f5ef997faff355d6f3250
@@ -716,28 +740,28 @@ trackedFiles:
     pristine_git_object: db00022e05d55600252f401eb0e6ab46278e0b07
   src/models/operations/get-v1-address-autocomplete.ts:
     id: 575befda6ab8
-    last_write_checksum: sha1:2510c8c007c131f0bf593fc35c48516fb9f718fc
-    pristine_git_object: 99b40825e4b62c156dc127c487f547cea0d63fa3
+    last_write_checksum: sha1:a30bd8511217fcc5f971ec6a496ee2d0cc3d7a7a
+    pristine_git_object: 81d6a5f476af3304041ee3df3195bbdae1a05d43
   src/models/operations/get-v1-address-enrich.ts:
     id: c4987e7a98ef
-    last_write_checksum: sha1:8724d2efc9f481db7fe9053a7a7bcc1bdc77220c
-    pristine_git_object: 085187f130108cab4fadf955e680eec62b5fde0d
+    last_write_checksum: sha1:7299bf4798b95ff9e5282f21f025d544d459daed
+    pristine_git_object: b20ebb178a69c869320e6a36f6123bd849d51446
   src/models/operations/get-v1-address-lookup-postcode.ts:
     id: ca3cfb139455
-    last_write_checksum: sha1:c876558ae48de1e0ff97f046b4d9ff76c80e3f2d
-    pristine_git_object: 615f01ff746a3884e4adf2d1e58cb50c9ebdde4d
+    last_write_checksum: sha1:a822de962e26493457ac9bc035dc164e62d351b2
+    pristine_git_object: eae8f48854c3424516cfd00a61c3bd183b2a3b6b
   src/models/operations/get-v1-address-lookup-suburb.ts:
     id: 0168fe5c865f
-    last_write_checksum: sha1:28cbc28fb948fb2bc94fed85139d8d382ed492f7
-    pristine_git_object: f24a145185905a1abcadca41681a51dc8d529d2e
+    last_write_checksum: sha1:2e8ded3ac4387d9b0e7a39ec1af333ba6ce3b399
+    pristine_git_object: 8df17a43ba8d91e0cc0f483be598927060dacef7
   src/models/operations/get-v1-address-reverse.ts:
     id: 6ad1c7f2f77a
-    last_write_checksum: sha1:1413b01de6e4c5f62a65fe43a5010bbf6c6a02fa
-    pristine_git_object: de8bb20be489abda2bfb44629e05834e501e13fb
+    last_write_checksum: sha1:9d0076e65e5fa2258d23338ce8d64e6d311dc052
+    pristine_git_object: ea17f535c90420bdcad2f6b918b175b4a1aee8ff
   src/models/operations/get-v1-address-validate.ts:
     id: a9e7679713f1
-    last_write_checksum: sha1:4cf9e35d045c81c44603a5c7375e1d44cd6b809a
-    pristine_git_object: 9cce53e7376fc78837a66bad7c5c063958365043
+    last_write_checksum: sha1:396935a09c105101a87d97adf2f1104d708dba59
+    pristine_git_object: ab511921d3defebca4561d5d3af2e927b8faf035
   src/models/operations/index.ts:
     id: 0d9ffaf774d2
     last_write_checksum: sha1:2e5c31ecc873e2454a1c659c90ba79f94efcab11
@@ -748,8 +772,8 @@ trackedFiles:
     pristine_git_object: ecac2264817bb369ff2dbf0f0e9029807e67ff77
   src/sdk/sdk.ts:
     id: 784571af2f69
-    last_write_checksum: sha1:a6be18b3d0c8182f4f113b4a920923768f721be5
-    pristine_git_object: 2dcf3f17e9c7f900bb9a70e391dcd386983378a2
+    last_write_checksum: sha1:898f7d3f7a382ec3eb5b98d9551156fd6d586207
+    pristine_git_object: b2f8c6fd1c2005cc1ee7b82f7ac6bb26757bed64
   src/types/async.ts:
     id: fac8da972f86
     last_write_checksum: sha1:3ff07b3feaf390ec1aeb18ff938e139c6c4a9585
@@ -924,7 +948,3 @@ examples:
         "500":
           application/json: {"error": {"code": "<value>", "message": "<value>", "status": 672809, "request_id": "<id>"}}
 examplesVersion: 1.0.2
-releaseNotes: |
-  ## Typescript SDK Changes:
-  * `prontiq.get/v1/address/lookup/postcode()`:  `request.limit` **Added**
-  * `prontiq.get/v1/address/lookup/suburb()`:  `request.limit` **Added**

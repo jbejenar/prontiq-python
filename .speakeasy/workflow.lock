@@ -2,8 +2,8 @@ speakeasyVersion: 1.761.3
 sources:
     prontiq-api:
         sourceNamespace: prontiq-api
-        sourceRevisionDigest: sha256:47ccef29e716a98727f06102eaf1e318754da08394504a164cda0f277656d0f1
-        sourceBlobDigest: sha256:b3b16a57ba3c54ac9d493c53230a14f783af9186f3d4702dfc0a058b67c0c15d
+        sourceRevisionDigest: sha256:230729063bb79003664c875a2b924a37b81074fb3165a7809ff17e3aa6cbb427
+        sourceBlobDigest: sha256:196c5fd56f2dbc1f181f6f1522e1a533436a25a22760c35bedb85f9c03fe2266
         tags:
             - latest
             - 1.0.0
@@ -11,8 +11,8 @@ targets:
     typescript:
         source: prontiq-api
         sourceNamespace: prontiq-api
-        sourceRevisionDigest: sha256:47ccef29e716a98727f06102eaf1e318754da08394504a164cda0f277656d0f1
-        sourceBlobDigest: sha256:b3b16a57ba3c54ac9d493c53230a14f783af9186f3d4702dfc0a058b67c0c15d
+        sourceRevisionDigest: sha256:230729063bb79003664c875a2b924a37b81074fb3165a7809ff17e3aa6cbb427
+        sourceBlobDigest: sha256:196c5fd56f2dbc1f181f6f1522e1a533436a25a22760c35bedb85f9c03fe2266
 workflow:
     workflowVersion: 1.0.0
     speakeasyVersion: 1.761.3

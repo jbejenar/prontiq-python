@@ -46,6 +46,11 @@ export type GetV1AddressLookupPostcodeResponseBody = {
   localities: Array<Localities>;
 };
 
+export type GetV1AddressLookupPostcodeResponse = {
+  headers: { [k: string]: Array<string> };
+  result: GetV1AddressLookupPostcodeResponseBody;
+};
+
 /** @internal */
 export type GetV1AddressLookupPostcodeRequest$Outbound = {
   postcode: string;
@@ -111,5 +116,33 @@ export function getV1AddressLookupPostcodeResponseBodyFromJSON(
     (x) =>
       GetV1AddressLookupPostcodeResponseBody$inboundSchema.parse(JSON.parse(x)),
     `Failed to parse 'GetV1AddressLookupPostcodeResponseBody' from JSON`,
+  );
+}
+
+/** @internal */
+export const GetV1AddressLookupPostcodeResponse$inboundSchema: z.ZodMiniType<
+  GetV1AddressLookupPostcodeResponse,
+  unknown
+> = z.pipe(
+  z.object({
+    Headers: z._default(z.record(z.string(), z.array(z.string())), {}),
+    Result: z.lazy(() => GetV1AddressLookupPostcodeResponseBody$inboundSchema),
+  }),
+  z.transform((v) => {
+    return remap$(v, {
+      "Headers": "headers",
+      "Result": "result",
+    });
+  }),
+);
+
+export function getV1AddressLookupPostcodeResponseFromJSON(
+  jsonString: string,
+): SafeParseResult<GetV1AddressLookupPostcodeResponse, SDKValidationError> {
+  return safeParse(
+    jsonString,
+    (x) =>
+      GetV1AddressLookupPostcodeResponse$inboundSchema.parse(JSON.parse(x)),
+    `Failed to parse 'GetV1AddressLookupPostcodeResponse' from JSON`,
   );
 }

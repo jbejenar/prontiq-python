@@ -37,7 +37,7 @@ export function getV1AddressAutocomplete(
   options?: RequestOptions,
 ): APIPromise<
   Result<
-    operations.GetV1AddressAutocompleteResponseBody,
+    operations.GetV1AddressAutocompleteResponse,
     | errors.GetV1AddressAutocompleteResponseBody
     | errors.GetV1AddressAutocompleteResponseResponseBody
     | errors.GetV1AddressAutocompleteResponse403ResponseBody
@@ -71,7 +71,7 @@ async function $do(
 ): Promise<
   [
     Result<
-      operations.GetV1AddressAutocompleteResponseBody,
+      operations.GetV1AddressAutocompleteResponse,
       | errors.GetV1AddressAutocompleteResponseBody
       | errors.GetV1AddressAutocompleteResponseResponseBody
       | errors.GetV1AddressAutocompleteResponse403ResponseBody
@@ -170,7 +170,7 @@ async function $do(
   };
 
   const [result] = await M.match<
-    operations.GetV1AddressAutocompleteResponseBody,
+    operations.GetV1AddressAutocompleteResponse,
     | errors.GetV1AddressAutocompleteResponseBody
     | errors.GetV1AddressAutocompleteResponseResponseBody
     | errors.GetV1AddressAutocompleteResponse403ResponseBody
@@ -185,7 +185,10 @@ async function $do(
     | UnexpectedClientError
     | SDKValidationError
   >(
-    M.json(200, operations.GetV1AddressAutocompleteResponseBody$inboundSchema),
+    M.json(200, operations.GetV1AddressAutocompleteResponse$inboundSchema, {
+      hdrs: true,
+      key: "Result",
+    }),
     M.jsonErr(400, errors.GetV1AddressAutocompleteResponseBody$inboundSchema),
     M.jsonErr(
       401,

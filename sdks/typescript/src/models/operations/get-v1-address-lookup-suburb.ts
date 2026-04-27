@@ -92,6 +92,11 @@ export type GetV1AddressLookupSuburbResponseBody = {
   addressCount: number;
 };
 
+export type GetV1AddressLookupSuburbResponse = {
+  headers: { [k: string]: Array<string> };
+  result: GetV1AddressLookupSuburbResponseBody;
+};
+
 /** @internal */
 export type GetV1AddressLookupSuburbRequest$Outbound = {
   suburb: string;
@@ -203,5 +208,32 @@ export function getV1AddressLookupSuburbResponseBodyFromJSON(
     (x) =>
       GetV1AddressLookupSuburbResponseBody$inboundSchema.parse(JSON.parse(x)),
     `Failed to parse 'GetV1AddressLookupSuburbResponseBody' from JSON`,
+  );
+}
+
+/** @internal */
+export const GetV1AddressLookupSuburbResponse$inboundSchema: z.ZodMiniType<
+  GetV1AddressLookupSuburbResponse,
+  unknown
+> = z.pipe(
+  z.object({
+    Headers: z._default(z.record(z.string(), z.array(z.string())), {}),
+    Result: z.lazy(() => GetV1AddressLookupSuburbResponseBody$inboundSchema),
+  }),
+  z.transform((v) => {
+    return remap$(v, {
+      "Headers": "headers",
+      "Result": "result",
+    });
+  }),
+);
+
+export function getV1AddressLookupSuburbResponseFromJSON(
+  jsonString: string,
+): SafeParseResult<GetV1AddressLookupSuburbResponse, SDKValidationError> {
+  return safeParse(
+    jsonString,
+    (x) => GetV1AddressLookupSuburbResponse$inboundSchema.parse(JSON.parse(x)),
+    `Failed to parse 'GetV1AddressLookupSuburbResponse' from JSON`,
   );
 }

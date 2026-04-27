@@ -78,7 +78,7 @@ run();
 
 ### Response
 
-**Promise\<[operations.GetV1AddressAutocompleteResponseBody](../../models/operations/get-v1-address-autocomplete-response-body.md)\>**
+**Promise\<[operations.GetV1AddressAutocompleteResponse](../../models/operations/get-v1-address-autocomplete-response.md)\>**
 
 ### Errors
 
@@ -154,7 +154,7 @@ run();
 
 ### Response
 
-**Promise\<[operations.GetV1AddressValidateResponseBody](../../models/operations/get-v1-address-validate-response-body.md)\>**
+**Promise\<[operations.GetV1AddressValidateResponse](../../models/operations/get-v1-address-validate-response.md)\>**
 
 ### Errors
 
@@ -230,7 +230,7 @@ run();
 
 ### Response
 
-**Promise\<[operations.GetV1AddressEnrichResponseBody](../../models/operations/get-v1-address-enrich-response-body.md)\>**
+**Promise\<[operations.GetV1AddressEnrichResponse](../../models/operations/get-v1-address-enrich-response.md)\>**
 
 ### Errors
 
@@ -310,7 +310,7 @@ run();
 
 ### Response
 
-**Promise\<[operations.GetV1AddressReverseResponseBody](../../models/operations/get-v1-address-reverse-response-body.md)\>**
+**Promise\<[operations.GetV1AddressReverseResponse](../../models/operations/get-v1-address-reverse-response.md)\>**
 
 ### Errors
 
@@ -387,7 +387,7 @@ run();
 
 ### Response
 
-**Promise\<[operations.GetV1AddressLookupPostcodeResponseBody](../../models/operations/get-v1-address-lookup-postcode-response-body.md)\>**
+**Promise\<[operations.GetV1AddressLookupPostcodeResponse](../../models/operations/get-v1-address-lookup-postcode-response.md)\>**
 
 ### Errors
 
@@ -465,7 +465,7 @@ run();
 
 ### Response
 
-**Promise\<[operations.GetV1AddressLookupSuburbResponseBody](../../models/operations/get-v1-address-lookup-suburb-response-body.md)\>**
+**Promise\<[operations.GetV1AddressLookupSuburbResponse](../../models/operations/get-v1-address-lookup-suburb-response.md)\>**
 
 ### Errors
 

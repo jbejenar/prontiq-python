@@ -3,6 +3,7 @@
  */
 
 import * as z from "zod/v4-mini";
+import { remap as remap$ } from "../../lib/primitives.js";
 import { safeParse } from "../../lib/schemas.js";
 import { Result as SafeParseResult } from "../../types/fp.js";
 import * as types from "../../types/primitives.js";
@@ -63,6 +64,11 @@ export type GetV1AddressAutocompleteResponseBody = {
    * Total matching addresses.
    */
   total: number;
+};
+
+export type GetV1AddressAutocompleteResponse = {
+  headers: { [k: string]: Array<string> };
+  result: GetV1AddressAutocompleteResponseBody;
 };
 
 /** @internal */
@@ -131,5 +137,32 @@ export function getV1AddressAutocompleteResponseBodyFromJSON(
     (x) =>
       GetV1AddressAutocompleteResponseBody$inboundSchema.parse(JSON.parse(x)),
     `Failed to parse 'GetV1AddressAutocompleteResponseBody' from JSON`,
+  );
+}
+
+/** @internal */
+export const GetV1AddressAutocompleteResponse$inboundSchema: z.ZodMiniType<
+  GetV1AddressAutocompleteResponse,
+  unknown
+> = z.pipe(
+  z.object({
+    Headers: z._default(z.record(z.string(), z.array(z.string())), {}),
+    Result: z.lazy(() => GetV1AddressAutocompleteResponseBody$inboundSchema),
+  }),
+  z.transform((v) => {
+    return remap$(v, {
+      "Headers": "headers",
+      "Result": "result",
+    });
+  }),
+);
+
+export function getV1AddressAutocompleteResponseFromJSON(
+  jsonString: string,
+): SafeParseResult<GetV1AddressAutocompleteResponse, SDKValidationError> {
+  return safeParse(
+    jsonString,
+    (x) => GetV1AddressAutocompleteResponse$inboundSchema.parse(JSON.parse(x)),
+    `Failed to parse 'GetV1AddressAutocompleteResponse' from JSON`,
   );
 }

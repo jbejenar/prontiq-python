@@ -36,7 +36,7 @@ export function getV1AddressLookupPostcode(
   options?: RequestOptions,
 ): APIPromise<
   Result<
-    operations.GetV1AddressLookupPostcodeResponseBody,
+    operations.GetV1AddressLookupPostcodeResponse,
     | errors.GetV1AddressLookupPostcodeResponseBody
     | errors.GetV1AddressLookupPostcodeResponseResponseBody
     | errors.GetV1AddressLookupPostcodeResponse403ResponseBody
@@ -68,7 +68,7 @@ async function $do(
 ): Promise<
   [
     Result<
-      operations.GetV1AddressLookupPostcodeResponseBody,
+      operations.GetV1AddressLookupPostcodeResponse,
       | errors.GetV1AddressLookupPostcodeResponseBody
       | errors.GetV1AddressLookupPostcodeResponseResponseBody
       | errors.GetV1AddressLookupPostcodeResponse403ResponseBody
@@ -168,7 +168,7 @@ async function $do(
   };
 
   const [result] = await M.match<
-    operations.GetV1AddressLookupPostcodeResponseBody,
+    operations.GetV1AddressLookupPostcodeResponse,
     | errors.GetV1AddressLookupPostcodeResponseBody
     | errors.GetV1AddressLookupPostcodeResponseResponseBody
     | errors.GetV1AddressLookupPostcodeResponse403ResponseBody
@@ -183,10 +183,10 @@ async function $do(
     | UnexpectedClientError
     | SDKValidationError
   >(
-    M.json(
-      200,
-      operations.GetV1AddressLookupPostcodeResponseBody$inboundSchema,
-    ),
+    M.json(200, operations.GetV1AddressLookupPostcodeResponse$inboundSchema, {
+      hdrs: true,
+      key: "Result",
+    }),
     M.jsonErr(400, errors.GetV1AddressLookupPostcodeResponseBody$inboundSchema),
     M.jsonErr(
       401,

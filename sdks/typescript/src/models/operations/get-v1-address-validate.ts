@@ -3,6 +3,7 @@
  */
 
 import * as z from "zod/v4-mini";
+import { remap as remap$ } from "../../lib/primitives.js";
 import { safeParse } from "../../lib/schemas.js";
 import * as openEnums from "../../types/enums.js";
 import { OpenEnum } from "../../types/enums.js";
@@ -273,6 +274,11 @@ export type GetV1AddressValidateResponseBody = {
    * Match confidence: high (score > 20), medium (10-20), low (< 10), or none (no match).
    */
   confidence: Confidence;
+};
+
+export type GetV1AddressValidateResponse = {
+  headers: { [k: string]: Array<string> };
+  result: GetV1AddressValidateResponseBody;
 };
 
 /** @internal */
@@ -577,5 +583,32 @@ export function getV1AddressValidateResponseBodyFromJSON(
     jsonString,
     (x) => GetV1AddressValidateResponseBody$inboundSchema.parse(JSON.parse(x)),
     `Failed to parse 'GetV1AddressValidateResponseBody' from JSON`,
+  );
+}
+
+/** @internal */
+export const GetV1AddressValidateResponse$inboundSchema: z.ZodMiniType<
+  GetV1AddressValidateResponse,
+  unknown
+> = z.pipe(
+  z.object({
+    Headers: z._default(z.record(z.string(), z.array(z.string())), {}),
+    Result: z.lazy(() => GetV1AddressValidateResponseBody$inboundSchema),
+  }),
+  z.transform((v) => {
+    return remap$(v, {
+      "Headers": "headers",
+      "Result": "result",
+    });
+  }),
+);
+
+export function getV1AddressValidateResponseFromJSON(
+  jsonString: string,
+): SafeParseResult<GetV1AddressValidateResponse, SDKValidationError> {
+  return safeParse(
+    jsonString,
+    (x) => GetV1AddressValidateResponse$inboundSchema.parse(JSON.parse(x)),
+    `Failed to parse 'GetV1AddressValidateResponse' from JSON`,
   );
 }

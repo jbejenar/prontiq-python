@@ -35,7 +35,7 @@ export function getV1AddressValidate(
   options?: RequestOptions,
 ): APIPromise<
   Result<
-    operations.GetV1AddressValidateResponseBody,
+    operations.GetV1AddressValidateResponse,
     | errors.GetV1AddressValidateResponseBody
     | errors.GetV1AddressValidateResponseResponseBody
     | errors.GetV1AddressValidateResponse403ResponseBody
@@ -65,7 +65,7 @@ async function $do(
 ): Promise<
   [
     Result<
-      operations.GetV1AddressValidateResponseBody,
+      operations.GetV1AddressValidateResponse,
       | errors.GetV1AddressValidateResponseBody
       | errors.GetV1AddressValidateResponseResponseBody
       | errors.GetV1AddressValidateResponse403ResponseBody
@@ -160,7 +160,7 @@ async function $do(
   };
 
   const [result] = await M.match<
-    operations.GetV1AddressValidateResponseBody,
+    operations.GetV1AddressValidateResponse,
     | errors.GetV1AddressValidateResponseBody
     | errors.GetV1AddressValidateResponseResponseBody
     | errors.GetV1AddressValidateResponse403ResponseBody
@@ -175,7 +175,10 @@ async function $do(
     | UnexpectedClientError
     | SDKValidationError
   >(
-    M.json(200, operations.GetV1AddressValidateResponseBody$inboundSchema),
+    M.json(200, operations.GetV1AddressValidateResponse$inboundSchema, {
+      hdrs: true,
+      key: "Result",
+    }),
     M.jsonErr(400, errors.GetV1AddressValidateResponseBody$inboundSchema),
     M.jsonErr(
       401,

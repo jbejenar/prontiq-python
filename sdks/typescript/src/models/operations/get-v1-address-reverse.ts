@@ -270,6 +270,11 @@ export type GetV1AddressReverseResponseBody = {
   total: number;
 };
 
+export type GetV1AddressReverseResponse = {
+  headers: { [k: string]: Array<string> };
+  result: GetV1AddressReverseResponseBody;
+};
+
 /** @internal */
 export type GetV1AddressReverseRequest$Outbound = {
   lat: number;
@@ -578,5 +583,32 @@ export function getV1AddressReverseResponseBodyFromJSON(
     jsonString,
     (x) => GetV1AddressReverseResponseBody$inboundSchema.parse(JSON.parse(x)),
     `Failed to parse 'GetV1AddressReverseResponseBody' from JSON`,
+  );
+}
+
+/** @internal */
+export const GetV1AddressReverseResponse$inboundSchema: z.ZodMiniType<
+  GetV1AddressReverseResponse,
+  unknown
+> = z.pipe(
+  z.object({
+    Headers: z._default(z.record(z.string(), z.array(z.string())), {}),
+    Result: z.lazy(() => GetV1AddressReverseResponseBody$inboundSchema),
+  }),
+  z.transform((v) => {
+    return remap$(v, {
+      "Headers": "headers",
+      "Result": "result",
+    });
+  }),
+);
+
+export function getV1AddressReverseResponseFromJSON(
+  jsonString: string,
+): SafeParseResult<GetV1AddressReverseResponse, SDKValidationError> {
+  return safeParse(
+    jsonString,
+    (x) => GetV1AddressReverseResponse$inboundSchema.parse(JSON.parse(x)),
+    `Failed to parse 'GetV1AddressReverseResponse' from JSON`,
   );
 }
