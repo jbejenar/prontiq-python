@@ -49,7 +49,7 @@
     "directory": "sdks/typescript"
   },
   "scripts": {
-    "lint": "oxlint --max-warnings=0 --deny-warnings 'src/**/*.{ts,tsx}'",
+    "lint": "oxlint --max-warnings=0 --deny-warnings src",
     "build": "tsgo",
     "prepublishOnly": "npm run build"
   },
