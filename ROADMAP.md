@@ -31,7 +31,7 @@
 | --------- | -------------------------- | ------- | --------- | ----------- |
 | **P0**    | Infrastructure Foundation  | 6       | 6/6 ✅    | Week 1      |
 | **P1A**   | API Core (Address)         | 13      | 11/13     | Weeks 2-3   |
-| **P1B**   | Auth & Billing             | 24      | 20/24     | Weeks 3-4   |
+| **P1B**   | Auth & Billing             | 25      | 20/25     | Weeks 3-4   |
 | **P1C**   | Frontend Surfaces          | 9       | 3/9       | Weeks 4-6   |
 | **P1D**   | Docs & SDK                 | 5       | 2/5       | Week 5      |
 | **P1E**   | Ingestion (Phase 1)        | 6       | 4/6       | Week 6      |
@@ -40,7 +40,7 @@
 | **P3**    | GLEIF/LEI + Full Dashboard | 7       | 0/7       | Weeks 11-13 |
 | **P4**    | Shopify + WooCommerce      | 5       | 0/5       | Weeks 14-17 |
 | **P5**    | CVE/NVD + Patents          | 4       | 0/4       | Weeks 18-21 |
-| **Total** |                            | **90**  | **49/90** |             |
+| **Total** |                            | **91**  | **49/91** |             |
 
 ---
 
@@ -1095,12 +1095,112 @@ Acceptance criteria:
 - [x] `/v1/account/billing*` is removed from the private OpenAPI surface.
 - [x] A repair command exists for pre-pivot org envelopes/API keys.
 - [x] ADR-035 documents the identity decision and the future Vercel Lago BFF direction.
+
+### P1B.23 — Pre-Go-Live Lago Test Fixture + Pricing Cleanup
+
+```yaml
+id: P1B.23
+title: Pre-Go-Live Lago Test Fixture + Pricing Cleanup
+status: pending
+priority: p1-high
+epic: P1B
+persona: [ops]
+depends_on: [P1B.22, P1C.03, P1C.05]
+completed: null
+tech_stack:
+  billing: Lago + DynamoDB + SQS + CloudWatch
+  auth: Clerk
+  payments: Stripe via Lago
+```
+
+#### User Story
+
+As an operator, I need the remaining Lago and platform smoke fixtures cleaned up
+or explicitly retained after the console key-management and billing surfaces are
+validated, so go-live starts with intentional commercial configuration and no
+stale migration-era test keys.
+
+#### Problem Statement
+
+P1B.22 proved the active Clerk-org commercial identity and live Lago usage
+readback in dev and prod. That validation intentionally created or retained
+test API keys, test Clerk orgs, Lago test customers/subscriptions, usage
+counters, and billing-event ledger rows. Dev also exposed a Lago catalog
+immutability edge: the original dev `payg` plan was created with the wrong
+currency, then soft-deleted, so dev currently uses the temporary `payg_aud`
+test plan. Prod `payg` is correctly AUD, but its current charge amount is `0`
+until product pricing is configured in Lago. These are acceptable before
+customers, but they must be made explicit before go-live.
+
+#### Definition of Done
+
+##### Functional
+
+- [ ] Test API keys are inventoried and disabled or intentionally retained
+  - `Verify:` dev and prod `prontiq-keys*` contain no active repo-created test
+    keys except named operational probes
+  - `Evidence:` inventory records safe identifiers only: environment, org id,
+    key prefix, active flag, purpose, and disposition; no raw API keys or full
+    hashes are recorded
+- [ ] Lago test customers/subscriptions are inventoried
+  - `Verify:` repo-owned test Clerk orgs and synthetic legacy
+    `org_prontiq_platform_*` customers are either retained as labelled evidence,
+    renamed/labelled as probes, or deleted where safe
+  - `Evidence:` retained rows have a named reason and owner; destructive cleanup
+    explicitly excludes real Clerk orgs, real customer data, and audit evidence
+- [ ] Prod Lago pricing is configured intentionally
+  - `Verify:` prod `payg` remains AUD and has the intended
+    `prontiq_address_requests` charge amount before real customers are assigned
+  - `Evidence:` Lago plan summary records code, currency, billable metric code,
+    and charge amount without secrets
+- [ ] Dev Lago plan hygiene is resolved
+  - `Verify:` either dev is reset/rebuilt with canonical `payg` AUD, or
+    `payg_aud` is documented as a temporary dev-only smoke plan until the next
+    environment reset
+  - `Evidence:` roadmap/runbook notes state which path was chosen and why
+- [ ] Post-cleanup smoke still passes
+  - `Verify:` one dev and one prod smoke use explicitly retained probe keys or
+    freshly created short-lived keys, produce accepted Lago events, and leave
+    source queues and DLQs empty
+  - `Evidence:` safe event IDs, queue counts, and CloudWatch alarm state are
+    recorded
+
+##### Operational
+
+- [ ] Go-live cleanup runbook is updated
+  - `Verify:` `docs/runbooks/prod-go-live-cleanup.md` includes the P1B.22/P1B.23
+    fixture classes, Lago pricing check, dev `payg_aud` caveat, and rollback
+    posture
+  - `Evidence:` runbook explains what can be deleted, what must be retained, and
+    what requires manual Lago UI/API confirmation
+- [ ] Architecture notes remain aligned
+  - `Verify:` `ARCHITECTURE.MD`, `NEXT-WORK.md`, and relevant operations docs
+    continue to state that Clerk `orgId` is the commercial identity, Lago is the
+    billing system of record, Stripe is the payment rail, and platform DynamoDB
+    enforces hot-path access
+  - `Evidence:` grep checks find no active-runtime guidance that makes
+    `pq_cust_*`, `pq_sub_*`, or Stripe the source of truth
+
+#### Scope
+
+**In:** repo-created test API key disposition, Lago test customer/subscription
+inventory, prod Lago PAYG price confirmation, dev temporary `payg_aud` plan
+disposition, queue/DLQ/alarm checks, runbook and evidence updates.
+
+**Out — Do Not Implement:**
+
+- deleting real customer/org rows or real audit evidence
+- changing the Clerk-org commercial identity model
+- adding platform account billing APIs; console billing reads should use the
+  future Vercel Lago BFF direction
+- changing Stripe integration outside Lago payment-provider configuration
+
 >
 > **Lago migration progress.** `10/10` implemented for `P1B.14`–`P1B.22` plus `P1B.18a`. The `P1B` epic rollup includes completed historical Stripe-path work, so treat the Lago migration sequence as complete.
 >
 > **Scope boundary.** The hot-path middleware rewrite (hash-based lookup, REDIRECT fallback, new usage-table writes) ships in **P1B.04b** (cutover), NOT in P1B.02. P1B.02 is pure crypto primitives only — no DDB dependency — which is why it remains parallel-safe. P1B.04b flips schema + code atomically once P1B.02 and P1B.04 are both done.
 >
-> **Dependency graph:** P1B.01/.02/.03/.04 can run in parallel. P1B.04b depends on .02 + .04 (needs the crypto module + the tables to write the code cutover). P1B.05 depends on .01/.02/.03/.04. P1B.06 depends on .03/.04. P1B.07/.08 depend on .04. P1B.08a depends on .08. **P1B.09 depends on .02 + .04b** (the burst limiter middleware reads `record.rateLimit` from context — that context is established by the post-cutover auth middleware in .04b, not by the pure crypto module). P1B.10 depends on .03/.04/.06. P1B.11 depends on .10. P1B.12 depends on .05/.09/.04b (tests the cutover end-to-end). The Lago migration sequence is intentionally linear enough to pin the commercial contract before the console UI builds on it: `P1B.14` → `P1B.15/.16` → `P1B.17` → `P1B.18a` → `P1B.18` → `P1B.19` → `P1B.20` → `P1B.21` → `P1B.22`, with future console billing consuming the P1B.22 Clerk-org identity and Vercel Lago BFF direction.
+> **Dependency graph:** P1B.01/.02/.03/.04 can run in parallel. P1B.04b depends on .02 + .04 (needs the crypto module + the tables to write the code cutover). P1B.05 depends on .01/.02/.03/.04. P1B.06 depends on .03/.04. P1B.07/.08 depend on .04. P1B.08a depends on .08. **P1B.09 depends on .02 + .04b** (the burst limiter middleware reads `record.rateLimit` from context — that context is established by the post-cutover auth middleware in .04b, not by the pure crypto module). P1B.10 depends on .03/.04/.06. P1B.11 depends on .10. P1B.12 depends on .05/.09/.04b (tests the cutover end-to-end). The Lago migration sequence is intentionally linear enough to pin the commercial contract before the console UI builds on it: `P1B.14` → `P1B.15/.16` → `P1B.17` → `P1B.18a` → `P1B.18` → `P1B.19` → `P1B.20` → `P1B.21` → `P1B.22`, with future console billing consuming the P1B.22 Clerk-org identity and Vercel Lago BFF direction. `P1B.23` is a pre-go-live cleanup gate after console key management and billing surfaces no longer need the retained smoke fixtures.
 >
 > **Repo-wide Unkey removal** completed in PR #68 (`chore(webhooks): remove Unkey code`) — `packages/webhooks/src/unkey.ts`, `unkeyWebhook` export, `lastSyncedFromUnkey` field, and `UNKEY_*` env vars all gone from main. **No P1B ticket owns this cleanup.** Going forward, P1B tickets only need to guarantee no NEW Unkey references are introduced.
 >
