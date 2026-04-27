@@ -31,7 +31,7 @@
 | --------- | -------------------------- | ------- | --------- | ----------- |
 | **P0**    | Infrastructure Foundation  | 6       | 6/6 ✅    | Week 1      |
 | **P1A**   | API Core (Address)         | 13      | 11/13     | Weeks 2-3   |
-| **P1B**   | Auth & Billing             | 24      | 19/24     | Weeks 3-4   |
+| **P1B**   | Auth & Billing             | 24      | 20/24     | Weeks 3-4   |
 | **P1C**   | Frontend Surfaces          | 9       | 3/9       | Weeks 4-6   |
 | **P1D**   | Docs & SDK                 | 5       | 2/5       | Week 5      |
 | **P1E**   | Ingestion (Phase 1)        | 6       | 4/6       | Week 6      |
@@ -40,7 +40,7 @@
 | **P3**    | GLEIF/LEI + Full Dashboard | 7       | 0/7       | Weeks 11-13 |
 | **P4**    | Shopify + WooCommerce      | 5       | 0/5       | Weeks 14-17 |
 | **P5**    | CVE/NVD + Patents          | 4       | 0/4       | Weeks 18-21 |
-| **Total** |                            | **90**  | **48/90** |             |
+| **Total** |                            | **90**  | **49/90** |             |
 
 ---
 
@@ -1080,13 +1080,27 @@ Options:
 
 > **Goal:** Sign-up → DDB-native API key → hash-verified requests → rate-limited with burst limiter → usage tracked per-month → migrate the commercial layer from the shipped Stripe path to the Lago-backed architecture.
 >
-> **Current state.** P1B.02, P1B.04, P1B.04b, P1B.05, P1B.06, P1B.07, P1B.08, P1B.09, P1B.10, P1B.11, P1B.12, P1B.14, P1B.15, P1B.16, P1B.17, P1B.18a, P1B.18, P1B.19, P1B.20, and P1B.21 are implemented. The DynamoDB-native key model is live in prod, the prod migration was executed on 2026-04-16, per-key burst limiting is enforced in the API middleware, SES feedback / quota-email delivery is live in dev + prod, the auth integration suite is reconciled to the real post-cutover middleware contract, and the Lago migration now has a platform-owned `customerId` contract, SQS billing-event buffer, replay-safe Lago event forwarder, Lago webhook reconciliation code, dev/prod live-smoke certification, Prontiq-owned private account billing APIs, P1B.19 runtime cutover controls, P1B.20 legacy Stripe cleanup, and P1B.21 final prod smoke-fixture retirement. SES deliverability hardening is tracked separately in P1B.08a. The next commercial work is frontend/account UX on top of the completed Lago backend contract.
+> **Current state.** P1B.02 through P1B.22 are implemented. P1B.22 pivots the active commercial identity to Clerk `orgId`. Lago remains the commercial system of record, Stripe remains only Lago's payment rail, Prontiq keeps hot-path credit enforcement in DynamoDB, and SQS buffers usage events away from the request path. Active billing events are `BillingUsageEventV2` with `orgId`; Lago customer `external_id = orgId`; Lago subscription `external_id = lago_sub_${orgId}`. The AWS private account API is setup-only. Former `customerId` / `pq_cust_*` / `pq_sub_*` records and account billing APIs are legacy evidence only.
+
+### P1B.22 — Clerk org commercial identity pivot
+
+Status: implemented.
+
+Acceptance criteria:
+
+- [x] Active billing events carry `orgId` through `BillingUsageEventV2`.
+- [x] Lago usage forwarding uses `external_subscription_id = lago_sub_${orgId}`.
+- [x] Clerk provisioning writes the org envelope directly and does not create new customer mapping rows.
+- [x] `/v1/account/setup` returns `orgId`.
+- [x] `/v1/account/billing*` is removed from the private OpenAPI surface.
+- [x] A repair command exists for pre-pivot org envelopes/API keys.
+- [x] ADR-035 documents the identity decision and the future Vercel Lago BFF direction.
 >
-> **Lago migration progress.** `9/9` implemented for `P1B.14`–`P1B.21` plus `P1B.18a`. The `P1B` epic rollup includes completed historical Stripe-path work, so treat the Lago migration sequence as complete.
+> **Lago migration progress.** `10/10` implemented for `P1B.14`–`P1B.22` plus `P1B.18a`. The `P1B` epic rollup includes completed historical Stripe-path work, so treat the Lago migration sequence as complete.
 >
 > **Scope boundary.** The hot-path middleware rewrite (hash-based lookup, REDIRECT fallback, new usage-table writes) ships in **P1B.04b** (cutover), NOT in P1B.02. P1B.02 is pure crypto primitives only — no DDB dependency — which is why it remains parallel-safe. P1B.04b flips schema + code atomically once P1B.02 and P1B.04 are both done.
 >
-> **Dependency graph:** P1B.01/.02/.03/.04 can run in parallel. P1B.04b depends on .02 + .04 (needs the crypto module + the tables to write the code cutover). P1B.05 depends on .01/.02/.03/.04. P1B.06 depends on .03/.04. P1B.07/.08 depend on .04. P1B.08a depends on .08. **P1B.09 depends on .02 + .04b** (the burst limiter middleware reads `record.rateLimit` from context — that context is established by the post-cutover auth middleware in .04b, not by the pure crypto module). P1B.10 depends on .03/.04/.06. P1B.11 depends on .10. P1B.12 depends on .05/.09/.04b (tests the cutover end-to-end). The Lago migration sequence is intentionally linear enough to pin the commercial contract before the console UI builds on it: `P1B.14` → `P1B.15/.16` → `P1B.17` → `P1B.18a` → `P1B.18` → `P1B.19` → `P1B.20` → `P1B.21`, with `P1C.05` consuming the backend contract from `P1B.18`.
+> **Dependency graph:** P1B.01/.02/.03/.04 can run in parallel. P1B.04b depends on .02 + .04 (needs the crypto module + the tables to write the code cutover). P1B.05 depends on .01/.02/.03/.04. P1B.06 depends on .03/.04. P1B.07/.08 depend on .04. P1B.08a depends on .08. **P1B.09 depends on .02 + .04b** (the burst limiter middleware reads `record.rateLimit` from context — that context is established by the post-cutover auth middleware in .04b, not by the pure crypto module). P1B.10 depends on .03/.04/.06. P1B.11 depends on .10. P1B.12 depends on .05/.09/.04b (tests the cutover end-to-end). The Lago migration sequence is intentionally linear enough to pin the commercial contract before the console UI builds on it: `P1B.14` → `P1B.15/.16` → `P1B.17` → `P1B.18a` → `P1B.18` → `P1B.19` → `P1B.20` → `P1B.21` → `P1B.22`, with future console billing consuming the P1B.22 Clerk-org identity and Vercel Lago BFF direction.
 >
 > **Repo-wide Unkey removal** completed in PR #68 (`chore(webhooks): remove Unkey code`) — `packages/webhooks/src/unkey.ts`, `unkeyWebhook` export, `lastSyncedFromUnkey` field, and `UNKEY_*` env vars all gone from main. **No P1B ticket owns this cleanup.** Going forward, P1B tickets only need to guarantee no NEW Unkey references are introduced.
 >
@@ -1412,6 +1426,11 @@ tech_stack:
 
 #### User Story
 
+> **Superseded by P1B.22 for active runtime.** This completed ticket remains as
+> historical P1B.14-P1B.21 migration evidence. Active commercial identity is
+> Clerk `orgId`; new provisioning must not generate `pq_cust_*` values or write
+> `prontiq-customers` as active identity state.
+
 As a builder, I need one stable org-scoped `customerId` contract across Clerk,
 Prontiq, Lago, and the migration-era Stripe records so that every human,
 machine, and billing workflow resolves to the same commercial customer without
@@ -1572,9 +1591,12 @@ idempotency inputs, hot-path boundary
 #### Implementation Notes
 
 - `BillingUsageEventV1` lives in `@prontiq/shared/billing-events`.
-- `prontiq-customers` is declared in SST with `customerId-index`.
-- `@prontiq/control-plane` writes `customerId` for new org provisioning and
-  provides `backfill:customers` for legacy envelopes/API keys.
+- P1B.15 shipped `prontiq-customers` and `customerId-index` for the migration
+  path. P1B.22 supersedes that table for active identity state; it remains
+  retained evidence only.
+- Active `@prontiq/control-plane` provisioning writes the `ORG#{orgId}` envelope
+  and Lago Free linkage keyed by Clerk `orgId`. The removed
+  `backfill:customers` path is historical P1B.15-P1B.21 evidence.
 - The API producer is feature-flagged by `BILLING_EVENTS_ENABLED`; it was
   default-off for initial rollout until the environment passed Lago setup plus
   replay smoke checks. After P1B.21, dev/prod are enabled.
@@ -2053,7 +2075,7 @@ rollback plan.
 - P1B.19 temporarily disabled Stripe-backed provisioning, billing cron, and
   month-close behind `LEGACY_STRIPE_RUNTIME_ENABLED=false` while proving the
   Lago-forward path.
-- Forward provisioning created the Prontiq customer envelope and bootstrapped a
+- Forward provisioning creates the Clerk-org-owned org envelope and bootstraps a
   Lago Free subscription before returning success.
 - Superseded by P1B.20: the Stripe webhook, billing cron, month-close,
   `LEGACY_STRIPE_RUNTIME_ENABLED`, and `STRIPE_*` deploy secret contract are no
@@ -2386,13 +2408,19 @@ completed: 2026-04-18
 
 #### User Story
 
-As a new user signing up, my org is auto-provisioned (Prontiq customer envelope + Lago Free bootstrap; legacy Stripe customer linkage only in rollback mode) within seconds. I sign in to `/account` and create my first API key from there — the raw key is shown to me once in the response.
+> **Updated by P1B.22.** Current provisioning creates the `ORG#{orgId}` envelope
+> and Lago Free subscription using Clerk `orgId` as the active commercial
+> identity. The historical `CUSTOMER#{customerId}` row and generated
+> `pq_cust_*` wording below is retained only where it describes completed
+> P1B.14-P1B.21 migration evidence.
+
+As a new user signing up, my org is auto-provisioned (`ORG#{orgId}` envelope + Lago Free bootstrap; legacy Stripe customer linkage only in rollback mode) within seconds. I sign in to `/account` and create my first API key from there — the raw key is shown to me once in the response.
 
 #### Problem Statement
 
 Per ARCHITECTURE.MD §5.7.1 (rewritten in PR #57 review #3 to address Bug 5), **the webhook does NOT mint API keys**. Hash-only storage means a key generated server-side without an in-flight HTTP response to the user is unrecoverable — an SES failure would leave the org with a `prontiq-keys` row whose raw value can never be revealed.
 
-Instead, the webhook provisions the **org envelope** (`ORG#{orgId}` record + `CUSTOMER#{customerId}` row + Lago Free bootstrap; Stripe customer linkage only in rollback mode). The first API key is minted by the user-driven `POST /v1/account/keys/create` (P1C.03) where the raw value is returned in the HTTP response and shown once.
+Instead, the webhook provisions the **org envelope** (`ORG#{orgId}` record + Lago Free bootstrap; Stripe customer linkage only inside Lago). The first API key is minted by the user-driven `POST /v1/account/keys/create` (P1C.03) where the raw value is returned in the HTTP response and shown once.
 
 This ticket covers only the webhook side. P1C.03 covers the user-driven key creation.
 
@@ -2406,14 +2434,14 @@ This ticket covers only the webhook side. P1C.03 covers the user-driven key crea
 - [x] **Read-first idempotency check** — `GetItem ORG#{orgId}`. If found → return 200 (no side effects).
   - `Verify:` Webhook payload sent twice; second returns 200; second invocation makes no duplicate billing bootstrap calls and ZERO DDB writes
   - `Evidence:` Integration test "end-to-end: signed admin membership writes envelope + audit row, replay is no-op" asserts one Lago/bootstrap call and one audit row across both calls. Historical pre-Lago evidence asserted one Stripe customer via idempotency key; platform-owned Stripe customer creation was removed by P1B.20.
-- [x] **Legacy Stripe customer create with idempotency key** — historical P1B.04 acceptance for the pre-Lago runtime. In the current runtime, forward provisioning creates the Prontiq `customerId` envelope and Lago Free subscription; platform-owned Stripe customer creation was removed by P1B.20.
+- [x] **Legacy Stripe customer create with idempotency key** — historical P1B.04 acceptance for the pre-Lago runtime. In the current runtime, forward provisioning creates the Clerk-org-owned org envelope and Lago Free subscription; platform-owned Stripe customer creation was removed by P1B.20, and generated `customerId` was superseded by P1B.22.
   - `Verify:` Historical only. Do not run this against current Platform deploys.
   - `Evidence:` Superseded by current provisioning tests that assert `stripeCustomerId=null` and Lago Free bootstrap idempotency. Direct Stripe customer calls were removed from `packages/control-plane/src/provisioning.ts` in P1B.20.
 - [x] **No raw API key generated in this handler.** `grep -n "generateKey\|hashKey" packages/webhooks/src/clerk.ts` returns zero. The handler creates only the customer envelope + billing bootstrap + audit entry.
   - `Verify:` Code review
   - `Evidence:` `grep -n "generateKey\|hashKey" packages/webhooks/src/clerk.ts` → no matches.
 - [x] **Atomic commit via `TransactWriteItems`** — single transaction writes:
-  1. `prontiq-keys/ORG#{orgId}` with `{customerId, stripeCustomerId?, ownerEmail, tier="free", hasFirstKey: false, completedAt}` and `attribute_not_exists(apiKeyHash)`
+  1. `prontiq-keys/ORG#{orgId}` with `{orgId, ownerEmail, tier="free", hasFirstKey: false, completedAt, Lago linkage fields}` and `attribute_not_exists(apiKeyHash)`
   2. `prontiq-audit/{orgId}/{ts#ulid}` with `action="ORG_PROVISIONED"` and `attribute_not_exists(orgId) AND attribute_not_exists(SK)`
      Either both commit or neither does.
   - `Verify:` Happy path: send webhook → verify both items exist
@@ -2434,7 +2462,7 @@ This ticket covers only the webhook side. P1C.03 covers the user-driven key crea
 
 ##### Recovery Endpoint
 
-- [x] Implement `POST /v1/account/setup` (Clerk-authenticated). Idempotent. If `ORG#{orgId}` exists → 200 (no side effects). If missing → run the same customer-envelope + Lago Free bootstrap flow as the webhook handler (factored into a shared service). Historical Stripe customer creation was removed by P1B.20.
+- [x] Implement `POST /v1/account/setup` (Clerk-authenticated). Idempotent. If `ORG#{orgId}` exists → 200 (no side effects). If missing → run the same org-envelope + Lago Free bootstrap flow as the webhook handler (factored into a shared service). Historical Stripe customer creation was removed by P1B.20.
   - `Verify:` **Route-level integration tests** (no UI dependency — UI is owned by P1C.03):
     - (a) Call `POST /v1/account/setup` with a Clerk-authenticated test principal whose ORG envelope does not exist → 201 + envelope created + audit row
     - (b) Call same endpoint twice in a row → second returns 200 with no DDB writes (idempotent)
@@ -3258,7 +3286,7 @@ As a new developer, my **first** API key is created from the console key-managem
 
 #### Problem Statement
 
-Per ARCHITECTURE.MD §5.7.1 + §10 Developer Journey (rewritten in PR #57 review #3 to address Bug 5, then updated by P1B.19 for the Lago runtime), the **first** API key is minted by the user-driven `/v1/account/keys/create` call — not by the Clerk webhook. The webhook only provisions the org envelope (`customerId` + `ORG#{orgId}` record + Lago Free bootstrap; Stripe customer linkage is rollback-only legacy state). This is because hash-only key storage means a server-minted key with no in-flight HTTP response to the user is unrecoverable on SES failure.
+Per ARCHITECTURE.MD §5.7.1 + §10 Developer Journey (rewritten in PR #57 review #3 to address Bug 5, updated by P1B.19 for the Lago runtime, then updated by P1B.22 for Clerk-org commercial identity), the **first** API key is minted by the user-driven `/v1/account/keys/create` call — not by the Clerk webhook. The webhook only provisions the `ORG#{orgId}` envelope and Lago Free bootstrap keyed by the Clerk `orgId`; generated `customerId`, direct Stripe customer linkage, and `prontiq-customers` are legacy migration evidence only. This is because hash-only key storage means a server-minted key with no in-flight HTTP response to the user is unrecoverable on SES failure.
 
 The "first" and "Nth" key creation use the **same code path** — there is no special first-time logic. The `hasFirstKey` flag on the org envelope flips to `true` on the first successful create.
 
@@ -4988,7 +5016,7 @@ As a developer, I configure webhook URLs, notification preferences, and can dele
 
 #### Problem Statement
 
-Webhook URLs allow developers to receive events (quota warnings, key changes) in their own systems. Notification preferences control email alerts. Account deletion (GDPR Article 17) must cascade: delete the Clerk user, retire the active commercial account in Lago, clean up any still-present legacy Stripe artifacts during migration, and purge `prontiq-customers` + `prontiq-keys` + `prontiq-usage` + `prontiq-audit` + `prontiq-ses-suppressions` for the org (see `ARCHITECTURE.MD` §11.1). Orchestrated by `scripts/purge-org.ts`.
+Webhook URLs allow developers to receive events (quota warnings, key changes) in their own systems. Notification preferences control email alerts. Account deletion (GDPR Article 17) must cascade: delete the Clerk user, retire the active commercial account in Lago by Clerk `orgId`, clean up any still-present legacy Stripe artifacts during migration, and purge `prontiq-keys` + `prontiq-usage` + `prontiq-audit` + `prontiq-ses-suppressions` plus any retained legacy `prontiq-customers` row for the org (see `ARCHITECTURE.MD` §11.1). Orchestrated by `scripts/purge-org.ts`.
 
 #### Definition of Done
 

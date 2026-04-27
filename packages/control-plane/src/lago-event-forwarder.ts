@@ -4,10 +4,14 @@ import { DynamoDBDocumentClient, GetCommand, UpdateCommand } from "@aws-sdk/lib-
 import { SERVICE_NAMES, wrapLambdaHandler } from "@prontiq/observability";
 import {
   billingUsageEventV1Schema,
+  billingUsageEventV2Schema,
   createLogger,
   deriveBillingUsageEventId,
+  deriveLagoExternalSubscriptionIdForOrg,
   deriveLagoExternalSubscriptionId,
+  deriveLegacyBillingUsageEventId,
   type BillingUsageEventV1,
+  type BillingUsageEventV2,
 } from "@prontiq/shared";
 import type { SQSEvent, SQSRecord, SQSBatchResponse } from "aws-lambda";
 
@@ -41,7 +45,7 @@ export interface BillingEventDeliveryRecord {
 }
 
 interface DeliveryRecordInput {
-  event: BillingUsageEventV1;
+  event: BillingUsageEventV1 | BillingUsageEventV2;
   eventPayloadHash: string;
   externalSubscriptionId: string;
   now: Date;
@@ -171,29 +175,65 @@ function stableStringify(value: unknown): string {
     .join(",")}}`;
 }
 
-export function hashBillingEventPayload(event: BillingUsageEventV1): string {
+export function hashBillingEventPayload(event: BillingUsageEventV1 | BillingUsageEventV2): string {
   return createHash("sha256").update(stableStringify(event)).digest("hex");
 }
 
-function verifyBillingEventId(event: BillingUsageEventV1): void {
-  const expected = deriveBillingUsageEventId({
-    apiKeyHash: event.apiKeyHash,
-    billingEndpointKey: event.billingEndpointKey,
-    creditDelta: event.creditDelta,
-    customerId: event.customerId,
-    requestCountAfterIncrement: event.requestCountAfterIncrement,
-    usageScope: event.usageScope,
-  });
+export function deriveLagoUsageExternalSubscriptionId(
+  event: BillingUsageEventV1 | BillingUsageEventV2,
+): string {
+  return event.version === 1
+    ? deriveLagoExternalSubscriptionId(event.customerId)
+    : deriveLagoExternalSubscriptionIdForOrg(event.orgId);
+}
+
+function verifyBillingEventId(event: BillingUsageEventV1 | BillingUsageEventV2): void {
+  if (event.version === 1) {
+    const accepted = new Set([
+      deriveLegacyBillingUsageEventId({
+        apiKeyHash: event.apiKeyHash,
+        billingEndpointKey: event.billingEndpointKey,
+        creditDelta: event.creditDelta,
+        customerId: event.customerId,
+        orgId: event.orgId,
+        requestCountAfterIncrement: event.requestCountAfterIncrement,
+        usageScope: event.usageScope,
+      }),
+      deriveBillingUsageEventId({
+        apiKeyHash: event.apiKeyHash,
+        billingEndpointKey: event.billingEndpointKey,
+        creditDelta: event.creditDelta,
+        customerId: event.customerId,
+        requestCountAfterIncrement: event.requestCountAfterIncrement,
+        usageScope: event.usageScope,
+      }),
+    ]);
+    if (!accepted.has(event.eventId)) {
+      throw new RecordProcessingError("billing event id does not match deterministic input");
+    }
+    return;
+  }
+  const expected =
+    deriveBillingUsageEventId({
+      apiKeyHash: event.apiKeyHash,
+      billingEndpointKey: event.billingEndpointKey,
+      creditDelta: event.creditDelta,
+      orgId: event.orgId,
+      requestCountAfterIncrement: event.requestCountAfterIncrement,
+      usageScope: event.usageScope,
+    });
   if (event.eventId !== expected) {
     throw new RecordProcessingError("billing event id does not match deterministic input");
   }
 }
 
-export function buildLagoUsageEventPayload(event: BillingUsageEventV1): LagoUsageEventPayload {
+export function buildLagoUsageEventPayload(
+  event: BillingUsageEventV1 | BillingUsageEventV2,
+): LagoUsageEventPayload {
   return {
     event: {
       code: event.meterEventName,
-      external_subscription_id: deriveLagoExternalSubscriptionId(event.customerId),
+      external_subscription_id: deriveLagoUsageExternalSubscriptionId(event),
       properties: {
         credits: event.creditDelta,
       },
@@ -485,7 +525,7 @@ export class DynamoBillingEventDeliveryLedger implements BillingEventDeliveryLed
             [
               "SET #eventPayloadHash = :hash",
               "#status = :processing",
-              "#customerId = :customerId",
+              ...customerIdSetExpressions(input),
               "#orgId = :orgId",
               "#apiKeyHash = :apiKeyHash",
               "#keyPrefix = :keyPrefix",
@@ -498,7 +538,7 @@ export class DynamoBillingEventDeliveryLedger implements BillingEventDeliveryLed
               "#ttl = if_not_exists(#ttl, :ttl)",
             ].join(", "),
             "ADD #attempts :one",
-            "REMOVE #lastError",
+            removeExpression("#lastError", ...customerIdRemoveExpressions(input)),
           ].join(" "),
         }),
       );
@@ -555,7 +595,7 @@ export class DynamoBillingEventDeliveryLedger implements BillingEventDeliveryLed
             [
               "SET #eventPayloadHash = :hash",
               "#status = :accepted",
-              "#customerId = :customerId",
+              ...customerIdSetExpressions(input),
               "#orgId = :orgId",
               "#apiKeyHash = :apiKeyHash",
               "#keyPrefix = :keyPrefix",
@@ -567,7 +607,7 @@ export class DynamoBillingEventDeliveryLedger implements BillingEventDeliveryLed
               "#acceptedAt = :now",
               "#ttl = if_not_exists(#ttl, :ttl)",
             ].join(", "),
-            "REMOVE #lastError",
+            removeExpression("#lastError", ...customerIdRemoveExpressions(input)),
           ].join(" "),
         }),
       );
@@ -628,7 +668,7 @@ export class DynamoBillingEventDeliveryLedger implements BillingEventDeliveryLed
             [
               "SET #eventPayloadHash = :hash",
               "#status = :status",
-              "#customerId = :customerId",
+              ...customerIdSetExpressions(input),
               "#orgId = :orgId",
               "#apiKeyHash = :apiKeyHash",
               "#keyPrefix = :keyPrefix",
@@ -642,6 +682,7 @@ export class DynamoBillingEventDeliveryLedger implements BillingEventDeliveryLed
               "#ttl = if_not_exists(#ttl, :ttl)",
               "#attempts = if_not_exists(#attempts, :zero) + :attemptIncrement",
             ].join(", "),
+            ...removeClause(input),
           ].join(" "),
         }),
       );
@@ -681,11 +722,10 @@ function expressionNames(
 }
 
 function eventExpressionValues(input: DeliveryRecordInput): Record<string, string | number> {
-  return {
+  const values: Record<string, string | number> = {
     ":apiKeyHash": input.event.apiKeyHash,
     ":code": input.event.meterEventName,
     ":creditDelta": input.event.creditDelta,
-    ":customerId": input.event.customerId,
     ":externalSubscriptionId": input.externalSubscriptionId,
     ":hash": input.eventPayloadHash,
     ":keyPrefix": input.event.keyPrefix,
@@ -694,13 +734,39 @@ function eventExpressionValues(input: DeliveryRecordInput): Record<string, strin
     ":ttl": getDeliveryTtl(input.now),
     ":usageScope": input.event.usageScope,
   };
+  if (input.event.version === 1) {
+    values[":customerId"] = input.event.customerId;
+  }
+  return values;
+}
+
+function customerIdSetExpressions(input: DeliveryRecordInput): string[] {
+  return input.event.version === 1 ? ["#customerId = :customerId"] : [];
+}
+
+function customerIdRemoveExpressions(input: DeliveryRecordInput): string[] {
+  return input.event.version === 1 ? [] : ["#customerId"];
+}
+
+function removeExpression(...attributes: string[]): string {
+  return `REMOVE ${attributes.join(", ")}`;
+}
+
+function removeClause(input: DeliveryRecordInput): string[] {
+  const remove = customerIdRemoveExpressions(input);
+  return remove.length > 0 ? [removeExpression(...remove)] : [];
 }
 
 function isConditionalCheckFailed(error: unknown): boolean {
   return error instanceof Error && error.name === "ConditionalCheckFailedException";
 }
 
-function parseRecord(record: SQSRecord): BillingUsageEventV1 {
+function isLegacyV1BillingEvent(value: unknown): boolean {
+  const result = billingUsageEventV1Schema.safeParse(value);
+  return result.success;
+}
+
+function parseRecord(record: SQSRecord): BillingUsageEventV1 | BillingUsageEventV2 {
   let parsed: unknown;
   try {
     parsed = JSON.parse(record.body);
@@ -714,7 +780,11 @@ function parseRecord(record: SQSRecord): BillingUsageEventV1 {
     throw new RecordProcessingError("billing event body must be a JSON object");
   }
 
-  const result = billingUsageEventV1Schema.safeParse(parsed);
+  if (isLegacyV1BillingEvent(parsed)) {
+    return billingUsageEventV1Schema.parse(parsed);
+  }
+
+  const result = billingUsageEventV2Schema.safeParse(parsed);
   if (!result.success) {
     throw new RecordProcessingError(
       `billing event schema validation failed: ${result.error.message}`,
@@ -729,7 +799,7 @@ async function processRecord(
 ): Promise<void> {
   const event = parseRecord(record);
   const eventPayloadHash = hashBillingEventPayload(event);
-  const externalSubscriptionId = deriveLagoExternalSubscriptionId(event.customerId);
+  const externalSubscriptionId = deriveLagoUsageExternalSubscriptionId(event);
   const now = dependencies.now();
   const input = { event, eventPayloadHash, externalSubscriptionId, now };
 

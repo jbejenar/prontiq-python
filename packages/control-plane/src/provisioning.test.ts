@@ -7,6 +7,7 @@ import {
   TransactWriteCommand,
   UpdateCommand,
 } from "@aws-sdk/lib-dynamodb";
+import { deriveLagoExternalSubscriptionIdForOrg } from "@prontiq/shared";
 import { createProvisioningService, type EmailSender } from "./provisioning.js";
 
 interface CommandLog {
@@ -81,12 +82,12 @@ function makeTransactionCanceledException(reasonCodes: (string | "None")[]): Err
   return err;
 }
 
-const customerId = "pq_cust_01HYZ6Q4X6DJP2X9Q9FQKX4T7A";
-const subscriptionId = "pq_sub_01HYZ6Q4X6DJP2X9Q9FQKX4T7A";
+const legacyCustomerId = "pq_cust_01HYZ6Q4X6DJP2X9Q9FQKX4T7A";
+const legacySubscriptionId = "pq_sub_01HYZ6Q4X6DJP2X9Q9FQKX4T7A";
 
 const completeEnvelope = (orgId: string) => ({
   apiKeyHash: `ORG#${orgId}`,
-  customerId,
+  orgId,
   stripeCustomerId: null,
   ownerEmail: "owner@example.com",
   paymentOverdue: false,
@@ -98,10 +99,10 @@ const completeEnvelope = (orgId: string) => ({
   completedAt: "2026-04-17T00:00:00.000Z",
 });
 
-const completeEnvelopeWithoutCustomerId = (orgId: string) => {
-  const { customerId: _unused, ...record } = completeEnvelope(orgId);
-  return record;
-};
+const legacyEnvelope = (orgId: string) => ({
+  ...completeEnvelope(orgId),
+  customerId: legacyCustomerId,
+});
 
 const lagoBootstrappedEnvelope = (orgId: string) => ({
   ...completeEnvelope(orgId),
@@ -110,7 +111,18 @@ const lagoBootstrappedEnvelope = (orgId: string) => ({
   billingPeriodStartedAt: "2026-04-26T00:00:00.000Z",
   lagoPaymentOverdueInvoiceId: null,
   lagoPlanCode: "free",
-  lagoSubscriptionExternalId: subscriptionId,
+  lagoSubscriptionExternalId: deriveLagoExternalSubscriptionIdForOrg(orgId),
+  lagoSubscriptionStatus: "active",
+});
+
+const legacyLagoBootstrappedEnvelope = (orgId: string) => ({
+  ...legacyEnvelope(orgId),
+  billingPeriodEndingAt: "2026-05-26T00:00:00.000Z",
+  billingPeriodKey: "2026-04-26T00:00:00.000Z__2026-05-26T00:00:00.000Z",
+  billingPeriodStartedAt: "2026-04-26T00:00:00.000Z",
+  lagoPaymentOverdueInvoiceId: null,
+  lagoPlanCode: "free",
+  lagoSubscriptionExternalId: legacySubscriptionId,
   lagoSubscriptionStatus: "active",
 });
 
@@ -122,12 +134,17 @@ function makeLagoProvisioningClient(
 ) {
   const calls: { method: string; args: unknown }[] = [];
   const getSubscriptionResponses = [...(options.getSubscriptionResponses ?? ["snapshot"])];
+  let lastExternalCustomerId: string | undefined;
   return {
     calls,
     client: {
       async upsertCustomer(args: unknown) {
         if (options.throwIfCalled) throw new Error("Lago must not be called");
         calls.push({ method: "upsertCustomer", args });
+        if (typeof args === "object" && args && "orgId" in args) {
+          const maybeOrgId = (args as { orgId?: unknown }).orgId;
+          if (typeof maybeOrgId === "string") lastExternalCustomerId = maybeOrgId;
+        }
       },
       async upsertSubscription(args: unknown) {
         if (options.throwIfCalled) throw new Error("Lago must not be called");
@@ -142,8 +159,8 @@ function makeLagoProvisioningClient(
         return {
           billingPeriodEndingAt: "2026-05-26T00:00:00.000Z",
           billingPeriodStartedAt: "2026-04-26T00:00:00.000Z",
-          externalCustomerId: customerId,
-          externalSubscriptionId: subscriptionId,
+          externalCustomerId: lastExternalCustomerId ?? "org_unknown",
+          externalSubscriptionId: String(args),
           planCode: "free",
           status: "active",
         };
@@ -158,9 +175,7 @@ const noopEmail: EmailSender = async () => true;
 
 const baseDeps = {
   keysTableName: "keys",
-  customersTableName: "customers",
   auditTableName: "audit",
-  generateCustomerId: () => customerId,
   lagoPaymentProviderCode: "stripe-main",
   logger: noopLogger,
   sleep: noopSleep,
@@ -182,32 +197,13 @@ test("returns already_exists when complete Lago ORG envelope is already present"
   });
 
   assert.equal(result.status, "already_exists");
-  assert.equal(result.customerId, customerId);
+  assert.equal(result.orgEnvelope?.orgId, "org_abc");
+  assert.equal(result.orgEnvelope?.lagoSubscriptionExternalId, "lago_sub_org_abc");
   assert.equal(result.stripeCustomerId, null);
   assert.equal(log.length, 1);
 });
 
-test("legacy envelopes without customerId replay without Lago side effects", async () => {
-  const { client, log } = makeDdbStub({
-    getResponses: [completeEnvelopeWithoutCustomerId("org_legacy")],
-  });
-  const lago = makeLagoProvisioningClient({ throwIfCalled: true });
-  const service = createProvisioningService({ ...baseDeps, ddb: client, lagoClient: lago.client });
-
-  const result = await service.provisionOrg({
-    orgId: "org_legacy",
-    ownerEmail: "owner@example.com",
-    actorId: "user_x",
-    source: "clerk-webhook",
-  });
-
-  assert.equal(result.status, "already_exists");
-  assert.equal(result.customerId, undefined);
-  assert.equal(result.stripeCustomerId, null);
-  assert.equal(log.length, 1);
-});
-
-test("existing incomplete Lago envelope is bootstrapped before replay returns", async () => {
+test("existing incomplete active Lago envelope is bootstrapped before replay returns", async () => {
   const { client, log } = makeDdbStub({
     getResponses: [completeEnvelope("org_bootstrap"), lagoBootstrappedEnvelope("org_bootstrap")],
   });
@@ -222,7 +218,8 @@ test("existing incomplete Lago envelope is bootstrapped before replay returns", 
   });
 
   assert.equal(result.status, "already_exists");
-  assert.equal(result.customerId, customerId);
+  assert.equal(result.orgEnvelope?.orgId, "org_bootstrap");
+  assert.equal(result.orgEnvelope?.lagoSubscriptionExternalId, "lago_sub_org_bootstrap");
   assert.deepEqual(
     lago.calls.map((call) => call.method),
     ["upsertCustomer", "getSubscription", "upsertSubscription", "getSubscription"],
@@ -252,10 +249,11 @@ test("creates org envelope and bootstraps Lago Free subscription", async () => {
       } else {
         process.env.WELCOME_EMAIL_FROM = previousFrom;
       }
-    });
+  });
 
   assert.equal(result.status, "created");
-  assert.equal(result.customerId, customerId);
+  assert.equal(result.orgEnvelope?.orgId, "org_new");
+  assert.equal(result.orgEnvelope?.lagoSubscriptionExternalId, "lago_sub_org_new");
   assert.equal(result.stripeCustomerId, null);
   assert.equal(result.emailSent, true);
   assert.equal(log.filter((entry) => entry.type === "TransactWrite").length, 1);
@@ -281,7 +279,7 @@ test("post-commit Lago bootstrap failure is retryable after durable envelope com
   });
 
   assert.equal(result.status, "retryable_failure");
-  assert.equal(result.customerId, customerId);
+  assert.equal(result.orgEnvelope?.orgId, "org_retry");
   assert.equal(result.stripeCustomerId, null);
 });
 
@@ -341,6 +339,26 @@ test("transient transaction conflicts are retried", async () => {
 
   assert.equal(result.status, "created");
   assert.equal(log.filter((entry) => entry.type === "TransactWrite").length, 2);
+});
+
+test("existing complete legacy Lago ORG envelope still replays without migration side effects", async () => {
+  const { client, log } = makeDdbStub({
+    getResponses: [legacyLagoBootstrappedEnvelope("org_legacy_complete")],
+  });
+  const lago = makeLagoProvisioningClient({ throwIfCalled: true });
+  const service = createProvisioningService({ ...baseDeps, ddb: client, lagoClient: lago.client });
+
+  const result = await service.provisionOrg({
+    orgId: "org_legacy_complete",
+    ownerEmail: "owner@example.com",
+    actorId: "user_x",
+    source: "clerk-webhook",
+  });
+
+  assert.equal(result.status, "already_exists");
+  assert.equal(result.orgEnvelope?.customerId, legacyCustomerId);
+  assert.equal(result.orgEnvelope?.lagoSubscriptionExternalId, legacySubscriptionId);
+  assert.equal(log.length, 1);
 });
 
 test("welcome email remains best-effort after successful Lago bootstrap", async () => {

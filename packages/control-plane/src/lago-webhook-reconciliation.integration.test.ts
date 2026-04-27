@@ -20,7 +20,7 @@ import {
   type LagoSubscriptionSnapshot,
 } from "./lago-webhook-reconciliation.js";
 import {
-  deriveLagoExternalSubscriptionId,
+  deriveLagoExternalSubscriptionIdForOrg,
   hashLagoWebhookPayload,
   type ApiKeyRecord,
   type CustomerRecord,
@@ -35,7 +35,8 @@ const CUSTOMERS_TABLE = `prontiq-lago-webhook-customers-test-${SUFFIX}`;
 const AUDIT_TABLE = `prontiq-lago-webhook-audit-test-${SUFFIX}`;
 const LEDGER_TABLE = `prontiq-lago-webhook-ledger-test-${SUFFIX}`;
 const CUSTOMER_ID = "pq_cust_01HYZ6Q4X6DJP2X9Q9FQKX4T7A";
-const ORG_ID = "org_lago_reconcile";
+const ORG_ID = "org_lagoReconcile";
+const LAGO_SUBSCRIPTION_ID = deriveLagoExternalSubscriptionIdForOrg(ORG_ID);
 const API_KEY_HASH = "d".repeat(64);
 
 const ddbRaw = new DynamoDBClient({
@@ -49,8 +50,8 @@ class FakeLagoClient implements LagoSubscriptionClient {
   snapshot: LagoSubscriptionSnapshot | null = {
     billingPeriodEndingAt: "2026-05-25T00:00:00Z",
     billingPeriodStartedAt: "2026-04-25T00:00:00Z",
-    externalCustomerId: CUSTOMER_ID,
-    externalSubscriptionId: deriveLagoExternalSubscriptionId(CUSTOMER_ID),
+    externalCustomerId: ORG_ID,
+    externalSubscriptionId: LAGO_SUBSCRIPTION_ID,
     planCode: "payg",
     status: "active",
   };
@@ -165,6 +166,7 @@ async function seedCustomer(): Promise<void> {
     completedAt: now,
     customerId: CUSTOMER_ID,
     hasFirstKey: true,
+    orgId: ORG_ID,
     ownerEmail: "owner@example.com",
     paymentOverdue: false,
     products: ["address"],
@@ -226,7 +228,6 @@ after(async () => {
 function makeService(lagoClient = new FakeLagoClient()) {
   return createLagoWebhookReconciliationService({
     auditTableName: AUDIT_TABLE,
-    customersTableName: CUSTOMERS_TABLE,
     ddb,
     enabled: true,
     keysTableName: KEYS_TABLE,
@@ -317,7 +318,7 @@ async function setPaidEntitlementForTerminationRegression(): Promise<void> {
 test("ledger reclaims stale processing rows once and blocks concurrent retry duplicates", async () => {
   const ledger = new DynamoLagoWebhookLedger({ ddb, tableName: LEDGER_TABLE });
   const uniqueKey = "lago_evt_stale_processing_reclaim";
-  const payload = { webhook_type: "subscription.started", customer: { external_id: CUSTOMER_ID } };
+  const payload = { webhook_type: "subscription.started", customer: { external_id: ORG_ID } };
   const payloadHash = hashLagoWebhookPayload(payload);
   await ddb.send(
     new PutCommand({
@@ -336,14 +337,14 @@ test("ledger reclaims stale processing rows once and blocks concurrent retry dup
 
   const [first, second] = await Promise.all([
     ledger.claim({
-      customerId: CUSTOMER_ID,
+      customerId: ORG_ID,
       eventType: "subscription.started",
       now: new Date("2026-04-25T00:00:00.000Z"),
       payloadHash,
       uniqueKey,
     }),
     ledger.claim({
-      customerId: CUSTOMER_ID,
+      customerId: ORG_ID,
       eventType: "subscription.started",
       now: new Date("2026-04-25T00:00:00.000Z"),
       payloadHash,
@@ -355,7 +356,7 @@ test("ledger reclaims stale processing rows once and blocks concurrent retry dup
   const row = await ddb.send(new GetCommand({ TableName: LEDGER_TABLE, Key: { uniqueKey } }));
   assert.equal(row.Item?.status, "processing");
   assert.equal(row.Item?.lastSeenAt, "2026-04-25T00:00:00.000Z");
-  assert.equal(row.Item?.customerId, CUSTOMER_ID);
+  assert.equal(row.Item?.customerId, ORG_ID);
 });
 
 test("ledger reopens retryable terminal rows without waiting for the processing lease", async () => {
@@ -363,7 +364,7 @@ test("ledger reopens retryable terminal rows without waiting for the processing 
   const uniqueKey = "lago_evt_retryable_reopen";
   const payload = {
     webhook_type: "invoice.payment_overdue",
-    customer: { external_id: CUSTOMER_ID },
+    customer: { external_id: ORG_ID },
   };
   const payloadHash = hashLagoWebhookPayload(payload);
   await ddb.send(
@@ -384,7 +385,7 @@ test("ledger reopens retryable terminal rows without waiting for the processing 
   );
 
   const result = await ledger.claim({
-    customerId: CUSTOMER_ID,
+    customerId: ORG_ID,
     eventType: "invoice.payment_overdue",
     now: new Date("2026-04-25T00:00:01.000Z"),
     payloadHash,
@@ -411,8 +412,8 @@ test("subscription started updates local envelope, keys, ledger, audit, and prio
   const payload = {
     webhook_type: "subscription.started",
     subscription: {
-      external_customer_id: CUSTOMER_ID,
-      external_id: deriveLagoExternalSubscriptionId(CUSTOMER_ID),
+      external_customer_id: ORG_ID,
+      external_id: LAGO_SUBSCRIPTION_ID,
     },
   };
   const uniqueKey = "lago_evt_subscription_started";
@@ -460,8 +461,8 @@ test("invoice payment overdue and subsequent successful status update toggle loc
     webhook_type: "invoice.payment_overdue",
     invoice: {
       id: "inv_overdue_123",
-      customer: { external_id: CUSTOMER_ID },
-      subscription: { external_id: deriveLagoExternalSubscriptionId(CUSTOMER_ID) },
+      customer: { external_id: ORG_ID },
+      subscription: { external_id: LAGO_SUBSCRIPTION_ID },
     },
   };
   const overdue = await makeService().handleWebhook({
@@ -481,8 +482,8 @@ test("invoice payment overdue and subsequent successful status update toggle loc
       id: "inv_overdue_123",
       payment_overdue: false,
       payment_status: "succeeded",
-      customer: { external_id: CUSTOMER_ID },
-      subscription: { external_id: deriveLagoExternalSubscriptionId(CUSTOMER_ID) },
+      customer: { external_id: ORG_ID },
+      subscription: { external_id: LAGO_SUBSCRIPTION_ID },
     },
   };
   const paid = await makeService().handleWebhook({
@@ -504,8 +505,8 @@ test("pending Lago transition records pending metadata without downgrading entit
     billingPeriodEndingAt: "2026-05-25T00:00:00Z",
     billingPeriodStartedAt: "2026-04-25T00:00:00Z",
     downgradePlanDate: "2026-05-25",
-    externalCustomerId: CUSTOMER_ID,
-    externalSubscriptionId: deriveLagoExternalSubscriptionId(CUSTOMER_ID),
+    externalCustomerId: ORG_ID,
+    externalSubscriptionId: LAGO_SUBSCRIPTION_ID,
     nextPlanCode: "free",
     planCode: "payg",
     previousPlanCode: "payg",
@@ -514,8 +515,8 @@ test("pending Lago transition records pending metadata without downgrading entit
   const payload = {
     webhook_type: "subscription.started",
     subscription: {
-      external_customer_id: CUSTOMER_ID,
-      external_id: deriveLagoExternalSubscriptionId(CUSTOMER_ID),
+      external_customer_id: ORG_ID,
+      external_id: LAGO_SUBSCRIPTION_ID,
     },
   };
 
@@ -548,16 +549,16 @@ test("subscription terminated with active replacement snapshot preserves entitle
   lagoClient.snapshot = {
     billingPeriodEndingAt: "2026-06-25T00:00:00Z",
     billingPeriodStartedAt: "2026-05-25T00:00:00Z",
-    externalCustomerId: CUSTOMER_ID,
-    externalSubscriptionId: deriveLagoExternalSubscriptionId(CUSTOMER_ID),
+    externalCustomerId: ORG_ID,
+    externalSubscriptionId: LAGO_SUBSCRIPTION_ID,
     planCode: "payg",
     status: "active",
   };
   const payload = {
     webhook_type: "subscription.terminated",
     subscription: {
-      external_customer_id: CUSTOMER_ID,
-      external_id: deriveLagoExternalSubscriptionId(CUSTOMER_ID),
+      external_customer_id: ORG_ID,
+      external_id: LAGO_SUBSCRIPTION_ID,
     },
   };
 
@@ -582,16 +583,16 @@ test("subscription terminated with a returned terminated snapshot downgrades ent
   lagoClient.snapshot = {
     billingPeriodEndingAt: "2026-05-25T00:00:00Z",
     billingPeriodStartedAt: "2026-04-25T00:00:00Z",
-    externalCustomerId: CUSTOMER_ID,
-    externalSubscriptionId: deriveLagoExternalSubscriptionId(CUSTOMER_ID),
+    externalCustomerId: ORG_ID,
+    externalSubscriptionId: LAGO_SUBSCRIPTION_ID,
     planCode: "payg",
     status: "terminated",
   };
   const payload = {
     webhook_type: "subscription.terminated",
     subscription: {
-      external_customer_id: CUSTOMER_ID,
-      external_id: deriveLagoExternalSubscriptionId(CUSTOMER_ID),
+      external_customer_id: ORG_ID,
+      external_id: LAGO_SUBSCRIPTION_ID,
     },
   };
 
@@ -630,8 +631,8 @@ test("subscription terminated without a Lago snapshot downgrades entitlements", 
   const payload = {
     webhook_type: "subscription.terminated",
     subscription: {
-      external_customer_id: CUSTOMER_ID,
-      external_id: deriveLagoExternalSubscriptionId(CUSTOMER_ID),
+      external_customer_id: ORG_ID,
+      external_id: LAGO_SUBSCRIPTION_ID,
     },
   };
 

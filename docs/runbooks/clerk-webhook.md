@@ -2,7 +2,7 @@
 
 ## Scope
 
-Operating, debugging, and recovering the `POST /webhooks/clerk` endpoint that consumes Clerk's `organizationMembership.created` events and provisions the ORG envelope for the live Lago-centered provisioning path (Prontiq customer envelope + Lago Free subscription bootstrap + audit row + best-effort welcome email). Per ARCHITECTURE.MD §5.7.1, this handler does NOT mint API keys — that's the user-driven `POST /v1/account/keys/create` (P1C.03).
+Operating, debugging, and recovering the `POST /webhooks/clerk` endpoint that consumes Clerk's `organizationMembership.created` events and provisions the ORG envelope for the live Lago-centered provisioning path (Clerk-org-owned org envelope + Lago Free subscription bootstrap + audit row + best-effort welcome email). Per ARCHITECTURE.MD §5.7.1, this handler does NOT mint API keys — that's the user-driven `POST /v1/account/keys/create` (P1C.03).
 
 ## Endpoint
 
@@ -61,17 +61,17 @@ The Clerk dashboard's webhook configuration points at the dev URL today. The pro
 
 1. Clerk fires `organizationMembership.created` with `data.role === "admin"` (org creator).
 2. Handler verifies Svix signature, extracts `orgId / userId / ownerEmail`, calls `provisionOrg`.
-3. Service writes the Prontiq customer mapping and ORG envelope atomically with the audit row.
+3. Service writes the `ORG#{orgId}` envelope atomically with the audit row.
 4. In forward mode, service upserts the Lago customer/subscription, confirms the Free subscription, and writes Lago billing-period fields onto local state before returning success.
 5. Strong-read confirmation, optional best-effort suppression-aware SES welcome email, response: `200 { ok: true, status: "created", emailSent: true|false }`.
-6. CloudWatch log: `ORG envelope created`. Lago shows the customer external ID `pq_cust_...` and subscription external ID `pq_sub_...`. DDB `prontiq-keys` has `ORG#{orgId}` with `customerId`, `lagoSubscriptionExternalId`, and billing-period fields. DDB `prontiq-audit` has the `ORG_PROVISIONED` row.
+6. CloudWatch log: `ORG envelope created`. Lago shows customer external ID `org_...` and subscription external ID `lago_sub_org_...`. DDB `prontiq-keys` has `ORG#{orgId}` with `orgId`, `lagoSubscriptionExternalId`, and billing-period fields. DDB `prontiq-audit` has the `ORG_PROVISIONED` row.
 
 ## Healthy redelivery (Svix retry)
 
 The handler is idempotent at every layer:
 
 - Preflight read finds the existing envelope → `200 { ok: true, status: "already_exists" }`. Zero side effects.
-- Forward mode: Lago customer/subscription upserts are idempotent on `customerId` and `pq_sub_<ulid>`.
+- Forward mode: Lago customer/subscription upserts are idempotent on `orgId` and `lago_sub_${orgId}`.
 - Envelope `attribute_not_exists(apiKeyHash)` rejects duplicate writes.
 - Audit row's conditional write rejects duplicate inserts.
 
@@ -110,7 +110,7 @@ Recovery:
 
 ### 5xx after local commit or Lago bootstrap (retryable_failure)
 
-Logged as `ORG envelope provisioning retryable failure`, `Existing ORG envelope Lago bootstrap failed`, or `Post-commit Lago bootstrap failed`. The local envelope may already be committed; retries are safe because the ORG envelope, customer mapping, Lago customer, and Lago subscription are all idempotent.
+Logged as `ORG envelope provisioning retryable failure`, `Existing ORG envelope Lago bootstrap failed`, or `Post-commit Lago bootstrap failed`. The local envelope may already be committed; retries are safe because the ORG envelope, Lago customer, and Lago subscription are all idempotent.
 
 Svix retry schedule (default): 5s, 5min, 30min, 2h, 5h, 10h, 16h, 24h, 48h. The next retry should succeed.
 
@@ -159,7 +159,7 @@ Svix still redelivers, but a real fatal will exhaust retries. Then:
 
 ### Manual recovery — webhook never arrived
 
-Rare case where Clerk's webhook delivery system loses the event entirely. The user signs in to `/account` and sees no envelope. **Recovery: `POST /v1/account/setup`** — Clerk-JWT-authenticated, runs the same `createProvisioningService().provisionOrg(...)` code path as this webhook. Same idempotency invariant: a delayed webhook + a recovery call collapse to one envelope, one Prontiq `customerId`, one Lago Free subscription in forward mode, and one audit row.
+Rare case where Clerk's webhook delivery system loses the event entirely. The user signs in to `/account` and sees no envelope. **Recovery: `POST /v1/account/setup`** — Clerk-JWT-authenticated, runs the same `createProvisioningService().provisionOrg(...)` code path as this webhook. Same idempotency invariant: a delayed webhook + a recovery call collapse to one `ORG#{orgId}` envelope, one Lago Free subscription in forward mode, and one audit row.
 
 **Operator preconditions** (BOTH dev and prod tenants — these are not caught by the deployed-stage secret guard because they're Clerk-dashboard config, not env vars):
 

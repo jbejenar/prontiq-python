@@ -87,7 +87,6 @@ test("disabled reconciliation returns retryable 503 before claiming the event", 
   };
   const service = createLagoWebhookReconciliationService({
     auditTableName: "audit",
-    customersTableName: "customers",
     ddb: {} as never,
     enabled: false,
     keysTableName: "keys",
@@ -124,7 +123,6 @@ test("completed ledger rows are acknowledged as duplicates", async () => {
   };
   const service = createLagoWebhookReconciliationService({
     auditTableName: "audit",
-    customersTableName: "customers",
     ddb: {} as never,
     enabled: true,
     keysTableName: "keys",
@@ -149,7 +147,6 @@ test("unsupported Lago webhook types are claimed then ignored", async () => {
   const ledger = new FakeLedger();
   const service = createLagoWebhookReconciliationService({
     auditTableName: "audit",
-    customersTableName: "customers",
     ddb: {} as never,
     enabled: true,
     keysTableName: "keys",
@@ -188,7 +185,6 @@ test("payload hash conflicts mark the existing ledger row as drift", async () =>
   };
   const service = createLagoWebhookReconciliationService({
     auditTableName: "audit",
-    customersTableName: "customers",
     ddb: {} as never,
     enabled: true,
     keysTableName: "keys",
@@ -218,7 +214,6 @@ test("consumed event missing Lago customer id becomes drift and is retried", asy
   const ledger = new FakeLedger();
   const service = createLagoWebhookReconciliationService({
     auditTableName: "audit",
-    customersTableName: "customers",
     ddb: {} as never,
     enabled: true,
     keysTableName: "keys",

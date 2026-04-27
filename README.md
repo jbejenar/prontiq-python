@@ -21,7 +21,7 @@ one normal-recipient send verification remain.
 
 | Endpoint                 | Purpose                                                                                                                                                                                                                           | Auth                                                |
 | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
-| `POST /webhooks/clerk`   | Clerk `organizationMembership.created` → ORG envelope provisioning. Creates the Prontiq customer envelope and bootstraps the Lago Free subscription. See `docs/runbooks/clerk-webhook.md`.                                        | Svix signature (no API key)                         |
+| `POST /webhooks/clerk`   | Clerk `organizationMembership.created` → ORG envelope provisioning. Bootstraps the Lago Free subscription with the Clerk org id as the commercial identity. See `docs/runbooks/clerk-webhook.md`.                                    | Svix signature (no API key)                         |
 | `POST /webhooks/lago`    | Lago subscription/invoice events → local enforcement-state reconciliation for the active commercial runtime. See `docs/runbooks/lago-webhook-reconciliation.md`.                                                                  | Lago HMAC signature (no API key)                    |
 | `POST /v1/account/setup` | Dashboard recovery for org provisioning when the Clerk webhook missed delivery. Idempotent — runs the same `provisionOrg` code path as the webhook. Private console contract documented in `docs/private-api/account-billing.md`. | Clerk session token (`Authorization: Bearer <jwt>`) |
 
@@ -116,7 +116,7 @@ apps/
 | Search         | OpenSearch 2.19 (managed)                                                                                                                                                                                                                                                                                   |
 | API Keys       | DynamoDB-native (`pq_live_` + SHA-256 hash-based lookup; live in prod)                                                                                                                                                                                                                                      |
 | Auth (portal)  | Clerk — webhook live in prod (`POST /webhooks/clerk`) AND JWT-authenticated `POST /v1/account/setup` recovery endpoint live in prod (P1B.05 complete)                                                                                                                                                       |
-| Billing        | Lago as commercial system of record with Stripe reduced to payment processing inside Lago; SQS billing-event buffer, Lago forwarder, Lago webhook reconciliation, and private account billing APIs are implemented. Platform-owned Stripe webhook/cron/month-close/pricing-table surfaces have been removed |
+| Billing        | Lago as commercial system of record with Stripe reduced to payment processing inside Lago; Clerk `orgId` is the active commercial identity; SQS billing-event buffer, Lago forwarder, and Lago webhook reconciliation are implemented. AWS private account billing routes are retired; future console billing should use a Vercel BFF calling Lago server-side |
 | Frontend       | `apps/landing` live with proxy-backed demo + config-owned free tier + Clerk modal; `apps/console` has the env-gated Clerk shell base and is the future human billing surface                                                                                                                                |
 | Docs           | Mintlify at `docs.prontiq.dev` (live)                                                                                                                                                                                                                                                                       |
 | SDKs           | Speakeasy generates `@prontiq/sdk` (TypeScript) — npm publish pending NPM_TOKEN                                                                                                                                                                                                                             |
@@ -131,7 +131,7 @@ See [`ROADMAP.md`](ROADMAP.md) for the current execution plan.
 | ------- | ------------------------- | ------- | --------- |
 | **P0**  | Infrastructure Foundation | 6       | 6/6       |
 | **P1A** | API Core (Address)        | 13      | 11/13     |
-| **P1B** | Auth & Billing            | 24      | 19/24     |
+| **P1B** | Auth & Billing            | 24      | 20/24     |
 | **P1C** | Frontend Surfaces         | 9       | 3/9       |
 | **P1D** | Docs & SDK                | 5       | 2/5       |
 | **P1E** | Ingestion                 | 6       | 4/6       |
@@ -140,11 +140,12 @@ See [`ROADMAP.md`](ROADMAP.md) for the current execution plan.
 | **P3**  | LEI + Full Dashboard      | 7       | 0/7       |
 | **P4**  | Shopify + WooCommerce     | 5       | 0/5       |
 | **P5**  | CVE/NVD + Patents         | 4       | 0/4       |
-|         |                           | **90**  | **48/90** |
+|         |                           | **90**  | **49/90** |
 
 `P1B` includes completed legacy Stripe-path work. The Lago migration sequence is
-`P1B.14`–`P1B.21` plus `P1B.18a`, now complete at `9/9`, and is called out
-separately in the Phase 1B section of [`ROADMAP.md`](ROADMAP.md).
+`P1B.14`–`P1B.22` plus `P1B.18a`, now complete through the Clerk-org
+commercial identity pivot, and is called out separately in the Phase 1B section
+of [`ROADMAP.md`](ROADMAP.md).
 
 P1B.21 closed the Lago migration go-live gate on 2026-04-27. The retained prod
 smoke key with prefix `pq_live_4a85` produced final accepted event
@@ -157,16 +158,18 @@ webhook-ledger rows in both stages, replaying the same webhook unique keys
 returns `200 duplicate`, and calendar counter scope remained in place until
 the P1B.19 cutover.
 
-P1B.18 added the Prontiq-owned account billing APIs under `/v1/account/billing`
-for billing summary, Lago portal access, and gated Free/PAYG plan changes.
-Mutations are Clerk-org-admin-only, require `Idempotency-Key`, and write
-`prontiq-billing-actions` evidence. These routes are private console/admin
-contracts documented in `packages/api/openapi.private.json`, not the public
-Mintlify/Speakeasy spec.
+P1B.18 added Prontiq-owned account billing APIs under `/v1/account/billing`
+during the migration, but P1B.22 retired those AWS routes from the active
+runtime. `POST /v1/account/setup` is now the only active AWS private account
+route. Future console billing should use a Vercel server-side BFF that calls
+Lago with server-held credentials; public Mintlify/Speakeasy specs remain data
+API only.
 
-P1B.19 retired the legacy Stripe-centric runtime and P1B.20 removed its active
-deploy/config/frontend surfaces. New org provisioning bootstraps Lago Free
-subscriptions directly, and Stripe exists only as Lago's payment rail.
+P1B.19 retired the legacy Stripe-centric runtime, P1B.20 removed its active
+deploy/config/frontend surfaces, and P1B.22 moved the active commercial
+identity to Clerk `orgId`. New org provisioning bootstraps Lago Free
+subscriptions directly with Lago customer `external_id = orgId`, and Stripe
+exists only as Lago's payment rail.
 
 ## Commands
 

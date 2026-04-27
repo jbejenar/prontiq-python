@@ -9,11 +9,10 @@ import {
 import {
   PLANS,
   createLogger,
-  deriveLagoExternalSubscriptionId,
+  deriveLagoExternalSubscriptionIdForOrg,
   hashLagoWebhookPayload,
   isConsumedLagoWebhookEventType,
   type ApiKeyRecord,
-  type CustomerRecord,
   type LagoWebhookEventType,
   type LagoWebhookLedgerRecord,
   type LagoWebhookProcessingStatus,
@@ -42,7 +41,6 @@ export interface LagoSubscriptionClient {
 
 export interface LagoWebhookReconciliationDependencies {
   auditTableName: string;
-  customersTableName: string;
   ddb: DynamoDBDocumentClient;
   enabled: boolean;
   keysTableName: string;
@@ -105,12 +103,11 @@ interface NormalizedWebhook {
 }
 
 interface CustomerResolution {
-  customer: CustomerRecord;
   keys: ApiKeyRecord[];
   orgEnvelope: OrgEnvelopeRecord;
+  orgId: string;
 }
 
-const CUSTOMER_ID_INDEX = "customerId-index";
 const ORG_ID_INDEX = "orgId-index";
 const LEDGER_TTL_DAYS = 30;
 // Keep this aligned with the PqLagoWebhook Lambda timeout in sst.config.ts.
@@ -285,13 +282,13 @@ function grantsPlanEntitlements(snapshot: LagoSubscriptionSnapshot): boolean {
 
 function downgradeSnapshotForInactiveSubscription(
   snapshot: LagoSubscriptionSnapshot | null,
-  customerId: string,
+  orgId: string,
   externalSubscriptionId: string,
 ): LagoSubscriptionSnapshot {
   return {
     billingPeriodEndingAt: null,
     billingPeriodStartedAt: null,
-    externalCustomerId: snapshot?.externalCustomerId ?? customerId,
+    externalCustomerId: snapshot?.externalCustomerId ?? orgId,
     externalSubscriptionId: snapshot?.externalSubscriptionId ?? externalSubscriptionId,
     planCode: snapshot?.planCode ?? "free",
     status: snapshot?.status ?? "terminated",
@@ -321,32 +318,6 @@ function isApiKeyRecord(item: unknown): item is ApiKeyRecord {
     typeof item.orgId === "string" &&
     typeof item.keyPrefix === "string"
   );
-}
-
-async function loadCustomerByCustomerId(
-  ddb: DynamoDBDocumentClient,
-  customersTableName: string,
-  customerId: string,
-): Promise<CustomerRecord> {
-  const response = await ddb.send(
-    new QueryCommand({
-      TableName: customersTableName,
-      IndexName: CUSTOMER_ID_INDEX,
-      KeyConditionExpression: "customerId = :customerId",
-      ExpressionAttributeValues: {
-        ":customerId": customerId,
-      },
-    }),
-  );
-  const rows = (response.Items as CustomerRecord[] | undefined) ?? [];
-  if (rows.length !== 1) {
-    throw new Error(`expected exactly one customer row for ${customerId}, found ${rows.length}`);
-  }
-  const customer = rows[0];
-  if (!customer || customer.status !== "active" || customer.lagoExternalCustomerId !== customerId) {
-    throw new Error(`customer ${customerId} is not active or has mismatched Lago external id`);
-  }
-  return customer;
 }
 
 async function loadOrgEnvelope(
@@ -386,14 +357,12 @@ async function loadOrgKeys(
 
 async function resolveCustomer(
   ddb: DynamoDBDocumentClient,
-  customersTableName: string,
   keysTableName: string,
-  customerId: string,
+  orgId: string,
 ): Promise<CustomerResolution> {
-  const customer = await loadCustomerByCustomerId(ddb, customersTableName, customerId);
-  const orgEnvelope = await loadOrgEnvelope(ddb, keysTableName, customer.orgId);
-  const keys = await loadOrgKeys(ddb, keysTableName, customer.orgId);
-  return { customer, keys, orgEnvelope };
+  const orgEnvelope = await loadOrgEnvelope(ddb, keysTableName, orgId);
+  const keys = await loadOrgKeys(ddb, keysTableName, orgId);
+  return { keys, orgEnvelope, orgId };
 }
 
 async function updateEnvelopeForSubscription(
@@ -655,14 +624,18 @@ async function reconcileSubscriptionState(
   dependencies: LagoWebhookReconciliationDependencies,
   normalized: NormalizedWebhook,
   eventType: LagoWebhookEventType,
-): Promise<{ customerId: string; orgId: string; closedScopes: number }> {
+): Promise<{ orgId: string; closedScopes: number }> {
   if (!normalized.customerId) {
     throw new Error("Lago webhook is missing customer external_id");
   }
+  if (normalized.customerId.startsWith("pq_cust_")) {
+    throw new Error("legacy pq_cust Lago webhook ignored after Clerk org identity pivot");
+  }
+  const orgId = normalized.customerId;
   const externalSubscriptionId =
     normalized.invoiceSubscriptionExternalId ??
-    deriveLagoExternalSubscriptionId(normalized.customerId);
-  const expectedSubscriptionId = deriveLagoExternalSubscriptionId(normalized.customerId);
+    deriveLagoExternalSubscriptionIdForOrg(orgId);
+  const expectedSubscriptionId = deriveLagoExternalSubscriptionIdForOrg(orgId);
   if (externalSubscriptionId !== expectedSubscriptionId) {
     throw new Error(
       `subscription external id mismatch: expected ${expectedSubscriptionId}, received ${externalSubscriptionId}`,
@@ -670,15 +643,14 @@ async function reconcileSubscriptionState(
   }
   const resolved = await resolveCustomer(
     dependencies.ddb,
-    dependencies.customersTableName,
     dependencies.keysTableName,
-    normalized.customerId,
+    orgId,
   );
   const snapshot = await dependencies.lagoClient.getSubscription(expectedSubscriptionId);
   if (!snapshot && eventType !== "subscription.terminated") {
     throw new Error(`Lago subscription ${expectedSubscriptionId} was not found`);
   }
-  if (snapshot && snapshot.externalCustomerId !== normalized.customerId) {
+  if (snapshot && snapshot.externalCustomerId !== orgId) {
     throw new Error(`Lago subscription customer mismatch for ${expectedSubscriptionId}`);
   }
   if (snapshot?.status === "pending" || snapshot?.nextPlanCode) {
@@ -686,7 +658,7 @@ async function reconcileSubscriptionState(
     await updateEnvelopeForPendingTransition(
       dependencies.ddb,
       dependencies.keysTableName,
-      resolved.customer.orgId,
+      resolved.orgId,
       snapshot,
     );
     for (const key of resolved.keys) {
@@ -697,7 +669,7 @@ async function reconcileSubscriptionState(
         snapshot,
       );
     }
-    return { customerId: normalized.customerId, orgId: resolved.customer.orgId, closedScopes: 0 };
+    return { orgId: resolved.orgId, closedScopes: 0 };
   }
 
   const grantsEntitlements = snapshot ? grantsPlanEntitlements(snapshot) : false;
@@ -711,7 +683,7 @@ async function reconcileSubscriptionState(
       ? snapshot
       : downgradeSnapshotForInactiveSubscription(
           snapshot,
-          normalized.customerId,
+          orgId,
           expectedSubscriptionId,
         );
   const nextPeriodKey = grantsEntitlements ? buildBillingPeriodKey(effectiveSnapshot) : null;
@@ -742,7 +714,7 @@ async function reconcileSubscriptionState(
   await updateEnvelopeForSubscription(
     dependencies.ddb,
     dependencies.keysTableName,
-    resolved.customer.orgId,
+    resolved.orgId,
     effectiveSnapshot,
     effectiveTier,
     paymentOverdue,
@@ -759,7 +731,7 @@ async function reconcileSubscriptionState(
       overdueInvoiceId,
     );
   }
-  return { customerId: normalized.customerId, orgId: resolved.customer.orgId, closedScopes };
+  return { orgId: resolved.orgId, closedScopes };
 }
 
 function shouldIgnoreInvoicePaymentStatusUpdate(
@@ -1107,7 +1079,6 @@ export function createLagoWebhookReconciliationService(
     const ddb = overrides.ddb ?? getDefaultDdb();
     return {
       auditTableName: overrides.auditTableName ?? getRequiredEnv("AUDIT_TABLE_NAME"),
-      customersTableName: overrides.customersTableName ?? getRequiredEnv("CUSTOMERS_TABLE_NAME"),
       ddb,
       enabled: overrides.enabled ?? process.env.LAGO_WEBHOOK_RECONCILIATION_ENABLED === "true",
       keysTableName: overrides.keysTableName ?? getRequiredEnv("KEYS_TABLE_NAME"),
@@ -1182,24 +1153,32 @@ export function createLagoWebhookReconciliationService(
       return { status: "ignored", httpStatus: 200, body: { ok: true, status: "ignored" } };
     }
 
+    if (normalized.customerId?.startsWith("pq_cust_")) {
+      await dependencies.ledger.finalize({
+        customerId: normalized.customerId,
+        error: "legacy pq_cust webhook ignored after Clerk org identity pivot",
+        eventType: normalized.eventType,
+        now,
+        payloadHash,
+        status: "ignored",
+        uniqueKey: input.uniqueKey,
+      });
+      return { status: "ignored", httpStatus: 200, body: { ok: true, status: "ignored" } };
+    }
+
     try {
       if (normalized.eventType === "invoice.payment_status_updated" && normalized.customerId) {
-        const customer = await loadCustomerByCustomerId(
-          dependencies.ddb,
-          dependencies.customersTableName,
-          normalized.customerId,
-        );
         const envelope = await loadOrgEnvelope(
           dependencies.ddb,
           dependencies.keysTableName,
-          customer.orgId,
+          normalized.customerId,
         );
         if (shouldIgnoreInvoicePaymentStatusUpdate(normalized, envelope)) {
           await dependencies.ledger.finalize({
             customerId: normalized.customerId,
             eventType: normalized.eventType,
             now,
-            orgId: customer.orgId,
+            orgId: normalized.customerId,
             payloadHash,
             status: "ignored",
             uniqueKey: input.uniqueKey,
@@ -1209,7 +1188,7 @@ export function createLagoWebhookReconciliationService(
             customerId: normalized.customerId,
             eventType: normalized.eventType,
             metadata: { reason: "payment_status_not_overdue_recovery" },
-            orgId: customer.orgId,
+            orgId: normalized.customerId,
             uniqueKey: input.uniqueKey,
           });
           return { status: "ignored", httpStatus: 200, body: { ok: true, status: "ignored" } };
@@ -1221,7 +1200,7 @@ export function createLagoWebhookReconciliationService(
         normalized.eventType,
       );
       await dependencies.ledger.finalize({
-        customerId: reconciliation.customerId,
+        customerId: normalized.customerId ?? undefined,
         eventType: normalized.eventType,
         now,
         orgId: reconciliation.orgId,
@@ -1231,7 +1210,7 @@ export function createLagoWebhookReconciliationService(
       });
       await writeLagoAudit(dependencies, {
         action: "LAGO_WEBHOOK_RECONCILED",
-        customerId: reconciliation.customerId,
+        customerId: normalized.customerId,
         eventType: normalized.eventType,
         metadata: { closedScopes: reconciliation.closedScopes },
         orgId: reconciliation.orgId,

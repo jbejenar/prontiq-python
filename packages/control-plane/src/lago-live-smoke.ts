@@ -4,12 +4,12 @@ import { SendMessageCommand, SQSClient } from "@aws-sdk/client-sqs";
 import { DynamoDBDocumentClient, GetCommand } from "@aws-sdk/lib-dynamodb";
 import { fileURLToPath } from "node:url";
 import {
-  billingUsageEventV1Schema,
+  billingUsageEventV2Schema,
   deriveBillingUsageEventId,
-  deriveLagoExternalSubscriptionId,
+  deriveLagoExternalSubscriptionIdForOrg,
   type ApiKeyRecord,
-  type BillingUsageEventV1,
-  type CustomerRecord,
+  type BillingUsageEventV2,
+  type OrgEnvelopeRecord,
 } from "@prontiq/shared";
 
 const DEFAULT_PRODUCT = "address";
@@ -24,9 +24,9 @@ export interface LagoLiveSmokeInput {
   apiKeyHash: string;
   billingEndpointKey?: string;
   creditDelta?: number;
-  customer: CustomerRecord;
   key: ApiKeyRecord;
   occurredAt?: Date;
+  org: OrgEnvelopeRecord;
   product?: string;
   requestCountAfterIncrement: number;
   sourceRequestId?: string;
@@ -40,7 +40,6 @@ export interface LagoLiveSmokeEnv {
   BILLING_ENDPOINT_KEY?: string;
   BILLING_EVENTS_QUEUE_URL?: string;
   CREDIT_DELTA?: string;
-  CUSTOMERS_TABLE_NAME?: string;
   KEYS_TABLE_NAME?: string;
   OCCURRED_AT?: string;
   PRODUCT?: string;
@@ -57,7 +56,6 @@ export interface LagoLiveSmokeEnv {
 export interface LagoLiveSmokeConfig {
   billingEndpointKey: string;
   creditDelta: number;
-  customersTableName: string;
   keysTableName: string;
   occurredAt: Date;
   product: string;
@@ -73,7 +71,6 @@ export interface LagoLiveSmokeConfig {
 }
 
 export interface LagoLiveSmokeEvidence {
-  customerId: string;
   eventId: string;
   externalSubscriptionId: string;
   keyPrefix: string;
@@ -84,13 +81,13 @@ export interface LagoLiveSmokeEvidence {
 }
 
 export interface LagoLiveSmokeLoadedState {
-  customer: CustomerRecord;
   key: ApiKeyRecord;
+  org: OrgEnvelopeRecord;
 }
 
 export interface LagoLiveSmokeDependencies {
   loadSmokeState?: (config: LagoLiveSmokeConfig) => Promise<LagoLiveSmokeLoadedState>;
-  sendSmokeEventToSqs?: (queueUrl: string, event: BillingUsageEventV1) => Promise<void>;
+  sendSmokeEventToSqs?: (queueUrl: string, event: BillingUsageEventV2) => Promise<void>;
 }
 
 function requireEnv(env: LagoLiveSmokeEnv, name: keyof LagoLiveSmokeEnv): string {
@@ -148,7 +145,6 @@ export function parseLagoLiveSmokeEnv(env: LagoLiveSmokeEnv): LagoLiveSmokeConfi
     creditDelta: env.CREDIT_DELTA
       ? parsePositiveInteger(env.CREDIT_DELTA, "CREDIT_DELTA")
       : DEFAULT_CREDIT_DELTA,
-    customersTableName: requireEnv(env, "CUSTOMERS_TABLE_NAME"),
     keysTableName: requireEnv(env, "KEYS_TABLE_NAME"),
     occurredAt,
     product,
@@ -174,24 +170,15 @@ function assertSmokeState(input: LagoLiveSmokeInput): void {
   if (input.key.active !== true) {
     throw new Error("smoke API key is not active");
   }
-  if (!input.key.customerId) {
-    throw new Error("smoke API key is missing customerId");
+  if (input.org.apiKeyHash !== `ORG#${input.key.orgId}`) {
+    throw new Error("smoke org envelope does not match API key orgId");
   }
-  if (input.customer.status !== "active") {
-    throw new Error("smoke customer is not active");
-  }
-  if (input.customer.orgId !== input.key.orgId) {
-    throw new Error("smoke customer orgId does not match API key orgId");
-  }
-  if (input.customer.customerId !== input.key.customerId) {
-    throw new Error("smoke customerId does not match API key customerId");
-  }
-  if (input.customer.lagoExternalCustomerId !== input.customer.customerId) {
-    throw new Error("smoke customer lagoExternalCustomerId must equal customerId");
+  if (input.org.orgId && input.org.orgId !== input.key.orgId) {
+    throw new Error("smoke org envelope orgId does not match API key orgId");
   }
 }
 
-export function buildLagoLiveSmokeEvent(input: LagoLiveSmokeInput): BillingUsageEventV1 {
+export function buildLagoLiveSmokeEvent(input: LagoLiveSmokeInput): BillingUsageEventV2 {
   assertSmokeState(input);
   const product = input.product ?? DEFAULT_PRODUCT;
   const billingEndpointKey = input.billingEndpointKey ?? DEFAULT_BILLING_ENDPOINT_KEY;
@@ -202,16 +189,15 @@ export function buildLagoLiveSmokeEvent(input: LagoLiveSmokeInput): BillingUsage
     apiKeyHash: input.key.apiKeyHash,
     billingEndpointKey,
     creditDelta,
-    customerId: input.customer.customerId,
+    orgId: input.key.orgId,
     requestCountAfterIncrement: input.requestCountAfterIncrement,
     usageScope,
   });
 
-  return billingUsageEventV1Schema.parse({
-    version: 1,
+  return billingUsageEventV2Schema.parse({
+    version: 2,
     eventId,
     occurredAt: occurredAt.toISOString(),
-    customerId: input.customer.customerId,
     orgId: input.key.orgId,
     apiKeyHash: input.key.apiKeyHash,
     keyPrefix: input.key.keyPrefix,
@@ -231,13 +217,12 @@ export function buildLagoLiveSmokeEvent(input: LagoLiveSmokeInput): BillingUsage
 }
 
 export function buildLagoLiveSmokeEvidence(input: {
-  event: BillingUsageEventV1;
+  event: BillingUsageEventV2;
   sentToSqs: boolean;
 }): LagoLiveSmokeEvidence {
   return {
-    customerId: input.event.customerId,
     eventId: input.event.eventId,
-    externalSubscriptionId: deriveLagoExternalSubscriptionId(input.event.customerId),
+    externalSubscriptionId: deriveLagoExternalSubscriptionIdForOrg(input.event.orgId),
     keyPrefix: input.event.keyPrefix,
     meterEventName: input.event.meterEventName,
     orgId: input.event.orgId,
@@ -261,25 +246,22 @@ async function loadSmokeState(
   if (!key) {
     throw new Error("SMOKE_API_KEY_HASH was not found in KEYS_TABLE_NAME");
   }
-  if (!key.customerId) {
-    throw new Error("smoke API key is missing customerId");
-  }
 
-  const customerResponse = await ddb.send(
+  const orgResponse = await ddb.send(
     new GetCommand({
       ConsistentRead: true,
-      Key: { orgId: key.orgId },
-      TableName: config.customersTableName,
+      Key: { apiKeyHash: `ORG#${key.orgId}` },
+      TableName: config.keysTableName,
     }),
   );
-  const customer = customerResponse.Item as CustomerRecord | undefined;
-  if (!customer) {
-    throw new Error("smoke customer row was not found in CUSTOMERS_TABLE_NAME");
+  const org = orgResponse.Item as OrgEnvelopeRecord | undefined;
+  if (!org) {
+    throw new Error("smoke org envelope was not found in KEYS_TABLE_NAME");
   }
-  return { customer, key };
+  return { key, org };
 }
 
-async function sendSmokeEventToSqs(queueUrl: string, event: BillingUsageEventV1): Promise<void> {
+async function sendSmokeEventToSqs(queueUrl: string, event: BillingUsageEventV2): Promise<void> {
   await new SQSClient({}).send(
     new SendMessageCommand({
       QueueUrl: queueUrl,
@@ -292,23 +274,23 @@ export async function runLagoLiveSmoke(
   env: LagoLiveSmokeEnv = process.env,
   dependencies: LagoLiveSmokeDependencies = {},
 ): Promise<{
-  event: BillingUsageEventV1;
+  event: BillingUsageEventV2;
   evidence: LagoLiveSmokeEvidence;
 }> {
   const config = parseLagoLiveSmokeEnv(env);
   if (config.sendToSqs && !config.queueUrl) {
     throw new Error("BILLING_EVENTS_QUEUE_URL is required when SEND_TO_SQS=true");
   }
-  const { customer, key } = dependencies.loadSmokeState
+  const { key, org } = dependencies.loadSmokeState
     ? await dependencies.loadSmokeState(config)
     : await loadSmokeState(DynamoDBDocumentClient.from(new DynamoDBClient({})), config);
   const event = buildLagoLiveSmokeEvent({
     apiKeyHash: config.smokeApiKeyHash,
     billingEndpointKey: config.billingEndpointKey,
     creditDelta: config.creditDelta,
-    customer,
     key,
     occurredAt: config.occurredAt,
+    org,
     product: config.product,
     requestCountAfterIncrement: config.requestCountAfterIncrement,
     sourceMethod: config.sourceMethod,

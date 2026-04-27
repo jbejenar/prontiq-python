@@ -103,17 +103,19 @@ Use Clerk Organizations, not user-only identity.
 This matches the live backend contract today:
 
 - org-scoped keys
-- org-scoped org-envelope and platform-owned customer identity
+- org-scoped org-envelope and Clerk-org commercial identity
 - org-scoped usage and audit
 
 Target commercial identity contract:
 
-- org-scoped commercial customers keyed by platform-owned `customerId`
-- `customerId` format is opaque: `pq_cust_<ulid>`
-- `customerId` maps across Clerk orgs, Prontiq, Lago `external_id`, and
-  migration-era Stripe linkage
+- org-scoped commercial customers keyed by Clerk `orgId`
+- Lago customer `external_id = orgId`
+- Lago subscription `external_id = lago_sub_${orgId}`
+- Stripe remains only the payment rail configured inside Lago
 
-Frontend work may rely on `customerId` as the commercial identity contract.
+Frontend work may rely on Clerk `orgId` as the commercial identity contract.
+Billing surfaces must use a server-side BFF; the browser must not receive Lago
+or Stripe credentials.
 Stripe customer IDs are migration/payment-rail linkage only.
 
 ### Agentic optimization

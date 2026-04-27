@@ -9,9 +9,11 @@ export type {
   LagoProvisioningClient,
 } from "./provisioning.js";
 
-export { generateCustomerId } from "./customer-identity.js";
-export { backfillCustomers } from "./customer-backfill.js";
-export type { CustomerBackfillOptions, CustomerBackfillStats } from "./customer-backfill.js";
+export { repairCommercialIdentity } from "./commercial-identity-repair.js";
+export type {
+  CommercialIdentityRepairOptions,
+  CommercialIdentityRepairStats,
+} from "./commercial-identity-repair.js";
 
 export { buildAuditTransactItem, writeAudit, getAuditTtlSeconds } from "./audit.js";
 export type { AuditAction, BuildAuditInput, WriteAuditInput, WriteAuditResult } from "./audit.js";
@@ -40,21 +42,3 @@ export type {
   LagoWebhookReconciliationInput,
   LagoWebhookReconciliationResult,
 } from "./lago-webhook-reconciliation.js";
-
-export {
-  AccountBillingError,
-  DynamoBillingActionLedger,
-  HttpLagoAccountBillingClient,
-  createAccountBillingService,
-} from "./account-billing.js";
-export type {
-  AccountBillingActionStatus,
-  AccountBillingDependencies,
-  AccountBillingPlanChangeResponse,
-  AccountBillingPortalSessionResponse,
-  AccountBillingSummary,
-  BillingActionLedger,
-  BillingActionRecord,
-  LagoAccountBillingClient,
-  LagoSubscriptionState,
-} from "./account-billing.js";

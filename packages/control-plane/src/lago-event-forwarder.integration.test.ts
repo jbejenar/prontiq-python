@@ -9,12 +9,14 @@ import {
 import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 import {
   DynamoBillingEventDeliveryLedger,
+  deriveLagoUsageExternalSubscriptionId,
   hashBillingEventPayload,
 } from "./lago-event-forwarder.js";
 import {
   deriveBillingUsageEventId,
   deriveLagoExternalSubscriptionId,
   type BillingUsageEventV1,
+  type BillingUsageEventV2,
 } from "@prontiq/shared";
 
 const DDB_URL = process.env.DYNAMODB_TEST_URL ?? "http://localhost:8000";
@@ -95,6 +97,38 @@ function makeEvent(overrides: Partial<BillingUsageEventV1> = {}): BillingUsageEv
   };
 }
 
+function makeV2Event(overrides: Partial<BillingUsageEventV2> = {}): BillingUsageEventV2 {
+  const idInput = {
+    apiKeyHash: "d".repeat(64),
+    billingEndpointKey: "address.autocomplete",
+    creditDelta: 1,
+    orgId: "org_LagoForwarderV2Integration",
+    requestCountAfterIncrement: 17,
+    usageScope: "address#2026-04",
+  };
+  return {
+    version: 2,
+    eventId: deriveBillingUsageEventId(idInput),
+    occurredAt: "2026-04-25T00:00:00.000Z",
+    orgId: idInput.orgId,
+    apiKeyHash: idInput.apiKeyHash,
+    keyPrefix: "pq_test_v2",
+    product: "address",
+    billingEndpointKey: idInput.billingEndpointKey,
+    meterEventName: "prontiq_address_requests",
+    creditDelta: idInput.creditDelta,
+    usageScope: idInput.usageScope,
+    requestCountAfterIncrement: idInput.requestCountAfterIncrement,
+    source: {
+      requestId: "req_integration_v2",
+      method: "GET",
+      path: "/v1/address/autocomplete",
+      stage: "test",
+    },
+    ...overrides,
+  };
+}
+
 test("delivery ledger records attempt and accepted state idempotently", async () => {
   const ledger = new DynamoBillingEventDeliveryLedger({ ddb, tableName: DELIVERIES_TABLE });
   const event = makeEvent();
@@ -113,6 +147,26 @@ test("delivery ledger records attempt and accepted state idempotently", async ()
   assert.equal(row?.status, "accepted");
   assert.equal(row?.creditDelta, 2);
   assert.equal(row?.externalSubscriptionId, "pq_sub_01HYZ6Q4X6DJP2X9Q9FQKX4T7A");
+});
+
+test("delivery ledger accepts V2 events without writing legacy customerId GSI key", async () => {
+  const ledger = new DynamoBillingEventDeliveryLedger({ ddb, tableName: DELIVERIES_TABLE });
+  const event = makeV2Event();
+  const input = {
+    event,
+    eventPayloadHash: hashBillingEventPayload(event),
+    externalSubscriptionId: deriveLagoUsageExternalSubscriptionId(event),
+    now: new Date("2026-04-25T00:00:00.000Z"),
+  };
+
+  assert.equal(await ledger.recordAttempt(input), "ok");
+  assert.equal(await ledger.markAccepted(input), "ok");
+
+  const row = await ledger.get(event.eventId);
+  assert.equal(row?.status, "accepted");
+  assert.equal(row?.orgId, event.orgId);
+  assert.equal(row?.customerId, undefined);
+  assert.equal(row?.externalSubscriptionId, "lago_sub_org_LagoForwarderV2Integration");
 });
 
 test("delivery ledger rejects same event id with different payload hash", async () => {

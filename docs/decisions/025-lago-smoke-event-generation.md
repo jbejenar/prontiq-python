@@ -2,19 +2,24 @@
 
 ## Status
 
-Accepted.
+Accepted; event shape updated by [ADR-035](035-clerk-org-commercial-identity.md).
+
+The repo-owned helper remains active. It now emits `BillingUsageEventV2` with
+Clerk `orgId`; `BillingUsageEventV1`, `customerId`, `pq_cust_*`, and `pq_sub_*`
+references below are historical P1B.18a-P1B.21 context only.
 
 ## Question
 
-How should operators create controlled `BillingUsageEventV1` records for
-P1B.18a live Lago smoke testing?
+How should operators create controlled Lago smoke billing events without
+hand-building transaction IDs or leaking secrets?
 
 ## Decision
 
-Use a repo-owned control-plane helper to load safe key/customer metadata from
+Use a repo-owned control-plane helper to load safe key/org metadata from
 DynamoDB, derive `eventId` with the production `deriveBillingUsageEventId`
-contract, validate the full `BillingUsageEventV1` schema, and optionally send
-the event to SQS.
+contract, validate the full active `BillingUsageEventV2` schema, and optionally
+send the event to SQS. Historical `BillingUsageEventV1` records remain valid
+only for migration replay/debugging.
 
 Manual helper-generated smoke events use the isolated billing endpoint key
 `address.smoke` and source path `/internal/lago-live-smoke` by default. API
@@ -38,8 +43,8 @@ the same smoke key.
 
 - The final API-producer smoke uses existing operator-held raw smoke key
   material only after controlled SQS replay succeeds.
-- The helper may print safe identifiers such as `eventId`, `customerId`,
-  `orgId`, and `keyPrefix`, but must not print raw API keys or secrets.
+- The helper may print safe identifiers such as `eventId`, `orgId`, and
+  `keyPrefix`, but must not print raw API keys or secrets.
 - Future billing-event smoke work must use the helper or an equivalent
   production-contract generator.
 - Manual smoke must not override `BILLING_ENDPOINT_KEY` to a real public API

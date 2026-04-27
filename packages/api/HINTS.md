@@ -6,7 +6,7 @@
   record; never fetch a period from Lago during request auth.
 - PAYG and Enterprise are uncapped but tracked. Do not reintroduce
   `tier === "free"` quota branching; use plan enforcement mode.
-- Billing event emission is allowed only through `BillingUsageEventV1` after
+- Billing event emission is allowed only through `BillingUsageEventV2` after
   DynamoDB usage enforcement succeeds.
 - Enable `BILLING_EVENTS_ENABLED` only for deployed stages that have completed
   P1B.18a Lago metric/subscription/replay smoke checks with the repo-owned
@@ -16,11 +16,10 @@
 - P1B.18a is closed. Future billing API work may rely on dev/prod Lago
   forwarding and webhook smoke evidence, but must keep Lago and Stripe off the
   API hot path.
-- Account setup responses expose platform `customerId` only. New console code
-  must not assume Stripe linkage exists.
-- Account billing routes belong in `account-handler.ts` / `routes/account.ts`,
-  not the address API `$default` app. Update `openapi-private.ts` when adding
-  account routes; never mount `/v1/account/*` in the public `openapi.ts` or
-  `packages/docs/openapi.json`.
+- Account setup responses expose Clerk `orgId`, which is also the active Lago
+  customer external id.
+- AWS account billing routes are retired. Future console billing should use a
+  Vercel server-side BFF that verifies Clerk auth and calls Lago with a
+  server-held Lago API key.
 - Never include raw API keys, query strings, headers, IP addresses, user agents,
   or response payloads in billing events.

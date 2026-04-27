@@ -1,5 +1,14 @@
 # Prontiq Platform Architecture
 
+> **Current commercial identity contract (P1B.22, 2026-04-27).** Clerk
+> organization id is the active Prontiq/Lago customer identity. Lago customer
+> `external_id = orgId`; Lago subscription `external_id = lago_sub_${orgId}`.
+> The API emits `BillingUsageEventV2` with `orgId` after local DynamoDB
+> enforcement succeeds. `/v1/account/setup` is setup-only and returns `orgId`.
+> `/v1/account/billing*`, generated `customerId` (`pq_cust_*`), `pq_sub_*`, and
+> `prontiq-customers` are legacy P1B.14-P1B.21 migration evidence only and are
+> superseded by ADR-035.
+
 > A unified data API platform for Australian and global open data, commercialised with obsessive developer experience.
 
 **Repo:** `prontiq-platform` (private)
@@ -1059,26 +1068,29 @@ Cost: ~$5/month for WAF + $0.60 per million requests inspected. Cheap insurance 
 
 API keys are generated, hashed, verified, and stored entirely in DynamoDB. No vendor. ~80 lines of code (crypto + DynamoDB client). Clerk handles human identity (dashboard login, OAuth, orgs, teams) — it never sees the API keys.
 
-> **Migration callout:** Live today is a single table `ApiKeyTable` with PK = raw API key string and a nested `usage: {product: {month: count}}` map. The schema below is the **target state** after P1B.04b (data migration ticket). Full code path (hashed lookups, separate usage table, seed-key rotation) is tracked in P1B.02 / P1B.04 / P1B.04b. Until then, the live code at `packages/api/src/middleware/auth.ts` and `packages/api/src/middleware/usage.ts` implements the legacy shape.
+> **Current state:** Hash-only API keys, separate usage counters, Clerk
+> provisioning, Lago billing-event forwarding, and Lago webhook reconciliation
+> are active. Older Stripe and generated-customer-id rows may remain as
+> migration evidence only.
 
 #### 5.5.1 DynamoDB Schema
 
-Current runtime uses six tables plus registry items. The Lago migration added
-the `prontiq-customers` mapping table in P1B.15 and the Lago webhook ledger in
-P1B.17. All are on-demand
-(pay-per-request). Only `prontiq-keys` and `prontiq-usage` serve the request
-hot path.
+Current runtime uses DynamoDB tables plus some retained historical tables. All
+are on-demand (pay-per-request). Only `prontiq-keys` and `prontiq-usage` serve
+the request hot path.
 
 | Table                         | Purpose                                                                          |
 | ----------------------------- | -------------------------------------------------------------------------------- |
 | `prontiq-keys`                | API key metadata + billing registry + org-envelope record                        |
 | `prontiq-usage`               | Local enforcement counters + email flags + billing push state + REDIRECT records |
-| `prontiq-customers`           | Customer mapping across Clerk orgs, Prontiq `customerId`, Lago, and Stripe       |
+| `prontiq-customers`           | Legacy P1B.14-P1B.21 customer mapping evidence; not active runtime identity      |
 | `prontiq-lago-webhook-events` | Lago webhook idempotency ledger keyed by `X-Lago-Unique-Key`                     |
 | `prontiq-audit`               | Append-only lifecycle audit log                                                  |
 | `prontiq-ses-suppressions`    | Email bounce/complaint suppression                                               |
 
-**Design principles:** hot-path isolation (keys + usage separated), append-only logging (audit), TTL-driven cleanup, hash-only key storage. The customer mapping table is control-plane state; it must not be read by request-time API-key auth.
+**Design principles:** hot-path isolation (keys + usage separated), append-only
+logging (audit), TTL-driven cleanup, hash-only key storage, and Clerk `orgId`
+as active commercial identity.
 
 ##### Table: `prontiq-keys`
 
@@ -1108,7 +1120,7 @@ PK:   apiKeyHash           string    SHA-256 of the raw key
       subscriptionItems    map?      Historical Stripe runtime field. Not written
                                      by active Lago-centered provisioning.
       lagoPlanCode         string?   Lago plan code; must map directly to Prontiq tier
-      lagoSubscriptionExternalId string?  Derived `pq_sub_<ulid>` subscription id
+      lagoSubscriptionExternalId string?  `lago_sub_${orgId}` subscription id
       lagoSubscriptionStatus string? Last reconciled Lago subscription status
       billingPeriodStartedAt string? Lago current billing-period start
       billingPeriodEndingAt string?  Lago current billing-period end
@@ -1164,7 +1176,7 @@ PK:   uniqueKey            string    Lago `X-Lago-Unique-Key`
       eventType            string    Lago webhook type observed
       payloadHash          string    SHA-256 of normalized webhook payload
       status               string    processing | completed | ignored | drift
-      customerId           string?   Prontiq `pq_cust_...` resolved from Lago external_id
+      customerId           string?   Legacy P1B.14-P1B.21 evidence only
       orgId                string?   Resolved Clerk org id after reconciliation
       firstSeenAt          string    ISO timestamp
       lastSeenAt           string    ISO timestamp
@@ -1261,12 +1273,11 @@ PK:   apiKeyHash           "WEBHOOK#stripe#{eventId}"   (reserved — not a real
 
 ##### Provisioning Lock Item (stored in `prontiq-keys`)
 
-Records that an org has been provisioned (Prontiq customer envelope written and, in forward mode, Lago Free subscription bootstrapped). The Clerk webhook (§5.7.1) writes this to mark the org as ready for the user to sign in and create their first key.
+Records that an org has been provisioned (Clerk-org-owned Prontiq org envelope written and, in forward mode, Lago Free subscription bootstrapped). The Clerk webhook (§5.7.1) writes this to mark the org as ready for the user to sign in and create their first key.
 
 ```
 PK:   apiKeyHash           "ORG#{orgId}"             (reserved — not a real key hash)
 
-      customerId           string                    "pq_cust_..." platform-owned commercial ID
       stripeCustomerId     string | null             "cus_..." only for migration/rollback linkage
       ownerEmail           string                    Resolved from the Clerk org-admin
                                                      membership provisioning flow
@@ -1286,8 +1297,8 @@ PK:   apiKeyHash           "ORG#{orgId}"             (reserved — not a real ke
 
 > **Why an "org envelope" instead of a provisioning lock that holds a key hash?** The raw API key cannot be safely minted in a webhook — there's no in-flight HTTP response to the user, and DDB stores only the hash. The Clerk webhook provisions everything _except_ the key. The user's first sign-in to `apps/console` on `console.prontiq.dev` calls `/v1/account/keys/create`, which mints the key and returns the raw value in the HTTP response (shown once). See §5.7.1 + §10 Developer Journey.
 
-Provisioning writes the local envelope/customer row first, then idempotently
-bootstraps the Lago customer and `pq_sub_<ulid>` Free subscription before
+Provisioning writes the local org envelope first, then idempotently bootstraps
+the Lago customer and `lago_sub_${orgId}` Free subscription before
 returning success. It does not create Stripe customers; Stripe is configured
 inside Lago as the payment rail. See §5.7.1 for the full flow and §12.2 for
 failure modes.
@@ -1331,20 +1342,20 @@ GSI:  newHash-redirect-index
 
 > **Why 5 minutes?** Long enough to drain genuinely in-flight requests (Lambda 15-min max + DDB eventual-consistency window). Short enough that a leaked + rotated key has a tightly bounded exposure window. Tunable via `REDIRECT_AUTH_GRACE_SECONDS` env var if dev-mode needs longer.
 
-##### Table: `prontiq-customers` (Lago migration)
+##### Table: `prontiq-customers` (Legacy Lago Migration Evidence)
 
-The customer mapping table is introduced by the Lago migration sequence, not by
-the legacy Stripe runtime. It is the canonical platform-owned join between
-Clerk organizations, Prontiq customer identity, Lago customer records, and
-migration-era Stripe payment linkage.
+The customer mapping table was introduced by the P1B.14-P1B.21 Lago migration
+sequence. P1B.22 supersedes it as active identity state. Retain the table for
+historical evidence and safe replay/debugging, but do not read it from active
+provisioning, API auth, billing-event emission, or webhook reconciliation.
 
 ```text
 PK:   orgId                  string    Clerk organization id
 GSI:  customerId-index       string    Prontiq customer id reverse lookup
 
 attrs:
-      customerId             string    Opaque platform id: pq_cust_<ulid>
-      lagoExternalCustomerId string    Equal to customerId; sent as Lago external_id
+      customerId             string    Legacy opaque platform id: pq_cust_<ulid>
+      lagoExternalCustomerId string    Legacy external id; active Lago external_id is orgId
       lagoCustomerId         string?   Lago provider-owned lago_id cache only
       stripeCustomerId       string?   Migration/payment-rail linkage only
       ownerEmail             string    Current account owner email for ops contact
@@ -1356,15 +1367,8 @@ attrs:
       conflictReason         string?   Operator-readable migration conflict detail
 ```
 
-`customerId` is the durable Prontiq commercial identity. It is not derived from
-Clerk `orgId`, Stripe `cus_...`, or Lago `lago_id`. Provider identifiers are
-linkage fields and may be absent during rollout, provider outage, or migration.
-
-Hot-path invariant: API-key-authenticated requests must not read
-`prontiq-customers`. New org provisioning writes `customerId` onto the
-`ORG#{orgId}` envelope and `backfill:customers` denormalizes `customerId` onto
-legacy org envelopes and API key records, so queued billing events can carry
-the customer identifier after the existing `prontiq-keys` hot-path read.
+Active identity invariant: use Clerk `orgId`. Generated `customerId` values in
+this table are historical migration data only.
 
 #### 5.5.2 Key Operations
 
@@ -1471,8 +1475,8 @@ Canonical target posture: **Lago-centered commercial architecture**.
 - **Stripe** is reduced to payment processing only.
 - **Prontiq Platform** keeps API key lifecycle, request-time credit
   enforcement, per-key usage, and event emission.
-- **DynamoDB** stores enforcement counters and customer mapping, not final
-  billing truth.
+- **DynamoDB** stores enforcement counters, org envelopes, and legacy migration
+  evidence, not final billing truth.
 - **SQS** buffers billing events away from the API hot path.
 
 #### 5.6.0 Implementation Status
@@ -1480,86 +1484,57 @@ Canonical target posture: **Lago-centered commercial architecture**.
 Prontiq has cut over from the legacy Stripe runtime to the Lago-centered
 runtime:
 
-- **Active target path:** Lago-centered commercial architecture with
-  org-scoped `customerId`, SQS billing-event buffering, Lago event forwarding,
-  Lago webhook reconciliation, and private account billing APIs.
+- **Active target path:** Lago-centered commercial architecture with Clerk
+  `orgId` as the commercial identity, SQS billing-event buffering, Lago event
+  forwarding, Lago webhook reconciliation, and setup-only private account API.
 - **Stripe role:** Stripe remains the payment rail behind Lago. It is not the
   commercial source of truth and must not be called from the API hot path.
 - **Removed legacy platform runtime:** Stripe-backed provisioning, Stripe
   webhook sync, hourly billing cron, month-close finalisation, and embedded
   pricing-table surfaces are no longer active code/deploy paths after P1B.20.
 - **Current Lago rollout state:** platform-side Lago forwarding, webhook
-  reconciliation, live smoke certification, and account billing APIs are
-  deployed in dev and prod. P1B.19 adds Lago Free subscription bootstrap during
-  provisioning; P1B.20 removes stale Stripe runtime/config/frontend surfaces;
-  P1B.21 disables the retained prod smoke API key after final accepted event
-  `bevt_f7833d581725b732d04d3eed3fd7c484`. The retained prod smoke customer,
-  subscription, usage, delivery, and webhook rows are audit evidence only.
+  reconciliation, live smoke certification, and account setup are deployed in
+  dev and prod. P1B.22 pivots active identity to Clerk `orgId`, retires the AWS
+  account billing API routes, and moves future console billing reads/actions to
+  a Vercel BFF that calls Lago with server-held credentials.
 
-The subsections below retain the **legacy shipped Stripe path** for operational
-history. They are not the forward-looking commercial source of truth and are no
-longer active deploy paths.
+The subsections below describe the current Lago contract. Legacy P1B.14-P1B.21
+`customerId` / `pq_cust_*` / `pq_sub_*` evidence is retained only where needed
+for migration history and replay safety.
 
 #### 5.6.0.1 Target Customer Identity Contract
 
-`customerId` is the canonical Prontiq commercial customer identifier. It is
-opaque, platform-generated, org-scoped, and formatted as `pq_cust_<ulid>`.
+Clerk `orgId` is the canonical Prontiq commercial customer identifier.
 
 Resolution rules:
 
-1. Clerk-authenticated console flows resolve `orgId` from the Clerk session,
-   then resolve the `prontiq-customers` row by `orgId`.
-2. API-key-authenticated request flows read `prontiq-keys` only. The key record
-   must already carry denormalized `orgId` and `customerId` before billing-event
-   emission ships.
-3. Lago customer creation uses `external_id = customerId`. Lago's provider-owned
-   `lago_id` is stored only as nullable `lagoCustomerId` cache data.
-4. Migration-era Stripe customer IDs are retained as nullable `stripeCustomerId`
-   payment-rail linkage. They are never the Prontiq customer primary key.
+1. Clerk-authenticated console flows read `org_id` from the Clerk session
+   token. That value is the account selector for platform setup and future Lago
+   BFF reads/actions.
+2. API-key-authenticated request flows read `prontiq-keys` only. Active key
+   records must carry `orgId` and `lagoSubscriptionExternalId`.
+3. Lago customer creation uses `external_id = orgId`. Lago's provider-owned
+   `lago_id` is not a Prontiq identity.
+4. Lago subscription creation uses `external_id = lago_sub_${orgId}`.
+5. Stripe customer/payment identifiers live behind Lago as payment-rail state.
+   They are never Prontiq customer identity.
 
-Backfill rules for existing orgs:
-
-1. If a `prontiq-customers` row already exists for `orgId`, preserve its
-   `customerId` and update linkage fields only when the provider relationship is
-   unambiguous.
-2. Otherwise read the `ORG#{orgId}` envelope from `prontiq-keys`, preserve
-   `ownerEmail`, preserve string `stripeCustomerId` when present, store
-   `stripeCustomerId = null` when it is absent, and create exactly one
-   `pq_cust_<ulid>` for that org.
-3. Duplicate provider-linkage detection is global across the scanned
-   `ORG#{orgId}` envelopes and existing `prontiq-customers` rows. If duplicate
-   `orgId`, duplicate non-null `stripeCustomerId`, mismatched existing
-   customer-row `customerId`, or mismatched API-key `customerId` evidence
-   appears, write `status = "migration_conflict"` with `conflictReason` and
-   stop automated Lago customer creation for every involved org. Null or
-   missing Stripe linkage is not treated as duplicate provider evidence.
-4. Operator review resolves conflicts before any Lago customer or subscription
-   mutation is attempted.
-
-Status values describe customer-mapping lifecycle only:
-
-- `active`: the customer mapping is valid for normal operations.
-- `archived`: the customer was retired or deleted and must not receive new Lago
-  mutations.
-- `migration_conflict`: automated backfill/reconciliation found ambiguous
-  provider linkage and requires operator action.
-
-Billing delinquency remains separate state (`paymentOverdue` and later
-Lago-derived enforcement state). Do not overload customer lifecycle status for
-payment status.
+Legacy `customerId` fields on old `ORG#{orgId}` envelopes and delivery rows are
+read only for replay/drain compatibility. New provisioning and repair must not
+generate `pq_cust_*`.
 
 #### 5.6.0.2 Billing Event Buffer Contract
 
-`P1B.15` implements the platform-owned billing-event buffer. The API hot path
-still enforces credits synchronously in DynamoDB, then optionally emits
-`BillingUsageEventV1` to SQS when `BILLING_EVENTS_ENABLED=true`.
+The API hot path enforces credits synchronously in DynamoDB, then optionally
+emits `BillingUsageEventV2` to SQS when `BILLING_EVENTS_ENABLED=true`.
 
 The event contract is:
 
-- `eventId`: deterministic `bevt_...` derived from `customerId`, `apiKeyHash`,
+- `version`: `2`
+- `eventId`: deterministic `bevt_...` derived from `orgId`, `apiKeyHash`,
   usage scope, cumulative request count after increment, endpoint key, and
   credit delta
-- `customerId`: required Prontiq-owned customer identity
+- `orgId`: required Clerk organization id and active commercial identity
 - API key identity: `apiKeyHash` and `keyPrefix` only; never the raw API key
 - metric identity: product, billing endpoint key, and Lago meter event name
 - source metadata: request id, method, path without query string, and stage
@@ -1577,15 +1552,16 @@ message count are alarmed in CloudWatch.
 
 #### 5.6.0.3 Lago Event Forwarder Contract
 
-`P1B.16` implements the async consumer for the billing-event queue. It consumes
-`BillingUsageEventV1` from SQS, validates the schema, recomputes the
-deterministic `eventId`, writes a delivery-attempt ledger row for schema-valid
-events, and forwards a minimal usage event to Lago.
+The Lago event forwarder consumes active `BillingUsageEventV2` messages from
+SQS, validates the schema, recomputes the deterministic `eventId`, writes a
+delivery-attempt ledger row for schema-valid events, and forwards a minimal
+usage event to Lago. `BillingUsageEventV1` remains accepted only for safe legacy
+drain/replay compatibility.
 
 Lago payload contract:
 
 - `transaction_id = eventId`
-- `external_subscription_id = pq_sub_<same ulid as customerId>`
+- `external_subscription_id = lago_sub_${orgId}`
 - `code = meterEventName`
 - `timestamp = occurredAt` as epoch seconds
 - `properties.credits = creditDelta`
@@ -1595,11 +1571,11 @@ path, headers, IPs, user agents, query strings, or response payloads to Lago.
 It authenticates to Lago with a per-environment `LAGO_API_KEY` and
 `Authorization: Bearer`, posting to `${LAGO_API_URL}/api/v1/events`.
 
-Delivery state is stored in `prontiq-billing-event-deliveries` (or
-`prontiq-billing-event-deliveries-<stage>` outside prod) keyed by `eventId`.
-Rows store payload hash, status, attempt count, accepted timestamp, customer
-metadata, the derived Lago subscription external ID, and TTL. A
-`customerId-acceptedAt-index` GSI supports customer-scoped operational review.
+Delivery state is stored in `prontiq-billing-event-deliveries` keyed by
+`eventId`. Rows store payload hash, status, attempt count, accepted timestamp,
+`orgId`, the derived Lago subscription external ID, and TTL. The
+`orgId-acceptedAt-index` GSI supports current org-scoped operational review.
+The legacy `customerId-acceptedAt-index` remains for P1B.14-P1B.21 evidence.
 
 Retry boundaries:
 
@@ -1642,48 +1618,15 @@ Timeout budget:
 - invariant: `batch_size * lago_timeout` leaves at least 15 seconds for DynamoDB
   writes, logging, and returning partial batch responses before Lambda deadline
 
-`BILLING_EVENTS_ENABLED` can be enabled only after the target environment has
-canonical Lago organization, metric, customer, subscription, and replay-smoke
-evidence in place. P1B.21 completed the prod go-live cleanup: the final
-API-originated smoke produced accepted event
-`bevt_f7833d581725b732d04d3eed3fd7c484`, then the retained prod smoke API key
-with prefix `pq_live_4a85` was disabled. Do not reactivate or reuse that key for
-future testing. Future production probes need a new labelled key and a new
-ticket. Existing non-canonical Lago organizations are not migration targets for
-this repo; they are left untouched unless explicitly created as repo-owned test
-fixtures for live smoke isolation.
-
-Safe smoke fixture inventory after the 2026-04-27 P1B.21 cleanup:
-
-- dev: `org_prontiq_platform_lago_smoke_dev`,
-  `pq_cust_01KQ3T50Z86ZKEFG8Y7N68V3QP`,
-  `pq_sub_01KQ3T50Z86ZKEFG8Y7N68V3QP`, key prefix `pq_live_0665`
-- prod, retained as audit evidence only: `org_prontiq_platform_lago_smoke_prod`,
-  `pq_cust_01KQ3TT9XZZDR2CAZTV1TX1KBS`,
-  `pq_sub_01KQ3TT9XZZDR2CAZTV1TX1KBS`, disabled key prefix `pq_live_4a85`
-
-This inventory deliberately excludes raw API keys, API-key hashes, Lago API
-keys, webhook HMAC secrets, and local ignored evidence files.
-
-Webhook certification evidence:
-
-- dev: unsigned route returned `400 invalid_signature`, signed unique key
-  `prontiq-platform-dev-smoke-20260426T051602Z` completed in
-  `prontiq-lago-webhook-events-dev`, replay returned `200 duplicate`
-- prod: unsigned route returned `400 invalid_signature`, signed unique key
-  `prontiq-platform-prod-smoke-20260426T051812Z` completed in
-  `prontiq-lago-webhook-events`, replay returned `200 duplicate`
-- both stages reconciled the smoke envelope/key to Lago `payg` and
-  `billingPeriodKey=2026-04-26_2026-05-25`
-- P1B.19 changes the post-cutover request-time posture to
-  `COUNTER_PERIOD_SOURCE=lago` after preflight verification; calendar remains
-  the rollback fallback.
+Future production probes need a new labelled key and ticket. Existing
+non-canonical Lago organizations are not migration targets for this repo; leave
+them untouched unless explicitly created as repo-owned test fixtures.
 
 #### 5.6.0.4 Lago Webhook Reconciliation Contract
 
-`P1B.17` implements `POST /webhooks/lago` as the async reconciliation path from
-Lago commercial state back into Prontiq local enforcement state. The API hot
-path still does not call Lago.
+`POST /webhooks/lago` is the async reconciliation path from Lago commercial
+state back into Prontiq local enforcement state. The API hot path still does
+not call Lago.
 
 Webhook authentication:
 
@@ -1704,9 +1647,10 @@ Consumed event set:
 
 All other Lago webhook types are acknowledged as ignored after a ledger claim so
 Lago does not retry noise events. Consumed events resolve the Lago customer
-`external_id` as Prontiq `customerId`, load the customer through
-`prontiq-customers.customerId-index`, and require the Lago subscription external
-id to match `pq_sub_<same ulid as customerId>`.
+`external_id` as Clerk `orgId`, load the `ORG#{orgId}` envelope from
+`prontiq-keys`, and require the Lago subscription external id to match
+`lago_sub_${orgId}`. Legacy `pq_cust_*` payloads are ignored as migration
+evidence.
 
 Local mutation boundary:
 
@@ -1740,75 +1684,21 @@ Rollout flags:
 
 #### 5.6.0.5 Console Account Billing Contract
 
-`P1B.18` adds the Prontiq-owned account billing API surface that the console
-will render in `P1C.05`. These routes live in the dedicated `PqAccount` Lambda,
-not the address API hot-path Lambda.
+`POST /v1/account/setup` is the only active AWS private account route. It is a
+Clerk-JWT-authenticated recovery path for missed Clerk webhooks and returns
+`orgId`.
 
-Routes:
+The former AWS account billing routes are retired:
 
-- `GET /v1/account/billing` returns current local plan/enforcement state,
-  Lago subscription metadata, payment-overdue state, pending plan-change
-  metadata, and allowed billing actions
-- `POST /v1/account/billing/plan-change` submits an org-admin, idempotent Lago
-  plan change for the self-service `free` and `payg` targets
-- `POST /v1/account/billing/portal-session` returns Lago's customer portal URL
-  for invoices, billing details, and payment-management actions
+- `GET /v1/account/billing`
+- `POST /v1/account/billing/plan-change`
+- `POST /v1/account/billing/portal-session`
 
-Mutation safety:
-
-- all billing mutations require Clerk org-admin auth and `Idempotency-Key`
-- `prontiq-billing-actions` stores the Prontiq action id, actor, customer,
-  request hash, target plan, provider status, response body, timestamps, and TTL
-- plan-change mutations consult the idempotency ledger before no-op or pending
-  transition checks, so same-key replay/resume cannot be blocked by local state
-  that the original action wrote
-- portal-session and plan-change mutations check existing ledger evidence before
-  live Lago reads, so successful replay, stored failure replay, and
-  provider-accepted resume do not depend on provider availability
-- idempotent replay with the same request returns the stored response; reuse
-  with a different body returns `IDEMPOTENCY_CONFLICT`
-- retryable Lago transport/provider-unavailable failures and stale in-flight
-  rows can be conditionally reclaimed only by the same idempotency key plus the
-  same request hash
-- plan-change mutations use Lago's subscription assignment endpoint for
-  upgrades/downgrades and treat a 2xx provider response as accepted only when
-  the returned subscription matches the requested customer id, subscription id,
-  and shows the requested target as the active plan or pending next plan
-- after Lago accepts a plan-change mutation, the ledger records the provider
-  subscription outcome before local metadata repair so same-key retry can
-  resume repair without resubmitting the mutation
-- permanent failure rows replay as stored failures, not successful empty
-  responses
-- fresh plan-change actions evaluate pending transition metadata before
-  returning no-op, because local entitlements intentionally remain unchanged
-  during scheduled Lago transitions
-- production plan changes remain flag/allowlist gated until later cutover
-
-Transition semantics:
-
-- Lago `pending` transitions update pending metadata only
-- pending metadata is written to both the org envelope and API-key records so
-  support/debugging views see the same scheduled transition without changing
-  enforcement fields
-- local request-time `tier`, products, quota, rate limit, billing period, and
-  overdue state remain unchanged until Lago reports the active replacement state
-- `subscription.terminated` downgrades to Free only when the current Lago
-  subscription lookup does not return an active replacement snapshot
-
-Drift and idempotency:
-
-- `prontiq-lago-webhook-events` is keyed by `X-Lago-Unique-Key` and stores a
-  payload hash so same-key/different-body delivery is treated as drift
-- completed and ignored events return 200 on replay without mutating state
-- fresh in-flight duplicates return 500 so Lago retries after the active worker
-  finishes
-- stale `processing` rows are reclaimable after the Lambda timeout plus a small
-  buffer, using an atomic condition on `status` and `lastSeenAt`; this prevents
-  one crashed invocation from burning Lago's retry budget for minutes
-- retryable `drift` and `failed_retryable` rows can reopen to `processing` on
-  replay once the upstream configuration or dependency issue is fixed
-- reconciliation failures finalize the ledger as `drift`, write an error, and
-  return 500 so the Lago retry/log surface remains the operator work queue
+Future console billing surfaces should use a Vercel server-side BFF. The BFF
+reads Clerk session/org claims, keeps Lago API keys in Vercel server
+environment, and calls Lago directly for billing reads/actions. The platform
+backend remains responsible for API key lifecycle, request-time enforcement,
+queued usage events, and webhook reconciliation.
 
 #### 5.6.1 Legacy Stripe Billing Model (Historical)
 
@@ -2084,7 +1974,14 @@ webhook is now removed.
 
 #### 5.7.1 Clerk: `organizationMembership.created`
 
-**Critical invariant (post-review):** the **raw API key is never minted in a webhook**. A webhook response goes to Clerk, not to the user's browser, so any raw key generated server-side has no in-flight HTTP response to ride back on. Combined with hash-only storage, an SES failure would leave the org provisioned with a key whose raw value is unrecoverable. Instead, the webhook provisions the **org envelope** (Prontiq customer identity, entitlement snapshot, and Lago Free bootstrap), and the **first API key is minted by an authenticated `/v1/account/keys/create` call** where the raw value is returned in the HTTP response and shown to the user once.
+**Critical invariant:** the **raw API key is never minted in a webhook**. A
+webhook response goes to Clerk, not to the user's browser, so any raw key
+generated server-side has no in-flight HTTP response to ride back on. Combined
+with hash-only storage, an SES failure would leave the org provisioned with a
+key whose raw value is unrecoverable. Instead, the webhook provisions the
+`ORG#{orgId}` envelope, Lago customer, and Lago Free subscription. The first
+API key is minted by an authenticated `/v1/account/keys/create` call where the
+raw value is returned in the HTTP response and shown to the user once.
 
 ```
 1. Verify Svix signature                                          (invalid → 400)
@@ -2095,25 +1992,24 @@ webhook is now removed.
 
 3. TransactWriteItems (DDB):
    a. ConditionalPut prontiq-keys/ORG#{orgId} where attribute_not_exists(apiKeyHash)
-      Item: { customerId="pq_cust_<ulid>", stripeCustomerId=null, ownerEmail, tier="free",
+      Item: { orgId, stripeCustomerId=null, ownerEmail, tier="free",
               products=["address"], completedAt, hasFirstKey: false }
       // ORG#{orgId} is the org-envelope record. No raw API key
-      // material lives here — only customer identity, billing linkage,
+      // material lives here — only org identity, billing linkage,
       // entitlement snapshot, and provisioning state.
-   b. ConditionalPut prontiq-keys/CUSTOMER#{customerId}
-      Item: { customerId, orgId, clerkOrgId=orgId, ownerEmail, createdAt }
-   c. ConditionalPut prontiq-audit/{orgId}/{timestamp#eventId}
+   b. ConditionalPut prontiq-audit/{orgId}/{timestamp#eventId}
       where attribute_not_exists(orgId) AND attribute_not_exists(SK)
       Item: { action="ORG_PROVISIONED", actorId="clerk-webhook",
-              metadata={ source: "organizationMembership.created", customerId },
+              metadata={ source: "organizationMembership.created",
+                         commercialIdentity: "clerk_org_id" },
               ttl }
 
    On TransactionCanceled (concurrent provisioning):
      Re-read ORG#{orgId} → return 200. The competing call already won.
 
 4. Forward-mode billing bootstrap:
-   a. Upsert Lago customer using `external_id=customerId`.
-   b. Ensure Lago Free subscription using `external_subscription_id=pq_sub_<customer ulid>`.
+   a. Upsert Lago customer using `external_id=orgId`.
+   b. Ensure Lago Free subscription using `external_subscription_id=lago_sub_${orgId}`.
    c. Write local Lago linkage and billing-period fields back to the org
       envelope for local enforcement reads.
 5. Send welcome email via SES — best-effort and suppression-aware. Subject: "Welcome to Prontiq."
@@ -2151,14 +2047,18 @@ The `/v1/account/keys/create` endpoint (P1C.03):
 
 **Why this works:**
 
-- The webhook provisions only what the user can't see anyway (Prontiq customer identity, org envelope, and Lago Free bootstrap). No secret material is generated server-side without a user-visible HTTP response.
+- The webhook provisions only what the user can't see anyway (the org envelope and Lago Free bootstrap keyed by the Clerk `orgId`). No secret material is generated server-side without a user-visible HTTP response.
 - The first-key flow is just a normal `/v1/account/keys/create` call — no special "first-time" code path. Treats "first key" as the same operation as "Nth key".
 - SES failure is no longer load-bearing. The user can sign in regardless and create their key from the UI.
-- Lago bootstrap uses stable `customerId` and `external_subscription_id` values
-  so retries are safe. The platform no longer creates Stripe customers directly.
-- ORG#{orgId} item replaces the previous PROVISION#{orgId}: no more `provisionedKeyHash` field (no key exists yet), just `customerId`, nullable `stripeCustomerId`, Lago linkage/billing-period fields, a cached entitlement snapshot (`tier`, `products`), and `hasFirstKey`.
+- Lago bootstrap uses stable Clerk-org-derived values (`external_id = orgId`,
+  `external_subscription_id = lago_sub_${orgId}`) so retries are safe. The
+  platform no longer creates Stripe customers directly.
+- ORG#{orgId} item replaces the previous PROVISION#{orgId}: no more
+  `provisionedKeyHash` field (no key exists yet), no generated active
+  `customerId`, only Lago linkage/billing-period fields, a cached entitlement
+  snapshot (`tier`, `products`), and `hasFirstKey`.
 
-**Manual recovery path** (the rare case where the Clerk webhook never fires at all): the console app detects no `ORG#{orgId}` record and shows a "Set up your account" CTA. Clicking it calls `POST /v1/account/setup` (Clerk-authenticated) which runs the same Prontiq customer-envelope and Lago Free bootstrap flow against the user's session-derived `orgId`. Same code path as the webhook, just triggered by the user instead of Clerk. The user then creates their first key normally via `/v1/account/keys/create`.
+**Manual recovery path** (the rare case where the Clerk webhook never fires at all): the console app detects no `ORG#{orgId}` record and shows a "Set up your account" CTA. Clicking it calls `POST /v1/account/setup` (Clerk-authenticated) which runs the same org-envelope and Lago Free bootstrap flow against the user's session-derived `orgId`. Same code path as the webhook, just triggered by the user instead of Clerk. The user then creates their first key normally via `/v1/account/keys/create`.
 
 #### 5.7.2 Historical Stripe Webhook Paths (Removed)
 
@@ -2198,7 +2098,7 @@ decision record.
    10 seconds. They land on console.prontiq.dev.
 
 3. CONSOLE APP — first visit
-   Org auto-provisioned (Clerk webhook or account setup → Prontiq customer envelope + Lago Free subscription).
+   Org auto-provisioned (Clerk webhook or account setup → ORG envelope + Lago Free subscription).
    No API key exists yet. Sees: "Welcome to Prontiq. Create your first
    API key to get started." CTA button.
 
@@ -2457,7 +2357,7 @@ prontiq-platform/
 │   │   └── package.json
 │   ├── control-plane/                  # @prontiq/control-plane — provisionOrg service + audit + clerk helpers
 │   │   ├── src/
-│   │   │   ├── provisioning.ts         # createProvisioningService() — Prontiq customer envelope + Lago Free bootstrap + best-effort SES welcome email; exception-free public surface (read-result discriminated union); strong reads on every envelope check
+│   │   │   ├── provisioning.ts         # createProvisioningService() — ORG envelope + Lago Free bootstrap + best-effort SES welcome email; exception-free public surface (read-result discriminated union); strong reads on every envelope check
 │   │   │   ├── audit.ts                # buildAuditTransactItem (atomic grouping) + writeAudit (standalone) + monotonic ULID + idempotent on eventId
 │   │   │   ├── clerk.ts                # resolvePrimaryEmail (verified-primary-email invariant — shared by webhook + /v1/account/setup)
 │   │   │   └── index.ts
@@ -2893,7 +2793,7 @@ DynamoDB TTL handles automatic expiration. No manual cleanup.
 | Revoked key metadata     | `prontiq-keys`             | Indefinite (`active=false`) | Prevents hash reuse                    |
 | Billing registry         | `prontiq-keys`             | Indefinite                  | Updated on lifecycle events            |
 | Provisioning locks       | `prontiq-keys`             | Indefinite                  | Permanent idempotency                  |
-| Customer mapping         | `prontiq-customers`        | Indefinite while active     | Canonical Lago/customer identity       |
+| Legacy customer mapping  | `prontiq-customers`        | Indefinite while retained   | Migration/replay evidence              |
 | Usage counters           | `prontiq-usage`            | 90 days (TTL)               | Billing needs current + previous month |
 | Email flags + push state | `prontiq-usage`            | 90 days (same item)         | Expire with usage item                 |
 | REDIRECT records         | `prontiq-usage`            | 90 days (TTL)               | Match usage lifetime                   |
@@ -2905,7 +2805,13 @@ DynamoDB TTL handles automatic expiration. No manual cleanup.
 
 ### 11.1 GDPR / Privacy
 
-On account deletion, purge: `prontiq-customers`, `prontiq-keys` (all org keys + `ORG#{orgId}` envelope + remove from billing registry), `prontiq-usage` (all scopes including REDIRECT records), `prontiq-audit` (all org events), and `prontiq-ses-suppressions` (owner email). Retire the active commercial account in Lago, clean up any still-present legacy Stripe customer/subscription artifacts during migration, and delete the Clerk identity. Orchestrated by `scripts/purge-org.ts`.
+On account deletion, purge: `prontiq-keys` (all org keys + `ORG#{orgId}`
+envelope + legacy registry artifacts), `prontiq-usage` (all scopes including
+REDIRECT records), `prontiq-audit` (all org events), and
+`prontiq-ses-suppressions` (owner email). Retire the active commercial account
+in Lago by Clerk `orgId`, clean up any retained legacy
+`prontiq-customers`/Stripe artifacts for that org, and delete the Clerk
+identity. Orchestrated by `scripts/purge-org.ts`.
 
 ---
 
@@ -2927,12 +2833,19 @@ On account deletion, purge: `prontiq-customers`, `prontiq-keys` (all org keys + 
 
 **Idempotency.**
 
-- **Clerk provisioning** (`organizationMembership.created`): writes the `ORG#{orgId}` envelope record and `CUSTOMER#{customerId}` row, then bootstraps Lago Free (§5.7.1). A retry that hits an existing `ORG#{orgId}` returns 200 immediately. **The webhook does NOT mint API keys** — those are user-driven via `/v1/account/keys/create` after sign-in, which puts the raw key in a user-visible HTTP response (the only safe place for hash-only-stored secrets).
+- **Clerk provisioning** (`organizationMembership.created`): writes the
+  `ORG#{orgId}` envelope record, then bootstraps Lago Free with Lago customer
+  `external_id = orgId` and subscription
+  `external_id = lago_sub_${orgId}` (§5.7.1). A retry that hits an existing
+  `ORG#{orgId}` returns 200 immediately. **The webhook does NOT mint API keys**
+  — those are user-driven via `/v1/account/keys/create` after sign-in, which
+  puts the raw key in a user-visible HTTP response (the only safe place for
+  hash-only-stored secrets).
 - **Lago webhooks**: dedupe on `X-Lago-Unique-Key` via `prontiq-lago-webhook-events`. Same unique key plus same payload hash replays completed/ignored events as 200 no-op. Same unique key plus a different payload hash is drift and returns 500. Fresh in-flight duplicates return 500 so Lago retries after the active worker finishes.
 
 **Clerk webhook failure → manual recovery.** Two independent failure cases, both fully recoverable from the user side:
 
-1. **Webhook never created the org envelope** (e.g., Svix delivery failure during a Lambda outage). The console app detects "no `ORG#{orgId}` record" and shows a "Set up your account" CTA. Clicking it calls `POST /v1/account/setup` (Clerk-authenticated), which runs the same Prontiq customer-envelope + Lago Free bootstrap flow as the webhook. Same code, two triggers.
+1. **Webhook never created the org envelope** (e.g., Svix delivery failure during a Lambda outage). The console app detects "no `ORG#{orgId}` record" and shows a "Set up your account" CTA. Clicking it calls `POST /v1/account/setup` (Clerk-authenticated), which runs the same org-envelope + Lago Free bootstrap flow as the webhook. Same code, two triggers.
 2. **Org envelope exists but the user has no keys** (e.g., SES failed so no welcome email arrived, but webhook succeeded). The standard `/v1/account/keys/create` flow handles this — there's nothing special about a "first" key. The `hasFirstKey` flag flips on the first successful create.
 
 In both cases, the user owns recovery. No operator paging required for SES outages or single-shot webhook misses.
@@ -2942,7 +2855,8 @@ In both cases, the user owns recovery. No operator paging required for SES outag
 **Lago webhook failure.** Lago retries non-2xx webhook responses and exposes
 the event in its webhook logs. Persistent 5xx from `/webhooks/lago` means either
 the reconciliation flag is intentionally disabled, Lago plan/subscription config
-does not match Prontiq's contract, or the local customer mapping is missing.
+does not match Prontiq's contract, or the local `ORG#{orgId}` envelope is
+missing.
 Operators inspect `prontiq-lago-webhook-events`, CloudWatch logs, and Lago
 webhook logs before replaying.
 

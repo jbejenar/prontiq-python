@@ -21,14 +21,14 @@ In the target architecture:
 
 - confirm plan metadata in Lago matches the intended commercial surface
 - confirm plan codes exactly match Prontiq tiers (`free`, `payg`, etc.)
-- confirm self-service billing plans use the account-billing customer currency
-  before enabling plan changes; Prontiq upserts account-billing customers as AUD
-- confirm account billing plan changes use `docs/runbooks/console-billing.md`
-  and are gated by stage flags/allowlists until cutover
+- confirm Lago customers use AUD currency before exposing self-service billing
+  through a future console BFF
+- confirm console billing changes use `docs/runbooks/console-billing.md`
+  and do not reintroduce platform-owned account billing routes
 - confirm each enabled metric code matches the platform `meterEventName`
 - confirm credit metrics aggregate the `credits` property by sum
-- confirm subscriptions use `pq_sub_<ulid>` external IDs derived from
-  `pq_cust_<ulid>` customer IDs
+- confirm subscriptions use `lago_sub_${orgId}` external IDs derived from
+  Clerk org IDs
 - confirm PAYG subscriptions produce `quotaPerProduct = null` locally after
   webhook reconciliation
 - confirm Prontiq endpoint credit weights match the published Credits guide

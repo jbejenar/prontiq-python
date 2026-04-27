@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  billingUsageEventV1Schema,
+  billingUsageEventV2Schema,
   deriveBillingUsageEventId,
   type ApiKeyRecord,
-  type CustomerRecord,
+  type OrgEnvelopeRecord,
 } from "@prontiq/shared";
 import {
   buildLagoLiveSmokeEvent,
@@ -20,7 +20,6 @@ function makeKey(overrides: Partial<ApiKeyRecord> = {}): ApiKeyRecord {
     active: true,
     apiKeyHash: "hash_0123456789abcdef0123456789abcdef",
     createdAt: "2026-04-26T00:00:00.000Z",
-    customerId: "pq_cust_01HYZ6Q4X6DJP2X9Q9FQKX4T7D",
     keyPrefix: "pq_live_abcdef",
     lastUsedAt: null,
     orgId: "org_smoke",
@@ -37,28 +36,29 @@ function makeKey(overrides: Partial<ApiKeyRecord> = {}): ApiKeyRecord {
   };
 }
 
-function makeCustomer(overrides: Partial<CustomerRecord> = {}): CustomerRecord {
-  return {
-    createdAt: "2026-04-26T00:00:00.000Z",
-    customerId: "pq_cust_01HYZ6Q4X6DJP2X9Q9FQKX4T7D",
-    lagoCustomerId: null,
-    lagoExternalCustomerId: "pq_cust_01HYZ6Q4X6DJP2X9Q9FQKX4T7D",
+function makeOrg(overrides: Partial<OrgEnvelopeRecord> = {}): OrgEnvelopeRecord {
+  const base: OrgEnvelopeRecord = {
+    apiKeyHash: "ORG#org_smoke",
+    completedAt: "2026-04-26T00:00:00.000Z",
+    hasFirstKey: true,
     orgId: "org_smoke",
     ownerEmail: "owner@example.com",
-    status: "active",
+    paymentOverdue: false,
+    products: ["address"],
     stripeCustomerId: null,
-    updatedAt: "2026-04-26T00:00:00.000Z",
-    ...overrides,
+    stripeSubscriptionId: null,
+    subscriptionItems: {},
+    tier: "free",
   };
+  return { ...base, ...overrides } as OrgEnvelopeRecord;
 }
 
 test("parseLagoLiveSmokeEnv requires live-table and smoke inputs", () => {
-  assert.throws(() => parseLagoLiveSmokeEnv({ STAGE: "dev" }), /CUSTOMERS_TABLE_NAME is required/);
+  assert.throws(() => parseLagoLiveSmokeEnv({ STAGE: "dev" }), /KEYS_TABLE_NAME is required/);
 });
 
 test("parseLagoLiveSmokeEnv derives safe defaults", () => {
   const config = parseLagoLiveSmokeEnv({
-    CUSTOMERS_TABLE_NAME: "prontiq-customers-dev",
     KEYS_TABLE_NAME: "prontiq-keys-dev",
     OCCURRED_AT: occurredAt.toISOString(),
     REQUEST_COUNT_AFTER_INCREMENT: "42",
@@ -75,7 +75,6 @@ test("parseLagoLiveSmokeEnv derives safe defaults", () => {
 
 test("parseLagoLiveSmokeEnv parses SEND_TO_SQS deliberately", () => {
   const config = parseLagoLiveSmokeEnv({
-    CUSTOMERS_TABLE_NAME: "prontiq-customers-dev",
     KEYS_TABLE_NAME: "prontiq-keys-dev",
     REQUEST_COUNT_AFTER_INCREMENT: "42",
     SEND_TO_SQS: " true ",
@@ -87,7 +86,6 @@ test("parseLagoLiveSmokeEnv parses SEND_TO_SQS deliberately", () => {
   assert.throws(
     () =>
       parseLagoLiveSmokeEnv({
-        CUSTOMERS_TABLE_NAME: "prontiq-customers-dev",
         KEYS_TABLE_NAME: "prontiq-keys-dev",
         REQUEST_COUNT_AFTER_INCREMENT: "42",
         SEND_TO_SQS: "yes",
@@ -98,27 +96,28 @@ test("parseLagoLiveSmokeEnv parses SEND_TO_SQS deliberately", () => {
   );
 });
 
-test("buildLagoLiveSmokeEvent derives deterministic event id", () => {
+test("buildLagoLiveSmokeEvent derives deterministic V2 event id", () => {
   const key = makeKey();
-  const customer = makeCustomer();
+  const org = makeOrg();
   const event = buildLagoLiveSmokeEvent({
     apiKeyHash: key.apiKeyHash,
-    customer,
     key,
     occurredAt,
+    org,
     requestCountAfterIncrement: 42,
     stage: "dev",
   });
 
-  const parsed = billingUsageEventV1Schema.parse(event);
+  const parsed = billingUsageEventV2Schema.parse(event);
   assert.deepEqual(parsed, event);
+  assert.equal(event.version, 2);
   assert.equal(
     event.eventId,
     deriveBillingUsageEventId({
       apiKeyHash: key.apiKeyHash,
       billingEndpointKey: "address.smoke",
       creditDelta: 1,
-      customerId: customer.customerId,
+      orgId: key.orgId,
       requestCountAfterIncrement: 42,
       usageScope: "address#2026-04",
     }),
@@ -128,39 +127,39 @@ test("buildLagoLiveSmokeEvent derives deterministic event id", () => {
 });
 
 test("buildLagoLiveSmokeEvent fails closed on unsafe smoke state", () => {
-  const key = makeKey({ customerId: "pq_cust_01HYZ6Q4X6DJP2X9Q9FQKX4T7D" });
-  const customer = makeCustomer({ lagoExternalCustomerId: "pq_cust_01HYZ6Q4X6DJP2X9Q9FQKX4T7E" });
+  const key = makeKey();
+  const org = makeOrg({ apiKeyHash: "ORG#org_other" });
 
   assert.throws(
     () =>
       buildLagoLiveSmokeEvent({
         apiKeyHash: key.apiKeyHash,
-        customer,
         key,
         occurredAt,
+        org,
         requestCountAfterIncrement: 42,
         stage: "dev",
       }),
-    /lagoExternalCustomerId must equal customerId/,
+    /org envelope does not match API key orgId/,
   );
 });
 
 test("buildLagoLiveSmokeEvidence prints only non-secret identifiers", () => {
   const key = makeKey();
-  const customer = makeCustomer();
+  const org = makeOrg();
   const event = buildLagoLiveSmokeEvent({
     apiKeyHash: key.apiKeyHash,
-    customer,
     key,
     occurredAt,
+    org,
     requestCountAfterIncrement: 42,
     stage: "prod",
   });
 
   const evidence = buildLagoLiveSmokeEvidence({ event, sentToSqs: true });
-  assert.equal(evidence.customerId, customer.customerId);
-  assert.equal(evidence.externalSubscriptionId, "pq_sub_01HYZ6Q4X6DJP2X9Q9FQKX4T7D");
+  assert.equal(evidence.externalSubscriptionId, "lago_sub_org_smoke");
   assert.equal(evidence.keyPrefix, key.keyPrefix);
+  assert.equal(evidence.orgId, key.orgId);
   assert.equal(evidence.sentToSqs, true);
   assert.equal(JSON.stringify(evidence).includes("pq_live_"), true);
   assert.equal(JSON.stringify(evidence).includes("raw"), false);
@@ -170,7 +169,6 @@ test("runLagoLiveSmoke does not send to SQS unless explicitly enabled", async ()
   let sendCount = 0;
   const result = await runLagoLiveSmoke(
     {
-      CUSTOMERS_TABLE_NAME: "prontiq-customers-dev",
       KEYS_TABLE_NAME: "prontiq-keys-dev",
       OCCURRED_AT: occurredAt.toISOString(),
       REQUEST_COUNT_AFTER_INCREMENT: "42",
@@ -178,7 +176,7 @@ test("runLagoLiveSmoke does not send to SQS unless explicitly enabled", async ()
       STAGE: "dev",
     },
     {
-      loadSmokeState: async () => ({ customer: makeCustomer(), key: makeKey() }),
+      loadSmokeState: async () => ({ key: makeKey(), org: makeOrg() }),
       sendSmokeEventToSqs: async () => {
         sendCount += 1;
       },
@@ -196,7 +194,6 @@ test("runLagoLiveSmoke requires a queue URL before loading state when SEND_TO_SQ
     () =>
       runLagoLiveSmoke(
         {
-          CUSTOMERS_TABLE_NAME: "prontiq-customers-dev",
           KEYS_TABLE_NAME: "prontiq-keys-dev",
           REQUEST_COUNT_AFTER_INCREMENT: "42",
           SEND_TO_SQS: "true",
@@ -206,7 +203,7 @@ test("runLagoLiveSmoke requires a queue URL before loading state when SEND_TO_SQ
         {
           loadSmokeState: async () => {
             loadCount += 1;
-            return { customer: makeCustomer(), key: makeKey() };
+            return { key: makeKey(), org: makeOrg() };
           },
         },
       ),
@@ -221,7 +218,6 @@ test("runLagoLiveSmoke sends the validated event when SEND_TO_SQS=true", async (
     {
       BILLING_EVENTS_QUEUE_URL:
         "https://sqs.ap-southeast-2.amazonaws.com/123/prontiq-billing-events-dev",
-      CUSTOMERS_TABLE_NAME: "prontiq-customers-dev",
       KEYS_TABLE_NAME: "prontiq-keys-dev",
       OCCURRED_AT: occurredAt.toISOString(),
       REQUEST_COUNT_AFTER_INCREMENT: "42",
@@ -230,7 +226,7 @@ test("runLagoLiveSmoke sends the validated event when SEND_TO_SQS=true", async (
       STAGE: "dev",
     },
     {
-      loadSmokeState: async () => ({ customer: makeCustomer(), key: makeKey() }),
+      loadSmokeState: async () => ({ key: makeKey(), org: makeOrg() }),
       sendSmokeEventToSqs: async (queueUrl, event) => {
         sentBodies.push({ queueUrl, eventId: event.eventId });
       },

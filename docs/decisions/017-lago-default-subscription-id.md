@@ -2,7 +2,10 @@
 
 ## Status
 
-Accepted.
+Superseded by [ADR-035](035-clerk-org-commercial-identity.md) for active runtime.
+
+This ADR is retained as historical P1B.16-P1B.21 migration context only. Active
+Lago subscriptions now use `external_id = lago_sub_${orgId}`.
 
 ## Context
 

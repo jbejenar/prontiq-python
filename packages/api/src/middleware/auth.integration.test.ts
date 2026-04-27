@@ -19,6 +19,7 @@ import {
 import type {
   ApiKeyRecord,
   BillingUsageEventV1,
+  BillingUsageEventV2,
   QuotaEmailTask,
   RedirectRecord,
   UsageCounterRecord,
@@ -556,14 +557,13 @@ test("billing event emission enqueues after usage enforcement succeeds", async (
   process.env.BILLING_EVENTS_QUEUE_URL =
     "https://sqs.ap-southeast-2.amazonaws.com/123/billing-events";
   process.env.PRONTIQ_STAGE = "test";
-  const enqueued: BillingUsageEventV1[] = [];
+  const enqueued: Array<BillingUsageEventV1 | BillingUsageEventV2> = [];
   __setBillingEventEnqueuerForTesting(async (event) => {
     enqueued.push(event);
   });
 
   const rawKey = "pq_test_billing_event_key_123";
   const record = await seedKey(rawKey, {
-    customerId: "pq_cust_01HYZ6Q4X6DJP2X9Q9FQKX4T7D",
     quotaPerProduct: 10,
     rateLimit: 10,
     tier: "starter",
@@ -573,7 +573,7 @@ test("billing event emission enqueues after usage enforcement succeeds", async (
 
   assert.equal(response.status, 200);
   assert.equal(enqueued.length, 1);
-  assert.equal(enqueued[0]?.customerId, "pq_cust_01HYZ6Q4X6DJP2X9Q9FQKX4T7D");
+  assert.equal(enqueued[0]?.orgId, record.orgId);
   assert.equal(enqueued[0]?.apiKeyHash, record.apiKeyHash);
   assert.equal(enqueued[0]?.billingEndpointKey, "address.autocomplete");
   assert.equal(enqueued[0]?.creditDelta, 1);
@@ -591,7 +591,6 @@ test("billing event enqueue failure returns 500 after the local usage increment"
 
   const rawKey = "pq_test_billing_event_failure_key_123";
   const record = await seedKey(rawKey, {
-    customerId: "pq_cust_01HYZ6Q4X6DJP2X9Q9FQKX4T7E",
     quotaPerProduct: 10,
     rateLimit: 10,
     tier: "starter",
@@ -609,12 +608,13 @@ test("billing event enqueue failure returns 500 after the local usage increment"
   assert.equal(usage?.requestCount, 1);
 });
 
-test("billing event emission fails closed before usage increment when customerId is missing", async () => {
+test("billing event emission fails closed before usage increment when orgId is missing", async () => {
   process.env.BILLING_EVENTS_ENABLED = "true";
   process.env.BILLING_EVENTS_QUEUE_URL =
     "https://sqs.ap-southeast-2.amazonaws.com/123/billing-events";
-  const rawKey = "pq_test_billing_event_missing_customer_key_123";
+  const rawKey = "pq_test_billing_event_missing_org_key_123";
   const record = await seedKey(rawKey, {
+    orgId: undefined as unknown as string,
     quotaPerProduct: 10,
     rateLimit: 10,
     tier: "starter",

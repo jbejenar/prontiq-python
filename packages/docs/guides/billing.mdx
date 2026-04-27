@@ -28,7 +28,7 @@ The target model is:
 Prontiq still owns:
 
 - API key lifecycle
-- org-scoped customer mapping
+- org-scoped account identity via Clerk `orgId`
 - real-time credit enforcement
 - per-key usage tracking
 - billing-event emission away from the hot path
@@ -49,29 +49,16 @@ Commercial/account identity is represented by:
 
 - the Clerk organization
 - the Prontiq org envelope in DynamoDB
-- the Prontiq-owned `customerId`
 - Lago commercial state
 
-The platform customer contract is defined by `P1B.14`.
-
-Prontiq-owned customer IDs are opaque, org-scoped identifiers formatted as
-`pq_cust_<ulid>`. Humans signing in with Clerk and machines authenticating with
-API keys will both resolve to the same platform `customerId`, and that
-identifier bridges:
-
-- Clerk organizations
-- Prontiq account state
-- Lago commercial state
-- Stripe payment records
-
-For Lago, Prontiq sends `customerId` as the Lago customer `external_id`. Lago's
-provider-owned `lago_id` and migration-era Stripe `cus_...` IDs are linkage
-fields only; they are not Prontiq customer identity.
+The active platform customer contract is Clerk `orgId`. Lago customer
+`external_id` is the same `orgId`, and Lago subscriptions use
+`lago_sub_${orgId}`. Lago provider-owned `lago_id` values and Stripe `cus_...`
+IDs are linkage fields only; they are not Prontiq customer identity.
 
 <Note>
-  The customer table, backfill utility, SQS billing-event producer, Lago forwarder, and webhook
-  reconciliation are implemented. Console billing APIs expose the Prontiq-owned account contract for
-  billing state, plan changes, and Lago portal access.
+  Legacy `pq_cust_*` records from P1B.14-P1B.21 are retained only as migration evidence.
+  Active runtime paths use Clerk `orgId`.
 </Note>
 
 ## Usage event forwarding
@@ -83,11 +70,9 @@ configured with the matching subscription and metric.
 
 ## Console billing surfaces
 
-Signed-in console billing screens use private Prontiq account routes rather than
-direct Lago or Stripe browser integration:
-
-Those routes are Clerk-session-authenticated and are not part of the public
-server-to-server data API, public Mintlify API reference, or Speakeasy SDK.
+Signed-in console billing screens should use a Vercel server-side BFF rather
+than direct Lago or Stripe browser integration. The BFF verifies Clerk auth,
+reads the active `org_id`, and calls Lago with server-held credentials.
 
 API-key users should continue to integrate through the public data API and use
 the console UI for account billing actions.

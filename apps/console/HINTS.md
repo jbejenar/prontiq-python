@@ -4,15 +4,12 @@
 - Billing and plan-management work in this app should align to the Lago-centered
   commercial architecture; any retained Stripe-hosted behavior is legacy
   migration context only.
-- P1B.19 makes Lago the runtime billing source of truth and Stripe the payment
-  rail only. Do not render Stripe customer/subscription IDs as canonical account
-  state; `/v1/account/setup` returns the platform `customerId` only for
-  customer identity.
-- Billing UI work must consume `/v1/account/billing`,
-  `/v1/account/billing/plan-change`, and
-  `/v1/account/billing/portal-session`; do not direct-call Lago or Stripe from
-  the browser. These routes are private console contracts documented by
-  `packages/api/openapi.private.json`, not the public SDK.
+- P1B.22 makes Clerk `orgId` the active Prontiq/Lago customer identity and
+  keeps Stripe as Lago's payment rail only. Do not render Stripe or Lago
+  provider IDs as canonical account state.
+- Billing UI work must not call Lago or Stripe from the browser. Future billing
+  surfaces should use a Vercel server-side BFF that verifies Clerk auth, reads
+  the active `org_id`, and calls Lago with a server-held Lago API key.
 - `P1C.07` provides the Tailwind/shadcn/theme shell base and the env-gated Clerk boundary.
 - Fully missing Clerk keys are only a valid disabled mode when the helper-managed local/CI opt-in is present.
 - One-key-only Clerk config is a fail-closed misconfiguration, not a valid disabled mode.

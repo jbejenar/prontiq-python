@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Accepted; event payload version updated by [ADR-035](035-clerk-org-commercial-identity.md).
 
 ## Question
 
@@ -12,8 +12,9 @@ queue?
 ## Decision
 
 Use a standard SQS queue with a DLQ. Event idempotency is owned by the
-deterministic `BillingUsageEventV1.eventId` contract, not by queue-level
-deduplication.
+deterministic billing event id contract, not by queue-level deduplication.
+Active events are `BillingUsageEventV2` with Clerk `orgId`; historical
+`BillingUsageEventV1` messages remain valid only for migration replay/debugging.
 
 ## Considered and rejected
 

@@ -10,13 +10,11 @@ import {
   DEFAULT_ACCOUNT_URL,
   PLANS,
   createLogger,
-  deriveLagoExternalSubscriptionId,
-  type CustomerRecord,
+  deriveLagoExternalSubscriptionIdForOrg,
   type OrgEnvelopeRecord,
   type ApiKeyRecord,
 } from "@prontiq/shared";
 import { buildAuditTransactItem } from "./audit.js";
-import { generateCustomerId as generateCustomerIdDefault } from "./customer-identity.js";
 import { isSuppressedEmail, sendSignedSesEmail } from "./email.js";
 
 // Three classes of error vocabulary surface from a DynamoDB call:
@@ -74,7 +72,6 @@ const FREE_TIER = "free" as const;
 
 type Logger = Pick<Console, "error" | "warn" | "info">;
 type Sleep = (ms: number) => Promise<void>;
-type CustomerIdGenerator = (now: Date) => string;
 
 export type ProvisioningStatus =
   | "created"
@@ -92,7 +89,6 @@ export interface ProvisioningInput {
 export interface ProvisioningResult {
   status: ProvisioningStatus;
   emailSent: boolean;
-  customerId?: string;
   orgEnvelope?: OrgEnvelopeRecord;
   stripeCustomerId?: string | null;
 }
@@ -121,7 +117,7 @@ export interface LagoProvisioningClient {
     externalSubscriptionId: string,
   ): Promise<LagoProvisioningSubscriptionSnapshot | null>;
   upsertCustomer(input: {
-    customerId: string;
+    orgId: string;
     email: string;
     paymentProviderCode: string;
   }): Promise<void>;
@@ -135,12 +131,10 @@ export interface LagoProvisioningClient {
 export interface ProvisioningDependencies {
   ddb: DynamoDBDocumentClient;
   keysTableName: string;
-  customersTableName: string;
   auditTableName: string;
   lagoClient: LagoProvisioningClient;
   lagoPaymentProviderCode: string;
   sendWelcomeEmail: EmailSender;
-  generateCustomerId: CustomerIdGenerator;
   logger: Logger;
   sleep: Sleep;
 }
@@ -218,7 +212,7 @@ function parseLagoSubscription(payload: unknown): LagoProvisioningSubscriptionSn
   };
 }
 
-class HttpLagoProvisioningClient implements LagoProvisioningClient {
+export class HttpLagoProvisioningClient implements LagoProvisioningClient {
   private readonly apiKey: string;
   private readonly baseUrl: string;
   private readonly fetchImpl: typeof fetch;
@@ -248,7 +242,7 @@ class HttpLagoProvisioningClient implements LagoProvisioningClient {
   }
 
   async upsertCustomer(input: {
-    customerId: string;
+    orgId: string;
     email: string;
     paymentProviderCode: string;
   }): Promise<void> {
@@ -262,7 +256,7 @@ class HttpLagoProvisioningClient implements LagoProvisioningClient {
           },
           currency: "AUD",
           email: input.email,
-          external_id: input.customerId,
+          external_id: input.orgId,
           name: input.email,
         },
       }),
@@ -419,9 +413,7 @@ async function readOrgEnvelope(
 function buildProvisioningTransactWrite(
   input: ProvisioningInput,
   stripeCustomerId: string | null,
-  customerId: string,
   keysTableName: string,
-  customersTableName: string,
   auditTableName: string,
   now: Date,
 ): TransactWriteCommand {
@@ -433,8 +425,8 @@ function buildProvisioningTransactWrite(
   const envelope: OrgEnvelopeRecord = {
     apiKeyHash: getOrgEnvelopeKey(input.orgId),
     completedAt,
-    customerId,
     hasFirstKey: false,
+    orgId: input.orgId,
     ownerEmail: input.ownerEmail,
     paymentOverdue: false,
     products: freePlan.products,
@@ -443,17 +435,6 @@ function buildProvisioningTransactWrite(
     subscriptionItems: {},
     tier: FREE_TIER,
   };
-  const customer: CustomerRecord = {
-    orgId: input.orgId,
-    customerId,
-    lagoExternalCustomerId: customerId,
-    lagoCustomerId: null,
-    stripeCustomerId,
-    ownerEmail: input.ownerEmail,
-    status: "active",
-    createdAt: completedAt,
-    updatedAt: completedAt,
-  };
 
   const auditItem = buildAuditTransactItem({
     tableName: auditTableName,
@@ -461,7 +442,7 @@ function buildProvisioningTransactWrite(
     action: "ORG_PROVISIONED",
     actorId: input.actorId,
     metadata: {
-      customerId,
+      commercialIdentity: "clerk_org_id",
       source: input.source,
       stripeCustomerId,
     },
@@ -475,13 +456,6 @@ function buildProvisioningTransactWrite(
           TableName: keysTableName,
           Item: envelope,
           ConditionExpression: "attribute_not_exists(apiKeyHash)",
-        },
-      },
-      {
-        Put: {
-          TableName: customersTableName,
-          Item: customer,
-          ConditionExpression: "attribute_not_exists(orgId)",
         },
       },
       auditItem,
@@ -514,7 +488,6 @@ function resultForExistingEnvelope(envelope: OrgEnvelopeRecord): ProvisioningRes
   return {
     status: "already_exists",
     emailSent: false,
-    customerId: envelope.customerId,
     orgEnvelope: envelope,
     stripeCustomerId: envelope.stripeCustomerId ?? null,
   };
@@ -662,18 +635,19 @@ async function bootstrapLagoFreeSubscription(
   if (isCompleteLagoBootstrap(envelope)) {
     return envelope;
   }
-  const customerId = envelope.customerId;
-  if (!customerId) throw new Error("ORG envelope is missing customerId");
-  const externalSubscriptionId = deriveLagoExternalSubscriptionId(customerId);
+  const externalCustomerId = envelope.customerId ?? input.orgId;
+  const externalSubscriptionId = envelope.customerId
+    ? `pq_sub_${envelope.customerId.slice("pq_cust_".length)}`
+    : deriveLagoExternalSubscriptionIdForOrg(input.orgId);
   await dependencies.lagoClient.upsertCustomer({
-    customerId,
+    orgId: externalCustomerId,
     email: input.ownerEmail,
     paymentProviderCode: dependencies.lagoPaymentProviderCode,
   });
   let snapshot = await dependencies.lagoClient.getSubscription(externalSubscriptionId);
   if (!snapshot) {
     await dependencies.lagoClient.upsertSubscription({
-      externalCustomerId: customerId,
+      externalCustomerId,
       externalSubscriptionId,
       planCode: FREE_TIER,
     });
@@ -682,10 +656,10 @@ async function bootstrapLagoFreeSubscription(
   if (!snapshot)
     throw new Error(`Lago subscription ${externalSubscriptionId} was not found after upsert`);
   if (
-    snapshot.externalCustomerId !== customerId ||
+    snapshot.externalCustomerId !== externalCustomerId ||
     snapshot.externalSubscriptionId !== externalSubscriptionId
   ) {
-    throw new Error("Lago bootstrap subscription identifiers do not match Prontiq customer");
+    throw new Error("Lago bootstrap subscription identifiers do not match Clerk org");
   }
   return writeLagoBootstrapState(dependencies, input.orgId, snapshot);
 }
@@ -840,9 +814,7 @@ export function createProvisioningService(overrides: Partial<ProvisioningDepende
   const logger = overrides.logger ?? defaultLogger;
   const dependencies: ProvisioningDependencies = {
     auditTableName: overrides.auditTableName ?? getRequiredEnv("AUDIT_TABLE_NAME"),
-    customersTableName: overrides.customersTableName ?? getRequiredEnv("CUSTOMERS_TABLE_NAME"),
     ddb: overrides.ddb ?? getDefaultDdb(),
-    generateCustomerId: overrides.generateCustomerId ?? generateCustomerIdDefault,
     keysTableName: overrides.keysTableName ?? getRequiredEnv("KEYS_TABLE_NAME"),
     lagoClient: overrides.lagoClient ?? getDefaultLagoClient(),
     lagoPaymentProviderCode:
@@ -860,7 +832,7 @@ export function createProvisioningService(overrides: Partial<ProvisioningDepende
     );
     switch (preflight.kind) {
       case "found":
-        if (!preflight.record.customerId) {
+        if (!preflight.record.customerId && !preflight.record.orgId) {
           return resultForExistingEnvelope(preflight.record);
         }
         try {
@@ -878,7 +850,6 @@ export function createProvisioningService(overrides: Partial<ProvisioningDepende
           return {
             status: "retryable_failure",
             emailSent: false,
-            customerId: preflight.record.customerId,
             stripeCustomerId: preflight.record.stripeCustomerId ?? null,
           };
         }
@@ -901,17 +872,13 @@ export function createProvisioningService(overrides: Partial<ProvisioningDepende
     const stripeCustomerId: string | null = null;
 
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
-      let customerId: string | undefined;
       try {
         const now = new Date();
-        customerId = dependencies.generateCustomerId(now);
         await dependencies.ddb.send(
           buildProvisioningTransactWrite(
             input,
             stripeCustomerId,
-            customerId,
             dependencies.keysTableName,
-            dependencies.customersTableName,
             dependencies.auditTableName,
             now,
           ),
@@ -941,7 +908,6 @@ export function createProvisioningService(overrides: Partial<ProvisioningDepende
             } catch (error) {
               dependencies.logger.error("Post-commit Lago bootstrap failed", {
                 attempt,
-                customerId,
                 error: error instanceof Error ? error.message : String(error),
                 orgId: input.orgId,
                 stripeCustomerId,
@@ -949,7 +915,6 @@ export function createProvisioningService(overrides: Partial<ProvisioningDepende
               return {
                 status: "retryable_failure",
                 emailSent: false,
-                customerId,
                 orgEnvelope: confirm.record,
                 stripeCustomerId,
               };
@@ -978,7 +943,6 @@ export function createProvisioningService(overrides: Partial<ProvisioningDepende
             return {
               status: "created",
               emailSent,
-              customerId: orgEnvelope.customerId,
               orgEnvelope,
               stripeCustomerId,
             };
@@ -988,19 +952,19 @@ export function createProvisioningService(overrides: Partial<ProvisioningDepende
               "Post-commit confirmation read failed (transient) — envelope likely committed; caller should retry to confirm",
               { attempt, orgId: input.orgId, stripeCustomerId, error: confirm.error.message },
             );
-            return { status: "retryable_failure", emailSent: false, customerId, stripeCustomerId };
+            return { status: "retryable_failure", emailSent: false, stripeCustomerId };
           case "fatal_failure":
             dependencies.logger.error(
               "Post-commit confirmation read failed (fatal) — envelope likely committed but cannot be verified",
               { attempt, orgId: input.orgId, stripeCustomerId, error: confirm.error.message },
             );
-            return { status: "fatal_failure", emailSent: false, customerId, stripeCustomerId };
+            return { status: "fatal_failure", emailSent: false, stripeCustomerId };
           case "missing":
             dependencies.logger.error(
               "Post-commit confirmation read returned no envelope despite successful TransactWriteItems",
               { attempt, orgId: input.orgId, stripeCustomerId },
             );
-            return { status: "fatal_failure", emailSent: false, customerId, stripeCustomerId };
+            return { status: "fatal_failure", emailSent: false, stripeCustomerId };
         }
       } catch (error) {
         // After a write failure, we must read to distinguish "competing
@@ -1015,7 +979,7 @@ export function createProvisioningService(overrides: Partial<ProvisioningDepende
           input.orgId,
         );
         if (reconcile.kind === "found") {
-          if (!reconcile.record.customerId) {
+          if (!reconcile.record.customerId && !reconcile.record.orgId) {
             return resultForExistingEnvelope(reconcile.record);
           }
           try {
@@ -1036,7 +1000,6 @@ export function createProvisioningService(overrides: Partial<ProvisioningDepende
             return {
               status: "retryable_failure",
               emailSent: false,
-              customerId: reconcile.record.customerId,
               orgEnvelope: reconcile.record,
               stripeCustomerId,
             };
@@ -1054,7 +1017,6 @@ export function createProvisioningService(overrides: Partial<ProvisioningDepende
           return {
             status: reconcile.kind === "transient_failure" ? "retryable_failure" : "fatal_failure",
             emailSent: false,
-            customerId,
             stripeCustomerId,
           };
         }
@@ -1091,7 +1053,6 @@ export function createProvisioningService(overrides: Partial<ProvisioningDepende
         return {
           status: isFatal ? "fatal_failure" : "retryable_failure",
           emailSent: false,
-          customerId,
           stripeCustomerId,
         };
       }

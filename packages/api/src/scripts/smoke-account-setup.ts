@@ -84,7 +84,7 @@ import type { Session } from "@clerk/backend";
 
 interface SetupSuccess {
   status: "created" | "already_exists";
-  customerId: string;
+  orgId: string;
   emailSent?: boolean;
 }
 

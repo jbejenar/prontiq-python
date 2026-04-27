@@ -164,6 +164,8 @@ export interface RedirectRecord {
 
 export interface OrgEnvelopeRecord {
   apiKeyHash: string;
+  orgId?: string;
+  /** Legacy P1B.14-P1B.21 identifier retained only on pre-pivot rows. */
   customerId?: string;
   stripeCustomerId: string | null;
   ownerEmail: string;

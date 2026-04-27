@@ -55,10 +55,13 @@ export type { GeneratedKey } from "./keys.js";
 export {
   BILLING_EVENT_VERSION,
   billingUsageEventV1Schema,
+  billingUsageEventV2Schema,
   deriveBillingUsageEventId,
+  deriveLagoExternalSubscriptionIdForOrg,
+  deriveLegacyBillingUsageEventId,
   deriveLagoExternalSubscriptionId,
 } from "./billing-events.js";
-export type { BillingEventIdInput, BillingUsageEventV1 } from "./billing-events.js";
+export type { BillingEventIdInput, BillingUsageEventV1, BillingUsageEventV2 } from "./billing-events.js";
 
 export {
   LAGO_WEBHOOK_EVENT_TYPES,

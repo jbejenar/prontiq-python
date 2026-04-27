@@ -68,7 +68,9 @@ export default $config({
     const authKeysName = isProd ? "prontiq-keys" : `prontiq-keys-${$app.stage}`;
     const authUsageName = isProd ? "prontiq-usage" : `prontiq-usage-${$app.stage}`;
     const auditTableName = isProd ? "prontiq-audit" : `prontiq-audit-${$app.stage}`;
-    const customersTableName = isProd ? "prontiq-customers" : `prontiq-customers-${$app.stage}`;
+    const legacyCustomersTableName = isProd
+      ? "prontiq-customers"
+      : `prontiq-customers-${$app.stage}`;
     const billingEventDeliveriesTableName = isProd
       ? "prontiq-billing-event-deliveries"
       : `prontiq-billing-event-deliveries-${$app.stage}`;
@@ -118,7 +120,10 @@ export default $config({
       transform: { table: { name: auditTableName } },
     });
 
-    const customersTable = new sst.aws.Dynamo("PqCustomers", {
+    // Legacy P1B.14-P1B.21 migration evidence. P1B.22 no longer links this
+    // table into active Lambdas, but retaining the resource avoids accidental
+    // deletion of historical prod evidence during deploy.
+    const legacyCustomersTable = new sst.aws.Dynamo("PqCustomers", {
       fields: {
         orgId: "string",
         customerId: "string",
@@ -127,23 +132,28 @@ export default $config({
       globalIndexes: {
         "customerId-index": { hashKey: "customerId" },
       },
-      transform: { table: { name: customersTableName } },
+      transform: { table: { name: legacyCustomersTableName } },
     });
 
     const billingEventDeliveriesTable = new sst.aws.Dynamo("PqBillingEventDeliveries", {
       fields: {
         eventId: "string",
         customerId: "string",
+        orgId: "string",
         acceptedAt: "string",
       },
       primaryIndex: { hashKey: "eventId" },
       globalIndexes: {
         "customerId-acceptedAt-index": { hashKey: "customerId", rangeKey: "acceptedAt" },
+        "orgId-acceptedAt-index": { hashKey: "orgId", rangeKey: "acceptedAt" },
       },
       ttl: "ttl",
       transform: { table: { name: billingEventDeliveriesTableName } },
     });
 
+    // Legacy P1B.18 account-billing action ledger. The AWS account billing
+    // routes are retired by P1B.22; retain the table to preserve historical
+    // idempotency/audit evidence and avoid deploy-time data loss.
     const billingActionsTable = new sst.aws.Dynamo("PqBillingActions", {
       fields: {
         actionId: "string",
@@ -1160,7 +1170,6 @@ export default $config({
         // claim). Same env var → same role set → no divergence.
         CLERK_ADMIN_ROLES: process.env.CLERK_ADMIN_ROLES ?? "",
         AUDIT_TABLE_NAME: auditTable.name,
-        CUSTOMERS_TABLE_NAME: customersTable.name,
         LAGO_API_KEY: $util.secret(readGithubSecret("LAGO_API_KEY")),
         LAGO_API_URL: readGithubVar("LAGO_API_URL"),
         LAGO_PAYMENT_PROVIDER_CODE: readGithubVar("LAGO_PAYMENT_PROVIDER_CODE") || "",
@@ -1180,7 +1189,7 @@ export default $config({
       runtime: "nodejs24.x",
       memory: "512 MB",
       timeout: "30 seconds",
-      link: [authKeysTable, authUsageTable, auditTable, customersTable, suppressionsTable],
+      link: [authKeysTable, authUsageTable, auditTable, suppressionsTable],
       permissions: [
         {
           actions: ["ses:SendEmail", "ses:SendRawEmail"],
@@ -1204,11 +1213,10 @@ export default $config({
       runtime: "nodejs24.x",
       memory: "512 MB",
       timeout: "30 seconds",
-      link: [authKeysTable, authUsageTable, auditTable, customersTable, lagoWebhookEventsTable],
+      link: [authKeysTable, authUsageTable, auditTable, lagoWebhookEventsTable],
       environment: {
         ...observabilityEnv(),
         AUDIT_TABLE_NAME: auditTable.name,
-        CUSTOMERS_TABLE_NAME: customersTable.name,
         KEYS_TABLE_NAME: authKeysTable.name,
         LAGO_API_KEY: $util.secret(readGithubSecret("LAGO_API_KEY")),
         LAGO_API_URL: readGithubVar("LAGO_API_URL"),
@@ -1347,9 +1355,7 @@ export default $config({
         authKeysTable,
         authUsageTable,
         auditTable,
-        customersTable,
         suppressionsTable,
-        billingActionsTable,
       ],
       permissions: [
         {
@@ -1359,11 +1365,6 @@ export default $config({
       ],
       environment: {
         ...controlPlaneEnv(),
-        BILLING_ACTIONS_TABLE_NAME: billingActionsTable.name,
-        CONSOLE_BILLING_PLAN_CHANGE_ALLOWED_ORG_IDS:
-          readGithubVar("CONSOLE_BILLING_PLAN_CHANGE_ALLOWED_ORG_IDS") || "",
-        CONSOLE_BILLING_PLAN_CHANGES_ENABLED:
-          readGithubVar("CONSOLE_BILLING_PLAN_CHANGES_ENABLED") || "false",
       },
     });
 
@@ -1813,6 +1814,8 @@ export default $config({
       billingEventsQueueUrl: billingEventsQueue.url,
       stateMachine: stateMachine.arn,
       ingestAlerts: ingestAlerts.arn,
+      legacyBillingActionsTableName: billingActionsTable.name,
+      legacyCustomersTableName: legacyCustomersTable.name,
     };
   },
 });

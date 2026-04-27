@@ -2,7 +2,11 @@
 
 ## Status
 
-Accepted.
+Superseded by [ADR-035](035-clerk-org-commercial-identity.md) for active runtime.
+
+This ADR is retained as historical P1B.18-P1B.21 migration context only. Active
+AWS private account API is setup-only; future console billing reads/actions use
+a Vercel BFF calling Lago with server-held credentials.
 
 ## Question
 

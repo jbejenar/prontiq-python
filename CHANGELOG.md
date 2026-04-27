@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **P1B.22 Clerk-org commercial identity pivot implemented.** Clerk `orgId` is
+  now the active commercial identity across Prontiq and Lago. Lago customer
+  `external_id = orgId`, subscriptions use `lago_sub_${orgId}`, active billing
+  events are `BillingUsageEventV2` with `orgId`, and `/v1/account/setup` is the
+  only active AWS private account route. The former `/v1/account/billing*`
+  routes, generated `pq_cust_*` / `pq_sub_*` identities, and
+  `prontiq-customers` active mapping are retained only as P1B.14-P1B.21
+  migration evidence. Future console billing should use a Vercel server-side
+  BFF calling Lago with server-held credentials.
+
 - **P1B.21 final prod go-live cleanup implemented.** The retained repo-owned
   prod smoke key produced final accepted Lago event
   `bevt_f7833d581725b732d04d3eed3fd7c484`, then was disabled. Related
@@ -31,12 +41,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   flag, Stripe webhook, billing cron, month-close, and direct Stripe deploy
   config.
 
-- **P1B.18 account billing API contract implemented.** `PqAccount` now exposes
-  Prontiq-owned billing summary, Lago portal session, and gated Free/PAYG
-  plan-change routes with Clerk org-admin auth, `Idempotency-Key` replay
-  safety, a `prontiq-billing-actions` ledger, a private OpenAPI contract, and
-  Lago transition handling that preserves current entitlements while plan
-  changes are pending.
+- **P1B.18 account billing API contract implemented for migration-era console
+  planning.** `PqAccount` exposed Prontiq-owned billing summary, Lago portal
+  session, and gated Free/PAYG plan-change routes with Clerk org-admin auth,
+  `Idempotency-Key` replay safety, a `prontiq-billing-actions` ledger, a
+  private OpenAPI contract, and Lago transition handling. These routes were
+  retired from the active AWS private API by P1B.22.
 
 - **Public/private OpenAPI split added.** Public Mintlify/Speakeasy generation
   now uses only `packages/docs/openapi.json`, while Clerk-authenticated
@@ -53,11 +63,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   evidence only; the reusable prod smoke key is disabled.
 
 - **Lago live smoke certification tooling** (`P1B.18a`) added for the
-  rollout-gated Lago migration. `@prontiq/control-plane` now has
-  `lago:smoke:event`, which loads a stage smoke key/customer from DynamoDB,
-  validates the P1B.14 identity contract, derives `BillingUsageEventV1.eventId`
+  rollout-gated Lago migration. `@prontiq/control-plane` has
+  `lago:smoke:event`, which now loads a stage smoke key/org from DynamoDB,
+  validates the active Clerk-org identity contract, derives the billing event id
   through the production billing-event contract, optionally sends the event to
-  SQS, and prints safe evidence for dev/prod certification.
+  SQS, and prints safe evidence for dev/prod certification. Legacy V1 smoke
+  evidence remains historical P1B.18a-P1B.21 context only.
 
 - **Lago webhook reconciliation** (`P1B.17`) **implemented behind a dedicated
   rollout gate.** Added `POST /webhooks/lago`, HMAC signature verification,
@@ -69,31 +80,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Lago event forwarder** (`P1B.16`) **implemented behind the existing producer
   rollout gate.** Added `PqLagoEventForwarder`, deterministic Lago
-  `transaction_id = eventId`, derived `external_subscription_id = pq_sub_<ulid>`,
-  minimal credit-delta payloads, the `prontiq-billing-event-deliveries`
-  delivery ledger, CloudWatch forwarder runtime-error alarm/dashboard metric, and
-  GitHub environment deploy config for `LAGO_API_URL` / `LAGO_API_KEY`.
-  `BILLING_EVENTS_ENABLED` was default-off for initial rollout until canonical
-  Lago metrics/subscriptions and replay smoke checks passed per environment;
-  after P1B.21, dev/prod are enabled.
+  `transaction_id = eventId`, minimal credit-delta payloads, the
+  `prontiq-billing-event-deliveries` delivery ledger, CloudWatch forwarder
+  runtime-error alarm/dashboard metric, and GitHub environment deploy config
+  for `LAGO_API_URL` / `LAGO_API_KEY`. P1B.22 updates the active subscription
+  identity to `external_subscription_id = lago_sub_${orgId}`; the earlier
+  `pq_sub_<ulid>` identity is historical migration evidence. After P1B.21,
+  dev/prod are enabled.
 
 - **SQS billing-event buffer** (`P1B.15`) **implemented behind a feature flag.**
-  Added `BillingUsageEventV1`, deterministic `bevt_...` event ids, standard SQS
-  source queue + DLQ, CloudWatch queue alarms/dashboard metrics,
-  `prontiq-customers` infra, provisioning-time `customerId` writes for new
-  orgs, and a `backfill:customers` dry-run/apply utility for legacy org/API-key
-  records. The API emits only after DynamoDB enforcement succeeds and never
-  calls Lago; `BILLING_EVENTS_ENABLED` was default-off for initial rollout until
-  each deployed environment passed Lago setup and replay smoke checks. After
-  P1B.21, dev/prod are enabled.
+  Added deterministic `bevt_...` event ids, standard SQS source queue + DLQ,
+  CloudWatch queue alarms/dashboard metrics, and queued API-to-Lago forwarding
+  after DynamoDB enforcement succeeds. The migration-era V1 payload,
+  `prontiq-customers` infra, provisioning-time `customerId` writes, and
+  `backfill:customers` utility are superseded by P1B.22 and retained only as
+  historical evidence. Active events are `BillingUsageEventV2` with `orgId`.
+  After P1B.21, dev/prod are enabled.
 
-- **P1B.14 customer identity contract defined.** The target Lago migration now
-  has a platform-owned `customerId` contract (`pq_cust_<ulid>`), a documented
-  `prontiq-customers` mapping table, Lago `external_id = customerId` semantics,
-  backfill/conflict rules, and a no-customer-table-read invariant for the API
-  hot path. Runtime table creation and backfill landed in `P1B.15`; Lago
-  forwarding landed in `P1B.16`; reconciliation remains in a later Lago
-  migration ticket.
+- **P1B.14 customer identity contract defined for the migration era.** That
+  ticket introduced a platform-owned `customerId` contract (`pq_cust_<ulid>`),
+  a documented `prontiq-customers` mapping table, and Lago
+  `external_id = customerId` semantics. P1B.22 supersedes those as active
+  runtime identity in favor of Clerk `orgId`; the P1B.14 artifacts remain
+  historical migration evidence only.
 
 - **SES deliverability hardening tracked as P1B.08a.** The prod SST
   configuration now declares custom MAIL FROM for `bounce.prontiq.dev` with

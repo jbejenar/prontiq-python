@@ -2,7 +2,11 @@
 
 ## Status
 
-Accepted, 2026-04-27.
+Accepted, 2026-04-27. Historical P1B.18a-P1B.21 fixture context.
+
+Active smoke events after [ADR-035](035-clerk-org-commercial-identity.md) use
+Clerk `orgId` and `lago_sub_${orgId}`. The retained `pq_cust_*` / `pq_sub_*`
+fixture below is audit evidence only.
 
 ## Context
 

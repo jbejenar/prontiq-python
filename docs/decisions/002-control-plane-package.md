@@ -12,8 +12,8 @@ P1B.05 (Clerk webhook handler) needs an `provisionOrg(orgId, ownerEmail, …)` s
 
 - Reads ORG envelope idempotency
 - Historically created a Stripe customer with deterministic `Idempotency-Key`;
-  current forward provisioning creates the Prontiq customer envelope and Lago
-  Free subscription, with Stripe configured only inside Lago as payment rail
+  current forward provisioning creates the Clerk-org-owned org envelope and
+  Lago Free subscription, with Stripe configured only inside Lago as payment rail
 - Atomically writes ORG envelope + audit row via `TransactWriteItems`
 - Re-reads the envelope after partial failures to distinguish "concurrent provisioner won" from "real fatal failure"
 - Sends a best-effort welcome email via SES

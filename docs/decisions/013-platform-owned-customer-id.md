@@ -2,7 +2,11 @@
 
 ## Status
 
-Accepted.
+Superseded by [ADR-035](035-clerk-org-commercial-identity.md) for active runtime.
+
+This ADR is retained as historical P1B.14-P1B.21 migration context only. Active
+commercial identity now uses Clerk `orgId`; generated `pq_cust_*` values are not
+created for new active provisioning.
 
 ## Context
 

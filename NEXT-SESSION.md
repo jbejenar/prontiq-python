@@ -4,6 +4,27 @@
 > the time they were written, not the current source of truth. Use
 > `ROADMAP.md`, `NEXT-WORK.md`, and `README.md` for current execution status.
 
+## Session 43 — 2026-04-27
+
+**Focus:** P1B.22 Clerk org commercial identity pivot.
+
+### Current Contract
+
+- Clerk `orgId` is the active commercial identity.
+- Lago customer external id is `orgId`.
+- Lago subscription external id is `lago_sub_${orgId}`.
+- Active billing events are `BillingUsageEventV2` and carry `orgId`.
+- `/v1/account/setup` is the only active AWS private account route.
+- `/v1/account/billing*`, generated `pq_cust_*`, `pq_sub_*`, and
+  `prontiq-customers` are historical P1B.14-P1B.21 evidence only.
+
+### Next Session Should Start With
+
+1. Verify the P1B.22 PR/deploy status before starting follow-on work.
+2. Use the updated Lago live-smoke helper; do not pass `CUSTOMERS_TABLE_NAME`.
+3. Keep future console billing work behind a Vercel BFF that calls Lago with
+   server-held credentials.
+
 ## Session 42 — 2026-04-27
 
 **Focus:** P1B.21 final prod go-live cleanup and smoke fixture retirement.

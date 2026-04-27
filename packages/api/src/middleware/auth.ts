@@ -11,7 +11,7 @@ import {
   PRODUCT_REGISTRY,
   QUOTA_EMAIL_PENDING_LEASE_MINUTES,
   QUOTA_WARNING_THRESHOLD_FRACTION,
-  billingUsageEventV1Schema,
+  billingUsageEventV2Schema,
   createLogger,
   deriveBillingUsageEventId,
   getBillingEndpointsForProduct,
@@ -21,6 +21,7 @@ import type {
   ApiKeyRecord,
   BillingEndpointDefinition,
   BillingUsageEventV1,
+  BillingUsageEventV2,
   QuotaEmailTask,
   RedirectRecord,
   UsageCounterRecord,
@@ -47,7 +48,9 @@ let ddb: DynamoDBDocumentClient | undefined;
 let lambda: LambdaClient | undefined;
 let sqs: SQSClient | undefined;
 let quotaEmailEnqueuerOverride: ((task: QuotaEmailTask) => Promise<void>) | undefined;
-let billingEventEnqueuerOverride: ((event: BillingUsageEventV1) => Promise<void>) | undefined;
+let billingEventEnqueuerOverride:
+  | ((event: BillingUsageEventV1 | BillingUsageEventV2) => Promise<void>)
+  | undefined;
 const logger = createLogger("api-auth");
 
 const REDIRECT_SCOPE = "REDIRECT";
@@ -280,7 +283,7 @@ async function enqueueQuotaEmailTask(task: QuotaEmailTask): Promise<void> {
   );
 }
 
-async function enqueueBillingEvent(event: BillingUsageEventV1): Promise<void> {
+async function enqueueBillingEvent(event: BillingUsageEventV2): Promise<void> {
   if (billingEventEnqueuerOverride) {
     await billingEventEnqueuerOverride(event);
     return;
@@ -306,23 +309,19 @@ function buildBillingEvent(
   billingEndpointKey: string,
   definition: BillingEndpointDefinition,
   now: Date,
-): BillingUsageEventV1 {
-  if (!record.customerId) {
-    throw new Error("customerId missing from API key record");
-  }
+): BillingUsageEventV2 {
   const eventId = deriveBillingUsageEventId({
     apiKeyHash: record.apiKeyHash,
     billingEndpointKey,
     creditDelta: usageResult.creditCost,
-    customerId: record.customerId,
+    orgId: record.orgId,
     requestCountAfterIncrement: usageResult.requestCount,
     usageScope,
   });
-  return billingUsageEventV1Schema.parse({
-    version: 1,
+  return billingUsageEventV2Schema.parse({
+    version: 2,
     eventId,
     occurredAt: now.toISOString(),
-    customerId: record.customerId,
     orgId: record.orgId,
     apiKeyHash: record.apiKeyHash,
     keyPrefix: record.keyPrefix,
@@ -543,7 +542,7 @@ export function __setQuotaEmailEnqueuerForTesting(
 }
 
 export function __setBillingEventEnqueuerForTesting(
-  enqueuer: ((event: BillingUsageEventV1) => Promise<void>) | undefined,
+  enqueuer: ((event: BillingUsageEventV1 | BillingUsageEventV2) => Promise<void>) | undefined,
 ): void {
   billingEventEnqueuerOverride = enqueuer;
 }
@@ -636,10 +635,10 @@ export function auth() {
       );
     }
     if (billingEventsEnabled()) {
-      if (!record.customerId || !getBillingEventsQueueUrl()) {
-        logger.error("Billing event emission is enabled but customerId or queue URL is missing", {
+      if (!record.orgId || !getBillingEventsQueueUrl()) {
+        logger.error("Billing event emission is enabled but orgId or queue URL is missing", {
           apiKeyHash: record.apiKeyHash,
-          hasCustomerId: Boolean(record.customerId),
+          hasOrgId: Boolean(record.orgId),
           hasQueueUrl: Boolean(getBillingEventsQueueUrl()),
           orgId: record.orgId,
           product,
@@ -713,7 +712,7 @@ export function auth() {
     }
 
     if (billingEventsEnabled()) {
-      let event: BillingUsageEventV1 | undefined;
+      let event: BillingUsageEventV2 | undefined;
       try {
         event = buildBillingEvent(
           c,
@@ -731,7 +730,6 @@ export function auth() {
           apiKeyHash: record.apiKeyHash,
           billingEndpointKey: billingEndpoint.billingEndpointKey,
           creditDelta: usageResult.creditCost,
-          customerId: record.customerId,
           error: error instanceof Error ? error.message : String(error),
           eventId: event?.eventId,
           meterEventName: billingEndpoint.definition.meterEventName,

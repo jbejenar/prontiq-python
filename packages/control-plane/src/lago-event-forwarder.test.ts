@@ -4,6 +4,7 @@ import {
   buildLagoUsageEventPayload,
   classifyLagoStatusCode,
   createLagoEventForwarderService,
+  deriveLagoUsageExternalSubscriptionId,
   hashBillingEventPayload,
   HttpLagoUsageClient,
   isDuplicateLagoTransactionError,
@@ -15,7 +16,11 @@ import {
   type LagoUsageClient,
   type LagoUsageEventPayload,
 } from "./lago-event-forwarder.js";
-import { deriveBillingUsageEventId, type BillingUsageEventV1 } from "@prontiq/shared";
+import {
+  deriveBillingUsageEventId,
+  type BillingUsageEventV1,
+  type BillingUsageEventV2,
+} from "@prontiq/shared";
 import type { SQSEvent } from "aws-lambda";
 
 const baseIdInput = {
@@ -46,6 +51,40 @@ function makeEvent(overrides: Partial<BillingUsageEventV1> = {}): BillingUsageEv
       requestId: "req_123",
       method: "GET",
       path: "/v1/address/enrich",
+      stage: "test",
+    },
+    ...overrides,
+  };
+  return candidate;
+}
+
+const baseV2IdInput = {
+  apiKeyHash: "b".repeat(64),
+  billingEndpointKey: "address.autocomplete",
+  creditDelta: 1,
+  orgId: "org_ActiveV2",
+  requestCountAfterIncrement: 11,
+  usageScope: "address#2026-04",
+};
+
+function makeV2Event(overrides: Partial<BillingUsageEventV2> = {}): BillingUsageEventV2 {
+  const candidate = {
+    version: 2 as const,
+    eventId: deriveBillingUsageEventId(baseV2IdInput),
+    occurredAt: "2026-04-25T00:00:00.000Z",
+    orgId: baseV2IdInput.orgId,
+    apiKeyHash: baseV2IdInput.apiKeyHash,
+    keyPrefix: "pq_test_v2",
+    product: "address",
+    billingEndpointKey: baseV2IdInput.billingEndpointKey,
+    meterEventName: "prontiq_address_requests",
+    creditDelta: baseV2IdInput.creditDelta,
+    usageScope: baseV2IdInput.usageScope,
+    requestCountAfterIncrement: baseV2IdInput.requestCountAfterIncrement,
+    source: {
+      requestId: "req_v2",
+      method: "GET",
+      path: "/v1/address/autocomplete",
       stage: "test",
     },
     ...overrides,
@@ -92,8 +131,10 @@ class FakeLedger implements BillingEventDeliveryLedger {
       return "accepted_same_hash" as const;
     }
     this.records.set(input.event.eventId, {
+      ...existing,
       eventId: input.event.eventId,
       eventPayloadHash: input.eventPayloadHash,
+      externalSubscriptionId: input.externalSubscriptionId,
       status: "processing",
       attempts: (existing?.attempts ?? 0) + 1,
     });
@@ -113,6 +154,7 @@ class FakeLedger implements BillingEventDeliveryLedger {
       acceptedAt: input.now.toISOString(),
       eventId: input.event.eventId,
       eventPayloadHash: input.eventPayloadHash,
+      externalSubscriptionId: input.externalSubscriptionId,
       status: "accepted",
     });
     return existing?.status === "accepted" ? ("accepted_same_hash" as const) : ("ok" as const);
@@ -127,6 +169,7 @@ class FakeLedger implements BillingEventDeliveryLedger {
       ...existing,
       eventId: input.event.eventId,
       eventPayloadHash: input.eventPayloadHash,
+      externalSubscriptionId: input.externalSubscriptionId,
       lastError: input.error,
       status: input.status,
       attempts: (existing?.attempts ?? 0) + (input.countAttempt ? 1 : 0),
@@ -178,6 +221,14 @@ test("builds minimal Lago usage payload with weighted credits", () => {
   assert.equal(serialized.includes("keyPrefix"), false);
   assert.equal(serialized.includes("org_123"), false);
   assert.equal(serialized.includes("/v1/address/enrich"), false);
+});
+
+test("derives Lago subscription id from event version", () => {
+  assert.equal(
+    deriveLagoUsageExternalSubscriptionId(makeEvent()),
+    "pq_sub_01HYZ6Q4X6DJP2X9Q9FQKX4T7A",
+  );
+  assert.equal(deriveLagoUsageExternalSubscriptionId(makeV2Event()), "lago_sub_org_ActiveV2");
 });
 
 test("normalizes Lago API URLs", () => {
@@ -369,7 +420,28 @@ test("forwards valid SQS billing event and marks ledger accepted", async () => {
   assert.deepEqual(result.batchItemFailures, []);
   assert.equal(lago.payloads.length, 1);
   assert.equal(lago.payloads[0]?.event.transaction_id, event.eventId);
-  assert.equal(ledger.records.get(event.eventId)?.status, "accepted");
+  assert.equal(
+    lago.payloads[0]?.event.external_subscription_id,
+    "pq_sub_01HYZ6Q4X6DJP2X9Q9FQKX4T7A",
+  );
+  const row = ledger.records.get(event.eventId);
+  assert.equal(row?.status, "accepted");
+  assert.equal(row?.externalSubscriptionId, lago.payloads[0]?.event.external_subscription_id);
+});
+
+test("forwards active V2 event and records matching Lago subscription evidence", async () => {
+  const { lago, ledger, service } = makeService();
+  const event = makeV2Event();
+
+  const result = await service.handleSqsEvent(makeSqsEvent(event));
+
+  assert.deepEqual(result.batchItemFailures, []);
+  assert.equal(lago.payloads.length, 1);
+  assert.equal(lago.payloads[0]?.event.transaction_id, event.eventId);
+  assert.equal(lago.payloads[0]?.event.external_subscription_id, "lago_sub_org_ActiveV2");
+  const row = ledger.records.get(event.eventId);
+  assert.equal(row?.status, "accepted");
+  assert.equal(row?.externalSubscriptionId, lago.payloads[0]?.event.external_subscription_id);
 });
 
 test("skips duplicate accepted event without resending to Lago", async () => {

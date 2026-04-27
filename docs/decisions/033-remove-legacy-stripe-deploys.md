@@ -40,5 +40,7 @@ customer billing UX.
   would require a new implementation/revert decision.
 - GitHub Environment deploy secret inventory shrinks because `STRIPE_*` secrets
   are no longer required by Platform deploys.
-- Future billing work must use Lago and the private account billing APIs unless
-  a new decision record explicitly reintroduces direct Stripe runtime ownership.
+- Future billing work must use Lago directly through approved server-side
+  integration surfaces. The AWS private account API is setup-only after
+  ADR-035; console billing UX should use a Vercel BFF with server-held Lago
+  credentials unless a new decision record reintroduces another runtime owner.

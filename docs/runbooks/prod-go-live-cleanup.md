@@ -92,7 +92,7 @@ Inventory these artifact classes:
 - GitHub Environment variables controlling prod commercial rollout
 - prod Lambda environment values for rollout flags
 - repo-owned prod smoke API key record in `prontiq-keys`
-- repo-owned prod smoke customer row in `prontiq-customers`
+- repo-owned prod smoke org envelope/API key rows in `prontiq-keys`
 - prod smoke usage row in `prontiq-usage`
 - prod smoke billing delivery rows in `prontiq-billing-event-deliveries`
 - prod Lago customer and subscription used for smoke
@@ -137,8 +137,8 @@ Verify in the canonical production Lago org:
 - metric code: `prontiq_address_requests`
 - metric aggregation: sum of `properties.credits`
 - plan codes: production-relevant codes such as `free` and `payg`
-- customer external IDs: `pq_cust_<ulid>`
-- subscription external IDs: `pq_sub_<same ulid>`
+- customer external IDs: Clerk `org_...`
+- subscription external IDs: `lago_sub_${orgId}`
 
 Production catalog items must not use test-only names or descriptions unless
 they are explicitly retained smoke fixtures. Test fixtures must be clearly

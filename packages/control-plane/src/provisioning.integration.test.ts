@@ -29,6 +29,7 @@ import {
   PutCommand,
   QueryCommand,
 } from "@aws-sdk/lib-dynamodb";
+import { deriveLagoExternalSubscriptionIdForOrg } from "@prontiq/shared";
 import { createProvisioningService, type EmailSender } from "./provisioning.js";
 
 const DDB_URL = process.env.DYNAMODB_TEST_URL ?? "http://localhost:8000";
@@ -36,7 +37,6 @@ const SUFFIX = Date.now().toString();
 const KEYS_TABLE = `prontiq-keys-test-${SUFFIX}`;
 const AUDIT_TABLE = `prontiq-audit-test-${SUFFIX}`;
 const SUPPRESSIONS_TABLE = `prontiq-suppressions-test-${SUFFIX}`;
-const CUSTOMERS_TABLE = `prontiq-customers-test-${SUFFIX}`;
 
 const ddbRaw = new DynamoDBClient({
   endpoint: DDB_URL,
@@ -80,24 +80,6 @@ before(async () => {
   );
   await ddbRaw.send(
     new CreateTableCommand({
-      TableName: CUSTOMERS_TABLE,
-      AttributeDefinitions: [
-        { AttributeName: "orgId", AttributeType: "S" },
-        { AttributeName: "customerId", AttributeType: "S" },
-      ],
-      KeySchema: [{ AttributeName: "orgId", KeyType: "HASH" }],
-      GlobalSecondaryIndexes: [
-        {
-          IndexName: "customerId-index",
-          KeySchema: [{ AttributeName: "customerId", KeyType: "HASH" }],
-          Projection: { ProjectionType: "ALL" },
-        },
-      ],
-      BillingMode: "PAY_PER_REQUEST",
-    }),
-  );
-  await ddbRaw.send(
-    new CreateTableCommand({
       TableName: SUPPRESSIONS_TABLE,
       AttributeDefinitions: [{ AttributeName: "email", AttributeType: "S" }],
       KeySchema: [{ AttributeName: "email", KeyType: "HASH" }],
@@ -105,7 +87,7 @@ before(async () => {
     }),
   );
   process.env.SUPPRESSIONS_TABLE_NAME = SUPPRESSIONS_TABLE;
-  for (const tableName of [KEYS_TABLE, AUDIT_TABLE, SUPPRESSIONS_TABLE, CUSTOMERS_TABLE]) {
+  for (const tableName of [KEYS_TABLE, AUDIT_TABLE, SUPPRESSIONS_TABLE]) {
     for (let i = 0; i < 20; i++) {
       const { Table } = await ddbRaw.send(new DescribeTableCommand({ TableName: tableName }));
       if (Table?.TableStatus === "ACTIVE") break;
@@ -119,16 +101,20 @@ after(async () => {
   await ddbRaw.send(new DeleteTableCommand({ TableName: KEYS_TABLE }));
   await ddbRaw.send(new DeleteTableCommand({ TableName: AUDIT_TABLE }));
   await ddbRaw.send(new DeleteTableCommand({ TableName: SUPPRESSIONS_TABLE }));
-  await ddbRaw.send(new DeleteTableCommand({ TableName: CUSTOMERS_TABLE }));
 });
 
-function makeLagoProvisioningClient(customerId: string) {
+function makeLagoProvisioningClient() {
   const calls: { method: string; args: unknown }[] = [];
+  let lastExternalCustomerId: string | undefined;
   return {
     calls,
     client: {
       async upsertCustomer(args: unknown) {
         calls.push({ method: "upsertCustomer", args });
+        if (typeof args === "object" && args && "orgId" in args) {
+          const maybeOrgId = (args as { orgId?: unknown }).orgId;
+          if (typeof maybeOrgId === "string") lastExternalCustomerId = maybeOrgId;
+        }
       },
       async upsertSubscription(args: unknown) {
         calls.push({ method: "upsertSubscription", args });
@@ -138,8 +124,8 @@ function makeLagoProvisioningClient(customerId: string) {
         return {
           billingPeriodEndingAt: "2026-05-26T00:00:00.000Z",
           billingPeriodStartedAt: "2026-04-26T00:00:00.000Z",
-          externalCustomerId: customerId,
-          externalSubscriptionId: customerId.replace("pq_cust_", "pq_sub_"),
+          externalCustomerId: lastExternalCustomerId ?? "org_unknown",
+          externalSubscriptionId: String(args),
           planCode: "free",
           status: "active",
         };
@@ -152,18 +138,16 @@ const noopEmail: EmailSender = async () => true;
 const noopLogger = { error: () => {}, info: () => {}, warn: () => {} };
 
 test("happy path: provisions envelope + audit row, then replay is no-op", async () => {
-  const orgId = `org_int_${SUFFIX}_a`;
-  const customerId = "pq_cust_01HYZ6Q4X6DJP2X9Q9FQKX4T7B";
-  const lago = makeLagoProvisioningClient(customerId);
+  const orgId = `org_int${SUFFIX}a`;
+  const expectedSubscriptionId = deriveLagoExternalSubscriptionIdForOrg(orgId);
+  const lago = makeLagoProvisioningClient();
   const service = createProvisioningService({
     ddb,
     keysTableName: KEYS_TABLE,
-    customersTableName: CUSTOMERS_TABLE,
     auditTableName: AUDIT_TABLE,
     lagoClient: lago.client,
     lagoPaymentProviderCode: "stripe-main",
     sendWelcomeEmail: noopEmail,
-    generateCustomerId: () => customerId,
     logger: noopLogger,
     sleep: async () => {},
   });
@@ -185,20 +169,10 @@ test("happy path: provisions envelope + audit row, then replay is no-op", async 
   assert.ok(envelopeRow.Item);
   assert.equal(envelopeRow.Item?.tier, "free");
   assert.equal(envelopeRow.Item?.hasFirstKey, false);
-  assert.equal(envelopeRow.Item?.customerId, customerId);
+  assert.equal(envelopeRow.Item?.orgId, orgId);
+  assert.equal(envelopeRow.Item?.customerId, undefined);
   assert.equal(envelopeRow.Item?.lagoPlanCode, "free");
-  assert.equal(
-    envelopeRow.Item?.lagoSubscriptionExternalId,
-    customerId.replace("pq_cust_", "pq_sub_"),
-  );
-
-  const customerRow = await ddb.send(
-    new GetCommand({ TableName: CUSTOMERS_TABLE, Key: { orgId } }),
-  );
-  assert.equal(customerRow.Item?.customerId, customerId);
-  assert.equal(customerRow.Item?.lagoExternalCustomerId, customerId);
-  assert.equal(customerRow.Item?.stripeCustomerId, null);
-  assert.equal(customerRow.Item?.status, "active");
+  assert.equal(envelopeRow.Item?.lagoSubscriptionExternalId, expectedSubscriptionId);
 
   const auditRows = await ddb.send(
     new QueryCommand({
@@ -236,14 +210,12 @@ test("happy path: provisions envelope + audit row, then replay is no-op", async 
 });
 
 test("suppressed owner email skips the welcome email without blocking provisioning", async () => {
-  const orgId = `org_int_${SUFFIX}_suppressed`;
-  const customerId = "pq_cust_01HYZ6Q4X6DJP2X9Q9FQKX4T7C";
-  const lago = makeLagoProvisioningClient(customerId);
+  const orgId = `org_int${SUFFIX}suppressed`;
+  const lago = makeLagoProvisioningClient();
   let senderCalled = false;
   const service = createProvisioningService({
     ddb,
     keysTableName: KEYS_TABLE,
-    customersTableName: CUSTOMERS_TABLE,
     auditTableName: AUDIT_TABLE,
     lagoClient: lago.client,
     lagoPaymentProviderCode: "stripe-main",
@@ -251,7 +223,6 @@ test("suppressed owner email skips the welcome email without blocking provisioni
       senderCalled = true;
       return true;
     },
-    generateCustomerId: () => customerId,
     logger: noopLogger,
     sleep: async () => {},
   });

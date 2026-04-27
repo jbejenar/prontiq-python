@@ -43,7 +43,6 @@ const DDB_URL = process.env.DYNAMODB_TEST_URL ?? "http://localhost:8000";
 const SUFFIX = Date.now().toString();
 const KEYS_TABLE = `prontiq-keys-test-${SUFFIX}`;
 const AUDIT_TABLE = `prontiq-audit-test-${SUFFIX}`;
-const CUSTOMERS_TABLE = `prontiq-customers-test-${SUFFIX}`;
 
 const ddbRaw = new DynamoDBClient({
   endpoint: DDB_URL,
@@ -85,25 +84,7 @@ before(async () => {
       BillingMode: "PAY_PER_REQUEST",
     }),
   );
-  await ddbRaw.send(
-    new CreateTableCommand({
-      TableName: CUSTOMERS_TABLE,
-      AttributeDefinitions: [
-        { AttributeName: "orgId", AttributeType: "S" },
-        { AttributeName: "customerId", AttributeType: "S" },
-      ],
-      KeySchema: [{ AttributeName: "orgId", KeyType: "HASH" }],
-      GlobalSecondaryIndexes: [
-        {
-          IndexName: "customerId-index",
-          KeySchema: [{ AttributeName: "customerId", KeyType: "HASH" }],
-          Projection: { ProjectionType: "ALL" },
-        },
-      ],
-      BillingMode: "PAY_PER_REQUEST",
-    }),
-  );
-  for (const tableName of [KEYS_TABLE, AUDIT_TABLE, CUSTOMERS_TABLE]) {
+  for (const tableName of [KEYS_TABLE, AUDIT_TABLE]) {
     for (let i = 0; i < 20; i++) {
       const { Table } = await ddbRaw.send(new DescribeTableCommand({ TableName: tableName }));
       if (Table?.TableStatus === "ACTIVE") break;
@@ -115,7 +96,6 @@ before(async () => {
 after(async () => {
   await ddbRaw.send(new DeleteTableCommand({ TableName: KEYS_TABLE }));
   await ddbRaw.send(new DeleteTableCommand({ TableName: AUDIT_TABLE }));
-  await ddbRaw.send(new DeleteTableCommand({ TableName: CUSTOMERS_TABLE }));
 });
 
 interface ClerkUserStub {
@@ -154,14 +134,14 @@ function makeLagoStub(): LagoStubControl {
   let calls = 0;
   const subscriptions = new Set<string>();
   const lagoClient: LagoProvisioningClient = {
-    async getSubscription(externalSubscriptionId) {
+    async getSubscription(externalSubscriptionId: string) {
       if (!subscriptions.has(externalSubscriptionId)) {
         return null;
       }
       return {
         billingPeriodEndingAt: "2026-05-01T00:00:00Z",
         billingPeriodStartedAt: "2026-04-01T00:00:00Z",
-        externalCustomerId: externalSubscriptionId.replace("pq_sub_", "pq_cust_"),
+        externalCustomerId: externalSubscriptionId.replace(/^lago_sub_/, ""),
         externalSubscriptionId,
         planCode: "free",
         status: "active",
@@ -170,7 +150,11 @@ function makeLagoStub(): LagoStubControl {
     async upsertCustomer() {
       calls += 1;
     },
-    async upsertSubscription(input) {
+    async upsertSubscription(input: {
+      externalCustomerId: string;
+      externalSubscriptionId: string;
+      planCode: "free";
+    }) {
       calls += 1;
       subscriptions.add(input.externalSubscriptionId);
     },
@@ -186,9 +170,6 @@ function makeLagoStub(): LagoStubControl {
 
 const noopEmail: EmailSender = async () => true;
 const noopLogger = { error: () => {}, info: () => {}, warn: () => {} };
-type BillingServiceOverride = NonNullable<
-  Parameters<typeof createAccountRoutes>[0]
->["billingService"];
 type ProvisioningServiceOverride = NonNullable<
   Parameters<typeof createAccountRoutes>[0]
 >["service"];
@@ -207,7 +188,6 @@ interface BuildAppOpts {
   lagoClient: LagoProvisioningClient;
   clerkClient: ClerkClient;
   ddbOverride?: DynamoDBDocumentClient;
-  billingService?: BillingServiceOverride;
   provisioningService?: ProvisioningServiceOverride;
 }
 
@@ -229,7 +209,6 @@ function buildApp(opts: BuildAppOpts) {
     createProvisioningService({
       ddb: opts.ddbOverride ?? ddb,
       keysTableName: KEYS_TABLE,
-      customersTableName: CUSTOMERS_TABLE,
       auditTableName: AUDIT_TABLE,
       lagoClient: opts.lagoClient,
       lagoPaymentProviderCode: "stripe-main",
@@ -239,7 +218,6 @@ function buildApp(opts: BuildAppOpts) {
     });
 
   const accountRoutes = createAccountRoutes({
-    billingService: opts.billingService,
     clerkClient: opts.clerkClient,
     service,
   });
@@ -281,14 +259,14 @@ async function callSetup(
 }
 
 test("DoD scenario (a): fresh org → 201 created + envelope + audit row", async () => {
-  const orgId = `org_acct_a_${SUFFIX}`;
+  const orgId = `org_AcctA${SUFFIX}`;
   const { lagoClient } = makeLagoStub();
   const app = buildApp({ orgId, lagoClient, clerkClient: makeClerkClientStub(VERIFIED_USER) });
 
   const { status, body } = await callSetup(app);
   assert.equal(status, 201);
   assert.equal(body.status, "created");
-  assert.equal(typeof body.customerId, "string");
+  assert.equal(body.orgId, orgId);
   assert.equal(body.stripeCustomerId, undefined);
 
   const envelope = await ddb.send(
@@ -314,7 +292,7 @@ test("DoD scenario (a): fresh org → 201 created + envelope + audit row", async
 });
 
 test("DoD scenario (b): replay → 200 already_exists + zero new side-effects (idempotency)", async () => {
-  const orgId = `org_acct_b_${SUFFIX}`;
+  const orgId = `org_AcctB${SUFFIX}`;
   const { lagoClient, callCount } = makeLagoStub();
   const app = buildApp({ orgId, lagoClient, clerkClient: makeClerkClientStub(VERIFIED_USER) });
 
@@ -325,7 +303,7 @@ test("DoD scenario (b): replay → 200 already_exists + zero new side-effects (i
   const replay = await callSetup(app);
   assert.equal(replay.status, 200);
   assert.equal(replay.body.status, "already_exists");
-  assert.equal(replay.body.customerId, first.body.customerId);
+  assert.equal(replay.body.orgId, first.body.orgId);
   assert.equal(replay.body.stripeCustomerId, undefined);
   assert.equal(callCount(), 2, "replay MUST NOT bootstrap Lago again");
 
@@ -339,8 +317,8 @@ test("DoD scenario (b): replay → 200 already_exists + zero new side-effects (i
   assert.equal(auditRows.Count, 1, "no new audit rows on replay");
 });
 
-test("account setup fails closed when an existing legacy envelope lacks customerId", async () => {
-  const orgId = `org_acct_missing_customer_${SUFFIX}`;
+test("account setup accepts existing envelope replay by Clerk org identity", async () => {
+  const orgId = `org_AcctExisting${SUFFIX}`;
   const { lagoClient } = makeLagoStub();
   const app = buildApp({
     orgId,
@@ -354,6 +332,7 @@ test("account setup fails closed when an existing legacy envelope lacks customer
             apiKeyHash: `ORG#${orgId}`,
             completedAt: "2026-04-26T00:00:00.000Z",
             hasFirstKey: false,
+            orgId,
             ownerEmail: "owner@example.com",
             paymentOverdue: false,
             products: ["address"],
@@ -369,14 +348,13 @@ test("account setup fails closed when an existing legacy envelope lacks customer
   });
 
   const { status, body } = await callSetup(app);
-  assert.equal(status, 409);
-  const error = body.error as Record<string, unknown> | undefined;
-  assert.equal(error?.code, "CUSTOMER_MAPPING_MISSING");
+  assert.equal(status, 200);
+  assert.equal(body.status, "already_exists");
+  assert.equal(body.orgId, orgId);
 });
 
-test("account setup returns forward-mode customer contract without Stripe linkage", async () => {
-  const orgId = `org_acct_forward_${SUFFIX}`;
-  const customerId = "pq_cust_01HYZ6Q4X6DJP2X9Q9FQKX4T7A";
+test("account setup returns Clerk org commercial identity without Stripe linkage", async () => {
+  const orgId = `org_AcctForward${SUFFIX}`;
   const { lagoClient } = makeLagoStub();
   const app = buildApp({
     orgId,
@@ -385,13 +363,12 @@ test("account setup returns forward-mode customer contract without Stripe linkag
     provisioningService: {
       async provisionOrg() {
         return {
-          customerId,
           emailSent: true,
           orgEnvelope: {
             apiKeyHash: `ORG#${orgId}`,
             completedAt: "2026-04-26T00:00:00.000Z",
-            customerId,
             hasFirstKey: false,
+            orgId,
             ownerEmail: "owner@example.com",
             paymentOverdue: false,
             products: ["address"],
@@ -409,13 +386,13 @@ test("account setup returns forward-mode customer contract without Stripe linkag
   const { status, body } = await callSetup(app);
   assert.equal(status, 201);
   assert.equal(body.status, "created");
-  assert.equal(body.customerId, customerId);
+  assert.equal(body.orgId, orgId);
   assert.equal(body.stripeCustomerId, undefined);
   assert.equal(body.emailSent, true);
 });
 
 test("DoD scenario (c): DDB transient on first attempt → retry succeeds; exactly 1 Lago bootstrap + 1 envelope", async () => {
-  const orgId = `org_acct_c_${SUFFIX}`;
+  const orgId = `org_AcctC${SUFFIX}`;
   const { lagoClient, callCount } = makeLagoStub();
 
   // Wrap the doc client to inject a transient TransactWrite failure
@@ -470,7 +447,7 @@ test("DoD scenario (c): DDB transient on first attempt → retry succeeds; exact
 });
 
 test("middleware integration: missing Authorization → 401 INVALID_TOKEN (no provisioning attempted)", async () => {
-  const orgId = `org_acct_missing_auth_${SUFFIX}`;
+  const orgId = `org_AcctMissingAuth${SUFFIX}`;
   const { lagoClient, callCount } = makeLagoStub();
   const app = buildApp({ orgId, lagoClient, clerkClient: makeClerkClientStub(VERIFIED_USER) });
 
@@ -487,7 +464,7 @@ test("middleware integration: missing Authorization → 401 INVALID_TOKEN (no pr
 });
 
 test("not_verified email → 500 fatal_failure with primary_email_unverified reason (no provisioning attempted)", async () => {
-  const orgId = `org_acct_unverif_${SUFFIX}`;
+  const orgId = `org_AcctUnverif${SUFFIX}`;
   const { lagoClient, callCount } = makeLagoStub();
   const unverifiedUser: ClerkUserStub = {
     primaryEmailAddressId: "idn_unv",
@@ -525,7 +502,7 @@ test("admin-gate: non-admin org member (org_role: org:member) → 403 INSUFFICIE
   // recipient for the org. This regression test pins the fix: an
   // org:member calling the recovery endpoint receives 403 with NO
   // Lago call and NO envelope write.
-  const orgId = `org_acct_member_${SUFFIX}`;
+  const orgId = `org_AcctMember${SUFFIX}`;
   const { lagoClient, callCount } = makeLagoStub();
   const app = buildApp({
     orgId,
@@ -549,7 +526,7 @@ test("admin-gate: non-admin org member (org_role: org:member) → 403 INSUFFICIE
 });
 
 test("admin-gate: missing org_role claim → 400 NO_ROLE_CLAIM; zero side-effects (operator JWT-template gap)", async () => {
-  const orgId = `org_acct_missing_role_${SUFFIX}`;
+  const orgId = `org_AcctMissingRole${SUFFIX}`;
   const { lagoClient, callCount } = makeLagoStub();
   const app = buildApp({
     orgId,
@@ -572,7 +549,7 @@ test("admin-gate: missing org_role claim → 400 NO_ROLE_CLAIM; zero side-effect
 });
 
 test("admin-gate: bare 'admin' role (legacy default) → 200 (matches webhook's role policy)", async () => {
-  const orgId = `org_acct_legacy_admin_${SUFFIX}`;
+  const orgId = `org_AcctLegacyAdmin${SUFFIX}`;
   const { lagoClient } = makeLagoStub();
   const app = buildApp({
     orgId,
@@ -586,166 +563,31 @@ test("admin-gate: bare 'admin' role (legacy default) → 200 (matches webhook's 
   assert.equal(body.status, "created");
 });
 
-test("billing summary route is admin-only and returns the account billing contract", async () => {
-  const orgId = `org_acct_billing_${SUFFIX}`;
+test("retired billing routes are not exposed by the account API", async () => {
+  const orgId = `org_AcctBillingRetired${SUFFIX}`;
   const { lagoClient } = makeLagoStub();
   const app = buildApp({
     orgId,
     lagoClient,
     clerkClient: makeClerkClientStub(VERIFIED_USER),
-    billingService: {
-      async getBillingSummary(principal) {
-        assert.equal(principal.orgId, orgId);
-        return {
-          allowedActions: { canOpenPortal: true, canRequestPlanChange: true },
-          billingPeriod: { endsAt: null, key: null, startsAt: null },
-          customer: {
-            customerId: "pq_cust_01HYZ6Q4X6DJP2X9Q9FQKX4T7A",
-            lagoCustomerId: null,
-            orgId,
-          },
-          invoices: { portalRequired: true },
-          payment: { overdue: false, overdueInvoiceId: null },
-          plan: {
-            current: "free",
-            lagoPlanCode: "free",
-            pending: {
-              downgradePlanDate: null,
-              nextPlanCode: null,
-              previousPlanCode: null,
-              status: null,
-            },
-            supportedSelfServeTargets: ["free", "payg"],
-          },
-          subscription: {
-            externalId: "pq_sub_01HYZ6Q4X6DJP2X9Q9FQKX4T7A",
-            status: "active",
-          },
-        };
-      },
-      async requestPlanChange() {
-        throw new Error("not used");
-      },
-      async createPortalSession() {
-        throw new Error("not used");
-      },
-    },
   });
 
-  const res = await app.request("/v1/account/billing", {
+  const billing = await app.request("/v1/account/billing", {
     method: "GET",
     headers: { Authorization: "Bearer good_token" },
   });
-  assert.equal(res.status, 200);
-  const body = (await res.json()) as { customer: { orgId: string }; plan: { current: string } };
-  assert.equal(body.customer.orgId, orgId);
-  assert.equal(body.plan.current, "free");
-});
+  assert.equal(billing.status, 404);
 
-test("plan-change route requires Idempotency-Key and forwards target plan to billing service", async () => {
-  const orgId = `org_acct_plan_change_${SUFFIX}`;
-  const { lagoClient } = makeLagoStub();
-  const app = buildApp({
-    orgId,
-    lagoClient,
-    clerkClient: makeClerkClientStub(VERIFIED_USER),
-    billingService: {
-      async getBillingSummary() {
-        throw new Error("not used");
-      },
-      async requestPlanChange(input) {
-        assert.equal(input.principal.orgId, orgId);
-        assert.equal(input.idempotencyKey, "idem_plan_change");
-        assert.equal(input.targetPlanCode, "payg");
-        return {
-          currentPlanCode: "free",
-          effectiveAt: null,
-          status: "submitted",
-          subscriptionExternalId: "pq_sub_01HYZ6Q4X6DJP2X9Q9FQKX4T7A",
-          targetPlanCode: "payg",
-        };
-      },
-      async createPortalSession() {
-        throw new Error("not used");
-      },
-    },
-  });
-
-  const res = await app.request("/v1/account/billing/plan-change", {
+  const planChange = await app.request("/v1/account/billing/plan-change", {
     method: "POST",
-    headers: {
-      Authorization: "Bearer good_token",
-      "Content-Type": "application/json",
-      "Idempotency-Key": "idem_plan_change",
-    },
+    headers: { Authorization: "Bearer good_token", "Content-Type": "application/json" },
     body: JSON.stringify({ targetPlanCode: "payg" }),
   });
-  assert.equal(res.status, 200);
-  const body = (await res.json()) as { status: string; targetPlanCode: string };
-  assert.equal(body.status, "submitted");
-  assert.equal(body.targetPlanCode, "payg");
-});
+  assert.equal(planChange.status, 404);
 
-test("mutating billing routes reject missing or blank Idempotency-Key before service dispatch", async () => {
-  const orgId = `org_acct_billing_idem_${SUFFIX}`;
-  const { lagoClient } = makeLagoStub();
-  let planChangeCalls = 0;
-  let portalSessionCalls = 0;
-  const app = buildApp({
-    orgId,
-    lagoClient,
-    clerkClient: makeClerkClientStub(VERIFIED_USER),
-    billingService: {
-      async getBillingSummary() {
-        throw new Error("not used");
-      },
-      async requestPlanChange() {
-        planChangeCalls += 1;
-        throw new Error("plan-change service must not be called");
-      },
-      async createPortalSession() {
-        portalSessionCalls += 1;
-        throw new Error("portal-session service must not be called");
-      },
-    },
-  });
-
-  const missingPlanChange = await app.request("/v1/account/billing/plan-change", {
-    method: "POST",
-    headers: {
-      Authorization: "Bearer good_token",
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ targetPlanCode: "payg" }),
-  });
-  assert.equal(missingPlanChange.status, 400);
-
-  const blankPlanChange = await app.request("/v1/account/billing/plan-change", {
-    method: "POST",
-    headers: {
-      Authorization: "Bearer good_token",
-      "Content-Type": "application/json",
-      "Idempotency-Key": "   ",
-    },
-    body: JSON.stringify({ targetPlanCode: "payg" }),
-  });
-  assert.equal(blankPlanChange.status, 400);
-
-  const missingPortal = await app.request("/v1/account/billing/portal-session", {
+  const portal = await app.request("/v1/account/billing/portal-session", {
     method: "POST",
     headers: { Authorization: "Bearer good_token" },
   });
-  assert.equal(missingPortal.status, 400);
-
-  const blankPortal = await app.request("/v1/account/billing/portal-session", {
-    method: "POST",
-    headers: {
-      Authorization: "Bearer good_token",
-      "Idempotency-Key": "   ",
-    },
-  });
-  assert.equal(blankPortal.status, 400);
-
-  assert.equal(planChangeCalls, 0);
-  assert.equal(portalSessionCalls, 0);
+  assert.equal(portal.status, 404);
 });

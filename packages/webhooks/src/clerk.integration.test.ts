@@ -28,13 +28,13 @@ import {
   type EmailSender,
   type LagoProvisioningClient,
 } from "@prontiq/control-plane";
+import { deriveLagoExternalSubscriptionIdForOrg } from "@prontiq/shared";
 import { createClerkHandler } from "./clerk.js";
 
 const DDB_URL = process.env.DYNAMODB_TEST_URL ?? "http://localhost:8000";
 const SUFFIX = Date.now().toString();
 const KEYS_TABLE = `prontiq-keys-test-${SUFFIX}`;
 const AUDIT_TABLE = `prontiq-audit-test-${SUFFIX}`;
-const CUSTOMERS_TABLE = `prontiq-customers-test-${SUFFIX}`;
 const TEST_SECRET = "whsec_MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaSw";
 
 const ddbRaw = new DynamoDBClient({
@@ -77,25 +77,7 @@ before(async () => {
       BillingMode: "PAY_PER_REQUEST",
     }),
   );
-  await ddbRaw.send(
-    new CreateTableCommand({
-      TableName: CUSTOMERS_TABLE,
-      AttributeDefinitions: [
-        { AttributeName: "orgId", AttributeType: "S" },
-        { AttributeName: "customerId", AttributeType: "S" },
-      ],
-      KeySchema: [{ AttributeName: "orgId", KeyType: "HASH" }],
-      GlobalSecondaryIndexes: [
-        {
-          IndexName: "customerId-index",
-          KeySchema: [{ AttributeName: "customerId", KeyType: "HASH" }],
-          Projection: { ProjectionType: "ALL" },
-        },
-      ],
-      BillingMode: "PAY_PER_REQUEST",
-    }),
-  );
-  for (const tableName of [KEYS_TABLE, AUDIT_TABLE, CUSTOMERS_TABLE]) {
+  for (const tableName of [KEYS_TABLE, AUDIT_TABLE]) {
     for (let i = 0; i < 20; i++) {
       const { Table } = await ddbRaw.send(new DescribeTableCommand({ TableName: tableName }));
       if (Table?.TableStatus === "ACTIVE") break;
@@ -107,11 +89,11 @@ before(async () => {
 after(async () => {
   await ddbRaw.send(new DeleteTableCommand({ TableName: KEYS_TABLE }));
   await ddbRaw.send(new DeleteTableCommand({ TableName: AUDIT_TABLE }));
-  await ddbRaw.send(new DeleteTableCommand({ TableName: CUSTOMERS_TABLE }));
 });
 
 function makeLagoStub(callCounter: { value: number }): LagoProvisioningClient {
   const subscriptions = new Set<string>();
+  let lastExternalCustomerId: string | undefined;
   return {
     async getSubscription(externalSubscriptionId) {
       if (!subscriptions.has(externalSubscriptionId)) {
@@ -120,14 +102,15 @@ function makeLagoStub(callCounter: { value: number }): LagoProvisioningClient {
       return {
         billingPeriodEndingAt: "2026-05-01T00:00:00Z",
         billingPeriodStartedAt: "2026-04-01T00:00:00Z",
-        externalCustomerId: externalSubscriptionId.replace("pq_sub_", "pq_cust_"),
+        externalCustomerId: lastExternalCustomerId ?? "org_unknown",
         externalSubscriptionId,
         planCode: "free",
         status: "active",
       };
     },
-    async upsertCustomer() {
+    async upsertCustomer(input) {
       callCounter.value += 1;
+      lastExternalCustomerId = input.orgId;
     },
     async upsertSubscription(input) {
       callCounter.value += 1;
@@ -227,13 +210,12 @@ function adminEvent(orgId: string): APIGatewayProxyEventV2 {
 }
 
 test("end-to-end: signed admin membership writes envelope + audit row, replay is no-op", async () => {
-  const orgId = `org_int_e2e_${SUFFIX}`;
+  const orgId = `org_intE2e${SUFFIX}`;
   const counter = { value: 0 };
   const service = createProvisioningService({
     ddb,
     keysTableName: KEYS_TABLE,
     auditTableName: AUDIT_TABLE,
-    customersTableName: CUSTOMERS_TABLE,
     lagoClient: makeLagoStub(counter),
     lagoPaymentProviderCode: "stripe-main",
     sendWelcomeEmail: noopEmail,
@@ -260,15 +242,12 @@ test("end-to-end: signed admin membership writes envelope + audit row, replay is
   assert.equal(envelope.Item?.hasFirstKey, false);
   assert.equal(envelope.Item?.stripeCustomerId, null);
   assert.equal(envelope.Item?.ownerEmail, "admin@example.com");
-  assert.match(envelope.Item?.customerId as string, /^pq_cust_[0-9A-HJKMNP-TV-Z]{26}$/);
-
-  const customer = await ddb.send(new GetCommand({ TableName: CUSTOMERS_TABLE, Key: { orgId } }));
-  assert.ok(customer.Item, "customer mapping must be persisted");
-  assert.equal(customer.Item?.customerId, envelope.Item?.customerId);
-  assert.equal(customer.Item?.lagoExternalCustomerId, envelope.Item?.customerId);
-  assert.equal(customer.Item?.stripeCustomerId, null);
-  assert.equal(customer.Item?.ownerEmail, "admin@example.com");
-  assert.equal(customer.Item?.status, "active");
+  assert.equal(envelope.Item?.orgId, orgId);
+  assert.equal(envelope.Item?.customerId, undefined);
+  assert.equal(
+    envelope.Item?.lagoSubscriptionExternalId,
+    deriveLagoExternalSubscriptionIdForOrg(orgId),
+  );
 
   const auditRows = await ddb.send(
     new QueryCommand({
@@ -300,13 +279,12 @@ test("end-to-end: signed admin membership writes envelope + audit row, replay is
 });
 
 test("end-to-end: invalid signature → 401, no DDB writes, no Lago call", async () => {
-  const orgId = `org_int_invalid_${SUFFIX}`;
+  const orgId = `org_intInvalid${SUFFIX}`;
   const counter = { value: 0 };
   const service = createProvisioningService({
     ddb,
     keysTableName: KEYS_TABLE,
     auditTableName: AUDIT_TABLE,
-    customersTableName: CUSTOMERS_TABLE,
     lagoClient: makeLagoStub(counter),
     lagoPaymentProviderCode: "stripe-main",
     sendWelcomeEmail: noopEmail,
@@ -333,13 +311,12 @@ test("end-to-end: invalid signature → 401, no DDB writes, no Lago call", async
 });
 
 test("end-to-end: non-admin membership (org:member) → 200 zero side-effects", async () => {
-  const orgId = `org_int_invitee_${SUFFIX}`;
+  const orgId = `org_intInvitee${SUFFIX}`;
   const counter = { value: 0 };
   const service = createProvisioningService({
     ddb,
     keysTableName: KEYS_TABLE,
     auditTableName: AUDIT_TABLE,
-    customersTableName: CUSTOMERS_TABLE,
     lagoClient: makeLagoStub(counter),
     lagoPaymentProviderCode: "stripe-main",
     sendWelcomeEmail: noopEmail,

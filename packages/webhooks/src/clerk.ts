@@ -267,26 +267,22 @@ export function createClerkHandler(overrides: HandlerOverrides = {}) {
     switch (result.status) {
       case "already_exists":
         logger.info("ORG envelope exists", {
-          customerId: result.customerId,
           orgId: data.organization.id,
         });
         return reply(200, { ok: true, status: "already_exists" });
       case "created":
         logger.info("ORG envelope created", {
-          customerId: result.customerId,
           orgId: data.organization.id,
           emailSent: result.emailSent,
         });
         return reply(200, { ok: true, status: "created", emailSent: result.emailSent });
       case "retryable_failure":
         logger.error("ORG envelope provisioning retryable failure", {
-          customerId: result.customerId,
           orgId: data.organization.id,
         });
         return reply(500, { error: "retryable_failure" });
       case "fatal_failure":
         logger.error("ORG envelope provisioning fatal failure", {
-          customerId: result.customerId,
           orgId: data.organization.id,
         });
         return reply(500, { error: "fatal_failure" });

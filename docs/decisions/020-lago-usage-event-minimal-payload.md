@@ -2,7 +2,12 @@
 
 ## Status
 
-Accepted.
+Accepted; identity fields updated by [ADR-035](035-clerk-org-commercial-identity.md).
+
+The minimal-payload rule remains active, but the active identity is now Clerk
+`orgId` and the active Lago subscription external id is
+`lago_sub_${orgId}`. Any `pq_cust_*` / `pq_sub_*` examples below are historical
+P1B.16-P1B.21 context only.
 
 ## Context
 
