@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **P1B.21 final prod go-live cleanup implemented.** The retained repo-owned
+  prod smoke key produced final accepted Lago event
+  `bevt_f7833d581725b732d04d3eed3fd7c484`, then was disabled. Related
+  customer/subscription, usage, delivery-ledger, and webhook-ledger evidence is
+  retained as audit evidence only. Prod remains in go-live posture with
+  `BILLING_EVENTS_ENABLED=true`, `COUNTER_PERIOD_SOURCE=lago`, and
+  `LAGO_WEBHOOK_RECONCILIATION_ENABLED=true`.
+
 - **P1B.20 legacy Stripe cleanup implemented.** Removed the platform-owned
   Stripe webhook, billing cron, month-close, Stripe Pricing Table component,
   `STRIPE_*` deploy env contract, `LEGACY_STRIPE_RUNTIME_ENABLED`, direct
@@ -40,11 +48,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and retained calendar-period request enforcement for the next Lago migration
   tickets.
 
-- **Final prod smoke-fixture retirement gate** (`P1B.21`) added after the Lago
-  migration sequence. Retained prod smoke fixtures now stay available for
-  `P1B.18`–`P1B.20` validation but must be clearly labelled/inventoried as
-  test-only; destructive cleanup and final post-cleanup smoke are deferred until
-  after legacy Stripe cleanup.
+- **Final prod smoke-fixture retirement gate** (`P1B.21`) closed after the Lago
+  migration sequence. Historical prod smoke fixtures are retained as audit
+  evidence only; the reusable prod smoke key is disabled.
 
 - **Lago live smoke certification tooling** (`P1B.18a`) added for the
   rollout-gated Lago migration. `@prontiq/control-plane` now has
@@ -67,8 +73,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   minimal credit-delta payloads, the `prontiq-billing-event-deliveries`
   delivery ledger, CloudWatch forwarder runtime-error alarm/dashboard metric, and
   GitHub environment deploy config for `LAGO_API_URL` / `LAGO_API_KEY`.
-  `BILLING_EVENTS_ENABLED` remains default-off until canonical Lago
-  metrics/subscriptions and replay smoke checks pass per environment.
+  `BILLING_EVENTS_ENABLED` was default-off for initial rollout until canonical
+  Lago metrics/subscriptions and replay smoke checks passed per environment;
+  after P1B.21, dev/prod are enabled.
 
 - **SQS billing-event buffer** (`P1B.15`) **implemented behind a feature flag.**
   Added `BillingUsageEventV1`, deterministic `bevt_...` event ids, standard SQS
@@ -76,8 +83,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `prontiq-customers` infra, provisioning-time `customerId` writes for new
   orgs, and a `backfill:customers` dry-run/apply utility for legacy org/API-key
   records. The API emits only after DynamoDB enforcement succeeds and never
-  calls Lago; `BILLING_EVENTS_ENABLED` defaults to `false` until the deployed
-  environment passes Lago setup and replay smoke checks.
+  calls Lago; `BILLING_EVENTS_ENABLED` was default-off for initial rollout until
+  each deployed environment passed Lago setup and replay smoke checks. After
+  P1B.21, dev/prod are enabled.
 
 - **P1B.14 customer identity contract defined.** The target Lago migration now
   has a platform-owned `customerId` contract (`pq_cust_<ulid>`), a documented

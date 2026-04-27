@@ -10,10 +10,9 @@
   DynamoDB usage enforcement succeeds.
 - Enable `BILLING_EVENTS_ENABLED` only for deployed stages that have completed
   P1B.18a Lago metric/subscription/replay smoke checks with the repo-owned
-  smoke helper and alert health verified. Retained prod smoke fixtures may be
-  reused by P1B.21 only while clearly labelled/inventoried
-  as test-only. P1B.21 owns final fixture retirement and post-cleanup prod
-  smoke before real customer go-live.
+  smoke helper and alert health verified. P1B.21 retired the retained prod
+  smoke key with prefix `pq_live_4a85`; do not reactivate or reuse it. Future
+  prod smoke needs a new labelled probe under a new ticket.
 - P1B.18a is closed. Future billing API work may rely on dev/prod Lago
   forwarding and webhook smoke evidence, but must keep Lago and Stripe off the
   API hot path.

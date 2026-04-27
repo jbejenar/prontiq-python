@@ -1,8 +1,13 @@
 # Final Prod Go-Live Cleanup Runbook
 
-Operator checklist for `P1B.21`. Use this after `P1B.20` has completed, when
-the Lago-backed commercial path is ready for real customer go-live and retained
-production smoke fixtures no longer need to support migration work.
+Operator checklist for `P1B.21`. P1B.21 was completed on 2026-04-27; the safe
+evidence is recorded in
+[`docs/operations/p1b21-prod-go-live-cleanup-evidence.md`](../operations/p1b21-prod-go-live-cleanup-evidence.md)
+and the disposition decision is recorded in
+[`docs/decisions/034-prod-smoke-fixture-disposition.md`](../decisions/034-prod-smoke-fixture-disposition.md).
+
+Use this runbook for future audits or for creating a new labelled production
+probe. Do not reactivate the retired `pq_live_4a85` smoke key.
 
 ## Scope
 
@@ -35,8 +40,7 @@ It does not cover:
 - Do not delete real customer/org rows.
 - Do not delete billing delivery-ledger or webhook-ledger rows unless a ticket
   explicitly decides that retained audit evidence is no longer required.
-- Retain smoke fixtures during `P1B.18`, `P1B.19`, and `P1B.20` unless they are
-  unsafe; they are expected to support migration validation.
+- The P1B.21-retired prod smoke key prefix `pq_live_4a85` must stay disabled.
 - Prefer revoking or disabling smoke API keys at final go-live over
   hard-deleting evidence needed for replay/drift analysis.
 - Keep `COUNTER_PERIOD_SOURCE=lago` after P1B.19 unless an explicit rollback
@@ -44,7 +48,7 @@ It does not cover:
 
 ## Preconditions
 
-Do not start final fixture retirement until:
+For a future fixture retirement, do not start until:
 
 - `P1B.18`, `P1B.19`, and `P1B.20` are complete
 - repo-owned prod smoke API key/customer/subscription exists or has documented
@@ -58,6 +62,26 @@ Do not start final fixture retirement until:
 
 If these preconditions are not true, continue the relevant Lago migration ticket
 instead of retiring fixtures early.
+
+## Completed P1B.21 Disposition
+
+The completed P1B.21 disposition is:
+
+- API key prefix `pq_live_4a85`: disabled; follow-up request returned
+  `401 INVALID_API_KEY`
+- customer `pq_cust_01KQ3TT9XZZDR2CAZTV1TX1KBS`: retained as audit evidence
+- subscription `pq_sub_01KQ3TT9XZZDR2CAZTV1TX1KBS`: retained as audit evidence
+- usage row `address#period#2026-04-26_2026-05-25`: retained; final request
+  count `11`
+- delivery-ledger rows: retained
+- webhook-ledger rows: retained
+- local ignored smoke files: retained locally only; contents remain uncommitted
+
+Final accepted event:
+
+- `bevt_f7833d581725b732d04d3eed3fd7c484`
+
+Future production smoke requires a new labelled probe under a new ticket.
 
 ## Artifact Inventory
 
@@ -188,7 +212,7 @@ After cleanup/disposition decisions are applied and prechecks are green:
    already true.
 2. Redeploy prod and verify the live API Lambda environment shows
    `BILLING_EVENTS_ENABLED=true`.
-3. Use a fresh go-live probe or intentionally retained repo-owned prod smoke API
+3. Use a fresh go-live probe. Do not reuse the P1B.21-retired `pq_live_4a85`
    key.
 4. Confirm the matching customer row is active and mapped to the intended Lago
    customer/subscription.
@@ -199,9 +223,9 @@ After cleanup/disposition decisions are applied and prechecks are green:
 9. Verify no CloudWatch alarms enter `ALARM`.
 10. Record the safe event ID and run IDs only.
 
-If the smoke would reuse a previously sent cumulative count, advance or recreate
-the retained probe first. Do not create a same-`eventId`/different-payload
-collision as part of the go-live check.
+Before sending the request, re-read the current usage count and pre-derive the
+candidate `eventId`. Check `prontiq-billing-event-deliveries` first. Do not
+create a same-`eventId`/different-payload collision as part of a go-live check.
 
 ## Rollback
 

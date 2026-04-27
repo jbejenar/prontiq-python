@@ -1,8 +1,10 @@
 # Lago Live Smoke Certification Runbook
 
-Operator checklist for P1B.18a. This runbook proves the deployed Lago runtime
-is actually wired to the canonical Lago environments before downstream Lago
-migration tickets rely on it.
+Operator checklist for P1B.18a. This runbook proved the deployed Lago runtime
+was actually wired to the canonical Lago environments before downstream Lago
+migration tickets relied on it. Dev/prod are already certified; current prod
+go-live cleanup evidence is in
+`docs/operations/p1b21-prod-go-live-cleanup-evidence.md`.
 
 ## Scope
 
@@ -24,8 +26,8 @@ It does not replace:
 - `docs/runbooks/lago-billing-events.md` for worker internals and replay
   semantics
 - `docs/runbooks/lago-webhook-reconciliation.md` for webhook drift handling
-- `docs/runbooks/prod-go-live-cleanup.md` for final production smoke-fixture
-  retirement in P1B.21
+- `docs/runbooks/prod-go-live-cleanup.md` for the completed P1B.21 production
+  smoke-fixture retirement and future probe rules
 - P1B.18 console billing proxy/API contract work
 - P1B.19/P1B.20 Stripe legacy retirement/cleanup. Stripe is now only the
   payment rail inside Lago.
@@ -44,12 +46,12 @@ It does not replace:
 
 ## Environment Preconditions
 
-For the target GitHub Environment:
+For an uncertified target GitHub Environment:
 
 - `LAGO_API_URL` points at the correct Lago base URL.
 - `LAGO_API_KEY` exists as a secret.
 - `LAGO_WEBHOOK_HMAC_SECRET` exists as a secret.
-- `BILLING_EVENTS_ENABLED` is unset or `false` before forwarder smoke.
+- `BILLING_EVENTS_ENABLED` is unset or `false` before the first forwarder smoke.
 - `LAGO_WEBHOOK_RECONCILIATION_ENABLED` is unset or `false` before unsigned
   route preflight.
 - Before P1B.19, `COUNTER_PERIOD_SOURCE` is unset or `calendar` before
@@ -181,7 +183,7 @@ Verify in Lago before enabling platform flags:
 2. Confirm the matching `prontiq-customers` row is active and has
    `lagoExternalCustomerId = customerId`.
 
-3. Keep `BILLING_EVENTS_ENABLED=false` and inject one controlled smoke
+3. For an uncertified stage, keep `BILLING_EVENTS_ENABLED=false` and inject one controlled smoke
    `BillingUsageEventV1` into the billing-event source queue with
    `pnpm --filter @prontiq/control-plane lago:smoke:event` and
    `SEND_TO_SQS=true`. The API producer must remain off for this first
@@ -283,11 +285,14 @@ the return to OK in CloudWatch rather than expecting a recovery email.
 
 ## After Certification
 
-P1B.18a proves the integration works and governs retained smoke fixtures as
-test-only data. Keep repo-owned production smoke fixtures available for P1B.18,
-P1B.19, and P1B.20 unless they become unsafe or ambiguous. Final retirement,
-disablement, relabelling, or explicit retention belongs to
-`docs/runbooks/prod-go-live-cleanup.md` in P1B.21 after P1B.20.
+P1B.18a proved the integration works and governed retained smoke fixtures during
+the Lago migration. P1B.21 then completed final production cleanup on
+2026-04-27: the retained prod smoke key with prefix `pq_live_4a85` was disabled
+after final accepted event `bevt_f7833d581725b732d04d3eed3fd7c484`.
+
+Do not reuse or reactivate the P1B.21-retired prod smoke key. If future
+production smoke is required, create a new labelled probe under a new ticket and
+record safe evidence only.
 
 ## Current Certification Evidence
 
@@ -305,9 +310,10 @@ Confirmed safe evidence:
   - dev: `org_prontiq_platform_lago_smoke_dev`,
     `pq_cust_01KQ3T50Z86ZKEFG8Y7N68V3QP`,
     `pq_sub_01KQ3T50Z86ZKEFG8Y7N68V3QP`, key prefix `pq_live_0665`
-  - prod: `org_prontiq_platform_lago_smoke_prod`,
+  - prod retained as audit evidence only:
+    `org_prontiq_platform_lago_smoke_prod`,
     `pq_cust_01KQ3TT9XZZDR2CAZTV1TX1KBS`,
-    `pq_sub_01KQ3TT9XZZDR2CAZTV1TX1KBS`, key prefix `pq_live_4a85`
+    `pq_sub_01KQ3TT9XZZDR2CAZTV1TX1KBS`, disabled key prefix `pq_live_4a85`
 
 Webhook evidence:
 

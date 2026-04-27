@@ -36,13 +36,12 @@ In the target architecture:
 
 ## Final Production Go-Live Gate
 
-Retained repo-owned production smoke fixtures may support the remaining Lago
-migration work if they are clearly labelled/inventoried as test-only. Do not
-mutate unrelated Lago organizations or delete useful migration fixtures before
-P1B.18, P1B.19, and P1B.20 unless a safety issue requires it.
+P1B.21 completed the final production go-live cleanup on 2026-04-27. The
+retained production smoke key with prefix `pq_live_4a85` is disabled and must
+not be reused. The related customer/subscription and ledger rows are retained as
+audit evidence only.
 
-Before real customer go-live after P1B.20, complete
-`docs/runbooks/prod-go-live-cleanup.md`. That gate must inventory repo-owned
-prod smoke artifacts, decide whether each is deleted/disabled/relabelled/
-retained, recheck production flags and catalog state, and run one final
-post-cleanup smoke.
+For the completed evidence, read
+`docs/operations/p1b21-prod-go-live-cleanup-evidence.md`. For future production
+probe creation or cleanup, use `docs/runbooks/prod-go-live-cleanup.md` and
+create a new labelled probe under a new ticket.

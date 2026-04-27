@@ -1,9 +1,9 @@
 # NEXT-WORK.md — Active Sprint
 
 > Extracted from ROADMAP.md. This is what agents should work on NOW.
-> Last updated: 2026-04-26 (P1B.20 implemented; P1B.21 next)
+> Last updated: 2026-04-27 (P1B.21 implemented; Lago migration complete)
 
-## Current Phase: P1B.21
+## Current Phase: P1C.02 / P1C.03
 
 ### What's Live
 
@@ -26,7 +26,7 @@
 - The P1B.04/P1B.04b cutover shipped on 2026-04-16 and has been exercised in prod.
 - **P1B.05 complete (2026-04-18).** Clerk webhook handler (`POST /webhooks/clerk`) AND `POST /v1/account/setup` recovery endpoint both live in dev + prod. The historical dev verification originally provisioned a Stripe customer under the pre-Lago runtime; after P1B.20, the current provisioning path creates the Prontiq customer envelope and Lago Free subscription only. Account-setup endpoint runs the same `createProvisioningService().provisionOrg(...)` code path as the webhook, so a delayed/missed webhook is recoverable from the dashboard. Three Lambdas now serve `PqApi`: address-API `$default` (hot path), `PqClerkWebhook` (Svix-signed), `PqAccount` (Clerk-JWT-authenticated `/v1/account/*`).
 - **P1B.20 complete (2026-04-26).** Platform-owned legacy Stripe runtime/config/surfaces are removed from active deploys. There is no `POST /webhooks/stripe`, `PqBillingCron`, `PqMonthClose`, Stripe Pricing Table, `STRIPE_*` deploy secret, `LEGACY_STRIPE_RUNTIME_ENABLED`, or `stripe` package dependency. Stripe remains only as the payment rail configured inside Lago.
-- **P1B.08 complete (2026-04-19; rollout verified 2026-04-19).** SES feedback ingestion, suppression-aware welcome / `past_due` / quota emails, and 80% / 100% quota notifications are live in dev + prod. `prontiq.dev` is verified in SES with DKIM active, simulator-based positive-send plus bounce / complaint flows were exercised in both stages, and the post-merge config-set IAM/send-path fixes are deployed. **P1B.08a remains pending** for custom MAIL FROM on `bounce.prontiq.dev`, DMARC alignment correction, SES production-access approval, and normal-recipient verification.
+- **P1B.08 complete (2026-04-19; rollout verified 2026-04-19).** SES feedback ingestion, suppression-aware welcome / `past_due` / quota emails, and 80% / 100% quota notifications are live in dev + prod. `prontiq.dev` is verified in SES with DKIM active, simulator-based positive-send plus bounce / complaint flows were exercised in both stages, and the post-merge config-set IAM/send-path fixes are deployed. Custom MAIL FROM on `bounce.prontiq.dev` and DMARC relaxed SPF alignment are configured. **P1B.08a remains pending** for SES production-access approval and normal-recipient verification.
 - **P1B.11 complete (2026-04-19; historical).** The legacy Stripe month-close path shipped during the old runtime and was removed from active deploys by P1B.20 after the Lago cutover.
 - **P1B.09 complete (2026-04-19).** Per-key burst limiting is now explicitly extracted into `packages/api/src/middleware/rate-limit.ts`, remains enforced in the live auth path, and is covered by both unit and integration tests for burst exhaustion, refill, key isolation, and no orphan usage increments on `RATE_LIMITED`.
 - **P1B.12 complete (2026-04-19).** The auth middleware integration suite is now reconciled to the real post-cutover surface: direct unknown/revoked key failures, REDIRECT success writing usage on `newHash`, no orphan usage on pre-increment failures, and the atomic free-tier quota race are all covered in `packages/api/src/middleware/auth.integration.test.ts`. The roadmap ticket no longer claims webhook idempotency, first-key creation, or a standalone seed script.
@@ -39,22 +39,20 @@
   new provisioning writes `customerId` plus a customer row atomically,
   `backfill:customers` can dry-run/apply legacy envelope/API-key
   denormalization, and the address API can emit `BillingUsageEventV1` to
-  standard SQS behind `BILLING_EVENTS_ENABLED`. Default remains `false` until
-  Lago setup/replay smoke checks pass in the target environment.
+  standard SQS behind `BILLING_EVENTS_ENABLED`. Dev/prod are enabled after
+  P1B.18a/P1B.21 certification.
 - **P1B.16 complete (2026-04-25).** `PqLagoEventForwarder` consumes queued
   billing events, validates deterministic event IDs, stores delivery evidence in
   `prontiq-billing-event-deliveries`, and sends minimal Lago usage events with
   `transaction_id = eventId`, derived `external_subscription_id`, and
   `properties.credits = creditDelta`. The worker is deployed in dev and prod;
-  `BILLING_EVENTS_ENABLED` still stays false until canonical Lago
-  metrics/subscriptions and replay smoke checks pass per environment.
+  canonical Lago metrics/subscriptions and replay smoke checks have passed.
 - **P1B.17 complete (2026-04-25).** `POST /webhooks/lago` verifies Lago HMAC
   signatures, claims `X-Lago-Unique-Key` in `prontiq-lago-webhook-events`,
   reconciles consumed subscription/invoice events into local key/envelope state,
   marks prior Lago-period usage rows closed, and keeps PAYG uncapped but
-  tracked. The route is gated by `LAGO_WEBHOOK_RECONCILIATION_ENABLED`; the API
-  counter source remains `calendar` unless `COUNTER_PERIOD_SOURCE=lago` is
-  deliberately enabled after reconciliation is proven.
+  tracked. The route is gated by `LAGO_WEBHOOK_RECONCILIATION_ENABLED`; prod
+  now runs `COUNTER_PERIOD_SOURCE=lago` after P1B.19/P1B.21 certification.
 - **P1B.18a complete (2026-04-26).** The Lago runtime is deployed in dev and
   prod, the repo-owned smoke helper is in place, API-produced billing events
   have been smoke-tested in dev and prod, `BILLING_EVENTS_ENABLED=true` is
@@ -78,6 +76,14 @@
 - **P1B.19 complete (2026-04-26).** Runtime billing cut over to Lago-centered
   provisioning and reconciliation. New provisioning bootstraps Lago Free
   subscriptions directly and writes Lago billing-period fields locally.
+- **P1B.21 complete (2026-04-27).** Final prod go-live cleanup retired the
+  retained repo-owned prod smoke key after accepted event
+  `bevt_f7833d581725b732d04d3eed3fd7c484`. The key prefix `pq_live_4a85` is now
+  disabled and returns `401 INVALID_API_KEY`; related customer/subscription,
+  usage, delivery, and webhook evidence is retained as audit evidence only.
+  Prod remains in go-live posture:
+  `BILLING_EVENTS_ENABLED=true`, `COUNTER_PERIOD_SOURCE=lago`, and
+  `LAGO_WEBHOOK_RECONCILIATION_ENABLED=true`.
 - **P1F.02 complete (2026-04-19).** The prod observability baseline is live and verified: `PqIngestAlerts` prod email subscriptions via `ALERT_EMAILS`, `prontiq-production` dashboard, prod alarms for address API 5xx/Lambda error rate and OpenSearch yellow/red/low-storage, `PqApi` X-Ray tracing with DynamoDB + OpenSearch segments, and structured JSON logs across Lambda execution paths. SNS email delivery was verified by forcing `PqApiLambdaErrorRate` to `ALARM` and confirming receipt on a confirmed subscriber.
 - **P1F.03 complete (2026-04-20).** `@prontiq/observability` is live in `dev` and `prod`, Honeycomb traces are verified for `prontiq-api`, `prontiq-webhooks`, `prontiq-billing`, and `prontiq-ingestion` in both environments, and the deployed-stage rollback path is `HONEYCOMB_ENABLED=false` rather than secret removal.
 - **P1C.07 complete (2026-04-20).** `apps/landing` and `apps/console` now have Tailwind v3.4, app-local shadcn/ui primitives, dark mode, responsive shell foundations, and app-local Vitest + Testing Library. `apps/console` now carries an env-gated real Clerk auth boundary that builds/tests cleanly without Clerk keys and enables real sign-in when they are present.
@@ -149,7 +155,7 @@ POST /v1/account/billing/portal-session
 - ~~P1B.18 — Console billing proxy surfaces + plan changes~~ ✅ shipped (2026-04-26)
 - ~~P1B.19 — Stripe legacy billing retirement and cutover~~ ✅ shipped (2026-04-26)
 - ~~P1B.20 — Legacy Stripe config and surface cleanup~~ ✅ shipped (2026-04-26)
-- **P1B.21 — Final prod go-live cleanup + smoke fixture retirement**
+- ~~P1B.21 — Final prod go-live cleanup + smoke fixture retirement~~ ✅ shipped (2026-04-27)
 
 ### 2. Finish ingestion hardening
 
@@ -166,16 +172,16 @@ POST /v1/account/billing/portal-session
 
 Recommended priority:
 
-1. P1B.21 — final prod go-live cleanup and smoke fixture retirement/retention decision.
-2. P1C.02 / P1C.03 — continue the console overview and API-key experience after the commercial backend is clean.
-3. P1B.08a — finish normal-recipient SES production readiness if AWS approval has landed.
+1. P1C.02 / P1C.03 — continue the console overview and API-key experience on top of the completed Lago backend.
+2. P1B.08a — finish normal-recipient SES production readiness if AWS production access has landed.
+3. P1E.05 — cache invalidation after alias swap if platform work is preferred.
 
-Before starting `P1B.21`, read:
+Before starting console account work, read:
 
 - `ARCHITECTURE.MD` (commercial implementation-status section + Lago-backed flow)
-- `docs/runbooks/prod-go-live-cleanup.md`
+- `docs/operations/p1b21-prod-go-live-cleanup-evidence.md`
 - `docs/runbooks/lago-commercial-ops.md`
-- `docs/runbooks/lago-live-smoke.md`
+- `docs/runbooks/console-billing.md`
 - `docs/decisions/013-platform-owned-customer-id.md`
 - `docs/decisions/014-dedicated-customers-table.md`
 - `docs/decisions/015-lago-external-id-equals-customer-id.md`
@@ -193,29 +199,22 @@ Before starting `P1B.21`, read:
 - `docs/decisions/027-console-billing-account-api.md`
 - `docs/decisions/028-billing-action-ledger.md`
 - `docs/decisions/029-lago-plan-transition-semantics.md`
-- `docs/runbooks/console-billing.md`
-- `docs/runbooks/lago-live-smoke.md`
-- `docs/runbooks/lago-billing-events.md`
-- `docs/runbooks/lago-webhook-reconciliation.md`
+- `docs/decisions/034-prod-smoke-fixture-disposition.md`
 - `docs/FRONTEND-STRATEGY.md`
 - `docs/prototypes/console-dashboard-v1.html`
 
 Reason:
 
-- The legacy Stripe auth/billing path is effectively complete, but the forward
-  commercial workstream is now the Lago migration sequence.
+- The Lago migration sequence is complete; the backend commercial contract is
+  ready for console/dashboard work.
 - Honeycomb backend tracing is now implemented and verified in deployed `dev` and `prod`.
-- The next product milestone needs Lago-backed billing state and plan changes
-  in the console. Since there are no real customers yet, retained prod smoke
-  fixtures are useful validation data for the remaining Lago tickets and should
-  not be destructively cleaned until `P1B.21`.
-- `P1C.02` and `P1C.03` still matter, but they should follow the commercial
-  contract work instead of preceding it.
+- The next product milestone needs Lago-backed billing state and API-key
+  management surfaced in the console.
 - API Gateway caching remains a pragmatic performance/cost option if platform work is preferred over dashboard work.
 
 ### Operator follow-ups (one-time, not blocking next ticket)
 
-- **P1B.08a SES deliverability posture** for `prontiq.dev` in `ap-southeast-2`. Domain verification and DKIM are complete; custom MAIL FROM, DMARC relaxed SPF alignment, SES production-access approval, and normal-recipient verification remain. Operate via `docs/runbooks/ses-suppression.md`.
+- **P1B.08a SES deliverability posture** for `prontiq.dev` in `ap-southeast-2`. Domain verification, DKIM, custom MAIL FROM, and DMARC relaxed SPF alignment are configured; SES production-access approval and normal-recipient verification remain the explicit closeout gate. Operate via `docs/runbooks/ses-suppression.md`.
 - **Legacy Stripe metadata contract** remains relevant only while the migration
   is in progress. Do not treat it as the forward commercial design.
 

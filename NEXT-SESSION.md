@@ -4,6 +4,36 @@
 > the time they were written, not the current source of truth. Use
 > `ROADMAP.md`, `NEXT-WORK.md`, and `README.md` for current execution status.
 
+## Session 42 — 2026-04-27
+
+**Focus:** P1B.21 final prod go-live cleanup and smoke fixture retirement.
+
+### Completed
+
+- **P1B.21 is implemented.** The retained repo-owned prod smoke API key was
+  used for one final API-originated billing smoke, then disabled.
+- **Final prod smoke evidence is safe and accepted.** Event
+  `bevt_f7833d581725b732d04d3eed3fd7c484` reached `accepted` in
+  `prontiq-billing-event-deliveries`; the source queue and DLQ were empty; no
+  CloudWatch alarms were in `ALARM`.
+- **The historical prod smoke key is retired.** Prefix `pq_live_4a85` now
+  returns `401 INVALID_API_KEY`. The raw key and hash remain unrecorded.
+- **Audit evidence is retained.** Customer
+  `pq_cust_01KQ3TT9XZZDR2CAZTV1TX1KBS`, subscription
+  `pq_sub_01KQ3TT9XZZDR2CAZTV1TX1KBS`, usage, delivery, and webhook ledger
+  evidence remain available for migration/debug history.
+- **Go-live posture is recorded.** Prod remains
+  `BILLING_EVENTS_ENABLED=true`, `COUNTER_PERIOD_SOURCE=lago`, and
+  `LAGO_WEBHOOK_RECONCILIATION_ENABLED=true`.
+
+### Next session should start with
+
+1. Start P1C.02 / P1C.03 console account and API-key UX on top of the completed
+   Lago backend contract.
+2. Do not reactivate or reuse the retired `pq_live_4a85` prod smoke key.
+3. If future prod smoke is needed, create a new labelled probe under a new
+   ticket and record safe evidence only.
+
 ## Session 41 — 2026-04-26
 
 **Focus:** P1B.20 legacy Stripe config and surface cleanup.
@@ -28,7 +58,8 @@
 
 1. Open/review/merge the P1B.20 cleanup PR, then deploy dev/prod.
 2. Start `P1B.21 — Final Prod Go-Live Cleanup + Smoke Fixture Retirement`.
-3. Preserve repo-owned smoke fixtures until P1B.21 unless they become unsafe or
+3. Historical instruction at P1B.20 closeout: preserve repo-owned smoke
+   fixtures for the then-future P1B.21 cleanup unless they became unsafe or
    ambiguous.
 
 ## Session 40 — 2026-04-26
@@ -53,7 +84,8 @@
 1. Start `P1B.19 — Stripe Legacy Billing Retirement and Cutover`.
 2. Keep plan-change enablement allowlisted to repo-owned test orgs until the
    later cutover path is explicitly approved.
-3. Leave retained Lago smoke fixtures in place until P1B.21 cleanup.
+3. Historical instruction at P1B.18 closeout: leave retained Lago smoke
+   fixtures in place for the then-future P1B.21 cleanup.
 
 ## Session 39 — 2026-04-26
 
@@ -244,9 +276,10 @@ console billing proxy surfaces.
   accepted duplicates, confirms ambiguous Lago `422` responses through
   `GET /api/v1/events/{transaction_id}`, and treats payload-hash conflicts as
   invalid evidence.
-- **Producer rollout is still gated.** Keep `BILLING_EVENTS_ENABLED=false` until
-  each environment has canonical Lago metric/customer/subscription setup and a
-  replay smoke check.
+- **Producer rollout was still gated at the time.** At P1B.16 closeout,
+  `BILLING_EVENTS_ENABLED=false` was required until each environment had
+  canonical Lago metric/customer/subscription setup and a replay smoke check.
+  Current post-P1B.21 dev/prod posture is enabled.
 - **P1B.15 is complete.** The platform now has `BillingUsageEventV1`,
   deterministic `bevt_...` event IDs, standard SQS source/DLQ infra, and a
   feature-flagged API emitter that runs only after DynamoDB enforcement

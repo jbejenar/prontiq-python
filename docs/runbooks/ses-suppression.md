@@ -44,9 +44,9 @@ Current rollout state as of 2026-04-19:
 - `prontiq.dev` is verified in SES in `ap-southeast-2`
 - DKIM status is `SUCCESS`
 - apex SPF is present on `prontiq.dev`
-- DMARC is present; production hardening updates it to relaxed SPF alignment
-  (`aspf=r`) so the custom MAIL FROM subdomain aligns with `prontiq.dev`
-- custom MAIL FROM is configured as `bounce.prontiq.dev` once P1B.08a ships
+- DMARC is present with relaxed SPF alignment (`aspf=r`) so the custom MAIL FROM
+  subdomain aligns with `prontiq.dev`
+- custom MAIL FROM is configured as `bounce.prontiq.dev`
 - SES simulator positive-send, bounce, and complaint flows have been exercised in both `dev` and `prod`
 - both `PqQuotaEmailWorker` roles now include the SES configuration-set ARN in `ses:SendEmail` / `ses:SendRawEmail` permissions
 - the AWS SES account is still in sandbox, so simulator validation is complete but normal-recipient delivery is still blocked until production access is enabled

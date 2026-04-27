@@ -1,7 +1,7 @@
 # Prontiq Platform — Roadmap
 
 > A unified data API platform for Australian and global open data.
-> Last updated: 2026-04-26 · v1.7
+> Last updated: 2026-04-27 · v1.8
 >
 > **Reference:** `ARCHITECTURE.MD` is the authoritative design doc. This roadmap is the execution plan.
 
@@ -31,7 +31,7 @@
 | --------- | -------------------------- | ------- | --------- | ----------- |
 | **P0**    | Infrastructure Foundation  | 6       | 6/6 ✅    | Week 1      |
 | **P1A**   | API Core (Address)         | 13      | 11/13     | Weeks 2-3   |
-| **P1B**   | Auth & Billing             | 24      | 18/24     | Weeks 3-4   |
+| **P1B**   | Auth & Billing             | 24      | 19/24     | Weeks 3-4   |
 | **P1C**   | Frontend Surfaces          | 9       | 3/9       | Weeks 4-6   |
 | **P1D**   | Docs & SDK                 | 5       | 2/5       | Week 5      |
 | **P1E**   | Ingestion (Phase 1)        | 6       | 4/6       | Week 6      |
@@ -40,7 +40,7 @@
 | **P3**    | GLEIF/LEI + Full Dashboard | 7       | 0/7       | Weeks 11-13 |
 | **P4**    | Shopify + WooCommerce      | 5       | 0/5       | Weeks 14-17 |
 | **P5**    | CVE/NVD + Patents          | 4       | 0/4       | Weeks 18-21 |
-| **Total** |                            | **90**  | **47/90** |             |
+| **Total** |                            | **90**  | **48/90** |             |
 
 ---
 
@@ -1080,9 +1080,9 @@ Options:
 
 > **Goal:** Sign-up → DDB-native API key → hash-verified requests → rate-limited with burst limiter → usage tracked per-month → migrate the commercial layer from the shipped Stripe path to the Lago-backed architecture.
 >
-> **Current state.** P1B.02, P1B.04, P1B.04b, P1B.05, P1B.06, P1B.07, P1B.08, P1B.09, P1B.10, P1B.11, P1B.12, P1B.14, P1B.15, P1B.16, P1B.17, P1B.18a, P1B.18, P1B.19, and P1B.20 are implemented. The DynamoDB-native key model is live in prod, the prod migration was executed on 2026-04-16, per-key burst limiting is enforced in the API middleware, SES feedback / quota-email delivery is live in dev + prod, the auth integration suite is reconciled to the real post-cutover middleware contract, and the Lago migration now has a platform-owned `customerId` contract, SQS billing-event buffer, replay-safe Lago event forwarder, Lago webhook reconciliation code, dev/prod live-smoke certification, Prontiq-owned private account billing APIs, P1B.19 runtime cutover controls, and P1B.20 legacy Stripe cleanup. Final destructive cleanup is deferred to P1B.21. SES deliverability hardening is tracked separately in P1B.08a. The next Lago migration work is P1B.21.
+> **Current state.** P1B.02, P1B.04, P1B.04b, P1B.05, P1B.06, P1B.07, P1B.08, P1B.09, P1B.10, P1B.11, P1B.12, P1B.14, P1B.15, P1B.16, P1B.17, P1B.18a, P1B.18, P1B.19, P1B.20, and P1B.21 are implemented. The DynamoDB-native key model is live in prod, the prod migration was executed on 2026-04-16, per-key burst limiting is enforced in the API middleware, SES feedback / quota-email delivery is live in dev + prod, the auth integration suite is reconciled to the real post-cutover middleware contract, and the Lago migration now has a platform-owned `customerId` contract, SQS billing-event buffer, replay-safe Lago event forwarder, Lago webhook reconciliation code, dev/prod live-smoke certification, Prontiq-owned private account billing APIs, P1B.19 runtime cutover controls, P1B.20 legacy Stripe cleanup, and P1B.21 final prod smoke-fixture retirement. SES deliverability hardening is tracked separately in P1B.08a. The next commercial work is frontend/account UX on top of the completed Lago backend contract.
 >
-> **Lago migration progress.** `8/9` implemented for `P1B.14`–`P1B.21` plus `P1B.18a`. The `P1B` epic rollup includes completed historical Stripe-path work, so treat the Lago migration sequence as a separate track until final go-live cleanup is complete.
+> **Lago migration progress.** `9/9` implemented for `P1B.14`–`P1B.21` plus `P1B.18a`. The `P1B` epic rollup includes completed historical Stripe-path work, so treat the Lago migration sequence as complete.
 >
 > **Scope boundary.** The hot-path middleware rewrite (hash-based lookup, REDIRECT fallback, new usage-table writes) ships in **P1B.04b** (cutover), NOT in P1B.02. P1B.02 is pure crypto primitives only — no DDB dependency — which is why it remains parallel-safe. P1B.04b flips schema + code atomically once P1B.02 and P1B.04 are both done.
 >
@@ -1575,8 +1575,9 @@ idempotency inputs, hot-path boundary
 - `prontiq-customers` is declared in SST with `customerId-index`.
 - `@prontiq/control-plane` writes `customerId` for new org provisioning and
   provides `backfill:customers` for legacy envelopes/API keys.
-- The API producer is feature-flagged by `BILLING_EVENTS_ENABLED`; default is
-  `false` until the environment passes Lago setup plus replay smoke checks.
+- The API producer is feature-flagged by `BILLING_EVENTS_ENABLED`; it was
+  default-off for initial rollout until the environment passed Lago setup plus
+  replay smoke checks. After P1B.21, dev/prod are enabled.
 - Queue type is standard SQS; deterministic event ids provide replay
   idempotency for the Lago worker.
 
@@ -1669,9 +1670,10 @@ bridge, delivery-ledger side effects, retry/replay safety
 - Delivery evidence is stored in `prontiq-billing-event-deliveries` with
   payload-hash conflict detection, accepted/failed/invalid statuses, attempt
   counts, and a customer/time GSI for operational review.
-- `BILLING_EVENTS_ENABLED` remains a separate rollout flag. It must stay false
-  until the target environment has canonical Lago metrics/subscriptions and a
-  successful replay smoke check.
+- `BILLING_EVENTS_ENABLED` remains a separate rollout flag. It stayed false
+  during initial rollout until the target environment had canonical Lago
+  metrics/subscriptions and a successful replay smoke check. After P1B.21,
+  dev/prod are enabled.
 
 ---
 
@@ -1838,17 +1840,18 @@ and replay safety work end to end.
     not double-count usage, and does not rely on hand-built event IDs
 - [x] Retained smoke fixtures are governed as test-only data
   - `Verify:` prod smoke customer, subscription, API key, and local evidence are
-    inventoried with safe identifiers and clearly labelled as reusable test
+    inventoried with safe identifiers and clearly labelled as repo-owned test
     fixtures for this repo
-  - `Evidence:` retained fixtures stay available through P1B.18/P1B.19/P1B.20;
-    destructive retirement is deferred to P1B.21
+  - `Evidence:` retained fixtures stayed available through P1B.18/P1B.19/P1B.20;
+    P1B.21 later disabled the prod smoke key and retained customer/subscription
+    rows as audit evidence
   - `Current safe inventory:` dev fixture
     `org_prontiq_platform_lago_smoke_dev`,
     `pq_cust_01KQ3T50Z86ZKEFG8Y7N68V3QP`,
     `pq_sub_01KQ3T50Z86ZKEFG8Y7N68V3QP`, key prefix `pq_live_0665`; prod
     fixture `org_prontiq_platform_lago_smoke_prod`,
     `pq_cust_01KQ3TT9XZZDR2CAZTV1TX1KBS`,
-    `pq_sub_01KQ3TT9XZZDR2CAZTV1TX1KBS`, key prefix `pq_live_4a85`
+    `pq_sub_01KQ3TT9XZZDR2CAZTV1TX1KBS`, disabled key prefix `pq_live_4a85`
 - [x] Repo-owned smoke helper exists for controlled usage events
   - `Verify:` `pnpm --filter @prontiq/control-plane lago:smoke:event` builds
     and validates a `BillingUsageEventV1` from live DynamoDB smoke state
@@ -2056,7 +2059,7 @@ rollback plan.
   `LEGACY_STRIPE_RUNTIME_ENABLED`, and `STRIPE_*` deploy secret contract are no
   longer part of active Platform deploys.
 - `docs/runbooks/stripe-legacy-cutover.md` is now a historical cutover record.
-  P1B.21 owns final smoke-fixture retirement.
+  P1B.21 later completed final smoke-fixture retirement.
 
 **In:** cutover criteria, legacy Stripe retirement scope, rollback posture,
 post-cutover documentation and operations cleanup
@@ -2161,12 +2164,12 @@ post-cutover secret/env cleanup, doc/runbook reconciliation, grep-based proof
 ```yaml
 id: P1B.21
 title: Final Prod Go-Live Cleanup + Smoke Fixture Retirement
-status: pending
+status: complete
 priority: p0-critical
 epic: P1B
 persona: [ops]
 depends_on: [P1B.20]
-completed: null
+completed: 2026-04-27
 tech_stack:
   billing: Lago + DynamoDB + SQS + CloudWatch + GitHub Environments
 ```
@@ -2191,51 +2194,57 @@ Lago-backed billing contract, cutover, and legacy Stripe cleanup are complete.
 
 ##### Functional
 
-- [ ] Retained smoke fixture inventory is complete
+- [x] Retained smoke fixture inventory is complete
   - `Verify:` inventory names every repo-owned prod smoke customer/API key,
     Lago customer/subscription, `prontiq-usage` row, billing delivery-ledger
     row, webhook-ledger row if present, and local ignored file used to drive the
     smoke
-  - `Evidence:` inventory records safe identifiers only; no raw API keys,
-    hashes, secrets, local secret-file contents, or private customer data are
-    recorded
-- [ ] Final disposition is explicit
+  - `Evidence:` see
+    `docs/operations/p1b21-prod-go-live-cleanup-evidence.md`; inventory records
+    safe identifiers only; no raw API keys, hashes, secrets, local secret-file
+    contents, or private customer data are recorded
+- [x] Final disposition is explicit
   - `Verify:` each fixture is deleted, disabled, relabelled as a retained
     operational probe, or retained as audit/replay evidence with a named reason
-  - `Evidence:` smoke API keys are revoked unless intentionally retained as
-    labelled go-live probes; Lago smoke customers/subscriptions are archived,
-    deleted, or clearly labelled test-only according to Lago capabilities
-- [ ] Prod commercial runtime is in final go-live posture
+  - `Evidence:` DEC-034 disables the retained prod smoke key and retains
+    customer/subscription/ledger rows as audit evidence; disabled key prefix is
+    `pq_live_4a85`
+- [x] Prod commercial runtime is in final go-live posture
   - `Verify:` `BILLING_EVENTS_ENABLED`, `COUNTER_PERIOD_SOURCE`,
     `LAGO_WEBHOOK_RECONCILIATION_ENABLED`, SES, Clerk, and migration-era
     Stripe/Lago flags are checked from GitHub Environment config and the live
     Lambda environment after final deploy
-  - `Evidence:` final values are recorded without secrets, with explicit
-    rationale for any retained test/probe config
-- [ ] Final post-cleanup smoke passes
+  - `Evidence:` `BILLING_EVENTS_ENABLED=true`,
+    `COUNTER_PERIOD_SOURCE=lago`, and
+    `LAGO_WEBHOOK_RECONCILIATION_ENABLED=true` are recorded in
+    `docs/operations/p1b21-prod-go-live-cleanup-evidence.md`
+- [x] Final post-cleanup smoke passes
   - `Verify:` one controlled post-cleanup smoke uses a fresh or intentionally
     retained go-live probe and produces exactly one accepted Lago event
-  - `Evidence:` API request returns `200`, delivery ledger is `accepted`, source
-    queue and DLQ are empty, and no CloudWatch alarms enter `ALARM`
+  - `Evidence:` API request returned `200`, delivery ledger event
+    `bevt_f7833d581725b732d04d3eed3fd7c484` is `accepted`, source queue and DLQ
+    are empty, and no CloudWatch alarms were in `ALARM`
 
 ##### Operational
 
-- [ ] Queue, DLQ, and alarm state is clean
+- [x] Queue, DLQ, and alarm state is clean
   - `Verify:` billing-event source queue, billing-event DLQ, Lago webhook
     failure signals, and SES feedback paths have no unexpected backlog; email
     backed alarms still notify on `ALARM` only
   - `Evidence:` queue attributes and alarm states are recorded without payloads
-- [ ] DNS/TLS/email-auth posture is rechecked
+    in `docs/operations/p1b21-prod-go-live-cleanup-evidence.md`
+- [x] DNS/TLS/email-auth posture is rechecked
   - `Verify:` `api.prontiq.dev`, `billing.prontiq.dev`, SES DKIM, SPF, DMARC,
     and custom MAIL FROM remain valid
   - `Evidence:` checks are documented as safe status summaries, not copied
     secrets or private DNS-provider tokens
-- [ ] Final cleanup is documented and repeatable
+- [x] Final cleanup is documented and repeatable
   - `Verify:` `docs/runbooks/prod-go-live-cleanup.md` describes final fixture
     retirement, what must not be deleted, rollback steps, and evidence
     expectations
-  - `Evidence:` `NEXT-WORK.md` and `NEXT-SESSION.md` point operators at the
-    runbook only after P1B.20
+  - `Evidence:` `NEXT-WORK.md`, `NEXT-SESSION.md`,
+    `docs/runbooks/prod-go-live-cleanup.md`, DEC-034, and the P1B.21 evidence
+    doc describe the completed disposition and future probe rules
 
 #### Scope
 
@@ -2639,30 +2648,28 @@ verified custom return-path domain.
 
 #### Problem Statement
 
-P1B.08 shipped suppression handling and simulator-verified SES flows, but the
-account is still sandboxed and the SES identity does not yet use a custom MAIL
-FROM domain. That leaves normal-recipient delivery blocked and leaves SPF
-alignment dependent on default SES return-path behavior. Production readiness
-requires the custom MAIL FROM subdomain, DMARC alignment policy, and AWS
-production-access approval to be tracked explicitly.
+P1B.08 shipped suppression handling and simulator-verified SES flows. Custom
+MAIL FROM and DMARC relaxed SPF alignment are now configured, but the account is
+still sandboxed. Normal-recipient delivery remains blocked until AWS production
+access is approved and a normal-recipient transactional send is verified.
 
 #### Definition of Done
 
 ##### Functional
 
-- [ ] `prontiq.dev` SES identity remains verified in `ap-southeast-2`
+- [x] `prontiq.dev` SES identity remains verified in `ap-southeast-2`
   - `Verify:` `aws sesv2 get-email-identity --email-identity prontiq.dev --region ap-southeast-2`
   - `Evidence:` `VerifiedForSendingStatus=true`
-- [ ] DKIM remains enabled and successful
+- [x] DKIM remains enabled and successful
   - `Verify:` SES identity DKIM status and all three public CNAMEs
   - `Evidence:` `DkimAttributes.Status=SUCCESS`
-- [ ] custom MAIL FROM is configured as `bounce.prontiq.dev`
+- [x] custom MAIL FROM is configured as `bounce.prontiq.dev`
   - `Verify:` SES identity reports `MailFromDomain=bounce.prontiq.dev`
   - `Evidence:` `MailFromStatus=SUCCESS`
-- [ ] Vercel DNS contains required MAIL FROM records
+- [x] Vercel DNS contains required MAIL FROM records
   - `Verify:` `dig +short MX bounce.prontiq.dev` and `dig +short TXT bounce.prontiq.dev`
   - `Evidence:` MX points to `feedback-smtp.ap-southeast-2.amazonses.com`; TXT includes `amazonses.com`
-- [ ] DMARC policy intentionally supports subdomain SPF alignment
+- [x] DMARC policy intentionally supports subdomain SPF alignment
   - `Verify:` `dig +short TXT _dmarc.prontiq.dev`
   - `Evidence:` record includes `aspf=r`
 - [ ] SES production access is approved
@@ -2683,7 +2690,9 @@ production-access approval to be tracked explicitly.
 #### Scope
 
 **In:** SES custom MAIL FROM, Vercel DNS records, DMARC alignment, production
-access resubmission, post-approval normal-recipient verification
+access resubmission, post-approval normal-recipient verification. Custom MAIL
+FROM, DNS, and DMARC alignment are already configured; production-access
+approval and normal-recipient verification remain open.
 
 **Out — Do Not Implement:**
 

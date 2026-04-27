@@ -13,9 +13,9 @@ Prontiq is starting with developer-friendly Australian address validation. The b
 Live at `https://api.prontiq.dev`. Docs at `https://docs.prontiq.dev`. TypeScript SDK auto-generated to `sdks/typescript/` (npm publish pending). The ratified frontend architecture is a two-app model. `prontiq.dev` now has a live landing page with a proxy-backed autocomplete demo, config-owned Free/PAYG pricing cards, and a Clerk sign-up modal; `console.prontiq.dev` carries the env-gated authenticated app shell. Runtime billing is Lago-centered; Stripe remains only the payment rail configured inside Lago. See `ARCHITECTURE.MD` for the canonical target state.
 
 SES suppression handling is live, but full transactional-email production
-readiness is tracked by `P1B.08a`: custom MAIL FROM on `bounce.prontiq.dev`,
-DMARC alignment, SES production-access approval, and one normal-recipient send
-verification.
+readiness is tracked by `P1B.08a`: custom MAIL FROM on `bounce.prontiq.dev` and
+DMARC relaxed SPF alignment are configured; SES production-access approval and
+one normal-recipient send verification remain.
 
 ### Server-to-server surface
 
@@ -131,7 +131,7 @@ See [`ROADMAP.md`](ROADMAP.md) for the current execution plan.
 | ------- | ------------------------- | ------- | --------- |
 | **P0**  | Infrastructure Foundation | 6       | 6/6       |
 | **P1A** | API Core (Address)        | 13      | 11/13     |
-| **P1B** | Auth & Billing            | 24      | 18/24     |
+| **P1B** | Auth & Billing            | 24      | 19/24     |
 | **P1C** | Frontend Surfaces         | 9       | 3/9       |
 | **P1D** | Docs & SDK                | 5       | 2/5       |
 | **P1E** | Ingestion                 | 6       | 4/6       |
@@ -140,19 +140,16 @@ See [`ROADMAP.md`](ROADMAP.md) for the current execution plan.
 | **P3**  | LEI + Full Dashboard      | 7       | 0/7       |
 | **P4**  | Shopify + WooCommerce     | 5       | 0/5       |
 | **P5**  | CVE/NVD + Patents         | 4       | 0/4       |
-|         |                           | **90**  | **47/90** |
+|         |                           | **90**  | **48/90** |
 
 `P1B` includes completed legacy Stripe-path work. The Lago migration sequence is
-`P1B.14`–`P1B.21` plus `P1B.18a`, currently `7/9`, and is called out
+`P1B.14`–`P1B.21` plus `P1B.18a`, now complete at `9/9`, and is called out
 separately in the Phase 1B section of [`ROADMAP.md`](ROADMAP.md).
 
-P1B.17 adds Lago webhook reconciliation. P1B.18a owns live Lago setup and smoke
-paths before console billing APIs depend on them. Use
-`pnpm --filter @prontiq/control-plane lago:smoke:event` to generate controlled
-usage smoke events; do not hand-build Lago transaction IDs. Retained prod smoke
-fixtures are expected to support the remaining Lago migration work and must stay
-clearly labelled/inventoried as test-only. Final smoke-fixture retirement and
-destructive cleanup is deferred to `P1B.21` after `P1B.20`.
+P1B.21 closed the Lago migration go-live gate on 2026-04-27. The retained prod
+smoke key with prefix `pq_live_4a85` produced final accepted event
+`bevt_f7833d581725b732d04d3eed3fd7c484`, then was disabled. The related
+customer/subscription and ledger rows are retained as audit evidence only.
 
 P1B.18a closed on 2026-04-26: dev/prod usage-forwarding smoke has accepted
 delivery-ledger evidence, valid HMAC Lago webhook smoke has completed
@@ -167,7 +164,7 @@ Mutations are Clerk-org-admin-only, require `Idempotency-Key`, and write
 contracts documented in `packages/api/openapi.private.json`, not the public
 Mintlify/Speakeasy spec.
 
-P1B.19 retired the legacy Stripe-centric runtime and P1B.20 removes its active
+P1B.19 retired the legacy Stripe-centric runtime and P1B.20 removed its active
 deploy/config/frontend surfaces. New org provisioning bootstraps Lago Free
 subscriptions directly, and Stripe exists only as Lago's payment rail.
 

@@ -1491,12 +1491,10 @@ runtime:
 - **Current Lago rollout state:** platform-side Lago forwarding, webhook
   reconciliation, live smoke certification, and account billing APIs are
   deployed in dev and prod. P1B.19 adds Lago Free subscription bootstrap during
-  provisioning; P1B.20 removes stale Stripe runtime/config/frontend surfaces.
-  close behavior, and the post-cutover `COUNTER_PERIOD_SOURCE=lago` posture.
-  Retained prod smoke fixtures are expected to support P1B.21; they must remain
-  clearly labelled/inventoried as test-only rather than destructively cleaned
-  now. P1B.21 is the final customer go-live cleanup gate after the Lago
-  migration completes.
+  provisioning; P1B.20 removes stale Stripe runtime/config/frontend surfaces;
+  P1B.21 disables the retained prod smoke API key after final accepted event
+  `bevt_f7833d581725b732d04d3eed3fd7c484`. The retained prod smoke customer,
+  subscription, usage, delivery, and webhook rows are audit evidence only.
 
 The subsections below retain the **legacy shipped Stripe path** for operational
 history. They are not the forward-looking commercial source of truth and are no
@@ -1646,25 +1644,23 @@ Timeout budget:
 
 `BILLING_EVENTS_ENABLED` can be enabled only after the target environment has
 canonical Lago organization, metric, customer, subscription, and replay-smoke
-evidence in place. Retained smoke fixtures may be reused by later Lago migration
-tickets as long as they are clearly labelled/inventoried as test-only and do not
-mutate unrelated Lago organizations. Final fixture retirement and the last
-post-cleanup API-originated smoke belong to P1B.21 after P1B.20. Certification
-must use the repo-owned smoke helper or an equivalent command that derives
-`eventId` through the production billing-event contract; hand-built transaction
-IDs are not acceptable. Existing non-canonical Lago organizations are not
-migration targets for this repo; they are left untouched unless explicitly
-created as repo-owned test fixtures for live smoke isolation.
+evidence in place. P1B.21 completed the prod go-live cleanup: the final
+API-originated smoke produced accepted event
+`bevt_f7833d581725b732d04d3eed3fd7c484`, then the retained prod smoke API key
+with prefix `pq_live_4a85` was disabled. Do not reactivate or reuse that key for
+future testing. Future production probes need a new labelled key and a new
+ticket. Existing non-canonical Lago organizations are not migration targets for
+this repo; they are left untouched unless explicitly created as repo-owned test
+fixtures for live smoke isolation.
 
-Current safe smoke fixture inventory from the 2026-04-26 P1B.18a
-certification:
+Safe smoke fixture inventory after the 2026-04-27 P1B.21 cleanup:
 
 - dev: `org_prontiq_platform_lago_smoke_dev`,
   `pq_cust_01KQ3T50Z86ZKEFG8Y7N68V3QP`,
   `pq_sub_01KQ3T50Z86ZKEFG8Y7N68V3QP`, key prefix `pq_live_0665`
-- prod: `org_prontiq_platform_lago_smoke_prod`,
+- prod, retained as audit evidence only: `org_prontiq_platform_lago_smoke_prod`,
   `pq_cust_01KQ3TT9XZZDR2CAZTV1TX1KBS`,
-  `pq_sub_01KQ3TT9XZZDR2CAZTV1TX1KBS`, key prefix `pq_live_4a85`
+  `pq_sub_01KQ3TT9XZZDR2CAZTV1TX1KBS`, disabled key prefix `pq_live_4a85`
 
 This inventory deliberately excludes raw API keys, API-key hashes, Lago API
 keys, webhook HMAC secrets, and local ignored evidence files.
@@ -2048,11 +2044,11 @@ break immediately. The active integration point is Lago commercial-state
 reconciliation, not direct Stripe webhooks. Stripe is the payment rail
 configured inside Lago.
 
-| Input                                                    | What Happens                                                                                                                                                                                                                                                                         | Timing |
-| -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------ |
-| Lago invoice/payment failure state backed by Stripe      | Lago retries / dunning follows the Stripe payment configuration owned inside Lago. Platform does not process direct Stripe invoice webhooks.                                                                                                                                          | Day 0+ |
-| Lago subscription/customer state indicates payment issue | `POST /webhooks/lago` reconciles local billing state. If Lago indicates overdue access semantics, set local `paymentOverdue: true` and keep the API hot path on the DynamoDB snapshot. Middleware adds `X-Payment-Overdue: true`; console shows a billing banner.                       | Async  |
-| Lago subscription terminates or downgrades               | Reconcile local entitlement snapshot from the Lago webhook, downgrade keys to Free if Lago says the active subscription ended, and keep audit / webhook-ledger rows idempotent by Lago unique key.                                                                                     | Async  |
+| Input                                                    | What Happens                                                                                                                                                                                                                                                      | Timing |
+| -------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| Lago invoice/payment failure state backed by Stripe      | Lago retries / dunning follows the Stripe payment configuration owned inside Lago. Platform does not process direct Stripe invoice webhooks.                                                                                                                      | Day 0+ |
+| Lago subscription/customer state indicates payment issue | `POST /webhooks/lago` reconciles local billing state. If Lago indicates overdue access semantics, set local `paymentOverdue: true` and keep the API hot path on the DynamoDB snapshot. Middleware adds `X-Payment-Overdue: true`; console shows a billing banner. | Async  |
+| Lago subscription terminates or downgrades               | Reconcile local entitlement snapshot from the Lago webhook, downgrade keys to Free if Lago says the active subscription ended, and keep audit / webhook-ledger rows idempotent by Lago unique key.                                                                | Async  |
 
 **Grace-period source of truth:** Lago/Stripe payment settings decide retry and
 cancellation timing. Platform mirrors the resulting Lago state into DynamoDB for
@@ -2628,10 +2624,10 @@ Endpoint URLs reflect live prod (query-param form). Path-param migration is a v2
 
 #### Webhook Endpoints
 
-| Method | Endpoint           | Auth Headers                                                          | Verification                       | On Invalid              |
-| ------ | ------------------ | --------------------------------------------------------------------- | ---------------------------------- | ----------------------- |
-| POST   | `/webhooks/clerk`  | `svix-id`, `svix-timestamp`, `svix-signature`                         | HMAC against Clerk webhook secret  | 400 `INVALID_SIGNATURE` |
-| POST   | `/webhooks/lago`   | `x-lago-signature`, `x-lago-signature-algorithm`, `x-lago-unique-key` | HMAC-SHA256 base64 over raw body   | 400 `INVALID_SIGNATURE` |
+| Method | Endpoint          | Auth Headers                                                          | Verification                      | On Invalid              |
+| ------ | ----------------- | --------------------------------------------------------------------- | --------------------------------- | ----------------------- |
+| POST   | `/webhooks/clerk` | `svix-id`, `svix-timestamp`, `svix-signature`                         | HMAC against Clerk webhook secret | 400 `INVALID_SIGNATURE` |
+| POST   | `/webhooks/lago`  | `x-lago-signature`, `x-lago-signature-algorithm`, `x-lago-unique-key` | HMAC-SHA256 base64 over raw body  | 400 `INVALID_SIGNATURE` |
 
 **Retired Stripe webhook:** `POST /webhooks/stripe` was removed by P1B.20.
 Stripe remains only the payment rail configured inside Lago.
@@ -3031,13 +3027,13 @@ steps:
 
 Phases are defined by product scope. Security deliverables are first-class, shipped alongside product work — not bolted on later.
 
-| Phase | Timeline  | Scope                 | Product Deliverables                                                                                                                                                                                                                                                       | Security Deliverables                                                                                                                                                                                                                                       |
-| ----- | --------- | --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Phase | Timeline  | Scope                 | Product Deliverables                                                                                                                                                                                                                                                       | Security Deliverables                                                                                                                                                                                                                                               |
+| ----- | --------- | --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **1** | 4-6 weeks | Address API           | Hono routes, DynamoDB-native key verify + usage counters, rate-limit headers, burst rate limiting, Clerk auth, historical Stripe billing baseline followed by Lago cutover, Mintlify docs, Speakeasy TypeScript SDK, `apps/landing`, `apps/console`, welcome email via SES | Idempotent webhooks, flag-based threshold emails, `prontiq-audit` table, circuit breaker, SES bounce handling, CORS per-endpoint, input validation (Zod), re-auth step-up on sensitive actions, WAF rules, CloudWatch dashboard, Lago-backed payment grace handling |
-| **2** | 4 weeks   | ABN/ASIC              | New pipeline, new Hono route group, new OpenSearch index. SDK adds `prontiq.abn`. Commercialisation maps into Lago billable metrics and billing surfaces rather than new Stripe-only meters.                                                                               | Extend error taxonomy; ABN-specific Zod schemas                                                                                                                                                                                                             |
-| **3** | 3 weeks   | GLEIF/LEI             | First international product. Evaluate team-management needs.                                                                                                                                                                                                               | Evaluate geographic access restrictions                                                                                                                                                                                                                     |
-| **4** | 4 weeks   | Shopify + WooCommerce | Scale OpenSearch to 2-node HA. Lambda in-memory cache.                                                                                                                                                                                                                     | Plugin-specific API key scoping (read-only keys)                                                                                                                                                                                                            |
-| **5** | TBD       | CVE/NVD + Patents     | DAX when trigger criteria met. Full dashboard if > 500 developers.                                                                                                                                                                                                         | Full security audit. Penetration testing. Historical `REGISTRY#active-keys` sharding applies only if old Stripe registry cleanup proves it is still operationally needed.                                                                                   |
+| **2** | 4 weeks   | ABN/ASIC              | New pipeline, new Hono route group, new OpenSearch index. SDK adds `prontiq.abn`. Commercialisation maps into Lago billable metrics and billing surfaces rather than new Stripe-only meters.                                                                               | Extend error taxonomy; ABN-specific Zod schemas                                                                                                                                                                                                                     |
+| **3** | 3 weeks   | GLEIF/LEI             | First international product. Evaluate team-management needs.                                                                                                                                                                                                               | Evaluate geographic access restrictions                                                                                                                                                                                                                             |
+| **4** | 4 weeks   | Shopify + WooCommerce | Scale OpenSearch to 2-node HA. Lambda in-memory cache.                                                                                                                                                                                                                     | Plugin-specific API key scoping (read-only keys)                                                                                                                                                                                                                    |
+| **5** | TBD       | CVE/NVD + Patents     | DAX when trigger criteria met. Full dashboard if > 500 developers.                                                                                                                                                                                                         | Full security audit. Penetration testing. Historical `REGISTRY#active-keys` sharding applies only if old Stripe registry cleanup proves it is still operationally needed.                                                                                           |
 
 ---
 

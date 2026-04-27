@@ -22,8 +22,8 @@
 - Lago webhook reconciliation must remain replay-safe: verify HMAC before
   claiming, use `X-Lago-Unique-Key` as the ledger key, and treat same-key /
   different-payload delivery as drift.
-- P1B.18a is complete. Preserve the completed dev/prod webhook-ledger evidence
-  and retained smoke fixtures until the P1B.21 cleanup gate.
+- P1B.18a is complete. Preserve the completed dev/prod webhook-ledger evidence.
+  P1B.21 has retired the retained prod smoke API key.
 - Lago plan codes map directly to Prontiq tiers. Unknown plan codes must fail
   closed; do not silently downgrade to Free or grant PAYG.
 - Pending Lago plan transitions must not change local request-time entitlements.
@@ -37,8 +37,9 @@
   tests. P1B.18a live smoke work may create repo-owned test
   customers/subscriptions in the canonical environment orgs, or dedicated
   repo-owned test orgs only when isolation is required.
-- Retained prod smoke fixtures may support P1B.18, P1B.19, and P1B.20, but
-  must stay clearly labelled/inventoried as repo-owned test-only data. P1B.21
-  owns final deletion, disablement, relabelling, or explicit retention before
-  real customer go-live. Do not delete delivery/webhook ledger evidence or real
-  customer rows during cleanup without a dedicated decision.
+- The P1B.21-retired prod smoke key with prefix `pq_live_4a85` must not be
+  reused or reactivated. The linked prod smoke customer/subscription, usage row,
+  delivery rows, and webhook rows are retained as audit evidence only. Future
+  prod smoke requires a new labelled probe and a new ticket. Do not delete
+  delivery/webhook ledger evidence or real customer rows during cleanup without
+  a dedicated decision.
