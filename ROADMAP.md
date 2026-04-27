@@ -36,11 +36,11 @@
 | **P1D**   | Docs & SDK                 | 5       | 2/5       | Week 5      |
 | **P1E**   | Ingestion (Phase 1)        | 6       | 4/6       | Week 6      |
 | **P1F**   | Distribution               | 3       | 3/3 ✅    | Week 6      |
-| **P2**    | ABN/ASIC Verification      | 8       | 0/8       | Weeks 7-10  |
+| **P2**    | ABN/ASIC Verification      | 9       | 0/9       | Weeks 7-10  |
 | **P3**    | GLEIF/LEI + Full Dashboard | 7       | 0/7       | Weeks 11-13 |
 | **P4**    | Shopify + WooCommerce      | 5       | 0/5       | Weeks 14-17 |
 | **P5**    | CVE/NVD + Patents          | 4       | 0/4       | Weeks 18-21 |
-| **Total** |                            | **91**  | **49/91** |             |
+| **Total** |                            | **92**  | **49/92** |             |
 
 ---
 
@@ -4898,6 +4898,85 @@ Director data comes from ASIC (separate dataset from ABR). This is a commerciall
 
 ---
 
+### Ticket P2.09 — Competitor-Compatible Address API Routers
+
+```yaml
+id: P2.09
+title: Competitor-Compatible Address API Routers
+status: pending
+priority: p2-value
+epic: P2
+persona: [api-consumer, migration-buyer]
+depends_on: [P1A.02, P1A.03, P1A.04, P1D.03]
+completed: null
+tech_stack:
+  api: Hono + @hono/zod-openapi
+  auth: existing X-Api-Key middleware
+  docs: Mintlify compatibility guides
+```
+
+#### User Story
+
+As a developer migrating from an incumbent address API, I can point a small
+adapter layer or low-risk integration path at Prontiq without rewriting my
+entire request/response handling on day one.
+
+#### Problem Statement
+
+Prontiq's canonical API should stay clean, typed, and product-owned. However,
+some buyers are locked into provider-specific request/response shapes from
+incumbents such as Loqate, Google Places, AddressFinder, Australia Post, or
+Smarty. Thin compatibility routers can reduce migration friction by accepting
+selected competitor-like request shapes and returning provider-like response
+envelopes while still delegating all search, validation, usage counting, auth,
+billing, and observability to the canonical Prontiq address implementation.
+
+This is an adoption feature, not a core-domain rewrite. It must not fork
+business logic, weaken auth, or make competitor-compatible shapes the primary
+developer experience.
+
+#### Definition of Done
+
+##### Functional
+
+- [ ] Compatibility target shortlist documented before implementation
+  - `Verify:` Engineering note lists the first 2-3 target providers, customer migration reason, supported endpoint equivalents, and known gaps
+  - `Evidence:` Roadmap-linked implementation plan or decision record exists before code lands
+- [ ] Compatibility routers live under an explicit compatibility namespace
+  - `Verify:` Routes are not mixed into canonical `/v1/address/*` handlers
+  - `Evidence:` Route paths use a clearly labelled compatibility prefix, for example `/v1/compat/{provider}/...`
+- [ ] Routers are translation-only
+  - `Verify:` Handlers translate inbound params to canonical address service calls, then translate canonical responses back to the compatibility envelope
+  - `Evidence:` No duplicated OpenSearch query logic; canonical address query tests remain the source of search behavior truth
+- [ ] Existing auth, usage, billing, and rate-limit behavior applies unchanged
+  - `Verify:` Requests require `X-Api-Key`, consume the same address credits, emit the same usage headers, and enqueue the same Lago billing events as canonical address endpoints
+  - `Evidence:` Integration tests prove compatibility requests increment the same `address` usage family counters
+- [ ] Compatibility response contracts are documented separately from canonical APIs
+  - `Verify:` Mintlify has a "Migration compatibility" section that labels each adapter as compatibility-only and not affiliated with the named provider
+  - `Evidence:` Canonical address docs and SDK remain the recommended path
+- [ ] Public OpenAPI exposure is intentional
+  - `Verify:` Either compatibility routes are included under separate tags in the public OpenAPI spec, or a decision record explicitly keeps them out of SDK generation
+  - `Evidence:` Speakeasy/Stainless impact reviewed so compatibility adapters do not accidentally pollute primary SDK ergonomics
+- [ ] Legal/product copy review completed before naming any provider in public docs or paths
+  - `Verify:` Docs avoid implying affiliation, certification, endorsement, or full drop-in parity
+  - `Evidence:` Compatibility pages include "not affiliated with" language and a supported-fields matrix
+
+#### Scope
+
+**In:** thin provider-shape adapters for selected address autocomplete/validation
+flows, compatibility docs, request/response mapping tests, OpenAPI/SDK policy
+decision.
+
+**Out — Do Not Implement:**
+
+- scraping or copying proprietary docs/examples
+- promising full provider parity without a supported-fields matrix
+- changing canonical `/v1/address/*` response shapes
+- separate auth, billing, quotas, or Lago metrics for compatibility routes
+- competitor-compatible routers for ABN/LEI/CVE/patents until there is proven demand
+
+---
+
 ## Phase 3 — GLEIF/LEI + Full Dashboard (Weeks 11-13)
 
 > **Goal:** Third product (international). Full dashboard build-out with team management.
@@ -5705,4 +5784,4 @@ At completion of Phase 5:
 - **Zero-downtime** data updates via manifest-driven ingestion
 - **Full dashboard** with key management, usage, billing, team, playground
 - **Comprehensive docs** auto-generated from OpenAPI spec
-- **89 tickets completed**
+- **92 tickets completed**
