@@ -136,11 +136,37 @@ export function createKeyManagementService(
     }
     const plan = PLANS[envelope.tier];
 
-    // Capture all derivable values once. SDK-level retries replay the
-    // same TransactWriteItems, so the conditional writes (key:
-    // attribute_not_exists(apiKeyHash); audit: attribute_not_exists
-    // composite key) collapse a successful retry into a no-op without
-    // duplicating rows.
+    // Capture all derivable values once, OUTSIDE any retry boundary.
+    //
+    // Idempotency model:
+    //
+    //   1. SDK-internal retries (network blip, throttle, 5xx). The
+    //      AWS SDK v3 retry middleware lives at `step: "finalizeRequest"`
+    //      and re-sends the SAME args.request on each attempt
+    //      (@smithy/middleware-retry/dist-es/retryMiddleware.js).
+    //      Serialization (where idempotencyToken auto-gen happens, see
+    //      @smithy/core/dist-es/submodules/protocols/serde/
+    //      ToStringShapeSerializer.js) runs at the outer `serialize`
+    //      step, BEFORE retry — so the marshalled request bytes
+    //      (including ClientRequestToken) are fixed before retries
+    //      fire. DDB's 10-min idempotency window collapses retried
+    //      successful transactions into no-ops.
+    //
+    //      We pass an EXPLICIT ClientRequestToken=keyId below — even
+    //      though SDK auto-gen would produce equivalent behaviour —
+    //      because (a) AWS docs explicitly recommend providing your
+    //      own token "for logging and ease of administrative review"
+    //      and (b) it makes the idempotency contract grep-able.
+    //
+    //   2. HTTP-level retries (lost response → caller re-issues the
+    //      HTTP POST → fresh Lambda invocation). NOT addressed by
+    //      ClientRequestToken — each invocation generates a fresh
+    //      keyId and fresh raw key, so the second transaction has a
+    //      different apiKeyHash and would succeed independently,
+    //      creating a duplicate active key. Fix requires an
+    //      Idempotency-Key header pattern with stored in-flight
+    //      state (out of scope; see docs/runbooks/api-key-lifecycle.md
+    //      once that lands).
     const now = input.now ?? new Date();
     const generated = generateRawKey();
     const keyId = generateKeyId();
@@ -215,6 +241,11 @@ export function createKeyManagementService(
     try {
       await ddb.send(
         new TransactWriteCommand({
+          // Explicit idempotency token — see comment block above for
+          // the full retry-boundary analysis. keyId is a fresh ULID
+          // generated outside any retry loop, so it's stable across
+          // SDK-internal retries and unique per Lambda invocation.
+          ClientRequestToken: keyId,
           TransactItems: [
             {
               Put: {
