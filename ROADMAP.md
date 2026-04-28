@@ -4524,6 +4524,116 @@ As a platform operator, I need backend traces in Honeycomb for deployed Lambdas 
 
 ---
 
+### Ticket P1F.04 — Post-Deploy Smoke Coverage Extension
+
+```yaml
+id: P1F.04
+title: Post-Deploy Smoke Coverage Extension
+status: pending
+priority: p1-high
+epic: P1F
+persona: [ops, builder]
+depends_on: [P1C.03]
+completed: null
+tech_stack:
+  ci: GitHub Actions
+  smoke_runtime: Node.js + Hono Backend SDK
+```
+
+#### User Story
+
+As a platform operator, every dev and prod deploy is smoke-verified end-to-end
+against the routes that real customers hit, so a regression to the address API,
+account API, or step-up gate fails the workflow run on the merge commit
+itself — not in customer reports.
+
+#### Problem Statement
+
+P1C.03's chore PR (`#176`) wired three smokes (`smoke:account-setup`,
+`smoke:keys`, `smoke:keys-stepup`) into a post-deploy `smoke-dev` /
+`smoke-prod` GHA job that resolves `PRONTIQ_API` from each deploy job's
+SST output. That covers the new private account surface but leaves three
+gaps:
+
+1. `smoke-test.ts` (address API health smoke) is operator-runnable only;
+   it should run on every deploy alongside the keys smokes since the
+   address API is the platform's public hot path.
+2. `smoke-dev` is informational. A red ✗ on a merged PR is a notification,
+   not a gate. Once the smoke job has been stable for ~1 week post-merge,
+   it should be a *required* status check on `main` so deploys cannot
+   land green-but-unverified.
+3. The smoke-pattern boundary needs to be explicit: which smokes belong
+   in CI (non-mutating, every-deploy) and which stay runbook-only
+   (mutating, one-off cert — e.g. `lago:smoke:event`). Without that
+   classification documented, the next operator extending the pattern
+   will guess.
+
+#### Definition of Done
+
+##### Functional
+
+- [ ] Address-API smoke runs on every dev deploy
+  - `Verify:` `gh run view <run> --log` for a post-merge dev deploy shows
+    `smoke-dev` invoking `pnpm --filter @prontiq/api smoke` and asserting
+    a 200 from `/v1/address/autocomplete`
+  - `Evidence:` workflow run id with smoke step duration and HTTP
+    status logged
+- [ ] Address-API smoke runs on every prod deploy
+  - `Verify:` `gh run view <run>` for a `Deploy to Production` dispatch
+    shows `smoke-prod` invoking the same script
+  - `Evidence:` workflow run id with smoke step duration and HTTP
+    status logged
+- [ ] `smoke-dev` is a required status check on `main`
+  - `Verify:` GitHub Settings → Branches → `main` lists `smoke-dev` in
+    required checks
+  - `Evidence:` screenshot (or `gh api repos/.../branches/main/protection`
+    output) showing the rule
+- [ ] `smoke-prod` failure blocks the prod deploy workflow run from
+      reporting green
+  - `Verify:` an intentionally bad fixture (e.g. a wrong
+    `CLERK_TEST_USER_ID` in the prod environment) produces a red ✗ on
+    the workflow
+  - `Evidence:` test run id; immediately revert the bad fixture
+
+##### Operational
+
+- [ ] CI-smoke vs runbook-smoke boundary is documented
+  - `Verify:` `docs/runbooks/lago-live-smoke.md` (or a new
+    `docs/runbooks/smoke-classification.md`) lists every smoke script
+    with category: `ci-every-deploy`, `runbook-on-demand`, or
+    `manual-ui-only`
+  - `Evidence:` doc names: `smoke-test`, `smoke-account-setup`,
+    `smoke-keys`, `smoke-keys-stepup`, `lago:smoke:event`, manual
+    rotate/revoke UI; explains why each lives where it does
+- [ ] PR template references the smoke classification
+  - `Verify:` `.github/pull_request_template.md` has a line under "Test
+    plan" reminding the author to classify any new smoke they add
+  - `Evidence:` template diff
+- [ ] Branch-protection follow-up in `CLAUDE.md` is updated
+  - `Verify:` the existing post-merge follow-up at `CLAUDE.md`'s
+    "Enforcement" section adds `smoke-dev` to its required-checks list
+  - `Evidence:` doc diff
+
+#### Scope
+
+**In:** wire `smoke-test.ts` into `smoke-dev` / `smoke-prod`; promote
+`smoke-dev` to required status check; classify every existing smoke;
+document the CI-vs-runbook boundary; update PR template and
+`CLAUDE.md`.
+
+**Out — Do Not Implement:**
+
+- New mutating smokes in CI (e.g. running `lago:smoke:event` on every
+  deploy) — those stay runbook-only by design
+- Replacing the manual UI smoke for rotate/revoke success path — still
+  requires real 2FA reverification (Backend SDK tokens cannot satisfy
+  `requireReverification` per P1C.03 plan)
+- Cross-stage smoke (e.g. dev deploy verified by prod smoke) — out of
+  scope; each stage smokes its own deploy
+- External uptime monitoring (Pingdom, Better Uptime) — separate ticket
+
+---
+
 ## Phase 2 — ABN/ASIC Verification (Weeks 7-10)
 
 > **Goal:** Second product. ABN verification + search. EventBridge + Step Functions replaces GitHub Actions cron.
