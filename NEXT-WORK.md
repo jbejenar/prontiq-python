@@ -1,16 +1,15 @@
 # NEXT-WORK.md — Active Sprint
 
-> Last updated: 2026-04-29 for P1C.03 PR 2.5. P1B.22 (Clerk org commercial
+> Last updated: 2026-04-29 for P1C.03 PR 3. P1B.22 (Clerk org commercial
 > identity) shipped in commit 5e6afe2. P1C.03 PRs 0 (backfill), 1 (create +
-> list), and 2 (rotate + revoke + step-up) are deployed to dev and prod.
-> PR 2.5 adds the member-allowed status endpoint and documentation alignment
-> before PR 3 starts the console list/create/recovery UI.
+> list), 2 (rotate + revoke + step-up), and 2.5 (status endpoint + docs) are
+> deployed to dev and prod. PR 3 implements the console list/create/recovery UI.
 
 ## Current Phase
 
-P1C.03 PR 2.5: Backend status endpoint and documentation alignment. The console
-PR 3 should use `GET /v1/account/status` as its state-machine input instead of
-probing setup/create mutations to infer missing-org vs first-key vs list states.
+P1C.03 PR 3: Console keys page for missing-org recovery, first-key creation,
+key listing, and reveal-once raw key handling. Next implementation slice is PR
+4: rotate/revoke UI with Clerk step-up.
 
 ## Active Commercial Contract
 
@@ -60,14 +59,11 @@ POST /v1/account/billing/portal-session
 
 ## Current Tickets
 
-- **P1C.03 PR 2.5** — `GET /v1/account/status`, private OpenAPI update,
-  account-key docs, key lifecycle runbook, ADR-036, and stale architecture
-  cleanup.
-- **P1C.03 PR 3** (next) — console keys page: missing-org → setup → first-key →
-  list state machine, reveal-once raw modal. Adds @tanstack/react-query,
-  @radix-ui/react-alert-dialog, sonner. Console fetches direct from
-  client with Clerk `getToken()` against `NEXT_PUBLIC_API_URL`.
-- **P1C.03 PR 4** (next, after 3) — rotate / revoke UI with step-up
+- **P1C.03 PR 3** — console keys page: missing-org → setup → first-key →
+  list state machine, reveal-once raw modal. Uses @tanstack/react-query and
+  sonner. Console fetches direct from client with Clerk `getToken()` against
+  `NEXT_PUBLIC_API_URL`.
+- **P1C.03 PR 4** (next) — rotate / revoke UI with step-up
   modal via `useReverification()`. Operator gate: prod Clerk dashboard
   must emit `fva` claim.
 - **P1C.03 PR 5** (last) — audit panel + key-limit indicator. Adds

@@ -3388,7 +3388,7 @@ Backend substrate is partially complete:
 - [x] PR 1 shipped `POST /v1/account/keys/create` and `GET /v1/account/keys`.
 - [x] PR 2 shipped `POST /v1/account/keys/rotate`, `POST /v1/account/keys/revoke`, REDIRECT grace handling, usage-counter migration on rotate, and step-up enforcement.
 - [x] PR 2.5 shipped `GET /v1/account/status` so the console can select missing-org, first-key, and list states without probing mutation endpoints.
-- [ ] PR 3 remains: console list/create/recovery UI.
+- [x] PR 3 shipped console list/create/recovery UI using `GET /v1/account/status`, reveal-once raw-key modal, and direct Clerk-token calls to the private account API.
 - [ ] PR 4 remains: console rotate/revoke UI with Clerk `useReverification()`.
 - [ ] PR 5 remains: audit panel and key-limit indicator.
 
@@ -3408,10 +3408,10 @@ Key rotation must be atomic (TransactWrite swap) with a REDIRECT record per §5.
 
 ##### Functional — First-Key Flow
 
-- [ ] On first visit to the console keys surface: call `GET /v1/account/status` and use it as the state-machine input. If `provisioned=false`, render "Set up your account" CTA which calls `POST /v1/account/setup` (P1B.05 recovery endpoint). If `provisioned=true` and `hasFirstKey=false`, render "Create your first API key" CTA instead of an empty key list.
+- [x] On first visit to the console keys surface: call `GET /v1/account/status` and use it as the state-machine input. If `provisioned=false`, render "Set up your account" CTA which calls `POST /v1/account/setup` (P1B.05 recovery endpoint). If `provisioned=true` and `hasFirstKey=false`, render "Create your first API key" CTA instead of an empty key list.
   - `Verify:` Sign up a new test user; observe the console shows "Create your first API key" button; click it; raw key appears in modal; refresh page; key list now shows masked prefix
   - `Evidence:` UI screenshot + DDB record diff
-- [ ] **Missing-ORG recovery UI** (per PR #59 review #6 Bug 12 — moved here from P1B.05 because UI verification belongs to the ticket that owns the dashboard): if `GET /v1/account/status` returns `provisioned=false` (Clerk webhook missed entirely), render "Set up your account" CTA that calls `POST /v1/account/setup` (P1B.05 endpoint). After the call returns, refetch status and transition to "Create your first API key" CTA.
+- [x] **Missing-ORG recovery UI** (per PR #59 review #6 Bug 12 — moved here from P1B.05 because UI verification belongs to the ticket that owns the dashboard): if `GET /v1/account/status` returns `provisioned=false` (Clerk webhook missed entirely), render "Set up your account" CTA that calls `POST /v1/account/setup` (P1B.05 endpoint). After the call returns, refetch status and transition to "Create your first API key" CTA.
   - `Verify:` Manually delete `ORG#{orgId}` for a test user; sign in to the console; assert "Set up your account" button is visible. Click it. Assert the page transitions to the first-key CTA after `POST /v1/account/setup` returns.
   - `Evidence:` E2E UI test (Playwright or similar)
 - [x] **First-key creation idempotency** (covers what used to be in P1B.12; moved here per PR #59 review #5 Bug 8 — assertions belong in the ticket that owns the endpoint). Call `POST /v1/account/keys/create` against a freshly-provisioned test user. Verify exactly:

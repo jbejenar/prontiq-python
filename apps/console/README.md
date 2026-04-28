@@ -12,10 +12,14 @@ Next.js 15 app for `console.prontiq.dev`.
 - env-gated Clerk auth boundary
 - continued SDK seam through `@prontiq/sdk`
 
-P1C.03 key-management UI should use the private account API directly with a
-Clerk session token. `GET /v1/account/status` is the state-machine entry point:
+P1C.03 key-management UI uses the private account API directly with a Clerk
+session token. `GET /v1/account/status` is the state-machine entry point:
 missing org → setup CTA, provisioned without keys → first-key CTA, provisioned
 with keys → key list. Raw `pq_live_*` keys are reveal-once transient state only.
+Queries are keyed by active Clerk `orgId`; if no organization is active, the UI
+asks the user to select one before calling the account API. The QueryClient and
+Sonner toaster are mounted in `app/providers.tsx`; private account API helpers
+live in `lib/account-api.ts`.
 
 Billing surfaces for this app are Lago-backed and should use a Vercel
 server-side BFF, not browser calls to Lago/Stripe and not `/v1/account/billing*`.
@@ -32,6 +36,10 @@ Real Clerk auth behavior is enabled only when both of these are set:
 
 - `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`
 - `CLERK_SECRET_KEY`
+
+`NEXT_PUBLIC_CLERK_JWT_TEMPLATE` is optional. Leave it unset for the default
+Clerk session token; set it only if the tenant moves account API calls to a
+named JWT template.
 
 When those envs are absent, the app only stays keyless through the repo’s
 helper-managed local/CI path (`PRONTIQ_ALLOW_KEYLESS_CLERK=1`). Outside that

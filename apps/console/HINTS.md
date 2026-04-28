@@ -10,9 +10,14 @@
 - Billing UI work must not call Lago or Stripe from the browser. Future billing
   surfaces should use a Vercel server-side BFF that verifies Clerk auth, reads
   the active `org_id`, and calls Lago with a server-held Lago API key.
-- P1C.03 key-management UI should start from `GET /v1/account/status` to choose
+- P1C.03 key-management UI starts from `GET /v1/account/status` to choose
   missing-org recovery, first-key CTA, or key-list state. Do not infer that by
   probing mutation endpoints.
+- Key-management queries must be scoped by active Clerk `orgId`; if no
+  organization is active, show an organization-selection state instead of
+  calling the account API.
+- `app/providers.tsx` owns the QueryClient and Sonner toaster for console
+  client data flows.
 - Raw API keys are transient UI state only. Never put `pq_live_*` values in
   localStorage, sessionStorage, URLs, React Query persisted cache, logs, or
   analytics payloads.
@@ -22,5 +27,9 @@
 - Fully missing Clerk keys are only a valid disabled mode when the helper-managed local/CI opt-in is present.
 - One-key-only Clerk config is a fail-closed misconfiguration, not a valid disabled mode.
 - Use `docs/prototypes/console-dashboard-v1.html` as a visual reference, not as source code to port.
-- Keep the SDK seam local in `lib/sdk.ts`; TanStack Query and real data wiring still come later.
+- Keep public data API SDK usage behind `lib/sdk.ts`; private account API calls
+  use `lib/account-api.ts` with Clerk session tokens.
+- Leave `NEXT_PUBLIC_CLERK_JWT_TEMPLATE` unset unless the Clerk tenant uses a
+  named JWT template. When set, `lib/account-api.ts` passes it to
+  `getToken({ template })`; otherwise it uses the default session token.
 - Clerk UI must stay behind the dedicated client wrappers so keyless local/CI builds do not instantiate Clerk primitives.

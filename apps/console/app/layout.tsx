@@ -5,6 +5,7 @@ import "@prontiq/tokens/tokens.css";
 import "./globals.css";
 
 import { ConditionalClerkProvider } from "../components/console/conditional-clerk-provider.js";
+import { Providers } from "./providers.js";
 import { env } from "../lib/env.js";
 import { ThemeProvider } from "../lib/theme-provider.js";
 import { serverEnv } from "../lib/server-env.js";
@@ -29,7 +30,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           clerkEnabled={clerkRuntime.clerkEnabled}
           publishableKey={clerkRuntime.publishableKey}
         >
-          <ThemeProvider>{children}</ThemeProvider>
+          <ThemeProvider>
+            <Providers>{children}</Providers>
+          </ThemeProvider>
         </ConditionalClerkProvider>
       </body>
     </html>
