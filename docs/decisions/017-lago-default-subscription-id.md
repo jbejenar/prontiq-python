@@ -5,7 +5,8 @@
 Superseded by [ADR-035](035-clerk-org-commercial-identity.md) for active runtime.
 
 This ADR is retained as historical P1B.16-P1B.21 migration context only. Active
-Lago subscriptions now use `external_id = lago_sub_${orgId}`.
+Lago subscriptions now use `external_id = lago_sub_${orgId}` and Lago customers
+use `external_id = orgId`.
 
 ## Context
 
@@ -18,7 +19,8 @@ adding request-path reads or mutable provider lookups to replay handling.
 
 ## Decision
 
-Derive the Lago `external_subscription_id` from the platform customer ID:
+Historical P1B.16-P1B.21 decision: derive the Lago
+`external_subscription_id` from the platform customer ID:
 
 ```text
 pq_cust_<ulid> -> pq_sub_<ulid>
@@ -30,9 +32,10 @@ subscription ID.
 
 ## Considered And Rejected
 
-- **Use Clerk `orgId`.** Rejected because Clerk is identity infrastructure, not
-  the commercial customer contract, and org IDs cannot represent migration
-  linkages cleanly.
+- **Use Clerk `orgId`.** Historically rejected because Clerk was treated as
+  identity infrastructure, not the commercial customer contract, and org IDs
+  could not represent migration linkages cleanly. Reconsidered and accepted by
+  ADR-035 before production as `lago_sub_${orgId}`.
 - **Use Stripe subscription ID.** Rejected because Stripe is being reduced to
   payment rail only and subscription IDs may disappear during the Lago cutover.
 - **Read Lago subscription IDs at forward time.** Rejected because replay safety
@@ -41,8 +44,8 @@ subscription ID.
 
 ## Consequences
 
-- Event replay can rebuild the exact Lago payload from the queued event.
-- Operators must ensure canonical Lago subscriptions use the derived
-  `pq_sub_<ulid>` external ID before enabling `BILLING_EVENTS_ENABLED`.
+- Historical event replay rebuilt Lago payloads from generated `pq_sub_<ulid>`.
+- Active event replay rebuilds Lago payloads from `lago_sub_${orgId}`.
+- Operators must ensure canonical Lago subscriptions use `lago_sub_${orgId}`.
 - If Prontiq later supports multiple simultaneous Lago subscriptions per
   customer, a new decision record must define the discriminator.

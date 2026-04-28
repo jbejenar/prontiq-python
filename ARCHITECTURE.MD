@@ -4,10 +4,11 @@
 > organization id is the active Prontiq/Lago customer identity. Lago customer
 > `external_id = orgId`; Lago subscription `external_id = lago_sub_${orgId}`.
 > The API emits `BillingUsageEventV2` with `orgId` after local DynamoDB
-> enforcement succeeds. `/v1/account/setup` is setup-only and returns `orgId`.
-> `/v1/account/billing*`, generated `customerId` (`pq_cust_*`), `pq_sub_*`, and
-> `prontiq-customers` are legacy P1B.14-P1B.21 migration evidence only and are
-> superseded by ADR-035.
+> enforcement succeeds. Active private account routes are setup recovery and
+> key management: `/v1/account/setup`, `/v1/account/status`, and
+> `/v1/account/keys*`. `/v1/account/billing*`, generated `customerId`
+> (`pq_cust_*`), `pq_sub_*`, and `prontiq-customers` are legacy
+> P1B.14-P1B.21 migration evidence only and are superseded by ADR-035.
 
 > A unified data API platform for Australian and global open data, commercialised with obsessive developer experience.
 
@@ -1081,7 +1082,7 @@ the request hot path.
 
 | Table                         | Purpose                                                                          |
 | ----------------------------- | -------------------------------------------------------------------------------- |
-| `prontiq-keys`                | API key metadata + billing registry + org-envelope record                        |
+| `prontiq-keys`                | API key metadata + org-envelope records; historical billing registry rows may remain for cleanup only |
 | `prontiq-usage`               | Local enforcement counters + email flags + billing push state + REDIRECT records |
 | `prontiq-customers`           | Legacy P1B.14-P1B.21 customer mapping evidence; not active runtime identity      |
 | `prontiq-lago-webhook-events` | Lago webhook idempotency ledger keyed by `X-Lago-Unique-Key`                     |
@@ -1126,8 +1127,13 @@ PK:   apiKeyHash           string    SHA-256 of the raw key
       billingPeriodEndingAt string?  Lago current billing-period end
       billingPeriodKey     string?   "{start-date}_{end-date}" used when COUNTER_PERIOD_SOURCE=lago
       lagoPaymentOverdueInvoiceId string? Invoice id currently holding paymentOverdue=true
+      keyId                string    Stable opaque id (`key_<ulid>`) that survives rotation
+      label                string?   User display label
+      createdByActorId     string?   Clerk user id that created the key
       createdAt            string    ISO 8601
-      lastUsedAt           string    ISO 8601
+      rotatedAt            string?   ISO 8601 timestamp of latest rotation
+      revokedAt            string?   ISO 8601 timestamp of revocation
+      lastUsedAt           string?   ISO 8601
 
 GSI:  orgId-index          PK: orgId  (list all keys in an org)
 ```
@@ -1291,6 +1297,9 @@ PK:   apiKeyHash           "ORG#{orgId}"             (reserved — not a real ke
                                                      via /v1/account/keys/create. Used by the console
                                                      app to show "Create your first key" CTA vs
                                                      the keys-list view.
+      activeKeyCount       number                    Atomic active-key counter used to enforce
+                                                     PLANS[tier].maxKeys without a read-count-write
+                                                     race.
       completedAt          string                    ISO 8601 — when the org-envelope TransactWrite
                                                      committed. Permanent (no TTL).
 ```
@@ -1372,21 +1381,24 @@ this table are historical migration data only.
 
 #### 5.5.2 Key Operations
 
-Five operations. Every mutation writes to `prontiq-audit`.
+Six operations. Every mutation writes to `prontiq-audit`.
 
-| Operation  | Implementation                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | Trigger                                            |
-| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
-| **CREATE** | Generate `pq_live_` + `randomBytes(24).toString('hex')`. SHA-256 hash. `PutItem` to `prontiq-keys`. Write CREATE to audit. Return raw key once. Registry is updated on upgrade, not creation — free-tier keys aren't billable.                                                                                                                                                                                                                                                                       | User-driven "Create Key" action in the console app |
-| **VERIFY** | Hash incoming `X-Api-Key`. `GetItem` from `prontiq-keys` by hash. Check `active`, `tier`, `products`, REDIRECT fallback.                                                                                                                                                                                                                                                                                                                                                                             | Every API request (hot path)                       |
-| **ROTATE** | Generate new key. `TransactWrite`: delete old hash + put new hash atomically. Swap hash in billing registry (if billable). Write REDIRECT record. Write ROTATE to audit. Return new raw key once.                                                                                                                                                                                                                                                                                                    | "Rotate" button in the console app                 |
-| **REVOKE** | `TransactWriteItems`: (a) `UpdateItem` `prontiq-keys/{hash}` set `active: false`; (b) `UpdateItem` `REGISTRY#active-keys` DELETE hash if billable; (c) Write REVOKE to `prontiq-audit`. **Note:** if this key was the target of a prior rotation, the REDIRECT record for the rotated-out hash naturally stops working — the auth middleware re-resolves through the REDIRECT, then GetItems the newHash record, then fails the `active` check (§5.5.3 step 3). No explicit REDIRECT cleanup needed. | "Revoke" button in the console app                 |
-| **LIST**   | `Query` GSI `orgId-index`. Return metadata with masked `keyPrefix`. Never return raw key or hash.                                                                                                                                                                                                                                                                                                                                                                                                    | Console app API Key tab                            |
+| Operation  | Implementation                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | Trigger                                            |
+| ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| **STATUS** | `GetItem` the `ORG#{orgId}` envelope and return provisioning state, `hasFirstKey`, `activeKeyCount`, tier, max keys, and whether the caller's `org_role` is allowed to manage keys. Member-allowed. Never returns key hashes or raw key material.                                                                                                                                                                                                                                                        | Console app state machine                          |
+| **CREATE** | Generate `pq_live_` + `randomBytes(24).toString('hex')`; SHA-256 hash; generate stable opaque `keyId = key_<ulid>`. `TransactWriteItems`: conditional put new key row, update `ORG#{orgId}` with `SET hasFirstKey = true, activeKeyCount = if_not_exists(activeKeyCount, 0) + 1` guarded by `attribute_not_exists(activeKeyCount) OR activeKeyCount < PLANS[tier].maxKeys`, and write CREATE audit with actor/IP/UA. Return raw key once. No billing registry mutation.                                      | User-driven "Create Key" action in the console app |
+| **VERIFY** | Hash incoming `X-Api-Key`. `GetItem` from `prontiq-keys` by hash. On miss, check `prontiq-usage/{oldHash, REDIRECT}` and re-resolve to `newHash` only while `authValidUntil > now`. Check `active`, products, payment-overdue, quota, and burst limits from local DynamoDB snapshots.                                                                                                                                                                                                                    | Every API request (hot path)                       |
+| **ROTATE** | Locate key by `keyId` within the org, generate a new raw/hash, and `TransactWriteItems`: delete old hash, put new hash preserving `keyId` and original `createdAt`, write REDIRECT `{ oldHash -> newHash, authValidUntil, ttl }`, migrate current usage counters to the new hash, and write ROTATE audit. `activeKeyCount` is unchanged. Return new raw key once. No billing registry mutation.                                                                                                                | "Rotate" button in the console app                 |
+| **REVOKE** | Locate key by `keyId` within the org and `TransactWriteItems`: set live key `active=false`, set `revokedAt`, decrement `ORG#{orgId}.activeKeyCount`, and write REVOKE audit. No REDIRECT cleanup: a rotated-out raw key re-resolves to the current hash and then fails the `active=false` check (§5.5.3 step 3).                                                                                                                                                                                            | "Revoke" button in the console app                 |
+| **LIST**   | `Query` GSI `orgId-index` with sentinel filter `attribute_exists(keyPrefix) AND attribute_exists(active)`, return active key metadata with masked `keyPrefix`. Never return raw key or hash.                                                                                                                                                                                                                                                                                                             | Console app API Key tab                            |
 
 **Current shipped runtime key limits:** Free currently allows 2 keys, while the
 legacy paid-plan ladder still carries higher limits during the migration
 window. Do not treat those historical paid-plan limits as the forward-looking
-commercial package contract. Enforced on CREATE via GSI count query before
-PutItem. See §9 error taxonomy for `KEY_LIMIT_EXCEEDED`.
+commercial package contract. Enforced on CREATE via the org envelope's
+`activeKeyCount` in the same transaction as the key insert. This avoids the
+read-count-write race that a preflight GSI count would have under concurrent
+creates. See §9 error taxonomy for `KEY_LIMIT_EXCEEDED`.
 
 **Key generation reference:**
 
@@ -1486,7 +1498,8 @@ runtime:
 
 - **Active target path:** Lago-centered commercial architecture with Clerk
   `orgId` as the commercial identity, SQS billing-event buffering, Lago event
-  forwarding, Lago webhook reconciliation, and setup-only private account API.
+  forwarding, Lago webhook reconciliation, setup recovery, and private
+  key-management account APIs.
 - **Stripe role:** Stripe remains the payment rail behind Lago. It is not the
   commercial source of truth and must not be called from the API hot path.
 - **Removed legacy platform runtime:** Stripe-backed provisioning, Stripe
@@ -1684,9 +1697,15 @@ Rollout flags:
 
 #### 5.6.0.5 Console Account Billing Contract
 
-`POST /v1/account/setup` is the only active AWS private account route. It is a
-Clerk-JWT-authenticated recovery path for missed Clerk webhooks and returns
-`orgId`.
+The active AWS private account routes are split by responsibility:
+
+- `POST /v1/account/setup` is a Clerk-JWT-authenticated, admin-gated recovery
+  path for missed Clerk webhooks and returns `orgId`.
+- `GET /v1/account/status` is a member-allowed console state endpoint. It
+  reports whether the `ORG#{orgId}` envelope exists, whether the caller can
+  manage keys, and the key-count/first-key state when provisioned.
+- `/v1/account/keys*` is the private key-management surface. It is documented
+  in §7.3 and `docs/private-api/account-keys.md`.
 
 The former AWS account billing routes are retired:
 
@@ -1697,8 +1716,8 @@ The former AWS account billing routes are retired:
 Future console billing surfaces should use a Vercel server-side BFF. The BFF
 reads Clerk session/org claims, keeps Lago API keys in Vercel server
 environment, and calls Lago directly for billing reads/actions. The platform
-backend remains responsible for API key lifecycle, request-time enforcement,
-queued usage events, and webhook reconciliation.
+backend remains responsible for account setup recovery, API key lifecycle,
+request-time enforcement, queued usage events, and webhook reconciliation.
 
 #### 5.6.1 Legacy Stripe Billing Model (Historical)
 
@@ -2032,15 +2051,17 @@ The `/v1/account/keys/create` endpoint (P1C.03):
 2. Check ORG#{orgId} exists (else: 404 ORG_NOT_PROVISIONED — typically
    means user signed in faster than webhook landed; retry after a
    second)
-3. Count existing org keys via GSI → enforce PLANS[tier].maxKeys
-   (else: 403 KEY_LIMIT_EXCEEDED)
+3. Read ORG#{orgId}.activeKeyCount and PLANS[tier].maxKeys
 4. Generate API key via generateKey() (P1B.02)
 5. TransactWriteItems:
    a. ConditionalPut prontiq-keys/{apiKeyHash} (full v2.2 shape)
-   b. UpdateItem prontiq-keys/ORG#{orgId} SET hasFirstKey = true
-      (idempotent — first call sets, subsequent calls re-set true)
+   b. UpdateItem prontiq-keys/ORG#{orgId}
+      SET hasFirstKey = true,
+          activeKeyCount = if_not_exists(activeKeyCount, 0) + 1
+      ConditionExpression: attribute_not_exists(activeKeyCount)
+                           OR activeKeyCount < PLANS[tier].maxKeys
    c. PutItem prontiq-audit (action="CREATE", actorId=user)
-6. Return 201 with body { keyId: prefix, raw: rawKey, createdAt }
+6. Return 201 with body { keyId, raw: rawKey, keyPrefix, createdAt }
    The raw key is shown ONCE in the response. The console app renders
    "Copy this key — it will not be shown again."
 ```
@@ -2400,9 +2421,12 @@ The frontend base is now live in-repo: `apps/landing`, `apps/console`, semantic 
 
 Zero overlap. Each endpoint group has exactly one way in.
 
-`/v1/account/*` is a mixed live/planned surface today: `POST /v1/account/setup`
-is live as the recovery path, while the broader console account endpoints remain
-planned work under P1C.
+`/v1/account/*` is a split private surface today. `POST /v1/account/setup`,
+`GET /v1/account/status`, `GET /v1/account/keys`,
+`POST /v1/account/keys/create`, `POST /v1/account/keys/rotate`, and
+`POST /v1/account/keys/revoke` are live under the private OpenAPI spec. Billing
+reads/actions stay out of the AWS private API and belong behind a future Vercel
+BFF that calls Lago server-side.
 
 ### 7.2 Middleware Chains
 
@@ -2508,19 +2532,20 @@ Endpoint URLs reflect live prod (query-param form). Path-param migration is a v2
 
 **Live today**
 
-| Method | Endpoint            | Auth Header     | Token Format         | Org Required | On Missing/Invalid                                                                                                                                               |
-| ------ | ------------------- | --------------- | -------------------- | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| POST   | `/v1/account/setup` | `Authorization` | `Bearer <clerk_jwt>` | Yes          | Manual recovery if webhook missed (§5.7.1, §12.2). Idempotent — returns 200 if `ORG#{orgId}` already exists. 404 `ORG_NOT_PROVISIONED` is the trigger condition. |
+| Method | Endpoint                    | Auth Header     | Token Format         | Org Required          | On Missing/Invalid                                                                                                                                                              |
+| ------ | --------------------------- | --------------- | -------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| POST   | `/v1/account/setup`         | `Authorization` | `Bearer <clerk_jwt>` | Yes (admin)           | Manual recovery if webhook missed (§5.7.1, §12.2). Idempotent — returns 200 if `ORG#{orgId}` already exists.                                                                   |
+| GET    | `/v1/account/status`        | `Authorization` | `Bearer <clerk_jwt>` | Yes                   | 401 / 403. Returns `provisioned=false` if `ORG#{orgId}` does not exist. Member-allowed.                                                                                        |
+| GET    | `/v1/account/keys`          | `Authorization` | `Bearer <clerk_jwt>` | Yes                   | 401 / 403. Returns active key metadata only; no raw key or hash. Member-allowed.                                                                                               |
+| POST   | `/v1/account/keys/create`   | `Authorization` | `Bearer <clerk_jwt>` | Yes (admin)           | 401 / 403 / 404 `ORG_NOT_PROVISIONED` (call `/setup` first). **Returns raw key once in response body** (only place in the system where a raw key crosses the network outbound). |
+| POST   | `/v1/account/keys/rotate`   | `Authorization` | `Bearer <clerk_jwt>` | Yes (admin + step-up) | 401 / 403 `reverification-error` / 500 `STEP_UP_MISCONFIGURED`. Returns the new raw key once. Writes REDIRECT record per §5.5.1 / §12.3.                                      |
+| POST   | `/v1/account/keys/revoke`   | `Authorization` | `Bearer <clerk_jwt>` | Yes (admin + step-up) | 401 / 403 `reverification-error` / 409 `KEY_ALREADY_REVOKED` / 500 `STEP_UP_MISCONFIGURED`.                                                                                   |
 
 **Planned console endpoints (P1C)**
 
 | Method | Endpoint                    | Auth Header     | Token Format         | Org Required          | On Missing/Invalid                                                                                                                                                              |
 | ------ | --------------------------- | --------------- | -------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | GET    | `/v1/account/usage?period=` | `Authorization` | `Bearer <clerk_jwt>` | Yes                   | 401 `UNAUTHORIZED` / 403 `ORG_REQUIRED`                                                                                                                                         |
-| GET    | `/v1/account/keys`          | `Authorization` | `Bearer <clerk_jwt>` | Yes                   | 401 / 403. Returns `[]` if `hasFirstKey: false` on org envelope.                                                                                                                |
-| POST   | `/v1/account/keys/create`   | `Authorization` | `Bearer <clerk_jwt>` | Yes (admin)           | 401 / 403 / 404 `ORG_NOT_PROVISIONED` (call `/setup` first). **Returns raw key once in response body** (only place in the system where a raw key crosses the network outbound). |
-| POST   | `/v1/account/keys/rotate`   | `Authorization` | `Bearer <clerk_jwt>` | Yes (admin + step-up) | 401 / 403. Returns the new raw key once in response body. Writes REDIRECT record per §5.5.1 / §12.3.                                                                            |
-| POST   | `/v1/account/keys/revoke`   | `Authorization` | `Bearer <clerk_jwt>` | Yes (admin + step-up) | 401 / 403                                                                                                                                                                       |
 
 #### Webhook Endpoints
 
@@ -2862,7 +2887,12 @@ webhook logs before replaying.
 
 ### 12.3 Key Rotation Safety
 
-During rotation, `TransactWriteItems` atomically deletes the old `prontiq-keys` item, puts the new one, swaps the registry hash (if billable), writes the audit ROTATE entry, and writes a REDIRECT record to `prontiq-usage`. In-flight requests against the old key may race the swap; the REDIRECT record gives them a graceful drain.
+During rotation, `TransactWriteItems` atomically deletes the old
+`prontiq-keys` item, puts the new one with the same stable `keyId`, writes the
+audit ROTATE entry, migrates current usage counters to the new hash, and writes
+a REDIRECT record to `prontiq-usage`. In-flight requests against the old key may
+race the swap; the REDIRECT record gives them a graceful drain. No billing
+registry mutation occurs in the active Lago-centered runtime.
 
 **Two-clock model — auth grace and billing attribution are independent:**
 
@@ -2887,9 +2917,14 @@ AWS suspends SES at > 5% bounce rate or > 0.1% complaint rate. A dedicated SES c
 
 Prerequisite: SES production-access exit from the AWS sandbox. Production readiness requires a verified sender domain, DKIM, SPF, DMARC with the intended alignment policy, custom MAIL FROM on `bounce.prontiq.dev`, active bounce/complaint suppression handling, and AWS production-access approval.
 
-### 12.6 Registry Sharding
+### 12.6 Historical Registry Sharding
 
-`REGISTRY#active-keys` has a practical ceiling of ~6,000 billable keys per item (400 KiB / ~64 bytes per hash + set overhead). Beyond that, shard into `REGISTRY#active-keys#{0..N}` keyed by the first N bits of the hash. See §5.5.1 for the detailed math. Trigger: Phase 5.
+The retired `REGISTRY#active-keys` design had a practical ceiling of ~6,000
+billable keys per item (400 KiB / ~64 bytes per hash + set overhead). Active
+Lago-centered billing does not read or mutate those registry rows. If historical
+cleanup ever needs to process a large retained registry, shard/read it as
+cleanup tooling only; do not reintroduce the registry on the request or billing
+event path.
 
 ### 12.7 Burst Limiter Concurrency
 

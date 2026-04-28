@@ -12,10 +12,13 @@ Next.js 15 app for `console.prontiq.dev`.
 - env-gated Clerk auth boundary
 - continued SDK seam through `@prontiq/sdk`
 
-This ticket does **not** implement live account data, TanStack Query, or the
-key / usage / billing product surfaces. Those remain later console tickets. The
-billing surface for this app is Lago-backed; any remaining Stripe-hosted
-account flows are legacy migration context only.
+P1C.03 key-management UI should use the private account API directly with a
+Clerk session token. `GET /v1/account/status` is the state-machine entry point:
+missing org → setup CTA, provisioned without keys → first-key CTA, provisioned
+with keys → key list. Raw `pq_live_*` keys are reveal-once transient state only.
+
+Billing surfaces for this app are Lago-backed and should use a Vercel
+server-side BFF, not browser calls to Lago/Stripe and not `/v1/account/billing*`.
 
 `pnpm --filter console dev`, `build`, `typecheck`, and `test` are
 self-sufficient from a fresh checkout: they build `@prontiq/sdk` and

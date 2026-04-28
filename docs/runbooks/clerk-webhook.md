@@ -163,8 +163,9 @@ Rare case where Clerk's webhook delivery system loses the event entirely. The us
 
 **Operator preconditions** (BOTH dev and prod tenants — these are not caught by the deployed-stage secret guard because they're Clerk-dashboard config, not env vars):
 
-1. **Clerk session token JWT template must include BOTH `org_id` AND `org_role`.** Clerk Dashboard → Sessions → Customize session token → add `{ "org_id": "{{org.id}}", "org_role": "{{org.role}}" }` to the template. Missing `org_id` → `400 NO_ACTIVE_ORG`. Missing `org_role` → `400 NO_ROLE_CLAIM`.
-2. **Frontend must call `setActive({ organization })`** before invoking `/v1/account/setup`. Even with the JWT template above, `org_id` and `org_role` are only populated when the session has an active organization.
+1. **Clerk session token JWT template must include `org_id` and `org_role`.** Clerk Dashboard → Sessions → Customize session token → add `{ "org_id": "{{org.id}}", "org_role": "{{org.role}}" }` to the template. Missing `org_id` → `400 NO_ACTIVE_ORG`. Missing `org_role` → `400 NO_ROLE_CLAIM`.
+2. **Rotate/revoke also require Clerk's `fva` claim.** `POST /v1/account/keys/rotate` and `POST /v1/account/keys/revoke` enforce recent second-factor reverification. Missing `fva` is an operator configuration error and returns `500 STEP_UP_MISCONFIGURED`; stale `fva[1]` returns Clerk-native `403 reverification-error` for the console's `useReverification()` retry path.
+3. **Frontend must call `setActive({ organization })`** before invoking `/v1/account/setup`, `/v1/account/status`, or `/v1/account/keys*`. Even with the JWT template above, `org_id` and `org_role` are only populated when the session has an active organization.
 
 **Authorization mirrors the webhook's role gate.** The endpoint is admin-only. `org_role` must be in `getAdminRoles()` (defaults to `org:admin` + `admin`; operator-overridable via the `CLERK_ADMIN_ROLES` env var on the `PqAccount` Lambda — same env var the webhook uses). Non-admin callers receive `403 INSUFFICIENT_ROLE` with the role surfaced in `details.role`. This prevents an invited org member from racing a delayed webhook and becoming the recorded `ownerEmail` / billing owner for the org.
 

@@ -261,6 +261,184 @@
                 }
             }
         },
+        "/v1/account/status": {
+            "get": {
+                "summary": "Read account key-management status (member-allowed)",
+                "description": "Returns the caller's org provisioning status and key-management capability. Used by the console to choose between setup recovery, first-key creation, and key-list states without probing mutation endpoints.",
+                "security": [
+                    {
+                        "ClerkJwt": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Account status for the active Clerk org",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "oneOf": [
+                                        {
+                                            "type": "object",
+                                            "properties": {
+                                                "orgId": {
+                                                    "type": "string"
+                                                },
+                                                "orgRole": {
+                                                    "type": "string"
+                                                },
+                                                "canManageKeys": {
+                                                    "type": "boolean"
+                                                },
+                                                "provisioned": {
+                                                    "type": "boolean",
+                                                    "enum": [
+                                                        false
+                                                    ]
+                                                }
+                                            },
+                                            "required": [
+                                                "orgId",
+                                                "orgRole",
+                                                "canManageKeys",
+                                                "provisioned"
+                                            ]
+                                        },
+                                        {
+                                            "type": "object",
+                                            "properties": {
+                                                "orgId": {
+                                                    "type": "string"
+                                                },
+                                                "orgRole": {
+                                                    "type": "string"
+                                                },
+                                                "canManageKeys": {
+                                                    "type": "boolean"
+                                                },
+                                                "provisioned": {
+                                                    "type": "boolean",
+                                                    "enum": [
+                                                        true
+                                                    ]
+                                                },
+                                                "hasFirstKey": {
+                                                    "type": "boolean"
+                                                },
+                                                "activeKeyCount": {
+                                                    "type": "integer",
+                                                    "minimum": 0
+                                                },
+                                                "tier": {
+                                                    "type": "string"
+                                                },
+                                                "maxKeys": {
+                                                    "type": "integer",
+                                                    "minimum": 0
+                                                }
+                                            },
+                                            "required": [
+                                                "orgId",
+                                                "orgRole",
+                                                "canManageKeys",
+                                                "provisioned",
+                                                "hasFirstKey",
+                                                "activeKeyCount",
+                                                "tier",
+                                                "maxKeys"
+                                            ]
+                                        }
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Missing/invalid JWT",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "type": "object",
+                                            "properties": {
+                                                "code": {
+                                                    "type": "string"
+                                                },
+                                                "message": {
+                                                    "type": "string"
+                                                },
+                                                "status": {
+                                                    "type": "integer"
+                                                },
+                                                "request_id": {
+                                                    "type": "string"
+                                                },
+                                                "details": {
+                                                    "type": "object",
+                                                    "additionalProperties": {}
+                                                }
+                                            },
+                                            "required": [
+                                                "code",
+                                                "message",
+                                                "status",
+                                                "request_id"
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "error"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Server error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "type": "object",
+                                            "properties": {
+                                                "code": {
+                                                    "type": "string"
+                                                },
+                                                "message": {
+                                                    "type": "string"
+                                                },
+                                                "status": {
+                                                    "type": "integer"
+                                                },
+                                                "request_id": {
+                                                    "type": "string"
+                                                },
+                                                "details": {
+                                                    "type": "object",
+                                                    "additionalProperties": {}
+                                                }
+                                            },
+                                            "required": [
+                                                "code",
+                                                "message",
+                                                "status",
+                                                "request_id"
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "error"
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/v1/account/keys/create": {
             "post": {
                 "summary": "Create a new API key (admin only)",

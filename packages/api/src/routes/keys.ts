@@ -81,6 +81,25 @@ const listedKeySchema = z.object({
 
 const listKeysSuccessSchema = z.object({ keys: z.array(listedKeySchema) });
 
+const accountStatusSchema = z.discriminatedUnion("provisioned", [
+  z.object({
+    orgId: z.string(),
+    orgRole: z.string(),
+    canManageKeys: z.boolean(),
+    provisioned: z.literal(false),
+  }),
+  z.object({
+    orgId: z.string(),
+    orgRole: z.string(),
+    canManageKeys: z.boolean(),
+    provisioned: z.literal(true),
+    hasFirstKey: z.boolean(),
+    activeKeyCount: z.number().int().nonnegative(),
+    tier: z.string(),
+    maxKeys: z.number().int().nonnegative(),
+  }),
+]);
+
 // Body schema shared by /keys/rotate and /keys/revoke. The keyId
 // regex is the canonical Crockford-base32 ULID-prefix shape we
 // generate at create time; rejecting non-conforming input early
@@ -172,6 +191,51 @@ export function createKeysRoutes(overrides: KeysRouteOverrides = {}) {
   keysRoutes.use("/keys/create", clerkAdminOnly());
   keysRoutes.use("/keys/rotate", clerkAdminOnly(), requireReverification());
   keysRoutes.use("/keys/revoke", clerkAdminOnly(), requireReverification());
+
+  const statusRoute = createRoute({
+    method: "get",
+    path: "/status",
+    summary: "Read account key-management status (member-allowed)",
+    description:
+      "Returns the caller's org provisioning status and key-management capability. Used by the console to choose between setup recovery, first-key creation, and key-list states without probing mutation endpoints.",
+    security: clerkJwtSecurity,
+    responses: {
+      200: jsonResponse(accountStatusSchema, "Account status for the active Clerk org"),
+      401: jsonResponse(apiErrorResponseSchema, "Missing/invalid JWT"),
+      500: jsonResponse(apiErrorResponseSchema, "Server error"),
+    },
+  });
+
+  keysRoutes.openapi(statusRoute, async (c) => {
+    const principal = c.get("clerkPrincipal");
+    const requestId = c.get("requestId");
+    const service = overrides.service ?? getDefaultService();
+
+    try {
+      const status = await service.getOrgStatus({
+        orgId: principal.orgId,
+        orgRole: principal.orgRole,
+      });
+      return c.json(status, 200);
+    } catch (error) {
+      logger.error("getOrgStatus failed", {
+        request_id: requestId,
+        orgId: principal.orgId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return c.json(
+        {
+          error: {
+            code: "INTERNAL_ERROR",
+            message: "Internal server error",
+            status: 500,
+            request_id: requestId,
+          },
+        },
+        500,
+      );
+    }
+  });
 
   const createKeyRoute = createRoute({
     method: "post",

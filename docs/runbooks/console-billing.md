@@ -8,7 +8,10 @@ P1B.22 retired the AWS private account billing routes:
 - `POST /v1/account/billing/plan-change`
 - `POST /v1/account/billing/portal-session`
 
-`POST /v1/account/setup` remains the only active AWS private account route.
+Active AWS private account routes are setup recovery and key management:
+`POST /v1/account/setup`, `GET /v1/account/status`, and
+`/v1/account/keys*`. Billing reads/actions are still not provided by the AWS
+private API.
 
 Future console billing surfaces should use a Vercel-hosted server-side BFF that
 reads the Clerk session/org claims, keeps Lago API keys in Vercel server env,

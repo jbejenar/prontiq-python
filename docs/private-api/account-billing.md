@@ -8,8 +8,11 @@ The former AWS private account billing routes are retired:
 - `POST /v1/account/billing/plan-change`
 - `POST /v1/account/billing/portal-session`
 
-The only active AWS private account route is `POST /v1/account/setup`, which
-returns the active Clerk `orgId` commercial identity.
+Active AWS private account routes are setup recovery and key management:
+`POST /v1/account/setup`, `GET /v1/account/status`, and
+`/v1/account/keys*`. They return or operate on the active Clerk `orgId`
+commercial identity. They are documented separately in
+`docs/private-api/account-keys.md`.
 
 Future console billing should be implemented as a Vercel server-side BFF:
 

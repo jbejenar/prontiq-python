@@ -10,6 +10,7 @@ import {
 } from "@prontiq/shared";
 import { monotonicFactory } from "ulid";
 import { buildAuditTransactItem } from "./audit.js";
+import { getAdminRoles } from "./clerk.js";
 
 const ulid = monotonicFactory();
 const ORG_ID_INDEX = "orgId-index";
@@ -168,7 +169,26 @@ export interface ListedKey {
   products: string[];
 }
 
+export type OrgKeyStatus =
+  | {
+      orgId: string;
+      orgRole: string;
+      canManageKeys: boolean;
+      provisioned: false;
+    }
+  | {
+      orgId: string;
+      orgRole: string;
+      canManageKeys: boolean;
+      provisioned: true;
+      hasFirstKey: boolean;
+      activeKeyCount: number;
+      tier: OrgEnvelopeRecord["tier"];
+      maxKeys: number;
+    };
+
 export interface KeyManagementService {
+  getOrgStatus(input: { orgId: string; orgRole: string }): Promise<OrgKeyStatus>;
   createKey(input: CreateKeyInput): Promise<CreateKeyResult>;
   listOrgKeys(input: { orgId: string }): Promise<ListedKey[]>;
   rotateKey(input: RotateKeyInput): Promise<RotateKeyResult>;
@@ -195,6 +215,33 @@ export function createKeyManagementService(
       }),
     );
     return result.Item as OrgEnvelopeRecord | undefined;
+  }
+
+  async function getOrgStatus(input: {
+    orgId: string;
+    orgRole: string;
+  }): Promise<OrgKeyStatus> {
+    const canManageKeys = input.orgRole.length > 0 && getAdminRoles().has(input.orgRole);
+    const envelope = await loadEnvelope(input.orgId);
+    if (!envelope) {
+      return {
+        orgId: input.orgId,
+        orgRole: input.orgRole,
+        canManageKeys,
+        provisioned: false,
+      };
+    }
+    const plan = PLANS[envelope.tier];
+    return {
+      orgId: input.orgId,
+      orgRole: input.orgRole,
+      canManageKeys,
+      provisioned: true,
+      hasFirstKey: envelope.hasFirstKey,
+      activeKeyCount: envelope.activeKeyCount ?? 0,
+      tier: envelope.tier,
+      maxKeys: plan.maxKeys,
+    };
   }
 
   async function createKey(input: CreateKeyInput): Promise<CreateKeyResult> {
@@ -904,5 +951,5 @@ export function createKeyManagementService(
     };
   }
 
-  return { createKey, listOrgKeys, rotateKey, revokeKey };
+  return { getOrgStatus, createKey, listOrgKeys, rotateKey, revokeKey };
 }

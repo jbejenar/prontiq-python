@@ -10,6 +10,14 @@
 - Billing UI work must not call Lago or Stripe from the browser. Future billing
   surfaces should use a Vercel server-side BFF that verifies Clerk auth, reads
   the active `org_id`, and calls Lago with a server-held Lago API key.
+- P1C.03 key-management UI should start from `GET /v1/account/status` to choose
+  missing-org recovery, first-key CTA, or key-list state. Do not infer that by
+  probing mutation endpoints.
+- Raw API keys are transient UI state only. Never put `pq_live_*` values in
+  localStorage, sessionStorage, URLs, React Query persisted cache, logs, or
+  analytics payloads.
+- Rotate/revoke UI must use Clerk `useReverification()` and must not loop on
+  `STEP_UP_MISCONFIGURED`; that error means the Clerk token lacks `fva`.
 - `P1C.07` provides the Tailwind/shadcn/theme shell base and the env-gated Clerk boundary.
 - Fully missing Clerk keys are only a valid disabled mode when the helper-managed local/CI opt-in is present.
 - One-key-only Clerk config is a fail-closed misconfiguration, not a valid disabled mode.

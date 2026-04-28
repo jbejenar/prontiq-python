@@ -1080,7 +1080,7 @@ Options:
 
 > **Goal:** Sign-up → DDB-native API key → hash-verified requests → rate-limited with burst limiter → usage tracked per-month → migrate the commercial layer from the shipped Stripe path to the Lago-backed architecture.
 >
-> **Current state.** P1B.02 through P1B.22 are implemented. P1B.22 pivots the active commercial identity to Clerk `orgId`. Lago remains the commercial system of record, Stripe remains only Lago's payment rail, Prontiq keeps hot-path credit enforcement in DynamoDB, and SQS buffers usage events away from the request path. Active billing events are `BillingUsageEventV2` with `orgId`; Lago customer `external_id = orgId`; Lago subscription `external_id = lago_sub_${orgId}`. The AWS private account API is setup-only. Former `customerId` / `pq_cust_*` / `pq_sub_*` records and account billing APIs are legacy evidence only.
+> **Current state.** P1B.02 through P1B.22 are implemented. P1B.22 pivots the active commercial identity to Clerk `orgId`. Lago remains the commercial system of record, Stripe remains only Lago's payment rail, Prontiq keeps hot-path credit enforcement in DynamoDB, and SQS buffers usage events away from the request path. Active billing events are `BillingUsageEventV2` with `orgId`; Lago customer `external_id = orgId`; Lago subscription `external_id = lago_sub_${orgId}`. The AWS private account API owns setup recovery and key management only; account billing routes are retired. Former `customerId` / `pq_cust_*` / `pq_sub_*` records and account billing APIs are legacy evidence only.
 
 ### P1B.22 — Clerk org commercial identity pivot
 
@@ -3380,6 +3380,18 @@ tech_stack:
   keys: @prontiq/api account endpoints (DDB-backed, see ARCHITECTURE.MD §7.3)
 ```
 
+#### Implementation Status
+
+Backend substrate is partially complete:
+
+- [x] PR 0 backfilled stable `keyId` and `activeKeyCount` before route rollout.
+- [x] PR 1 shipped `POST /v1/account/keys/create` and `GET /v1/account/keys`.
+- [x] PR 2 shipped `POST /v1/account/keys/rotate`, `POST /v1/account/keys/revoke`, REDIRECT grace handling, usage-counter migration on rotate, and step-up enforcement.
+- [x] PR 2.5 shipped `GET /v1/account/status` so the console can select missing-org, first-key, and list states without probing mutation endpoints.
+- [ ] PR 3 remains: console list/create/recovery UI.
+- [ ] PR 4 remains: console rotate/revoke UI with Clerk `useReverification()`.
+- [ ] PR 5 remains: audit panel and key-limit indicator.
+
 #### User Story
 
 As a new developer, my **first** API key is created from the console key-management flow (not via webhook email). The raw key shows once in the response. As a returning developer, I can view, create, rotate, and revoke keys for different environments / team members.
@@ -3396,13 +3408,13 @@ Key rotation must be atomic (TransactWrite swap) with a REDIRECT record per §5.
 
 ##### Functional — First-Key Flow
 
-- [ ] On first visit to the console keys surface: detect `ORG#{orgId}.hasFirstKey === false` → render "Create your first API key" CTA (instead of empty key list). If `ORG#{orgId}` does not exist (Clerk webhook missed): render "Set up your account" CTA which calls `POST /v1/account/setup` (P1B.05 recovery endpoint).
+- [ ] On first visit to the console keys surface: call `GET /v1/account/status` and use it as the state-machine input. If `provisioned=false`, render "Set up your account" CTA which calls `POST /v1/account/setup` (P1B.05 recovery endpoint). If `provisioned=true` and `hasFirstKey=false`, render "Create your first API key" CTA instead of an empty key list.
   - `Verify:` Sign up a new test user; observe the console shows "Create your first API key" button; click it; raw key appears in modal; refresh page; key list now shows masked prefix
   - `Evidence:` UI screenshot + DDB record diff
-- [ ] **Missing-ORG recovery UI** (per PR #59 review #6 Bug 12 — moved here from P1B.05 because UI verification belongs to the ticket that owns the dashboard): if the console detects no `ORG#{orgId}` envelope (Clerk webhook missed entirely), render "Set up your account" CTA that calls `POST /v1/account/setup` (P1B.05 endpoint). After the call returns, transition to "Create your first API key" CTA.
+- [ ] **Missing-ORG recovery UI** (per PR #59 review #6 Bug 12 — moved here from P1B.05 because UI verification belongs to the ticket that owns the dashboard): if `GET /v1/account/status` returns `provisioned=false` (Clerk webhook missed entirely), render "Set up your account" CTA that calls `POST /v1/account/setup` (P1B.05 endpoint). After the call returns, refetch status and transition to "Create your first API key" CTA.
   - `Verify:` Manually delete `ORG#{orgId}` for a test user; sign in to the console; assert "Set up your account" button is visible. Click it. Assert the page transitions to the first-key CTA after `POST /v1/account/setup` returns.
   - `Evidence:` E2E UI test (Playwright or similar)
-- [ ] **First-key creation idempotency** (covers what used to be in P1B.12; moved here per PR #59 review #5 Bug 8 — assertions belong in the ticket that owns the endpoint). Call `POST /v1/account/keys/create` against a freshly-provisioned test user. Verify exactly:
+- [x] **First-key creation idempotency** (covers what used to be in P1B.12; moved here per PR #59 review #5 Bug 8 — assertions belong in the ticket that owns the endpoint). Call `POST /v1/account/keys/create` against a freshly-provisioned test user. Verify exactly:
   - 1 `prontiq-keys/{apiKeyHash}` row created
   - `ORG#{orgId}.hasFirstKey` flips `false → true` atomically (in the same `TransactWriteItems` as the key insert)
   - 1 `CREATE` audit row
@@ -3413,26 +3425,26 @@ Key rotation must be atomic (TransactWrite swap) with a REDIRECT record per §5.
     - (a) Single create → assert all five conditions
     - (b) Inject DDB throttle → retry succeeds → assert same five conditions, no orphan rows
     - (c) Two concurrent calls → both 201, two distinct raw keys, two distinct hash rows, hasFirstKey=true
-  - `Evidence:` Vitest output + DDB scan results in test log
+  - `Evidence:` `node:test` integration output + DDB scan assertions in `packages/api/src/routes/keys.integration.test.ts`
 
 ##### Functional — Key Management
 
-- [ ] List all org keys via `GET /v1/account/keys` (DDB GSI on `orgId-index` with **`FilterExpression: "attribute_exists(keyPrefix) AND attribute_exists(active)"`** — sentinel guard per ARCHITECTURE.MD §5.5.1, prevents the ORG envelope from leaking into the response) with masked prefix, creation date, last-used timestamp, product scopes
+- [x] List all org keys via `GET /v1/account/keys` (DDB GSI on `orgId-index` with **`FilterExpression: "attribute_exists(keyPrefix) AND attribute_exists(active)"`** — sentinel guard per ARCHITECTURE.MD §5.5.1, prevents the ORG envelope from leaking into the response) with masked prefix, creation date, last-used timestamp, product scopes
   - `Verify:` console keys page loads with table of keys
   - `Evidence:` Table renders with real DDB data; raw key and hash never returned
-- [ ] Create new key via `POST /v1/account/keys/create` (generates via `generateKey()` from P1B.02, hashes, TransactWriteItems: PutItem to `prontiq-keys` + UpdateItem `ORG#{orgId}` SET `hasFirstKey: true` + audit CREATE, returns raw key once in response body)
+- [x] Create new key via `POST /v1/account/keys/create` (generates via `generateKey()` from P1B.02, hashes, TransactWriteItems: PutItem to `prontiq-keys` + UpdateItem `ORG#{orgId}` SET `hasFirstKey: true` and increment `activeKeyCount` + audit CREATE, returns raw key once in response body)
   - `Verify:` Click "Create Key" → new key shown once in modal; reload page hides raw key; only masked prefix in list. `ORG#{orgId}.hasFirstKey === true` after first call.
   - `Evidence:` DDB record created; response body has `{keyId, raw, createdAt}`
-- [ ] Rotate key via `POST /v1/account/keys/rotate` (requires Clerk step-up; TransactWriteItems: delete old + put new + write REDIRECT with `authValidUntil = now + 5 min` and `ttl = now + 90d` + audit ROTATE; returns new raw key once)
+- [x] Rotate key via `POST /v1/account/keys/rotate` (requires Clerk step-up; TransactWriteItems: delete old + put new + write REDIRECT with `authValidUntil = now + 5 min` and `ttl = now + 90d` + migrate current usage counters + audit ROTATE; returns new raw key once)
   - `Verify:` Click "Rotate" → step-up modal → new key shown once; (a) within 5 min, request with old raw key succeeds via REDIRECT path; (b) after 5 min, request with old raw key returns 401 even though `ttl` is still 90d out (auth grace expired)
   - `Evidence:` REDIRECT item with both clocks present in `prontiq-usage`; integration test covers grace-active and grace-expired
-- [ ] Revoke key via `POST /v1/account/keys/revoke` (requires Clerk step-up; UpdateItem `active: false`; audit REVOKE; **does NOT touch REDIRECT records** — see §5.5.2 / §12.3 for why active-flag check naturally handles REVOKE-after-ROTATE)
+- [x] Revoke key via `POST /v1/account/keys/revoke` (requires Clerk step-up; UpdateItem `active: false`; audit REVOKE; **does NOT touch REDIRECT records** — see §5.5.2 / §12.3 for why active-flag check naturally handles REVOKE-after-ROTATE)
   - `Verify:` Click "Revoke" → confirmation dialog with step-up → key returns 401 on next API call. Separately: rotate key A → B, then revoke B; request with old raw A returns 401 (re-resolved through REDIRECT, fails active check on B)
   - `Evidence:` DDB record shows `active: false`; integration test covers REVOKE-after-ROTATE
 - [ ] Audit trail visible on the page (last 10 lifecycle events from `prontiq-audit`)
   - `Verify:` Each action (create, rotate, revoke) appears with actor, timestamp, IP
   - `Evidence:` `prontiq-audit` query
-- [ ] Key limits enforced for Free and the active paid commercial contract — GSI count query against `orgId-index` with **`FilterExpression: "attribute_exists(keyPrefix) AND attribute_exists(active)"`** before PutItem (sentinel guard prevents the ORG envelope from eating one of the user's quota slots)
+- [x] Key limits enforced for Free and the active paid commercial contract — atomic `activeKeyCount` on `ORG#{orgId}` in the same transaction as key creation. The list query still uses the sentinel filter against `orgId-index`; the limit check does not rely on a race-prone preflight count.
   - `Verify:` Two tests: (a) Attempt 3rd key on Free tier → 403 `KEY_LIMIT_EXCEEDED`; (b) Verify the ORG envelope row is NOT counted — sign up + immediately try to create 2 keys on Free tier; both succeed (envelope doesn't count as a key)
   - `Evidence:` Error response on (a); 2 successful creates on (b) proving sentinel filter works
 

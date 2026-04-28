@@ -1,12 +1,16 @@
 # NEXT-WORK.md — Active Sprint
 
-> Last updated: 2026-04-27 for P1B.22. This file is agent-facing current
-> context. Historical P1B.14-P1B.21 customer-id notes were removed because the
-> active architecture now uses Clerk org identity.
+> Last updated: 2026-04-29 for P1C.03 PR 2.5. P1B.22 (Clerk org commercial
+> identity) shipped in commit 5e6afe2. P1C.03 PRs 0 (backfill), 1 (create +
+> list), and 2 (rotate + revoke + step-up) are deployed to dev and prod.
+> PR 2.5 adds the member-allowed status endpoint and documentation alignment
+> before PR 3 starts the console list/create/recovery UI.
 
 ## Current Phase
 
-P1B.22: Clerk organization commercial identity pivot.
+P1C.03 PR 2.5: Backend status endpoint and documentation alignment. The console
+PR 3 should use `GET /v1/account/status` as its state-machine input instead of
+probing setup/create mutations to infer missing-org vs first-key vs list states.
 
 ## Active Commercial Contract
 
@@ -38,7 +42,12 @@ Private/control-plane:
 ```text
 POST /webhooks/clerk
 POST /webhooks/lago
-POST /v1/account/setup
+POST /v1/account/setup            (admin-gated)
+GET  /v1/account/status           (member-allowed; P1C.03 PR 2.5)
+POST /v1/account/keys/create      (admin-gated; P1C.03 PR 1)
+GET  /v1/account/keys             (member-allowed; P1C.03 PR 1)
+POST /v1/account/keys/rotate      (admin + reverification; P1C.03 PR 2)
+POST /v1/account/keys/revoke      (admin + reverification; P1C.03 PR 2)
 ```
 
 Retired AWS routes:
@@ -51,11 +60,21 @@ POST /v1/account/billing/portal-session
 
 ## Current Tickets
 
-- P1B.22 implements the identity pivot, `BillingUsageEventV2`, Lago smoke
-  helper update, commercial identity repair command, account setup-only private
-  API surface, and documentation alignment.
-- P1C console work should assume billing data comes from Lago through a future
-  Vercel BFF, while API keys stay in the platform backend.
+- **P1C.03 PR 2.5** — `GET /v1/account/status`, private OpenAPI update,
+  account-key docs, key lifecycle runbook, ADR-036, and stale architecture
+  cleanup.
+- **P1C.03 PR 3** (next) — console keys page: missing-org → setup → first-key →
+  list state machine, reveal-once raw modal. Adds @tanstack/react-query,
+  @radix-ui/react-alert-dialog, sonner. Console fetches direct from
+  client with Clerk `getToken()` against `NEXT_PUBLIC_API_URL`.
+- **P1C.03 PR 4** (next, after 3) — rotate / revoke UI with step-up
+  modal via `useReverification()`. Operator gate: prod Clerk dashboard
+  must emit `fva` claim.
+- **P1C.03 PR 5** (last) — audit panel + key-limit indicator. Adds
+  `GET /v1/account/audit`.
+- P1B.23 (pre-go-live cleanup) is gated on P1C.03 + P1C.05.
+- All console billing surfaces remain out of scope for the platform
+  backend; future Vercel BFF reads Lago directly.
 
 ## Operator Commands
 

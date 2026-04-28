@@ -22,6 +22,7 @@ export type {
   KeyManagementDependencies,
   KeyManagementService,
   ListedKey,
+  OrgKeyStatus,
 } from "./key-management.js";
 
 export { buildAuditTransactItem, writeAudit, getAuditTtlSeconds } from "./audit.js";

@@ -3,6 +3,7 @@
  *
  * Exercises the full request → middleware → route → service → DDB
  * stack against a real DDB Local with a stubbed JWT verifier. Pins:
+ *   - Status is member-allowed and returns missing/provisioned org state
  *   - 201 + envelope.activeKeyCount=1 + 1 audit row + raw never persisted
  *   - List excludes ORG envelope (sentinel) and revoked keys (active flag)
  *   - Concurrent under-limit: both succeed
@@ -264,6 +265,17 @@ async function getList(
   return { status: res.status, body: json };
 }
 
+async function getStatus(
+  app: OpenAPIHono,
+): Promise<{ status: number; body: Record<string, unknown> }> {
+  const res = await app.request("/v1/account/status", {
+    method: "GET",
+    headers: { Authorization: "Bearer good_token" },
+  });
+  const json = (await res.json()) as Record<string, unknown>;
+  return { status: res.status, body: json };
+}
+
 async function postRotate(
   app: OpenAPIHono,
   body: { keyId: string },
@@ -299,6 +311,70 @@ async function postRevoke(
   const json = (await res.json()) as Record<string, unknown>;
   return { status: res.status, body: json };
 }
+
+test("(status-a) missing envelope: member-allowed status returns provisioned=false without probing mutations", async () => {
+  const orgId = `org_StatusMissing${SUFFIX}`;
+  const app = buildApp({ orgId });
+
+  const { status, body } = await getStatus(app);
+
+  assert.equal(status, 200);
+  assert.deepEqual(body, {
+    orgId,
+    orgRole: "org:admin",
+    canManageKeys: true,
+    provisioned: false,
+  });
+});
+
+test("(status-b) fresh envelope: status returns first-key state, activeKeyCount, tier, and maxKeys", async () => {
+  const orgId = `org_StatusFresh${SUFFIX}`;
+  await seedEnvelope(orgId);
+  const app = buildApp({ orgId });
+
+  const { status, body } = await getStatus(app);
+
+  assert.equal(status, 200);
+  assert.deepEqual(body, {
+    orgId,
+    orgRole: "org:admin",
+    canManageKeys: true,
+    provisioned: true,
+    hasFirstKey: false,
+    activeKeyCount: 0,
+    tier: "free",
+    maxKeys: 2,
+  });
+});
+
+test("(status-c) member token can read status but cannot manage keys", async () => {
+  const orgId = `org_StatusMember${SUFFIX}`;
+  await seedEnvelope(orgId, { activeKeyCount: 1, hasFirstKey: true });
+  const app = buildApp({ orgId, orgRole: "org:member" });
+
+  const { status, body } = await getStatus(app);
+
+  assert.equal(status, 200);
+  assert.equal(body.orgId, orgId);
+  assert.equal(body.orgRole, "org:member");
+  assert.equal(body.canManageKeys, false);
+  assert.equal(body.provisioned, true);
+  assert.equal(body.hasFirstKey, true);
+  assert.equal(body.activeKeyCount, 1);
+});
+
+test("(status-d) missing org_role can read status but canManageKeys=false", async () => {
+  const orgId = `org_StatusNoRole${SUFFIX}`;
+  await seedEnvelope(orgId);
+  const app = buildApp({ orgId, orgRole: null });
+
+  const { status, body } = await getStatus(app);
+
+  assert.equal(status, 200);
+  assert.equal(body.orgRole, "");
+  assert.equal(body.canManageKeys, false);
+  assert.equal(body.provisioned, true);
+});
 
 test("(a) admin create: 201 + key row + envelope.activeKeyCount=1 + 1 audit row + ip/UA captured + raw not persisted", async () => {
   const orgId = `org_KeysA${SUFFIX}`;
