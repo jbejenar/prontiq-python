@@ -60,6 +60,7 @@ test("createKey sets ClientRequestToken=keyId on TransactWriteCommand for SDK-re
     ddb: client,
     keysTableName: "prontiq-keys-test",
     auditTableName: "prontiq-audit-test",
+    usageTableName: "prontiq-usage-test",
     generateKeyId: () => "key_01HXTESTKEY00000000000000",
     generateRawKey: () => ({
       raw: "pq_test_static",
@@ -103,6 +104,7 @@ test("createKey ClientRequestToken matches keyId char-class (DDB accepts [A-Za-z
     ddb: client,
     keysTableName: "prontiq-keys-test",
     auditTableName: "prontiq-audit-test",
+    usageTableName: "prontiq-usage-test",
     generateRawKey: () => ({
       raw: "pq_test_static",
       hash: "h".repeat(64),

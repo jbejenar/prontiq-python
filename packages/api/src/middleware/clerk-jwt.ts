@@ -7,6 +7,7 @@ import {
 } from "@clerk/backend/errors";
 import { getAdminRoles } from "@prontiq/control-plane";
 import { createLogger } from "@prontiq/shared";
+import { z } from "@hono/zod-openapi";
 
 /**
  * Clerk JWT middleware for `POST /v1/account/setup` and any future
@@ -70,12 +71,29 @@ export interface ClerkPrincipal {
    * downstream gate that uses this field.
    */
   orgRole: string;
+  /**
+   * Clerk's "factor verification age" claim — `fva: [first_factor_age,
+   * second_factor_age]`, both expressed in MINUTES (per Clerk session-
+   * token docs; `-1` means "factor never used"). Optional because:
+   *   - Existing `/v1/account/setup` tests stub the verifier without
+   *     emitting `fva`; making it required would break their fixtures.
+   *   - Routes that don't enforce step-up (the majority) don't need it.
+   *
+   * Routes that DO need step-up (rotate/revoke, etc.) compose
+   * `requireReverification()` after `clerkJwt()`; that middleware
+   * surfaces the operator-config gap as 500 `STEP_UP_MISCONFIGURED`
+   * (fail-loud), not 403 (which would create an infinite reverify
+   * loop because the Clerk frontend would keep trying to satisfy a
+   * claim that the JWT template never emits).
+   */
+  fva?: number[];
 }
 
 export type ClerkVerifier = (token: string) => Promise<{
   sub?: unknown;
   org_id?: unknown;
   org_role?: unknown;
+  fva?: unknown;
   [claim: string]: unknown;
 }>;
 
@@ -360,7 +378,19 @@ export function clerkJwt(options: ClerkJwtOptions = {}) {
     // status endpoint) can mount clerkJwt() alone without the gate.
     const orgRole = typeof payload.org_role === "string" ? payload.org_role : "";
 
-    c.set("clerkPrincipal", { userId, orgId, orgRole });
+    // fva is OPTIONAL at this layer for the same reason as org_role —
+    // routes that need step-up enforcement compose
+    // requireReverification() after clerkJwt() and that middleware
+    // surfaces a missing claim as 500 STEP_UP_MISCONFIGURED (fail-loud).
+    // Tolerate any non-array-of-numbers payload by setting undefined;
+    // requireReverification will produce a clear operator-facing error.
+    const rawFva = (payload as { fva?: unknown }).fva;
+    const fva =
+      Array.isArray(rawFva) && rawFva.every((n) => typeof n === "number")
+        ? (rawFva as number[])
+        : undefined;
+
+    c.set("clerkPrincipal", { userId, orgId, orgRole, ...(fva ? { fva } : {}) });
     await next();
   });
 }
@@ -453,6 +483,163 @@ export function clerkAdminOnly(options: ClerkAdminOnlyOptions = {}) {
             status: 403,
             request_id: c.get("requestId"),
             details: { role: principal.orgRole },
+          },
+        },
+        403,
+      );
+    }
+
+    await next();
+  });
+}
+
+/**
+ * Step-up reverification gate for sensitive routes (key rotate / revoke).
+ *
+ * Reads `fva` from the verified Clerk session token. `fva` is a
+ * Clerk-native claim — `fva: [first_factor_age_minutes,
+ * second_factor_age_minutes]`, both in MINUTES; `-1` means "factor
+ * never used". We enforce on `fva[1]` (second factor) so that a
+ * recent password-only reauth doesn't silently satisfy a 2FA gate.
+ *
+ * Failure modes (all DOCUMENTED RFC contracts — frontend depends on
+ * these exact shapes):
+ *
+ *   - Missing `fva` claim entirely → 500 `STEP_UP_MISCONFIGURED`.
+ *     This is fail-LOUD (not 403), because returning 403 would cause
+ *     Clerk's `useReverification()` hook on the frontend to pop a
+ *     reverify modal whose successful resolution still doesn't put
+ *     `fva` into the next JWT (the template doesn't emit it). That's
+ *     an infinite loop. 500 surfaces the operator-config gap to
+ *     CloudWatch alarms; the user gets a generic error toast.
+ *
+ *   - Stale `fva[1]` (or `-1`, "never verified") → 403 with the
+ *     Clerk-native body shape `{ clerk_error: { type: "forbidden",
+ *     reason: "reverification-error", metadata: { level:
+ *     "second_factor", afterMinutes: <max> } } }`. Clerk's
+ *     `useReverification()` hook recognises this exact shape and
+ *     transparently triggers the reverify modal + retries the
+ *     request. We only emit this when `fva` is present (template
+ *     correctly configured) but stale.
+ *
+ *   - Fresh `fva[1]` (>= 0, <= max) → pass through to next().
+ *
+ * Dev escape hatch: `STEP_UP_BYPASS=1` short-circuits to next() with
+ * a `logger.warn` so the bypass leaves a trail. Honored ONLY when
+ * `PRONTIQ_STAGE !== "prod"` — the prod assertion at module-load
+ * time below makes setting `STEP_UP_BYPASS=1` in prod a Lambda cold-
+ * start crash, not a silent security hole.
+ */
+const STEP_UP_BYPASS_ENABLED = process.env.STEP_UP_BYPASS === "1";
+const PRONTIQ_STAGE = process.env.PRONTIQ_STAGE ?? "";
+
+if (STEP_UP_BYPASS_ENABLED && PRONTIQ_STAGE === "prod") {
+  // Refuse to load. Cold-start failure is the right blast radius: the
+  // Lambda never serves traffic with the bypass enabled. CloudWatch
+  // surfaces this loudly (every invocation pages until the env var
+  // is removed).
+  throw new Error(
+    "STEP_UP_BYPASS=1 is not permitted in PRONTIQ_STAGE=prod. " +
+      "This flag is a dev-only escape hatch for local testing of " +
+      "step-up flows; setting it in prod would silently disable " +
+      "the requireReverification() gate on rotate/revoke. " +
+      "Remove STEP_UP_BYPASS from the Lambda environment.",
+  );
+}
+
+export interface RequireReverificationOptions {
+  /** Maximum age of the second-factor verification, in MINUTES. Default 10 (Clerk's "strict" preset). */
+  maxSecondFactorAgeMinutes?: number;
+}
+
+/**
+ * OpenAPI/Zod schema for the 403 body that `requireReverification`
+ * emits on stale `fva`. This is Clerk's wire format — `useReverification()`
+ * on the frontend matches against the EXACT keys here. Routes that
+ * compose `requireReverification` MUST register their 403 response
+ * as a union of this schema and the standard error envelope, otherwise
+ * the generated OpenAPI lies about the response shape and any
+ * generated client / contract test will reject the actual runtime body.
+ *
+ * Co-located with the middleware that emits it so the schema and the
+ * runtime stay in sync — if the body shape ever changes, both the
+ * `c.json(...)` call and this schema must be updated together.
+ *
+ * Reference: https://clerk.com/docs/guides/secure/reverification
+ */
+export const clerkReverificationError403Schema = z.object({
+  clerk_error: z.object({
+    type: z.literal("forbidden"),
+    reason: z.literal("reverification-error"),
+    metadata: z.object({
+      level: z.enum(["first_factor", "second_factor", "multi_factor"]),
+      afterMinutes: z.number().int().min(0),
+    }),
+  }),
+});
+
+export function requireReverification(options: RequireReverificationOptions = {}) {
+  const max = options.maxSecondFactorAgeMinutes ?? 10;
+
+  return createMiddleware(async (c, next) => {
+    if (STEP_UP_BYPASS_ENABLED) {
+      logger.warn("requireReverification: STEP_UP_BYPASS=1 honored — dev only", {
+        request_id: c.get("requestId"),
+        path: c.req.path,
+      });
+      await next();
+      return;
+    }
+
+    const principal = c.get("clerkPrincipal");
+    if (!principal) {
+      // requireReverification() mounted without clerkJwt() upstream —
+      // same misconfiguration class as clerkAdminOnly. Fail loud.
+      logger.error("requireReverification mounted without upstream clerkJwt — principal missing", {
+        request_id: c.get("requestId"),
+        path: c.req.path,
+      });
+      return errorEnvelope(c, 500, "INTERNAL_ERROR", "Internal server error");
+    }
+
+    if (!principal.fva || !Array.isArray(principal.fva)) {
+      logger.error(
+        "requireReverification: JWT lacks fva claim — operator must update Clerk JWT template / reverification config",
+        {
+          request_id: c.get("requestId"),
+          path: c.req.path,
+          userId: principal.userId,
+          orgId: principal.orgId,
+        },
+      );
+      return errorEnvelope(
+        c,
+        500,
+        "STEP_UP_MISCONFIGURED",
+        "Step-up enforcement is not configured. Contact support.",
+      );
+    }
+
+    const secondFactorAgeMinutes = principal.fva[1];
+    if (
+      typeof secondFactorAgeMinutes !== "number" ||
+      secondFactorAgeMinutes < 0 ||
+      secondFactorAgeMinutes > max
+    ) {
+      // Clerk-native 403 body shape — `useReverification()` on the
+      // frontend recognises this exact structure and transparently
+      // pops the reverify modal + retries the request. Do NOT wrap
+      // in our standard error envelope; the frontend depends on the
+      // top-level `clerk_error` key. See Clerk docs: clerk.com/docs/guides/secure/reverification
+      return c.json(
+        {
+          clerk_error: {
+            type: "forbidden",
+            reason: "reverification-error",
+            metadata: {
+              level: "second_factor",
+              afterMinutes: max,
+            },
           },
         },
         403,

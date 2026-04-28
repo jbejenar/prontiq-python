@@ -124,6 +124,19 @@ export interface ApiKeyRecord {
   label?: string;
   /** Clerk userId of the actor that created this key. */
   createdByActorId?: string;
+  /**
+   * ISO-8601 timestamp of the most recent rotation. Set on the new
+   * row produced by `rotateKey` (the old row is deleted). `createdAt`
+   * is preserved across rotation; `rotatedAt` is the separate
+   * "issued-fresh" marker per ADR-036.
+   */
+  rotatedAt?: string;
+  /**
+   * ISO-8601 timestamp of revocation. Set when `revokeKey` flips
+   * `active` to false. Distinct from absence-of-`active` (which
+   * would mean a missing field, not "revoked").
+   */
+  revokedAt?: string;
 }
 
 export interface UsageCounterRecord {
@@ -144,6 +157,22 @@ export interface UsageCounterRecord {
   warningEmailPendingAt?: string;
   limitEmailPendingAt?: string;
   closed?: boolean;
+  /**
+   * Optimistic-concurrency sentinel. EVERY writer that mutates a usage
+   * row MUST `ADD #version :one` to its UpdateExpression — without
+   * exception. Used by `rotateKey` (P1C.03) to detect concurrent
+   * mutations between its pre-tx Query and the migration TransactWrite:
+   * the OLD-row Delete asserts `version = :rv` (or absent + 0) so any
+   * racing writer cancels the transaction → outer retry re-Queries.
+   *
+   * Optional only because pre-P1C.03 rows lack the field; the
+   * `attribute_not_exists(version)` branch in the rotate CondExpr
+   * handles legacy rows. New writes (post-P1C.03) always bump it.
+   *
+   * Do NOT read this field for anything other than concurrency control.
+   * It is not a meaningful number — just a monotonic counter.
+   */
+  version?: number;
 }
 
 export interface SesSuppressionRecord {

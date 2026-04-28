@@ -6,7 +6,12 @@ import {
   TokenVerificationError,
   TokenVerificationErrorReason,
 } from "@clerk/backend/errors";
-import { clerkAdminOnly, clerkJwt, type ClerkVerifier } from "./clerk-jwt.js";
+import {
+  clerkAdminOnly,
+  clerkJwt,
+  requireReverification,
+  type ClerkVerifier,
+} from "./clerk-jwt.js";
 import { requestId } from "./request-id.js";
 
 function makeTokenError(reason: string, message = "verification failed"): TokenVerificationError {
@@ -427,6 +432,238 @@ test("clerkAdminOnly: principal missing (mounted without clerkJwt) → 500 INTER
   const app = new Hono();
   app.use("*", requestId());
   app.use("/v1/account/*", clerkAdminOnly());
+  app.post("/v1/account/setup", (c) => c.json({ ok: true }));
+  const res = await postSetup(app);
+  assert.equal(res.status, 500);
+  const body = (await res.json()) as { error: { code: string } };
+  assert.equal(body.error.code, "INTERNAL_ERROR");
+});
+
+// ─── fva claim parsing in clerkJwt() ────────────────────────────────
+//
+// `fva` is OPTIONAL on the principal — clerkJwt sets it when the
+// claim is a valid number array, otherwise leaves it undefined.
+// `requireReverification()` (downstream) decides whether absence is
+// a problem.
+
+function makeAppExposingFva(verifier: ClerkVerifier) {
+  const app = new Hono();
+  app.use("*", requestId());
+  app.use("/v1/account/*", clerkJwt({ verifier }));
+  app.post("/v1/account/setup", (c) => {
+    const principal = c.get("clerkPrincipal");
+    return c.json({ ok: true, fva: principal.fva ?? null });
+  });
+  return app;
+}
+
+test("clerkJwt: fva claim is parsed when present and valid", async () => {
+  const verifier: ClerkVerifier = async () => ({
+    sub: "user_a",
+    org_id: "org_x",
+    org_role: "org:admin",
+    fva: [0, 5],
+  });
+  const app = makeAppExposingFva(verifier);
+  const res = await postSetup(app, { Authorization: "Bearer x" });
+  assert.equal(res.status, 200);
+  const body = (await res.json()) as { fva: number[] | null };
+  assert.deepEqual(body.fva, [0, 5]);
+});
+
+test("clerkJwt: fva claim absent → principal.fva undefined (returned as null in test response)", async () => {
+  const verifier: ClerkVerifier = async () => ({
+    sub: "user_a",
+    org_id: "org_x",
+    org_role: "org:admin",
+  });
+  const app = makeAppExposingFva(verifier);
+  const res = await postSetup(app, { Authorization: "Bearer x" });
+  assert.equal(res.status, 200);
+  const body = (await res.json()) as { fva: number[] | null };
+  assert.equal(body.fva, null, "absent claim must NOT produce a default array");
+});
+
+test("clerkJwt: fva claim is non-array → principal.fva undefined (tolerated, not 401)", async () => {
+  const verifier: ClerkVerifier = async () => ({
+    sub: "user_a",
+    org_id: "org_x",
+    org_role: "org:admin",
+    fva: "not-an-array",
+  });
+  const app = makeAppExposingFva(verifier);
+  const res = await postSetup(app, { Authorization: "Bearer x" });
+  assert.equal(res.status, 200, "malformed fva must not gate clerkJwt itself");
+  const body = (await res.json()) as { fva: number[] | null };
+  assert.equal(body.fva, null);
+});
+
+test("clerkJwt: fva array containing a non-number → undefined (defensive parse)", async () => {
+  const verifier: ClerkVerifier = async () => ({
+    sub: "user_a",
+    org_id: "org_x",
+    org_role: "org:admin",
+    fva: [0, "11"],
+  });
+  const app = makeAppExposingFva(verifier);
+  const res = await postSetup(app, { Authorization: "Bearer x" });
+  assert.equal(res.status, 200);
+  const body = (await res.json()) as { fva: number[] | null };
+  assert.equal(body.fva, null, "mixed-type array rejected; downstream gate fails STEP_UP_MISCONFIGURED");
+});
+
+test("clerkJwt: fva with -1 (factor never used) is still a valid number array", async () => {
+  const verifier: ClerkVerifier = async () => ({
+    sub: "user_a",
+    org_id: "org_x",
+    org_role: "org:admin",
+    fva: [0, -1],
+  });
+  const app = makeAppExposingFva(verifier);
+  const res = await postSetup(app, { Authorization: "Bearer x" });
+  assert.equal(res.status, 200);
+  const body = (await res.json()) as { fva: number[] | null };
+  assert.deepEqual(body.fva, [0, -1], "clerkJwt parses -1; requireReverification rejects it as stale");
+});
+
+// ─── requireReverification() ────────────────────────────────────────
+//
+// Composes after clerkJwt(). Tests cover the three failure-mode
+// branches (missing claim → 500, stale → 403 Clerk-native, fresh → next)
+// plus the misconfiguration guard.
+
+function makeAppWithStepUp(
+  verifier: ClerkVerifier,
+  options: { maxSecondFactorAgeMinutes?: number } = {},
+) {
+  const app = new Hono();
+  app.use("*", requestId());
+  app.use("/v1/account/*", clerkJwt({ verifier }));
+  app.use("/v1/account/*", requireReverification(options));
+  app.post("/v1/account/setup", (c) => c.json({ ok: true }));
+  return app;
+}
+
+test("requireReverification: missing fva claim → 500 STEP_UP_MISCONFIGURED (fail-loud, not 403)", async () => {
+  const verifier: ClerkVerifier = async () => ({
+    sub: "user_a",
+    org_id: "org_x",
+    org_role: "org:admin",
+  });
+  const app = makeAppWithStepUp(verifier);
+  const res = await postSetup(app, { Authorization: "Bearer x" });
+  assert.equal(res.status, 500);
+  const body = (await res.json()) as { error: { code: string }; clerk_error?: unknown };
+  assert.equal(body.error.code, "STEP_UP_MISCONFIGURED");
+  assert.equal(
+    body.clerk_error,
+    undefined,
+    "MUST NOT be the Clerk-native 403 body — that would loop the frontend reverify modal",
+  );
+});
+
+test("requireReverification: fva[1] within max → next() runs", async () => {
+  const verifier: ClerkVerifier = async () => ({
+    sub: "user_a",
+    org_id: "org_x",
+    org_role: "org:admin",
+    fva: [0, 5],
+  });
+  const app = makeAppWithStepUp(verifier);
+  const res = await postSetup(app, { Authorization: "Bearer x" });
+  assert.equal(res.status, 200);
+});
+
+test("requireReverification: fva[1] exactly at max boundary → pass (inclusive)", async () => {
+  const verifier: ClerkVerifier = async () => ({
+    sub: "user_a",
+    org_id: "org_x",
+    org_role: "org:admin",
+    fva: [0, 10],
+  });
+  const app = makeAppWithStepUp(verifier);
+  const res = await postSetup(app, { Authorization: "Bearer x" });
+  assert.equal(res.status, 200, "max=10 with fva[1]=10 is within window (inclusive boundary)");
+});
+
+test("requireReverification: fva[1] over max → 403 Clerk-native body shape", async () => {
+  const verifier: ClerkVerifier = async () => ({
+    sub: "user_a",
+    org_id: "org_x",
+    org_role: "org:admin",
+    fva: [0, 11],
+  });
+  const app = makeAppWithStepUp(verifier);
+  const res = await postSetup(app, { Authorization: "Bearer x" });
+  assert.equal(res.status, 403);
+  const body = (await res.json()) as {
+    clerk_error?: {
+      type: string;
+      reason: string;
+      metadata: { level: string; afterMinutes: number };
+    };
+    error?: unknown;
+  };
+  assert.ok(body.clerk_error, "Clerk-native body required so useReverification() recognises it");
+  assert.equal(body.error, undefined, "must NOT use the standard error envelope");
+  assert.equal(body.clerk_error?.type, "forbidden");
+  assert.equal(body.clerk_error?.reason, "reverification-error");
+  assert.equal(body.clerk_error?.metadata.level, "second_factor");
+  assert.equal(body.clerk_error?.metadata.afterMinutes, 10);
+});
+
+test("requireReverification: fva[1] = -1 (never verified) → 403 (treated as stale)", async () => {
+  const verifier: ClerkVerifier = async () => ({
+    sub: "user_a",
+    org_id: "org_x",
+    org_role: "org:admin",
+    fva: [0, -1],
+  });
+  const app = makeAppWithStepUp(verifier);
+  const res = await postSetup(app, { Authorization: "Bearer x" });
+  assert.equal(res.status, 403);
+  const body = (await res.json()) as { clerk_error?: { reason: string } };
+  assert.equal(body.clerk_error?.reason, "reverification-error");
+});
+
+test("requireReverification: custom maxSecondFactorAgeMinutes is honoured", async () => {
+  const verifier: ClerkVerifier = async () => ({
+    sub: "user_a",
+    org_id: "org_x",
+    org_role: "org:admin",
+    fva: [0, 3],
+  });
+  // Tighten max to 2 — fva[1]=3 must now fail
+  const tight = makeAppWithStepUp(verifier, { maxSecondFactorAgeMinutes: 2 });
+  const tightRes = await postSetup(tight, { Authorization: "Bearer x" });
+  assert.equal(tightRes.status, 403);
+  // With default 10, the same token passes
+  const loose = makeAppWithStepUp(verifier);
+  const looseRes = await postSetup(loose, { Authorization: "Bearer x" });
+  assert.equal(looseRes.status, 200);
+});
+
+test("requireReverification: fva[1] is non-number (e.g., due to corrupted token) → 403 Clerk-native body", async () => {
+  // Construct a verifier that passes clerkJwt's parser (all entries
+  // ARE numbers) but where the SECOND ENTRY is undefined at runtime.
+  // This is a defence-in-depth check on the bounds-typeof guard.
+  const verifier: ClerkVerifier = async () => ({
+    sub: "user_a",
+    org_id: "org_x",
+    org_role: "org:admin",
+    fva: [0], // single-element array; fva[1] === undefined
+  });
+  const app = makeAppWithStepUp(verifier);
+  const res = await postSetup(app, { Authorization: "Bearer x" });
+  assert.equal(res.status, 403, "missing index-1 element falls through to the stale path");
+  const body = (await res.json()) as { clerk_error?: { reason: string } };
+  assert.equal(body.clerk_error?.reason, "reverification-error");
+});
+
+test("requireReverification: principal missing (mounted without clerkJwt) → 500 INTERNAL_ERROR", async () => {
+  const app = new Hono();
+  app.use("*", requestId());
+  app.use("/v1/account/*", requireReverification());
   app.post("/v1/account/setup", (c) => c.json({ ok: true }));
   const res = await postSetup(app);
   assert.equal(res.status, 500);

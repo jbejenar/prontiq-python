@@ -205,14 +205,18 @@ async function claimQuotaEmail(
           "AND",
           "(attribute_not_exists(#pendingAt) OR #pendingAt < :reclaimBefore)",
         ].join(" "),
-        UpdateExpression: "SET #pendingAt = :claimedAt",
+        // `ADD #version :one` — see UsageCounterRecord.version. Bumps
+        // the optimistic-concurrency sentinel consumed by rotateKey.
+        UpdateExpression: "SET #pendingAt = :claimedAt ADD #version :one",
         ExpressionAttributeNames: {
           "#pendingAt": fields.pendingAt,
           "#sent": fields.sent,
+          "#version": "version",
         },
         ExpressionAttributeValues: {
           ":claimedAt": claimedAt,
           ":false": false,
+          ":one": 1,
           ":reclaimBefore": reclaimBefore,
         },
       }),
@@ -245,13 +249,16 @@ async function finalizeQuotaEmail(
         scope: task.scope,
       },
       ConditionExpression: "#pendingAt = :claimedAt",
-      UpdateExpression: "SET #sent = :true REMOVE #pendingAt",
+      // `ADD #version :one` — see UsageCounterRecord.version.
+      UpdateExpression: "SET #sent = :true REMOVE #pendingAt ADD #version :one",
       ExpressionAttributeNames: {
         "#pendingAt": fields.pendingAt,
         "#sent": fields.sent,
+        "#version": "version",
       },
       ExpressionAttributeValues: {
         ":claimedAt": claimedAt,
+        ":one": 1,
         ":true": true,
       },
     }),
@@ -273,12 +280,15 @@ async function releaseQuotaEmailClaim(
         scope: task.scope,
       },
       ConditionExpression: "#pendingAt = :claimedAt",
-      UpdateExpression: "REMOVE #pendingAt",
+      // `ADD #version :one` — see UsageCounterRecord.version.
+      UpdateExpression: "REMOVE #pendingAt ADD #version :one",
       ExpressionAttributeNames: {
         "#pendingAt": fields.pendingAt,
+        "#version": "version",
       },
       ExpressionAttributeValues: {
         ":claimedAt": claimedAt,
+        ":one": 1,
       },
     }),
   );

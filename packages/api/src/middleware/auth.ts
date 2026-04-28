@@ -472,17 +472,26 @@ async function incrementUsage(
       apiKeyHash: record.apiKeyHash,
       scope: usageScope,
     },
+    // `ADD #version :one` is the optimistic-concurrency sentinel
+    // consumed by `rotateKey`'s usage-row migration in
+    // `packages/control-plane/src/key-management.ts`. Every writer
+    // that mutates a usage row MUST bump version; without this,
+    // rotate's Delete CondExpr (which asserts `version = :rv`) would
+    // miss races where a non-requestCount field is mutated. See
+    // UsageCounterRecord.version doc comment.
     UpdateExpression:
-      "SET #lastUsedAt = :now, #ttl = if_not_exists(#ttl, :ttl), #lastPushedCumulativeCount = if_not_exists(#lastPushedCumulativeCount, :zero) ADD #requestCount :creditCost",
+      "SET #lastUsedAt = :now, #ttl = if_not_exists(#ttl, :ttl), #lastPushedCumulativeCount = if_not_exists(#lastPushedCumulativeCount, :zero) ADD #requestCount :creditCost, #version :one",
     ExpressionAttributeNames: {
       "#lastPushedCumulativeCount": "lastPushedCumulativeCount",
       "#lastUsedAt": "lastUsedAt",
       "#requestCount": "requestCount",
       "#ttl": "ttl",
+      "#version": "version",
     },
     ExpressionAttributeValues: {
       ":creditCost": creditCost,
       ":now": now.toISOString(),
+      ":one": 1,
       ":ttl": getUsageTtl(now),
       ":zero": 0,
       ...(hardCapped && limit != null

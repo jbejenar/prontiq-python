@@ -518,13 +518,20 @@ async function closePriorPeriodRows(
               scope: `${product}#period#${previousPeriodKey}`,
             },
             ConditionExpression: "attribute_exists(apiKeyHash) AND attribute_exists(#scope)",
-            UpdateExpression: "SET #closed = :true",
+            // `ADD #version :one` — see UsageCounterRecord.version.
+            // Without this bump, a rotate racing with a plan transition
+            // could migrate a row whose `closed` flag was just set,
+            // resulting in a NEW partition that's marked open and gets
+            // re-processed on next forwarder cycle.
+            UpdateExpression: "SET #closed = :true ADD #version :one",
             ExpressionAttributeNames: {
               "#closed": "closed",
               "#scope": "scope",
+              "#version": "version",
             },
             ExpressionAttributeValues: {
               ":true": true,
+              ":one": 1,
             },
           }),
         );
