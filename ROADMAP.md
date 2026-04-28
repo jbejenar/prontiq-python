@@ -4552,17 +4552,27 @@ itself — not in customer reports.
 P1C.03's chore PR (`#176`) wired three smokes (`smoke:account-setup`,
 `smoke:keys`, `smoke:keys-stepup`) into a post-deploy `smoke-dev` /
 `smoke-prod` GHA job that resolves `PRONTIQ_API` from each deploy job's
-SST output. That covers the new private account surface but leaves three
+SST output. That covers the new private account surface but leaves four
 gaps:
 
 1. `smoke-test.ts` (address API health smoke) is operator-runnable only;
    it should run on every deploy alongside the keys smokes since the
    address API is the platform's public hot path.
-2. `smoke-dev` is informational. A red ✗ on a merged PR is a notification,
+2. **`smoke-prod` was removed entirely** in `chore/drop-clerk-authed-smoke-prod`
+   after the first prod run failed: the Clerk-authed smokes mint a JWT for
+   the prod test user, and prod Clerk hardens against
+   `clerk.sessions.createSession` (the smoke's fallback when no active
+   session exists). Until prod has an authentication path the smoke can
+   actually exercise, prod is unsmoked. The replacement is the address-API
+   `smoke-test.ts` which uses an `X-Api-Key` header and bypasses Clerk
+   entirely — but it requires a labelled `pq_live_*` smoke key that
+   currently does NOT exist in prod (the prior labelled keys
+   `pq_live_4a85` and `pq_live_03f7` were retired during P1B.21).
+3. `smoke-dev` is informational. A red ✗ on a merged PR is a notification,
    not a gate. Once the smoke job has been stable for ~1 week post-merge,
    it should be a *required* status check on `main` so deploys cannot
    land green-but-unverified.
-3. The smoke-pattern boundary needs to be explicit: which smokes belong
+4. The smoke-pattern boundary needs to be explicit: which smokes belong
    in CI (non-mutating, every-deploy) and which stay runbook-only
    (mutating, one-off cert — e.g. `lago:smoke:event`). Without that
    classification documented, the next operator extending the pattern
@@ -4578,9 +4588,15 @@ gaps:
     a 200 from `/v1/address/autocomplete`
   - `Evidence:` workflow run id with smoke step duration and HTTP
     status logged
+- [ ] Labelled prod smoke `pq_live_*` API key is provisioned and stored
+      as a prod GitHub Environment secret (`PRONTIQ_KEY`)
+  - `Verify:` `pq_live_<prefix>` exists in `prontiq-keys` with a labelled
+    test org owner; `secrets.PRONTIQ_KEY` is set on the prod environment
+  - `Evidence:` key prefix recorded in roadmap; raw key never recorded
 - [ ] Address-API smoke runs on every prod deploy
   - `Verify:` `gh run view <run>` for a `Deploy to Production` dispatch
-    shows `smoke-prod` invoking the same script
+    shows `smoke-prod` invoking `pnpm --filter @prontiq/api smoke` and
+    asserting 200 from `/v1/address/autocomplete`
   - `Evidence:` workflow run id with smoke step duration and HTTP
     status logged
 - [ ] `smoke-dev` is a required status check on `main`
