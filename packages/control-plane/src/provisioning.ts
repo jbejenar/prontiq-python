@@ -426,6 +426,7 @@ function buildProvisioningTransactWrite(
     apiKeyHash: getOrgEnvelopeKey(input.orgId),
     completedAt,
     hasFirstKey: false,
+    activeKeyCount: 0,
     orgId: input.orgId,
     ownerEmail: input.ownerEmail,
     paymentOverdue: false,

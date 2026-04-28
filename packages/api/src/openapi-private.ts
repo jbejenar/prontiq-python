@@ -1,5 +1,6 @@
 import { OpenAPIHono } from "@hono/zod-openapi";
 import { accountRoutes } from "./routes/account.js";
+import { keysRoutes } from "./routes/keys.js";
 
 /**
  * Private documentation OpenAPI app.
@@ -20,5 +21,6 @@ app.doc31("/openapi.json", {
 });
 
 app.route("/v1/account", accountRoutes);
+app.route("/v1/account", keysRoutes);
 
 export default app;

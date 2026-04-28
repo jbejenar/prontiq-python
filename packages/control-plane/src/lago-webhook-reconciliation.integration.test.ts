@@ -178,6 +178,7 @@ async function seedCustomer(): Promise<void> {
   const key: ApiKeyRecord = {
     active: true,
     apiKeyHash: API_KEY_HASH,
+    keyId: "key_01TESTKEYIDLAGOWEBHOOK00001",
     createdAt: now,
     customerId: CUSTOMER_ID,
     keyPrefix: "pq_test_lago",

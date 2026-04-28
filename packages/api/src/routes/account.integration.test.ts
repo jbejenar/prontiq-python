@@ -35,7 +35,7 @@ import {
   type EmailSender,
   type LagoProvisioningClient,
 } from "@prontiq/control-plane";
-import { clerkAdminOnly, clerkJwt, type ClerkVerifier } from "../middleware/clerk-jwt.js";
+import { clerkJwt, type ClerkVerifier } from "../middleware/clerk-jwt.js";
 import { requestId } from "../middleware/request-id.js";
 import { createAccountRoutes } from "./account.js";
 
@@ -237,12 +237,13 @@ function buildApp(opts: BuildAppOpts) {
       500,
     );
   });
-  // Production stack mounts BOTH clerkJwt and clerkAdminOnly on
-  // /v1/account/* (see account-handler.ts). The integration test
-  // mirrors that exactly so the admin-role gate is exercised end-to-
-  // end alongside the JWT verification.
+  // Production stack mounts ONLY clerkJwt() Lambda-wide; the admin
+  // gate moved into the route factories (see account-handler.ts and
+  // routes/account.ts). The integration test mirrors that exactly so
+  // that the per-route `accountRoutes.use("/setup", clerkAdminOnly())`
+  // inside the factory is what gets exercised — not a duplicate gate
+  // bolted on here.
   app.use("/v1/account/*", clerkJwt({ verifier }));
-  app.use("/v1/account/*", clerkAdminOnly());
   app.route("/v1/account", accountRoutes);
   return app;
 }
@@ -276,6 +277,11 @@ test("DoD scenario (a): fresh org → 201 created + envelope + audit row", async
   assert.equal(envelope.Item?.tier, "free");
   assert.equal(envelope.Item?.ownerEmail, "owner@example.com");
   assert.equal(envelope.Item?.hasFirstKey, false);
+  assert.equal(
+    envelope.Item?.activeKeyCount,
+    0,
+    "fresh envelope must initialise activeKeyCount=0 (P1C.03 — atomic counter)",
+  );
 
   const auditRows = await ddb.send(
     new QueryCommand({

@@ -4,8 +4,9 @@ import { createMiddleware } from "hono/factory";
 import { SERVICE_NAMES, wrapLambdaHandler } from "@prontiq/observability";
 import { createLogger } from "@prontiq/shared";
 import { requestId } from "./middleware/request-id.js";
-import { clerkAdminOnly, clerkJwt } from "./middleware/clerk-jwt.js";
+import { clerkJwt } from "./middleware/clerk-jwt.js";
 import { accountRoutes } from "./routes/account.js";
+import { keysRoutes } from "./routes/keys.js";
 
 /**
  * `PqAccount` Lambda entry point — serves Clerk-JWT-authenticated
@@ -75,20 +76,21 @@ app.onError((err, c) => {
   );
 });
 
-// Two-layer ingress contract for /v1/account/*:
-//   1. clerkJwt()        — verify the session token, populate principal
-//                          (sub, org_id, org_role) on the context.
-//   2. clerkAdminOnly()  — gate on org_role ∈ getAdminRoles(). Mirrors
-//                          the Clerk webhook's role gate so a non-admin
-//                          can't race a delayed webhook and become the
-//                          recorded ownerEmail / Lago customer.
+// Lambda-wide ingress: identity only (`clerkJwt()` populates the
+// principal — sub, org_id, org_role). Authorization is per-route:
+// each route factory applies `clerkAdminOnly()` to the routes it owns
+// that require admin. P1C.03 introduces the member-allowed `/keys`
+// (list) route under the same `/v1/account` prefix, so the previous
+// Lambda-wide `clerkAdminOnly()` was removed and pushed into the
+// factories.
 //
-// Order matters: clerkAdminOnly() reads c.get("clerkPrincipal") which is
-// populated by clerkJwt(). Default-secure-by-construction — every route
-// added under /v1/account/* inherits both checks without per-route opt-in.
+// Contract for any new route added under this prefix: the factory
+// declares its own `accountOrKeysRoutes.use("/<path>", clerkAdminOnly())`
+// inside the factory (not bolted on outside) so the default-instance
+// export at the factory bottom stays default-secure for that route.
 app.use("/v1/account/*", clerkJwt());
-app.use("/v1/account/*", clerkAdminOnly());
 app.route("/v1/account", accountRoutes);
+app.route("/v1/account", keysRoutes);
 
 app.notFound((c) => {
   return c.json(

@@ -88,6 +88,12 @@ export interface ApiKeySubscriptionItems {
 
 export interface ApiKeyRecord {
   apiKeyHash: string;
+  /**
+   * Stable opaque identifier (`key_<ulid>`) that survives rotation.
+   * Required as of P1C.03 — backfill populates pre-existing rows.
+   * `apiKeyHash` and `keyPrefix` change on rotate; `keyId` does not.
+   */
+  keyId: string;
   customerId?: string;
   keyPrefix: string;
   ownerEmail: string;
@@ -114,6 +120,10 @@ export interface ApiKeyRecord {
   lagoPaymentOverdueInvoiceId?: string | null;
   createdAt: string;
   lastUsedAt: string | null;
+  /** User-supplied display label, set at creation time. */
+  label?: string;
+  /** Clerk userId of the actor that created this key. */
+  createdByActorId?: string;
 }
 
 export interface UsageCounterRecord {
@@ -187,6 +197,15 @@ export interface OrgEnvelopeRecord {
   lagoPaymentOverdueInvoiceId?: string | null;
   hasFirstKey: boolean;
   completedAt: string;
+  /**
+   * Atomic count of `active === true` keys for this org. Maintained by
+   * `/v1/account/keys/{create,revoke}` via TransactWriteItems with
+   * `attribute_not_exists OR < :max` precondition for race-free
+   * maxKeys enforcement. Treat absent as 0 on read; never decrement
+   * below 0. Backfill populated this on every existing envelope in
+   * P1C.03 PR 0.
+   */
+  activeKeyCount?: number;
 }
 
 export type CustomerStatus = "active" | "archived" | "migration_conflict";
@@ -221,6 +240,10 @@ export interface AuditRecord {
    */
   apiKeyHash?: string;
   metadata?: Record<string, unknown>;
+  /** Caller IP (X-Forwarded-For first hop) for key-management events. */
+  ip?: string;
+  /** Caller User-Agent for key-management events. */
+  userAgent?: string;
   ttl: number;
 }
 

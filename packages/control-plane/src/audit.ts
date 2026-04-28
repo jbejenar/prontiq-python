@@ -50,6 +50,14 @@ export interface BuildAuditInput {
    * reflects logical events, not delivery attempts.
    */
   eventId?: string;
+  /**
+   * Caller IP (first hop from the X-Forwarded-For header). Captured by
+   * key-management routes for forensic value; absent on org-scoped
+   * server-side events (e.g. ORG_PROVISIONED from the Clerk webhook).
+   */
+  ip?: string;
+  /** Caller User-Agent header. Same scoping as `ip`. */
+  userAgent?: string;
 }
 
 export interface WriteAuditInput extends BuildAuditInput {
@@ -89,6 +97,12 @@ export function buildAuditTransactItem(input: BuildAuditInput): TransactItem {
   }
   if (input.metadata !== undefined) {
     item.metadata = input.metadata;
+  }
+  if (input.ip !== undefined) {
+    item.ip = input.ip;
+  }
+  if (input.userAgent !== undefined) {
+    item.userAgent = input.userAgent;
   }
 
   return {

@@ -15,6 +15,15 @@ export type {
   CommercialIdentityRepairStats,
 } from "./commercial-identity-repair.js";
 
+export { createKeyManagementService, getOrgEnvelopeKey } from "./key-management.js";
+export type {
+  CreateKeyInput,
+  CreateKeyResult,
+  KeyManagementDependencies,
+  KeyManagementService,
+  ListedKey,
+} from "./key-management.js";
+
 export { buildAuditTransactItem, writeAudit, getAuditTtlSeconds } from "./audit.js";
 export type { AuditAction, BuildAuditInput, WriteAuditInput, WriteAuditResult } from "./audit.js";
 

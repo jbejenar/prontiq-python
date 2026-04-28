@@ -117,3 +117,93 @@ test("isLegacySeedKey detects the internal production seed key prefix", () => {
   assert.equal(isLegacySeedKey("pq_live_prod_000000000000000000000000"), true);
   assert.equal(isLegacySeedKey("pq_live_customer_123"), false);
 });
+
+test("buildMigrationPlan rerun: BOTH keyId AND createdAt must be preserved for legacy records lacking createdAt", () => {
+  // Legacy record WITHOUT its own createdAt — the case where
+  // buildMigrationPlan defaults to `migratedAt` (nowIso() on each
+  // call). This is the path the bot caught: preserving keyId alone
+  // isn't enough; createdAt also drifts on rerun.
+  const legacy: LegacyApiKeyRecord = {
+    apiKey: "pq_live_no_createdAt_rerun_check_0000",
+    tier: "free",
+    products: ["address"],
+  };
+
+  // First run at T1 — row gets keyId=ulid_A and createdAt=T1.
+  const t1 = "2026-04-01T00:00:00.000Z";
+  const plan1 = buildMigrationPlan(legacy, t1);
+  assert.equal(plan1.keyRecord.createdAt, t1);
+  assert.match(plan1.keyRecord.keyId, /^key_[0-9A-Z]{26}$/);
+
+  // Second run at T2 with NEITHER existing field preserved — the
+  // pre-fix-v1 behavior. Both keyId and createdAt drift; the rerun
+  // is mis-classified as a conflict.
+  const t2 = "2026-04-28T00:00:00.000Z";
+  const broken = buildMigrationPlan(legacy, t2);
+  assert.notEqual(
+    broken.keyRecord.createdAt,
+    plan1.keyRecord.createdAt,
+    "without preservation, rerun's createdAt drifts to the new clock — this is the bot-flagged bug",
+  );
+  assert.equal(
+    recordsSemanticallyMatch(broken.keyRecord, plan1.keyRecord),
+    false,
+    "without preservation, rerun records would be mis-classified as conflicts",
+  );
+
+  // Second run at T2 with ONLY keyId preserved (the fix-v1 state) —
+  // the rerun still mis-classifies because createdAt drifts.
+  const partialFix = buildMigrationPlan(legacy, t2, plan1.keyRecord.keyId);
+  assert.equal(
+    recordsSemanticallyMatch(partialFix.keyRecord, plan1.keyRecord),
+    false,
+    "preserving keyId alone is not enough — createdAt also drifts on rerun",
+  );
+
+  // Second run at T2 with BOTH keyId AND createdAt preserved —
+  // the holistic fix. migrateRecord passes existing.createdAt as
+  // migratedAt so the legacy-fallback path resolves to the prior
+  // value instead of nowIso().
+  const fullFix = buildMigrationPlan(
+    legacy,
+    plan1.keyRecord.createdAt,
+    plan1.keyRecord.keyId,
+  );
+  assert.equal(fullFix.keyRecord.createdAt, plan1.keyRecord.createdAt);
+  assert.equal(fullFix.keyRecord.keyId, plan1.keyRecord.keyId);
+  assert.equal(
+    recordsSemanticallyMatch(fullFix.keyRecord, plan1.keyRecord),
+    true,
+    "with BOTH fields preserved, rerun is correctly classified as a skip",
+  );
+
+  // Sanity: real entitlement drift (tier change) with both fields
+  // preserved must still surface as a non-match — the fix doesn't
+  // mask genuine conflicts.
+  const drifted = buildMigrationPlan(
+    { ...legacy, tier: "starter" },
+    plan1.keyRecord.createdAt,
+    plan1.keyRecord.keyId,
+  );
+  assert.equal(
+    recordsSemanticallyMatch(drifted.keyRecord, plan1.keyRecord),
+    false,
+    "genuine entitlement drift must still surface as a conflict",
+  );
+});
+
+test("buildMigrationPlan with legacy.createdAt present: preserved verbatim regardless of clock", () => {
+  // Sanity: when the legacy row carries its own createdAt, both runs
+  // use it verbatim (no clock dependence). This path was never bugged
+  // but pinning it here documents the precedence rule.
+  const legacy: LegacyApiKeyRecord = {
+    apiKey: "pq_live_with_createdAt_legacy_0000",
+    tier: "free",
+    products: ["address"],
+    createdAt: "2026-01-15T08:30:00.000Z",
+  };
+  const plan1 = buildMigrationPlan(legacy, "2026-04-01T00:00:00.000Z");
+  const plan2 = buildMigrationPlan(legacy, "2026-04-28T00:00:00.000Z");
+  assert.equal(plan1.keyRecord.createdAt, "2026-01-15T08:30:00.000Z");
+  assert.equal(plan2.keyRecord.createdAt, "2026-01-15T08:30:00.000Z");
+});

@@ -19,6 +19,7 @@ function makeKey(overrides: Partial<ApiKeyRecord> = {}): ApiKeyRecord {
   return {
     active: true,
     apiKeyHash: "hash_0123456789abcdef0123456789abcdef",
+    keyId: "key_01TESTKEYIDLAGOSMOKE0000001",
     createdAt: "2026-04-26T00:00:00.000Z",
     keyPrefix: "pq_live_abcdef",
     lastUsedAt: null,

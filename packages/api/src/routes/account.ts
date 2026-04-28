@@ -8,6 +8,7 @@ import {
   type ProvisioningResult,
 } from "@prontiq/control-plane";
 import { createLogger } from "@prontiq/shared";
+import { clerkAdminOnly } from "../middleware/clerk-jwt.js";
 
 const accountSetupSuccessSchema = z.object({
   status: z.enum(["created", "already_exists"]),
@@ -89,6 +90,13 @@ export function createAccountRoutes(overrides: AccountRouteOverrides = {}) {
     description:
       "Clerk session token. Frontend obtains via `getToken()` then sends as `Authorization: Bearer <jwt>`.",
   });
+
+  // Per-route admin gate: applied inside the factory so every consumer
+  // (production handler + integration test harness) gets the gate
+  // without an external `app.use()` line that's easy to forget. The
+  // Lambda-wide `clerkAdminOnly()` was removed in P1C.03 PR 1 once the
+  // member-allowed `/keys` (list) route landed under the same prefix.
+  accountRoutes.use("/setup", clerkAdminOnly());
 
   const setupRoute = createRoute({
     method: "post",

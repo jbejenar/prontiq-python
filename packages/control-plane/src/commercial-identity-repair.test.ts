@@ -42,6 +42,7 @@ function makeApiKey(input: {
   return {
     active: true,
     apiKeyHash: input.apiKeyHash,
+    keyId: "key_01TESTKEYIDREPAIR0000000001",
     createdAt: "2026-04-27T00:00:00.000Z",
     keyPrefix: "pq_test",
     lagoSubscriptionExternalId: input.lagoSubscriptionExternalId,

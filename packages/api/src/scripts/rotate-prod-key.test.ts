@@ -8,6 +8,7 @@ test("buildRotationPlan clones entitlements and usage onto a fresh key", () => {
   const source = {
     keyRecord: {
       apiKeyHash: hashKey("pq_live_prod_000000000000000000000000"),
+      keyId: "key_01TESTKEYIDXXXXXXXXXXXXXX",
       keyPrefix: "pq_live_prod",
       ownerEmail: "owner@example.com",
       orgId: "org_prod",

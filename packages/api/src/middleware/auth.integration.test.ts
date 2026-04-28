@@ -51,6 +51,7 @@ app.get("/v1/abn/ping", (c) => c.json({ ok: true }));
 function makeKeyRecord(overrides: Partial<ApiKeyRecord> = {}): ApiKeyRecord {
   return {
     apiKeyHash: "hash",
+    keyId: "key_01TESTKEYIDAUTHHARNESS0001",
     keyPrefix: "pq_test_hash",
     ownerEmail: "owner@example.com",
     orgId: "org_123",

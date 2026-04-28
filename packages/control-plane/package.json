@@ -29,6 +29,10 @@
     "./commercial-identity-repair": {
       "import": "./dist/commercial-identity-repair.js",
       "types": "./dist/commercial-identity-repair.d.ts"
+    },
+    "./key-management": {
+      "import": "./dist/key-management.js",
+      "types": "./dist/key-management.d.ts"
     }
   },
   "scripts": {

@@ -12,6 +12,9 @@ import {
 } from "@aws-sdk/lib-dynamodb";
 import { PLANS, type ApiKeyRecord, type RedirectRecord, type Tier, type UsageCounterRecord } from "@prontiq/shared";
 import { hashKey } from "@prontiq/shared";
+import { monotonicFactory } from "ulid";
+
+const ulid = monotonicFactory();
 
 type LegacyUsageByMonth = Record<string, number>;
 type LegacyUsageByProduct = Record<string, LegacyUsageByMonth>;
@@ -122,6 +125,14 @@ export function recordsSemanticallyMatch<T>(planned: T, existing: T): boolean {
 export function buildMigrationPlan(
   legacyRecord: LegacyApiKeyRecord,
   migratedAt: string = nowIso(),
+  /**
+   * If the migration has already run for this legacy key, pass the
+   * existing row's `keyId` here so the plan reuses the prior identity.
+   * Otherwise a rerun generates a fresh ULID and `recordsSemanticallyMatch`
+   * sees the keyId differ — classifying an idempotent skip as a conflict.
+   * `keyId` is identity, not state; once assigned, it is preserved.
+   */
+  existingKeyId?: string,
 ): MigrationPlan {
   const tier = normalizeTier(legacyRecord.tier);
   const plan = PLANS[tier];
@@ -144,6 +155,7 @@ export function buildMigrationPlan(
   return {
     keyRecord: {
       apiKeyHash,
+      keyId: existingKeyId ?? `key_${ulid()}`,
       keyPrefix: deriveKeyPrefix(legacyRecord.apiKey),
       ownerEmail: legacyRecord.ownerEmail ?? DEFAULT_OWNER_EMAIL,
       orgId: legacyRecord.orgId ?? DEFAULT_ORG_ID,
@@ -223,7 +235,38 @@ async function migrateRecord(
   client: DynamoDBDocumentClient,
   legacyRecord: LegacyApiKeyRecord,
 ): Promise<MigrationOutcome> {
-  const migrationPlan = buildMigrationPlan(legacyRecord);
+  // Look up the existing row (if any) FIRST so a rerun reuses every
+  // migration-time-generated field. Two such fields exist in the key
+  // record:
+  //   - `keyId`    — generated as a fresh ULID on first run.
+  //   - `createdAt` when `legacyRecord.createdAt` is absent — defaults
+  //     to `nowIso()` on first run.
+  // Both must be preserved across reruns; otherwise
+  // `recordsSemanticallyMatch` sees them differ and an otherwise-
+  // identical row is mis-classified as a conflict. (The first fix
+  // covered `keyId` only — the bot review in PR #172 caught the
+  // remaining `createdAt` path.)
+  const apiKeyHash = hashKey(legacyRecord.apiKey);
+  const existing = await client.send(
+    new GetCommand({ TableName: KEYS_TABLE_NAME, Key: { apiKeyHash } }),
+  );
+  const existingItem = existing.Item as
+    | { keyId?: string; createdAt?: string }
+    | undefined;
+  const existingKeyId = existingItem?.keyId;
+  const existingCreatedAt = existingItem?.createdAt;
+  // Resolved migratedAt precedence:
+  //   1. legacyRecord.createdAt (if the legacy row carries its own time)
+  //   2. existingCreatedAt      (preserve prior assignment on rerun)
+  //   3. nowIso()                (genuine first run for a record that
+  //                                lacks its own createdAt)
+  const resolvedMigratedAt =
+    legacyRecord.createdAt ?? existingCreatedAt ?? nowIso();
+  const migrationPlan = buildMigrationPlan(
+    legacyRecord,
+    resolvedMigratedAt,
+    existingKeyId,
+  );
   let wroteAnyRecord = false;
   const conflictKeys: string[] = [];
 
