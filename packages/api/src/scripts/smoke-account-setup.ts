@@ -172,20 +172,29 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
 //
 // New rules:
 //   1. Filter to sessions where `lastActiveOrganizationId` is set.
-//   2. If `CLERK_TEST_ORG_ID` is set: filter further to that org. Must
-//      match exactly one session — otherwise fail with the candidate
-//      list and instruct the operator to pin via CLERK_TEST_SESSION_ID.
-//   3. If not set: must be exactly one session with org context;
-//      otherwise fail with instructions (pass CLERK_TEST_ORG_ID, OR
-//      sign in fresh via dashboard impersonation).
+//   2. If `CLERK_TEST_ORG_ID` is set: filter to that org. If 1 match
+//      use it; if >1 (same-org accumulation from prior smoke runs)
+//      pick the freshest by lastActiveAt; if 0, create a session.
+//   3. If not set: 1 session → use it; >1 in the SAME org → freshest;
+//      >1 across DIFFERENT orgs → require CLERK_TEST_ORG_ID.
 //   4. CLERK_TEST_SESSION_ID short-circuits resolution (operator picks).
-//   5. Always print the chosen session_id + its org context so reruns
-//      are deterministic.
+//   5. Always print the chosen session_id + origin so reruns are
+//      deterministic and the disambiguation path is audible.
+//
+// NOTE: this resolver duplicates the one in smoke-clerk.ts. The
+// migration to import from smoke-clerk is tracked as a follow-up
+// (originally noted in PR173 commit 1c55a8a). Keep both copies in
+// lock-step until then — same fix, same edge cases, same messages.
 // ───────────────────────────────────────────────────────────────────
 
 interface ResolvedSession {
   session: Session;
-  origin: "pinned_by_session_id" | "matched_target_org" | "single_active" | "created_fresh";
+  origin:
+    | "pinned_by_session_id"
+    | "matched_target_org"
+    | "single_active"
+    | "freshest_in_org"
+    | "created_fresh";
 }
 
 interface ResolvedSmokeUser {
@@ -261,12 +270,8 @@ async function resolveSession(
     return { session, origin: "pinned_by_session_id" };
   }
 
-  const list = await withTimeout(
-    clerk.sessions.getSessionList({ userId, status: "active" }),
-    timeoutMs,
-    "clerk.sessions.getSessionList",
-  );
-  const withOrg = list.data.filter(
+  const allActive = await listAllActiveSessions(clerk, userId, timeoutMs);
+  const withOrg = allActive.filter(
     (s) => typeof s.lastActiveOrganizationId === "string" && s.lastActiveOrganizationId.length > 0,
   );
 
@@ -278,12 +283,11 @@ async function resolveSession(
       return { session, origin: "matched_target_org" };
     }
     if (matching.length > 1) {
-      const candidates = matching
-        .map((s) => `  - ${s.id} (lastActiveAt=${s.lastActiveAt ?? "null"})`)
-        .join("\n");
-      throw new SessionResolutionError(
-        `${matching.length} active sessions match CLERK_TEST_ORG_ID=${targetOrgId}. Pin one via CLERK_TEST_SESSION_ID:\n${candidates}`,
-      );
+      // Multiple sessions in the SAME org is not real ambiguity — it
+      // accumulates from prior smoke runs that called tryCreateSession
+      // and never revoked. Auto-pick the freshest by lastActiveAt;
+      // operator can still override via CLERK_TEST_SESSION_ID.
+      return { session: pickFreshestSession(matching), origin: "freshest_in_org" };
     }
     // No matching session — try to create one (dev tenants only)
     return await tryCreateSession(clerk, userId, targetOrgId, timeoutMs);
@@ -295,6 +299,12 @@ async function resolveSession(
     return { session, origin: "single_active" };
   }
   if (withOrg.length > 1) {
+    const distinctOrgs = new Set(withOrg.map((s) => s.lastActiveOrganizationId));
+    if (distinctOrgs.size === 1) {
+      // All sessions in the same org — same-org accumulation, not real
+      // ambiguity. Pick freshest.
+      return { session: pickFreshestSession(withOrg), origin: "freshest_in_org" };
+    }
     const candidates = withOrg
       .map(
         (s) =>
@@ -302,11 +312,69 @@ async function resolveSession(
       )
       .join("\n");
     throw new SessionResolutionError(
-      `User has ${withOrg.length} active sessions across multiple orgs. Set CLERK_TEST_ORG_ID to disambiguate:\n${candidates}`,
+      `User has ${withOrg.length} active sessions across ${distinctOrgs.size} distinct orgs. Set CLERK_TEST_ORG_ID to disambiguate:\n${candidates}`,
     );
   }
   // Zero sessions with an org context — try to create one
   return await tryCreateSession(clerk, userId, null, timeoutMs);
+}
+
+// Fully paginate clerk.sessions.getSessionList. The SDK defaults to a
+// page size of 10; without explicit pagination, a user with >10 active
+// sessions can have an entire org's worth of sessions invisible to
+// the resolver — making same-org auto-disambiguation pick the wrong
+// JWT silently. Loops until totalCount is reached, with an upper
+// bound to fail loud rather than spin forever on a malformed response
+// or a wildly compromised account.
+async function listAllActiveSessions(
+  clerk: ReturnType<typeof createClerkClient>,
+  userId: string,
+  timeoutMs: number,
+): Promise<Session[]> {
+  const PAGE_SIZE = 100;
+  const HARD_CAP = 10_000;
+  const all: Session[] = [];
+  let offset = 0;
+  while (true) {
+    const page = await withTimeout(
+      clerk.sessions.getSessionList({
+        userId,
+        status: "active",
+        limit: PAGE_SIZE,
+        offset,
+      }),
+      timeoutMs,
+      `clerk.sessions.getSessionList(offset=${offset})`,
+    );
+    all.push(...page.data);
+    if (page.data.length < PAGE_SIZE) break;
+    if (all.length >= page.totalCount) break;
+    if (all.length >= HARD_CAP) {
+      throw new SessionResolutionError(
+        `Active session count for user ${userId} exceeded ${HARD_CAP}. Either a Clerk pagination bug or a compromised account — investigate before re-running smoke.`,
+      );
+    }
+    offset += page.data.length;
+  }
+  return all;
+}
+
+// Returns the session with the highest lastActiveAt. Tie-break: the
+// id that sorts first lexicographically (deterministic). Sessions with
+// null/undefined lastActiveAt are treated as 0.
+function pickFreshestSession(sessions: Session[]): Session {
+  if (sessions.length === 0) {
+    throw new SessionResolutionError("Internal: pickFreshestSession called with empty list");
+  }
+  const sorted = [...sessions].sort((a, b) => {
+    const aAt = typeof a.lastActiveAt === "number" ? a.lastActiveAt : 0;
+    const bAt = typeof b.lastActiveAt === "number" ? b.lastActiveAt : 0;
+    if (aAt !== bAt) return bAt - aAt;
+    return a.id.localeCompare(b.id);
+  });
+  const first = sorted[0];
+  if (!first) throw new SessionResolutionError("Internal: sort produced empty list");
+  return first;
 }
 
 async function tryCreateSession(
