@@ -120,6 +120,14 @@ jobs:
     permissions:
       id-token: write
       contents: read
+    # `api_url` is the deployed API Gateway URL extracted from
+    # `.sst/outputs.json` after `pnpm deploy:dev` completes. The
+    # smoke-dev job consumes this so smoke ALWAYS targets the URL
+    # this run just deployed — no hardcoded host that can drift
+    # when (e.g.) a custom domain is later added or the API stack
+    # is rebuilt with a new gateway id.
+    outputs:
+      api_url: ${{ steps.api-url.outputs.api_url }}
     # Serialize deploy-dev runs at the GHA layer so two concurrent
     # pushes can't race the unlock-then-deploy sequence below.
     # cancel-in-progress: false → second push QUEUES, never cancels
@@ -320,6 +328,31 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
+      # Extract the deployed API URL from SST outputs and expose it
+      # as a job output for downstream smoke. Fails the run if the
+      # output is missing or unparseable — better to fail at deploy
+      # than have smoke-dev test a hostname that doesn't exist.
+      - name: Extract deployed API URL
+        id: api-url
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! -f .sst/outputs.json ]]; then
+            echo "::error::.sst/outputs.json missing after deploy — cannot pass api URL to smoke."
+            exit 1
+          fi
+          API_URL=$(jq -r '.api // empty' .sst/outputs.json)
+          if [[ -z "$API_URL" ]]; then
+            echo "::error::SST output 'api' is missing or empty in .sst/outputs.json."
+            cat .sst/outputs.json
+            exit 1
+          fi
+          # Strip any trailing slash so smoke scripts can do
+          # `${PRONTIQ_API}/v1/...` without producing a double-slash.
+          API_URL="${API_URL%/}"
+          echo "api_url=$API_URL" >> "$GITHUB_OUTPUT"
+          echo "Resolved deployed API URL: $API_URL"
+
       # Build and push Fargate image AFTER deploy so ECR repo exists
       - name: Login to Amazon ECR
         uses: aws-actions/amazon-ecr-login@v2
@@ -330,3 +363,57 @@ jobs:
           docker build --platform linux/amd64 -t "$ECR_REPO:${{ github.sha }}" -t "$ECR_REPO:latest" -f packages/ingestion/Dockerfile .
           docker push "$ECR_REPO:${{ github.sha }}"
           docker push "$ECR_REPO:latest"
+
+  # Post-deploy smoke against the live dev API. Runs after deploy-dev
+  # completes so smoke failures surface as a red CI check on the merge
+  # commit (no auto-rollback — SST has already deployed; the signal is
+  # the failed run).
+  #
+  # PRONTIQ_API is the URL deploy-dev exposed as a job output, sourced
+  # from .sst/outputs.json#api on the deploy runner. This means smoke
+  # always targets exactly what was deployed; if the dev stack later
+  # gets a custom domain (or the API Gateway is recreated), smoke
+  # follows automatically without workflow edits.
+  #
+  # CLERK_TEST_USER_ID lives in the dev GitHub Environment as a
+  # Variable. Selecting `environment: dev` here resolves it to the
+  # dev tenant's test user; the prod equivalent (smoke-prod in
+  # deploy-prod.yml) resolves to the prod tenant's user.
+  smoke-dev:
+    needs: deploy-dev
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment: dev
+    env:
+      PRONTIQ_API: ${{ needs.deploy-dev.outputs.api_url }}
+      CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
+      CLERK_TEST_USER_ID: ${{ vars.CLERK_TEST_USER_ID }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: ".nvmrc"
+          cache: "pnpm"
+      - name: Validate resolved API URL
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${PRONTIQ_API:-}" ]]; then
+            echo "::error::PRONTIQ_API was not propagated from deploy-dev. Check the deploy-dev outputs.api_url step."
+            exit 1
+          fi
+          # Sanity: dev URL must NOT be the prod custom domain.
+          if [[ "$PRONTIQ_API" == "https://api.prontiq.dev" ]]; then
+            echo "::error::Refusing to run dev smoke against prod URL. Resolved PRONTIQ_API=$PRONTIQ_API"
+            exit 1
+          fi
+          echo "Smoking against: $PRONTIQ_API"
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - name: Smoke — account setup
+        run: pnpm --filter @prontiq/api smoke:account-setup
+      - name: Smoke — keys list/create
+        run: pnpm --filter @prontiq/api smoke:keys
+      - name: Smoke — keys step-up gate
+        run: pnpm --filter @prontiq/api smoke:keys-stepup

@@ -15,6 +15,12 @@ jobs:
     permissions:
       id-token: write
       contents: read
+    # Mirror of deploy-dev: expose the deployed API URL as a job
+    # output so smoke-prod targets exactly what was deployed (today
+    # `https://api.prontiq.dev`; if that custom domain ever changes,
+    # smoke follows automatically).
+    outputs:
+      api_url: ${{ steps.api-url.outputs.api_url }}
     # Serialize prod deploys at the GHA layer so multiple manual
     # dispatches queue rather than race. cancel-in-progress: false
     # because losing a half-applied prod deploy is worse than queueing.
@@ -139,3 +145,70 @@ jobs:
           timeout --signal=SIGTERM --kill-after=30s 10m pnpm deploy:prod || EXIT=$?
           echo "deploy exited with code: ${EXIT:-0}"
           exit "${EXIT:-0}"
+
+      - name: Extract deployed API URL
+        id: api-url
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! -f .sst/outputs.json ]]; then
+            echo "::error::.sst/outputs.json missing after deploy — cannot pass api URL to smoke."
+            exit 1
+          fi
+          API_URL=$(jq -r '.api // empty' .sst/outputs.json)
+          if [[ -z "$API_URL" ]]; then
+            echo "::error::SST output 'api' is missing or empty in .sst/outputs.json."
+            cat .sst/outputs.json
+            exit 1
+          fi
+          API_URL="${API_URL%/}"
+          echo "api_url=$API_URL" >> "$GITHUB_OUTPUT"
+          echo "Resolved deployed API URL: $API_URL"
+
+  # Post-deploy smoke against the live prod API. Mirrors smoke-dev in
+  # ci.yml. PRONTIQ_API is the URL the deploy step exposed via job
+  # output (today `https://api.prontiq.dev`). CLERK_TEST_USER_ID
+  # resolves to the prod tenant's labelled test user via the prod
+  # GitHub Environment (P1B.21 fixture — never a real customer).
+  #
+  # The smoke scripts already accept PRONTIQ_API via env; we drop the
+  # `:prod`-suffixed variants here in favour of the env-driven path
+  # so the resolution mechanism matches dev exactly. The `:prod` npm
+  # scripts remain available for operator-run local smoke.
+  smoke-prod:
+    needs: deploy
+    runs-on: ubuntu-latest
+    environment: prod
+    env:
+      PRONTIQ_API: ${{ needs.deploy.outputs.api_url }}
+      CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
+      CLERK_TEST_USER_ID: ${{ vars.CLERK_TEST_USER_ID }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: ".nvmrc"
+          cache: "pnpm"
+      - name: Validate resolved API URL
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${PRONTIQ_API:-}" ]]; then
+            echo "::error::PRONTIQ_API was not propagated from deploy. Check the deploy job outputs.api_url step."
+            exit 1
+          fi
+          # Sanity: prod must use the prod custom domain (or fail loud
+          # if the SST output ever changes).
+          if [[ "$PRONTIQ_API" != "https://api.prontiq.dev" ]]; then
+            echo "::warning::Resolved prod PRONTIQ_API=$PRONTIQ_API is not the expected custom domain. Continuing — but verify this is intentional (e.g. domain rotation in sst.config.ts)."
+          fi
+          echo "Smoking against: $PRONTIQ_API"
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - name: Smoke — account setup
+        run: pnpm --filter @prontiq/api smoke:account-setup
+      - name: Smoke — keys list/create
+        run: pnpm --filter @prontiq/api smoke:keys
+      - name: Smoke — keys step-up gate
+        run: pnpm --filter @prontiq/api smoke:keys-stepup
