@@ -1,13 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
-import { GetCommand, QueryCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
+import { GetCommand, QueryCommand, ScanCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import type { ApiKeyRecord, OrgEnvelopeRecord } from "@prontiq/shared";
 import type { HttpLagoEntitlementsClient } from "./lago-entitlements.js";
 import { reconcileLagoEntitlements } from "./lago-reconcile.js";
 
 interface CommandLog {
-  type: "Get" | "Query" | "Update";
+  type: "Get" | "Query" | "Scan" | "Update";
   args: unknown;
 }
 
@@ -233,4 +233,48 @@ test("reconcileLagoEntitlements treats missing Lago rate limit as drift and pres
   assert.equal(input.Key?.apiKeyHash, "ORG#org_test");
   assert.equal(input.ExpressionAttributeValues[":status"], "drift");
   assert.match(String(input.ExpressionAttributeValues[":error"]), /rate_limit_per_second/);
+});
+
+test("reconcileLagoEntitlements isolates invalid legacy org ids to one envelope error", async () => {
+  const invalidEnvelope = {
+    ...makeEnvelope(),
+    apiKeyHash: "ORG#org_invalid_legacy_fixture",
+    orgId: "org_invalid_legacy_fixture",
+  };
+  delete invalidEnvelope.lagoSubscriptionExternalId;
+  const validEnvelope = makeEnvelope();
+  const validKey = makeStaleKey();
+  const log: CommandLog[] = [];
+  const client = {
+    async send(command: unknown) {
+      if (command instanceof ScanCommand) {
+        log.push({ type: "Scan", args: command.input });
+        return { Items: [invalidEnvelope, validEnvelope] };
+      }
+      if (command instanceof QueryCommand) {
+        log.push({ type: "Query", args: command.input });
+        return { Items: [validKey] };
+      }
+      if (command instanceof UpdateCommand) {
+        log.push({ type: "Update", args: command.input });
+        return {};
+      }
+      throw new Error(
+        `Unhandled command in stub: ${(command as { constructor: { name: string } }).constructor.name}`,
+      );
+    },
+  } as unknown as DynamoDBDocumentClient;
+
+  const stats = await reconcileLagoEntitlements({
+    apply: true,
+    ddb: client,
+    keysTableName: "keys",
+    lagoClient: makeLagoStub(),
+    logger: console,
+    now: () => new Date("2026-04-29T00:00:00.000Z"),
+  });
+
+  assert.deepEqual(stats, { changed: 1, drift: 0, errors: 1, projected: 0, scanned: 2 });
+  assert.equal(log.filter((entry) => entry.type === "Query").length, 1);
+  assert.equal(log.filter((entry) => entry.type === "Update").length, 2);
 });

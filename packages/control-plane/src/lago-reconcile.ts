@@ -372,9 +372,9 @@ async function reconcileEnvelope(
   envelope: OrgEnvelopeRecord,
 ): Promise<"projected" | "changed" | "drift" | "error"> {
   const orgId = envelope.orgId ?? envelope.apiKeyHash.slice("ORG#".length);
-  const externalSubscriptionId =
-    envelope.lagoSubscriptionExternalId ?? deriveLagoExternalSubscriptionIdForOrg(orgId);
   try {
+    const externalSubscriptionId =
+      envelope.lagoSubscriptionExternalId ?? deriveLagoExternalSubscriptionIdForOrg(orgId);
     const snapshot = await options.lagoClient.getSubscription(externalSubscriptionId);
     if (!snapshot) throw new Error(`Lago subscription ${externalSubscriptionId} not found`);
     const projection = projectLagoEntitlements({
