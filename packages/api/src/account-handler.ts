@@ -1,5 +1,6 @@
 import { OpenAPIHono } from "@hono/zod-openapi";
 import { handle } from "hono/aws-lambda";
+import { cors } from "hono/cors";
 import { createMiddleware } from "hono/factory";
 import { SERVICE_NAMES, wrapLambdaHandler } from "@prontiq/observability";
 import { createLogger } from "@prontiq/shared";
@@ -54,6 +55,14 @@ const requestLifecycleLogger = createMiddleware(async (c, next) => {
 
 app.use("*", requestId());
 app.use("*", requestLifecycleLogger);
+app.use(
+  "/v1/account/*",
+  cors({
+    origin: "*",
+    allowMethods: ["GET", "OPTIONS", "POST"],
+    allowHeaders: ["Authorization", "Content-Type"],
+  }),
+);
 
 app.onError((err, c) => {
   logger.error("Unhandled error in PqAccount", {
