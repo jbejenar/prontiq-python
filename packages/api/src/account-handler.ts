@@ -3,7 +3,7 @@ import { handle } from "hono/aws-lambda";
 import { cors } from "hono/cors";
 import { createMiddleware } from "hono/factory";
 import { SERVICE_NAMES, wrapLambdaHandler } from "@prontiq/observability";
-import { createLogger } from "@prontiq/shared";
+import { createLogger, DEFAULT_ACCOUNT_URL } from "@prontiq/shared";
 import { requestId } from "./middleware/request-id.js";
 import { clerkJwt } from "./middleware/clerk-jwt.js";
 import { accountRoutes } from "./routes/account.js";
@@ -36,6 +36,14 @@ import { keysRoutes } from "./routes/keys.js";
 const app = new OpenAPIHono();
 const logger = createLogger("api-account");
 
+export function getAccountCorsOrigin() {
+  if (process.env.PRONTIQ_STAGE === "prod") {
+    return process.env.PRONTIQ_ACCOUNT_URL?.trim() || DEFAULT_ACCOUNT_URL;
+  }
+
+  return "*";
+}
+
 const requestLifecycleLogger = createMiddleware(async (c, next) => {
   const startedAt = Date.now();
   logger.info("request started", {
@@ -58,7 +66,7 @@ app.use("*", requestLifecycleLogger);
 app.use(
   "/v1/account/*",
   cors({
-    origin: "*",
+    origin: getAccountCorsOrigin,
     allowMethods: ["GET", "OPTIONS", "POST"],
     allowHeaders: ["Authorization", "Content-Type"],
   }),
