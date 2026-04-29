@@ -69,6 +69,26 @@ export class AccountApiError extends Error {
   }
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isClerkReverificationHint(value: unknown) {
+  if (!isRecord(value) || !isRecord(value.clerk_error)) return false;
+  const clerkError = value.clerk_error;
+  if (clerkError.type !== "forbidden" || clerkError.reason !== "reverification-error") {
+    return false;
+  }
+  if (!isRecord(clerkError.metadata) || !isRecord(clerkError.metadata.reverification)) {
+    return false;
+  }
+  const reverification = clerkError.metadata.reverification;
+  return (
+    typeof reverification.level === "string" &&
+    typeof reverification.afterMinutes === "number"
+  );
+}
+
 async function authedFetch<T>(
   getToken: GetToken,
   path: string,
@@ -94,23 +114,16 @@ async function authedFetch<T>(
   });
 
   const body = (await response.json().catch(() => ({}))) as unknown;
-  if (
-    !response.ok &&
-    typeof body === "object" &&
-    body !== null &&
-    "clerk_error" in body
-  ) {
-    throw body;
+  if (!response.ok && isClerkReverificationHint(body)) {
+    return body as T;
   }
 
   if (!response.ok) {
-    const error = body as {
-      error?: { code?: string; message?: string; status?: number };
-    };
+    const error = isRecord(body) && isRecord(body.error) ? body.error : {};
     throw new AccountApiError(
-      error.error?.message ?? "Account API request failed",
-      error.error?.code ?? "ACCOUNT_API_ERROR",
-      error.error?.status ?? response.status,
+      typeof error.message === "string" ? error.message : "Account API request failed",
+      typeof error.code === "string" ? error.code : "ACCOUNT_API_ERROR",
+      typeof error.status === "number" ? error.status : response.status,
     );
   }
 

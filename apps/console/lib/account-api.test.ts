@@ -130,7 +130,7 @@ test("account API posts rotate and revoke requests to the private key endpoints"
   );
 });
 
-test("account API throws Clerk reverification bodies so useReverification can intercept them", async () => {
+test("account API returns Clerk reverification bodies so useReverification can inspect them", async () => {
   const getToken = vi.fn().mockResolvedValue("default-session-jwt");
   const clerkError = {
     clerk_error: {
@@ -146,7 +146,49 @@ test("account API throws Clerk reverification bodies so useReverification can in
 
   await expect(
     accountApi.rotateKey(getToken, { keyId: "key_01HX0000000000000000000000" }),
-  ).rejects.toEqual(clerkError);
+  ).resolves.toEqual(clerkError);
+});
+
+test("account API rejects non-reverification Clerk error bodies", async () => {
+  const getToken = vi.fn().mockResolvedValue("default-session-jwt");
+  const clerkError = {
+    clerk_error: {
+      type: "forbidden",
+      reason: "organization-mismatch",
+      metadata: { organizationId: "org_other" },
+    },
+  };
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockResolvedValue(new Response(JSON.stringify(clerkError), { status: 403 })),
+  );
+
+  await expect(
+    accountApi.rotateKey(getToken, { keyId: "key_01HX0000000000000000000000" }),
+  ).rejects.toMatchObject({
+    code: "ACCOUNT_API_ERROR",
+    message: "Account API request failed",
+    status: 403,
+  });
+});
+
+test("account API rejects malformed Clerk reverification hints", async () => {
+  const getToken = vi.fn().mockResolvedValue("default-session-jwt");
+  const malformedHint = {
+    clerk_error: {
+      type: "forbidden",
+      reason: "reverification-error",
+      metadata: { level: "second_factor", afterMinutes: 10 },
+    },
+  };
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockResolvedValue(new Response(JSON.stringify(malformedHint), { status: 403 })),
+  );
+
+  await expect(
+    accountApi.rotateKey(getToken, { keyId: "key_01HX0000000000000000000000" }),
+  ).rejects.toBeInstanceOf(AccountApiError);
 });
 
 test("account API still wraps non-Clerk key-management errors", async () => {

@@ -32,18 +32,15 @@ vi.mock("@clerk/nextjs", () => ({
     fetcher: (...args: TArgs) => Promise<TResult>,
   ) =>
     async (...args: TArgs) => {
-      try {
-        return await fetcher(...args);
-      } catch (error) {
-        if (
-          typeof error === "object" &&
-          error !== null &&
-          "clerk_error" in error
-        ) {
-          return fetcher(...args);
-        }
-        throw error;
+      const result = await fetcher(...args);
+      if (
+        typeof result === "object" &&
+        result !== null &&
+        "clerk_error" in result
+      ) {
+        return fetcher(...args);
       }
+      return result;
     },
 }));
 
@@ -398,7 +395,7 @@ test("rotate retries through Clerk reverification before showing the new raw key
     ],
   });
   apiMocks.rotateKey
-    .mockRejectedValueOnce(clerkReverificationError())
+    .mockResolvedValueOnce(clerkReverificationError())
     .mockResolvedValueOnce({
       keyId: "key_01HX0000000000000000000000",
       keyPrefix: "pq_live_eeee",
@@ -560,7 +557,7 @@ test("revoke retries through Clerk reverification before closing the confirmatio
     ],
   });
   apiMocks.revokeKey
-    .mockRejectedValueOnce(clerkReverificationError())
+    .mockResolvedValueOnce(clerkReverificationError())
     .mockResolvedValueOnce({
       keyId: "key_01HX0000000000000000000000",
       revokedAt: "2026-04-29T01:00:00.000Z",
