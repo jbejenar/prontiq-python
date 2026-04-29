@@ -107,7 +107,9 @@ export function KeysPanel() {
     queryFn: () => accountApi.getStatus(tokenGetter),
   });
 
-  const shouldListKeys = statusQuery.data?.provisioned === true && statusQuery.data.hasFirstKey;
+  const shouldListKeys =
+    statusQuery.data?.provisioned === true &&
+    (statusQuery.data.hasFirstKey || statusQuery.data.activeKeyCount > 0);
   const keysQuery = useQuery({
     enabled: hasActiveOrg && shouldListKeys,
     queryKey: activeKeysQueryKey,
@@ -170,6 +172,13 @@ export function KeysPanel() {
 
   const status = statusQuery.data;
   const canManageKeys = status?.canManageKeys === true;
+  const hasVisibleKeys = status?.provisioned === true && (status.hasFirstKey || status.activeKeyCount > 0);
+  const isAtKeyLimit = status?.provisioned === true && status.activeKeyCount >= status.maxKeys;
+  const createDisabledReason = !canManageKeys
+    ? "Members can view keys, but only org admins can create new keys."
+    : isAtKeyLimit
+      ? `This org has reached its ${status.maxKeys}-key limit. Revoke an existing key or upgrade the plan before creating another key.`
+      : "Name the key by environment or use case. The raw key appears once after creation.";
 
   return (
     <>
@@ -259,24 +268,20 @@ export function KeysPanel() {
         <section className="grid gap-4 xl:grid-cols-[0.85fr_1.15fr]">
           <Card>
             <CardHeader>
-              <CardTitle>{status.hasFirstKey ? "Create another key" : "Create your first API key"}</CardTitle>
-              <CardDescription>
-                {canManageKeys
-                  ? "Name the key by environment or use case. The raw key appears once after creation."
-                  : "Members can view keys, but only org admins can create new keys."}
-              </CardDescription>
+              <CardTitle>{hasVisibleKeys ? "Create another key" : "Create your first API key"}</CardTitle>
+              <CardDescription>{createDisabledReason}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <Input
-                disabled={!canManageKeys || isCreating}
+                disabled={!canManageKeys || isAtKeyLimit || isCreating}
                 maxLength={64}
                 onChange={(event) => setLabel(event.target.value)}
                 placeholder="Production, CI, local dev..."
                 value={label}
               />
-              <Button disabled={!canManageKeys || isCreating} type="button" onClick={() => void createKey()}>
+              <Button disabled={!canManageKeys || isAtKeyLimit || isCreating} type="button" onClick={() => void createKey()}>
                 {isCreating ? <Loader2 className="h-4 w-4 animate-spin" /> : <KeyRound className="h-4 w-4" />}
-                {status.hasFirstKey ? "Create key" : "Create first key"}
+                {hasVisibleKeys ? "Create key" : "Create first key"}
               </Button>
             </CardContent>
           </Card>

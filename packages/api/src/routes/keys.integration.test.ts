@@ -347,6 +347,19 @@ test("(status-b) fresh envelope: status returns first-key state, activeKeyCount,
   });
 });
 
+test("(status-b2) drifted envelope: activeKeyCount > 0 implies hasFirstKey=true", async () => {
+  const orgId = `org_StatusCounterDrift${SUFFIX}`;
+  await seedEnvelope(orgId, { activeKeyCount: 2, hasFirstKey: false });
+  const app = buildApp({ orgId });
+
+  const { status, body } = await getStatus(app);
+
+  assert.equal(status, 200);
+  assert.equal(body.provisioned, true);
+  assert.equal(body.hasFirstKey, true);
+  assert.equal(body.activeKeyCount, 2);
+});
+
 test("(status-c) member token can read status but cannot manage keys", async () => {
   const orgId = `org_StatusMember${SUFFIX}`;
   await seedEnvelope(orgId, { activeKeyCount: 1, hasFirstKey: true });

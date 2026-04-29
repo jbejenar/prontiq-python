@@ -297,6 +297,38 @@ test("existing keys render masked metadata without hashes", async () => {
   expect(screen.queryByText(/apiKeyHash/i)).not.toBeInTheDocument();
 });
 
+test("counter-drifted org still lists active keys and explains key-limit create block", async () => {
+  apiMocks.getStatus.mockResolvedValue({
+    orgId: "org_123",
+    orgRole: "org:admin",
+    canManageKeys: true,
+    provisioned: true,
+    hasFirstKey: false,
+    activeKeyCount: 2,
+    tier: "free",
+    maxKeys: 2,
+  });
+  apiMocks.listKeys.mockResolvedValue({
+    keys: [
+      {
+        keyId: "key_01HX0000000000000000000000",
+        keyPrefix: "pq_live_abcd",
+        createdAt: "2026-04-29T00:00:00.000Z",
+        lastUsedAt: null,
+        active: true,
+        products: ["address"],
+      },
+    ],
+  });
+
+  renderWithQueryClient(<KeysPanel />);
+
+  expect(await screen.findByText("pq_live_abcd••••")).toBeInTheDocument();
+  expect(apiMocks.listKeys).toHaveBeenCalledTimes(1);
+  expect(screen.getByText(/reached its 2-key limit/i)).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /create key/i })).toBeDisabled();
+});
+
 test("provisioned member can view but cannot create keys", async () => {
   apiMocks.getStatus.mockResolvedValue({
     orgId: "org_123",

@@ -232,13 +232,14 @@ export function createKeyManagementService(
       };
     }
     const plan = PLANS[envelope.tier];
+    const activeKeyCount = envelope.activeKeyCount ?? 0;
     return {
       orgId: input.orgId,
       orgRole: input.orgRole,
       canManageKeys,
       provisioned: true,
-      hasFirstKey: envelope.hasFirstKey,
-      activeKeyCount: envelope.activeKeyCount ?? 0,
+      hasFirstKey: envelope.hasFirstKey || activeKeyCount > 0,
+      activeKeyCount,
       tier: envelope.tier,
       maxKeys: plan.maxKeys,
     };
