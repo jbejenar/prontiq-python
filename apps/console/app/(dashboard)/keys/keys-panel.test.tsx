@@ -7,6 +7,7 @@ import { vi } from "vitest";
 const apiMocks = vi.hoisted(() => ({
   createKey: vi.fn(),
   getStatus: vi.fn(),
+  listAudit: vi.fn(),
   listKeys: vi.fn(),
   revokeKey: vi.fn(),
   rotateKey: vi.fn(),
@@ -28,16 +29,11 @@ vi.mock("@clerk/nextjs", () => ({
     isLoaded: true,
     orgId: authState.orgId,
   }),
-  useReverification: <TArgs extends unknown[], TResult>(
-    fetcher: (...args: TArgs) => Promise<TResult>,
-  ) =>
+  useReverification:
+    <TArgs extends unknown[], TResult>(fetcher: (...args: TArgs) => Promise<TResult>) =>
     async (...args: TArgs) => {
       const result = await fetcher(...args);
-      if (
-        typeof result === "object" &&
-        result !== null &&
-        "clerk_error" in result
-      ) {
+      if (typeof result === "object" && result !== null && "clerk_error" in result) {
         return fetcher(...args);
       }
       return result;
@@ -106,6 +102,7 @@ function renderWithQueryClient(children: ReactNode) {
 beforeEach(() => {
   vi.clearAllMocks();
   authState.orgId = "org_123";
+  apiMocks.listAudit.mockResolvedValue({ events: [] });
   Object.defineProperty(navigator, "clipboard", {
     configurable: true,
     value: { writeText: vi.fn().mockResolvedValue(undefined) },
@@ -326,6 +323,87 @@ test("existing keys render masked metadata without hashes", async () => {
   expect(screen.queryByText(/apiKeyHash/i)).not.toBeInTheDocument();
 });
 
+test("audit panel renders recent key lifecycle events for members and admins", async () => {
+  apiMocks.getStatus.mockResolvedValue({
+    orgId: "org_123",
+    orgRole: "org:member",
+    canManageKeys: false,
+    provisioned: true,
+    hasFirstKey: true,
+    activeKeyCount: 1,
+    tier: "free",
+    maxKeys: 2,
+  });
+  apiMocks.listKeys.mockResolvedValue({
+    keys: [
+      {
+        keyId: "key_01HX0000000000000000000000",
+        keyPrefix: "pq_live_abcd",
+        createdAt: "2026-04-29T00:00:00.000Z",
+        lastUsedAt: null,
+        active: true,
+        products: ["address"],
+      },
+    ],
+  });
+  apiMocks.listAudit.mockResolvedValue({
+    events: [
+      {
+        action: "CREATE",
+        actorId: "user_123",
+        timestamp: "2026-04-29T00:00:00.000Z",
+        ip: "203.0.113.10",
+      },
+    ],
+  });
+
+  renderWithQueryClient(<KeysPanel />);
+
+  expect(await screen.findByText("Recent audit")).toBeInTheDocument();
+  expect(screen.getByText("create")).toBeInTheDocument();
+  expect(screen.getByText("user_123")).toBeInTheDocument();
+  expect(screen.getByText("203.0.113.10")).toBeInTheDocument();
+  expect(apiMocks.listAudit).toHaveBeenCalledTimes(1);
+});
+
+test("audit errors render a retry action without hiding key metadata", async () => {
+  apiMocks.getStatus.mockResolvedValue({
+    orgId: "org_123",
+    orgRole: "org:admin",
+    canManageKeys: true,
+    provisioned: true,
+    hasFirstKey: true,
+    activeKeyCount: 1,
+    tier: "free",
+    maxKeys: 2,
+  });
+  apiMocks.listKeys.mockResolvedValue({
+    keys: [
+      {
+        keyId: "key_01HX0000000000000000000000",
+        keyPrefix: "pq_live_abcd",
+        createdAt: "2026-04-29T00:00:00.000Z",
+        lastUsedAt: null,
+        active: true,
+        products: ["address"],
+      },
+    ],
+  });
+  apiMocks.listAudit
+    .mockRejectedValueOnce(new Error("Audit failed"))
+    .mockResolvedValueOnce({ events: [] });
+
+  renderWithQueryClient(<KeysPanel />);
+
+  expect(await screen.findByText("pq_live_abcd••••")).toBeInTheDocument();
+  expect(await screen.findByText("Audit failed")).toBeInTheDocument();
+
+  await userEvent.click(screen.getByRole("button", { name: /retry audit/i }));
+
+  expect(await screen.findByText("No audit events yet.")).toBeInTheDocument();
+  expect(apiMocks.listAudit).toHaveBeenCalledTimes(2);
+});
+
 test("admin can rotate a listed key and sees the new raw key once", async () => {
   const raw = `pq_live_${"d".repeat(48)}`;
   apiMocks.getStatus.mockResolvedValue({
@@ -394,15 +472,13 @@ test("rotate retries through Clerk reverification before showing the new raw key
       },
     ],
   });
-  apiMocks.rotateKey
-    .mockResolvedValueOnce(clerkReverificationError())
-    .mockResolvedValueOnce({
-      keyId: "key_01HX0000000000000000000000",
-      keyPrefix: "pq_live_eeee",
-      raw,
-      createdAt: "2026-04-29T00:00:00.000Z",
-      rotatedAt: "2026-04-29T01:00:00.000Z",
-    });
+  apiMocks.rotateKey.mockResolvedValueOnce(clerkReverificationError()).mockResolvedValueOnce({
+    keyId: "key_01HX0000000000000000000000",
+    keyPrefix: "pq_live_eeee",
+    raw,
+    createdAt: "2026-04-29T00:00:00.000Z",
+    rotatedAt: "2026-04-29T01:00:00.000Z",
+  });
 
   renderWithQueryClient(<KeysPanel />);
 
@@ -488,8 +564,12 @@ test("cancelled rotate reverification leaves the key list unchanged without succ
   await waitFor(() => expect(screen.getByRole("button", { name: /rotate/i })).not.toBeDisabled());
   expect(toastMocks.success).not.toHaveBeenCalledWith("API key rotated");
   expect(screen.queryByText(/copy your rotated api key now/i)).not.toBeInTheDocument();
-  expect(invalidate).not.toHaveBeenCalledWith(expect.objectContaining({ queryKey: ["account-status", "org_123"] }));
-  expect(invalidate).not.toHaveBeenCalledWith(expect.objectContaining({ queryKey: ["account-keys", "org_123"] }));
+  expect(invalidate).not.toHaveBeenCalledWith(
+    expect.objectContaining({ queryKey: ["account-status", "org_123"] }),
+  );
+  expect(invalidate).not.toHaveBeenCalledWith(
+    expect.objectContaining({ queryKey: ["account-keys", "org_123"] }),
+  );
 });
 
 test("admin can confirm revocation for a listed key", async () => {
@@ -556,12 +636,10 @@ test("revoke retries through Clerk reverification before closing the confirmatio
       },
     ],
   });
-  apiMocks.revokeKey
-    .mockResolvedValueOnce(clerkReverificationError())
-    .mockResolvedValueOnce({
-      keyId: "key_01HX0000000000000000000000",
-      revokedAt: "2026-04-29T01:00:00.000Z",
-    });
+  apiMocks.revokeKey.mockResolvedValueOnce(clerkReverificationError()).mockResolvedValueOnce({
+    keyId: "key_01HX0000000000000000000000",
+    revokedAt: "2026-04-29T01:00:00.000Z",
+  });
 
   renderWithQueryClient(<KeysPanel />);
 
@@ -650,11 +728,17 @@ test("cancelled revoke reverification keeps the confirmation open without succes
   expect(await screen.findByText(/marks pq_live_abcd as inactive/i)).toBeInTheDocument();
   await userEvent.click(screen.getByRole("button", { name: /revoke key/i }));
 
-  await waitFor(() => expect(screen.getByRole("button", { name: /revoke key/i })).not.toBeDisabled());
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: /revoke key/i })).not.toBeDisabled(),
+  );
   expect(screen.getByText(/marks pq_live_abcd as inactive/i)).toBeInTheDocument();
   expect(toastMocks.success).not.toHaveBeenCalledWith("API key revoked");
-  expect(invalidate).not.toHaveBeenCalledWith(expect.objectContaining({ queryKey: ["account-status", "org_123"] }));
-  expect(invalidate).not.toHaveBeenCalledWith(expect.objectContaining({ queryKey: ["account-keys", "org_123"] }));
+  expect(invalidate).not.toHaveBeenCalledWith(
+    expect.objectContaining({ queryKey: ["account-status", "org_123"] }),
+  );
+  expect(invalidate).not.toHaveBeenCalledWith(
+    expect.objectContaining({ queryKey: ["account-keys", "org_123"] }),
+  );
 });
 
 test("counter-drifted org still lists active keys and explains key-limit create block", async () => {

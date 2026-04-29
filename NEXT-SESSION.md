@@ -4,6 +4,33 @@
 > the time they were written, not the current source of truth. Use
 > `ROADMAP.md`, `NEXT-WORK.md`, and `README.md` for current execution status.
 
+## Session 44 — 2026-04-29
+
+**Focus:** P1C.03 final key-management slice.
+
+### Implemented on the P1C.03 PR 5 branch
+
+- Added `GET /v1/account/audit` as the member-allowed audit read path for the
+  console key-management page.
+- Added the console inline audit panel, preserving the existing admin-only
+  create/rotate/revoke semantics and member-readable key/audit metadata.
+- Audit API responses expose only allowlisted public metadata (`keyId`, `label`)
+  and never return raw keys, API key hashes, or hash-bearing internal metadata.
+- Added dev CI `smoke:keys-audit` wiring; prod account-route smoke remains
+  manual because prod Clerk session hardening prevents durable Backend-SDK
+  session minting.
+- Manual Playwright smoke against the console preview verified create → address
+  API call → revoke → revoked-key rejection using the direct dev API Gateway
+  host. `api.dev.prontiq.dev` failed TLS from local tooling and needs a
+  separate vanity-domain fix before it is used as the dev smoke target.
+
+### Next session should start with
+
+1. Review/merge the P1C.03 PR 5 branch and deploy to dev.
+2. Run `smoke:keys-audit` in dev after deploy, then manually verify the console
+   audit panel shows CREATE / ROTATE / REVOKE entries.
+3. Decide whether to fix `api.dev.prontiq.dev` before the next console ticket.
+
 ## Session 43 — 2026-04-27
 
 **Focus:** P1B.22 Clerk org commercial identity pivot.

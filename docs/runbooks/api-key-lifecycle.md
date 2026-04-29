@@ -6,6 +6,7 @@ Operating the P1C.03 key-management surface:
 
 - `GET /v1/account/status`
 - `GET /v1/account/keys`
+- `GET /v1/account/audit`
 - `POST /v1/account/keys/create`
 - `POST /v1/account/keys/rotate`
 - `POST /v1/account/keys/revoke`
@@ -62,6 +63,27 @@ Revoke sets the live key row `active=false`, sets `revokedAt`, decrements
 `activeKeyCount`, and writes REVOKE audit. It does not delete REDIRECT rows.
 REVOKE-after-ROTATE is safe because the old raw key re-resolves to the new hash
 and then fails the active check.
+
+## Audit Read Path
+
+`GET /v1/account/audit` is member-allowed and powers the inline console audit
+panel. It queries `prontiq-audit` by `orgId`, newest first, paginates through
+org-level rows, filters to API-key lifecycle actions (`CREATE`, `ROTATE`,
+`REVOKE`), and returns the latest events with:
+
+- `action`
+- `actorId`
+- `timestamp`
+- optional `ip`
+- optional `userAgent`
+- optional allowlisted public `metadata` (`keyId`, `label`)
+
+Raw API keys, API key hashes, and hash-bearing internal metadata such as
+`oldApiKeyHash` must never appear in audit API responses. Hashes remain in the
+underlying DynamoDB audit rows for operator correlation only. If the console
+shows an audit read error while key listing still works, inspect the `PqAccount`
+Lambda logs for `listAuditTail failed` with the request ID shown in the private
+API error envelope.
 
 ## Active Key Count Reconciliation
 

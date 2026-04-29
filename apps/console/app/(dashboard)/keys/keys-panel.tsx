@@ -3,13 +3,26 @@
 import { useEffect, useRef, useState } from "react";
 import { useAuth, useReverification } from "@clerk/nextjs";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Copy, KeyRound, Loader2, RefreshCcw, RotateCcw, ShieldX } from "lucide-react";
+import { Copy, History, KeyRound, Loader2, RefreshCcw, RotateCcw, ShieldX } from "lucide-react";
 import { toast } from "sonner";
 
-import { accountApi, AccountApiError, type CreatedKey, type ListedKey, type RotatedKey } from "../../../lib/account-api.js";
+import {
+  accountApi,
+  AccountApiError,
+  type AccountAuditEvent,
+  type CreatedKey,
+  type ListedKey,
+  type RotatedKey,
+} from "../../../lib/account-api.js";
 import { Badge } from "../../../components/ui/badge.js";
 import { Button } from "../../../components/ui/button.js";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../../components/ui/card.js";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "../../../components/ui/card.js";
 import {
   Dialog,
   DialogContent,
@@ -19,10 +32,18 @@ import {
   DialogTitle,
 } from "../../../components/ui/dialog.js";
 import { Input } from "../../../components/ui/input.js";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../../components/ui/table.js";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "../../../components/ui/table.js";
 
 const statusQueryKey = (orgId: string) => ["account-status", orgId] as const;
 const keysQueryKey = (orgId: string) => ["account-keys", orgId] as const;
+const auditQueryKey = (orgId: string) => ["account-audit", orgId] as const;
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat("en-AU", {
@@ -116,7 +137,11 @@ function KeyTable({
                   variant="outline"
                   onClick={() => onRotate(key)}
                 >
-                  {pendingKeyId === key.keyId ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
+                  {pendingKeyId === key.keyId ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <RotateCcw className="h-3.5 w-3.5" />
+                  )}
                   Rotate
                 </Button>
                 <Button
@@ -138,11 +163,87 @@ function KeyTable({
   );
 }
 
+function AuditPanel({
+  events,
+  isError,
+  isPending,
+  onRetry,
+  error,
+}: {
+  events: AccountAuditEvent[];
+  isError: boolean;
+  isPending: boolean;
+  onRetry: () => void;
+  error: unknown;
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <History className="h-4 w-4" />
+          Recent audit
+        </CardTitle>
+        <CardDescription>
+          Latest key lifecycle events for this organization. Actor IDs are unresolved Clerk user
+          IDs.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {isPending ? (
+          <div className="flex items-center gap-3 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Loading audit...
+          </div>
+        ) : isError ? (
+          <div className="space-y-4 rounded-lg border border-border bg-background/70 p-4 text-sm text-muted-foreground">
+            <p>{getErrorMessage(error)}</p>
+            <Button type="button" variant="outline" onClick={onRetry}>
+              <RefreshCcw className="h-4 w-4" />
+              Retry audit
+            </Button>
+          </div>
+        ) : events.length === 0 ? (
+          <div className="rounded-lg border border-border bg-background/70 p-4 text-sm text-muted-foreground">
+            No audit events yet.
+          </div>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Action</TableHead>
+                <TableHead>Actor</TableHead>
+                <TableHead>When</TableHead>
+                <TableHead>IP</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {events.map((event, index) => (
+                <TableRow key={`${event.timestamp}-${event.action}-${event.actorId}-${index}`}>
+                  <TableCell>
+                    <Badge>{event.action.toLowerCase()}</Badge>
+                  </TableCell>
+                  <TableCell className="max-w-[18rem] truncate font-mono text-xs">
+                    {event.actorId}
+                  </TableCell>
+                  <TableCell>{formatDate(event.timestamp)}</TableCell>
+                  <TableCell className="font-mono text-xs">{event.ip ?? "Not captured"}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 export function KeysPanel() {
   const { getToken, isLoaded, orgId } = useAuth();
   const queryClient = useQueryClient();
   const [label, setLabel] = useState("");
-  const [revealedKey, setRevealedKey] = useState<(CreatedKey & { reason: "created" }) | (RotatedKey & { reason: "rotated" }) | null>(null);
+  const [revealedKey, setRevealedKey] = useState<
+    (CreatedKey & { reason: "created" }) | (RotatedKey & { reason: "rotated" }) | null
+  >(null);
   const [isRevealOpen, setIsRevealOpen] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [isSettingUp, setIsSettingUp] = useState(false);
@@ -156,6 +257,7 @@ export function KeysPanel() {
   const hasActiveOrg = isLoaded && typeof orgId === "string" && orgId.length > 0;
   const activeStatusQueryKey = statusQueryKey(orgId ?? "no-active-org");
   const activeKeysQueryKey = keysQueryKey(orgId ?? "no-active-org");
+  const activeAuditQueryKey = auditQueryKey(orgId ?? "no-active-org");
 
   useEffect(() => {
     activeOrgRef.current = orgId ?? null;
@@ -190,6 +292,11 @@ export function KeysPanel() {
     enabled: hasActiveOrg && shouldListKeys,
     queryKey: activeKeysQueryKey,
     queryFn: () => accountApi.listKeys(tokenGetter),
+  });
+  const auditQuery = useQuery({
+    enabled: hasActiveOrg && statusQuery.data?.provisioned === true,
+    queryKey: activeAuditQueryKey,
+    queryFn: () => accountApi.listAudit(tokenGetter),
   });
 
   async function setupAccount() {
@@ -229,6 +336,7 @@ export function KeysPanel() {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: activeStatusQueryKey }),
         queryClient.invalidateQueries({ queryKey: activeKeysQueryKey }),
+        queryClient.invalidateQueries({ queryKey: activeAuditQueryKey }),
       ]);
     } catch (error) {
       if (requestId !== createRequestSeq.current || requestOrgId !== activeOrgRef.current) return;
@@ -253,6 +361,7 @@ export function KeysPanel() {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: activeStatusQueryKey }),
         queryClient.invalidateQueries({ queryKey: activeKeysQueryKey }),
+        queryClient.invalidateQueries({ queryKey: activeAuditQueryKey }),
       ]);
     } catch (error) {
       if (requestOrgId !== activeOrgRef.current) return;
@@ -276,6 +385,7 @@ export function KeysPanel() {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: activeStatusQueryKey }),
         queryClient.invalidateQueries({ queryKey: activeKeysQueryKey }),
+        queryClient.invalidateQueries({ queryKey: activeAuditQueryKey }),
       ]);
     } catch (error) {
       if (requestOrgId !== activeOrgRef.current) return;
@@ -295,7 +405,8 @@ export function KeysPanel() {
 
   const status = statusQuery.data;
   const canManageKeys = status?.canManageKeys === true;
-  const hasVisibleKeys = status?.provisioned === true && (status.hasFirstKey || status.activeKeyCount > 0);
+  const hasVisibleKeys =
+    status?.provisioned === true && (status.hasFirstKey || status.activeKeyCount > 0);
   const isAtKeyLimit = status?.provisioned === true && status.activeKeyCount >= status.maxKeys;
   const createDisabledReason = !canManageKeys
     ? "Members can view keys, but only org admins can create new keys."
@@ -332,7 +443,8 @@ export function KeysPanel() {
           <CardHeader>
             <CardTitle>Select an organization</CardTitle>
             <CardDescription>
-              API keys are scoped to the active Clerk organization. Select an organization from the switcher before managing keys.
+              API keys are scoped to the active Clerk organization. Select an organization from the
+              switcher before managing keys.
             </CardDescription>
           </CardHeader>
         </Card>
@@ -365,7 +477,9 @@ export function KeysPanel() {
       {status?.provisioned === false ? (
         <Card>
           <CardHeader>
-            <CardTitle>{canManageKeys ? "Set up your account" : "Account setup required"}</CardTitle>
+            <CardTitle>
+              {canManageKeys ? "Set up your account" : "Account setup required"}
+            </CardTitle>
             <CardDescription>
               {canManageKeys
                 ? "The Clerk webhook has not provisioned this org yet. Run recovery setup to create the org envelope."
@@ -374,11 +488,7 @@ export function KeysPanel() {
           </CardHeader>
           {canManageKeys ? (
             <CardContent>
-              <Button
-                disabled={isSettingUp}
-                type="button"
-                onClick={() => void setupAccount()}
-              >
+              <Button disabled={isSettingUp} type="button" onClick={() => void setupAccount()}>
                 {isSettingUp ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                 Set up account
               </Button>
@@ -388,60 +498,85 @@ export function KeysPanel() {
       ) : null}
 
       {status?.provisioned === true ? (
-        <section className="grid gap-4 xl:grid-cols-[0.85fr_1.15fr]">
-          <Card>
-            <CardHeader>
-              <CardTitle>{hasVisibleKeys ? "Create another key" : "Create your first API key"}</CardTitle>
-              <CardDescription>{createDisabledReason}</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <Input
-                disabled={!canManageKeys || isAtKeyLimit || isCreating}
-                maxLength={64}
-                onChange={(event) => setLabel(event.target.value)}
-                placeholder="Production, CI, local dev..."
-                value={label}
-              />
-              <Button disabled={!canManageKeys || isAtKeyLimit || isCreating} type="button" onClick={() => void createKey()}>
-                {isCreating ? <Loader2 className="h-4 w-4 animate-spin" /> : <KeyRound className="h-4 w-4" />}
-                {hasVisibleKeys ? "Create key" : "Create first key"}
-              </Button>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Active keys</CardTitle>
-              <CardDescription>
-                Only masked key metadata is returned by the API. Admins can rotate or revoke keys; members can only view them.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {keysQuery.isPending && shouldListKeys ? (
-                <div className="flex items-center gap-3 text-sm text-muted-foreground">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Loading keys...
-                </div>
-              ) : keysQuery.isError ? (
-                <div className="space-y-4 rounded-lg border border-border bg-background/70 p-4 text-sm text-muted-foreground">
-                  <p>{getErrorMessage(keysQuery.error)}</p>
-                  <Button type="button" variant="outline" onClick={() => void keysQuery.refetch()}>
-                    <RefreshCcw className="h-4 w-4" />
-                    Retry key list
-                  </Button>
-                </div>
-              ) : (
-                <KeyTable
-                  canManageKeys={canManageKeys}
-                  keys={keysQuery.data?.keys ?? []}
-                  pendingKeyId={pendingKeyId}
-                  onRequestRevoke={setKeyPendingRevoke}
-                  onRotate={(key) => void rotateKey(key)}
+        <div className="space-y-4">
+          <section className="grid gap-4 xl:grid-cols-[0.85fr_1.15fr]">
+            <Card>
+              <CardHeader>
+                <CardTitle>
+                  {hasVisibleKeys ? "Create another key" : "Create your first API key"}
+                </CardTitle>
+                <CardDescription>{createDisabledReason}</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <Input
+                  disabled={!canManageKeys || isAtKeyLimit || isCreating}
+                  maxLength={64}
+                  onChange={(event) => setLabel(event.target.value)}
+                  placeholder="Production, CI, local dev..."
+                  value={label}
                 />
-              )}
-            </CardContent>
-          </Card>
-        </section>
+                <Button
+                  disabled={!canManageKeys || isAtKeyLimit || isCreating}
+                  type="button"
+                  onClick={() => void createKey()}
+                >
+                  {isCreating ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <KeyRound className="h-4 w-4" />
+                  )}
+                  {hasVisibleKeys ? "Create key" : "Create first key"}
+                </Button>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Active keys</CardTitle>
+                <CardDescription>
+                  Only masked key metadata is returned by the API. Admins can rotate or revoke keys;
+                  members can only view them.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {keysQuery.isPending && shouldListKeys ? (
+                  <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Loading keys...
+                  </div>
+                ) : keysQuery.isError ? (
+                  <div className="space-y-4 rounded-lg border border-border bg-background/70 p-4 text-sm text-muted-foreground">
+                    <p>{getErrorMessage(keysQuery.error)}</p>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => void keysQuery.refetch()}
+                    >
+                      <RefreshCcw className="h-4 w-4" />
+                      Retry key list
+                    </Button>
+                  </div>
+                ) : (
+                  <KeyTable
+                    canManageKeys={canManageKeys}
+                    keys={keysQuery.data?.keys ?? []}
+                    pendingKeyId={pendingKeyId}
+                    onRequestRevoke={setKeyPendingRevoke}
+                    onRotate={(key) => void rotateKey(key)}
+                  />
+                )}
+              </CardContent>
+            </Card>
+          </section>
+
+          <AuditPanel
+            error={auditQuery.error}
+            events={auditQuery.data?.events ?? []}
+            isError={auditQuery.isError}
+            isPending={auditQuery.isPending}
+            onRetry={() => void auditQuery.refetch()}
+          />
+        </div>
       ) : null}
 
       <Dialog
@@ -454,7 +589,9 @@ export function KeysPanel() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {revealedKey?.reason === "rotated" ? "Copy your rotated API key now" : "Copy your API key now"}
+              {revealedKey?.reason === "rotated"
+                ? "Copy your rotated API key now"
+                : "Copy your API key now"}
             </DialogTitle>
             <DialogDescription>
               This raw key is shown once. Store it in your secret manager before closing.
@@ -474,12 +611,16 @@ export function KeysPanel() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={keyPendingRevoke !== null} onOpenChange={(open) => !open && setKeyPendingRevoke(null)}>
+      <Dialog
+        open={keyPendingRevoke !== null}
+        onOpenChange={(open) => !open && setKeyPendingRevoke(null)}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Revoke API key?</DialogTitle>
             <DialogDescription>
-              This marks {keyPendingRevoke?.keyPrefix ?? "the selected key"} as inactive. Existing clients using this raw key will receive 401 responses.
+              This marks {keyPendingRevoke?.keyPrefix ?? "the selected key"} as inactive. Existing
+              clients using this raw key will receive 401 responses.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -494,7 +635,9 @@ export function KeysPanel() {
                 if (keyPendingRevoke) void revokeKey(keyPendingRevoke);
               }}
             >
-              {pendingKeyId === keyPendingRevoke?.keyId ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              {pendingKeyId === keyPendingRevoke?.keyId ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : null}
               Revoke key
             </Button>
           </DialogFooter>

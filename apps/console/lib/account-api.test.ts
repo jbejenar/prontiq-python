@@ -130,6 +130,45 @@ test("account API posts rotate and revoke requests to the private key endpoints"
   );
 });
 
+test("account API reads recent audit events from the private account API", async () => {
+  const getToken = vi.fn().mockResolvedValue("default-session-jwt");
+  const fetchMock = vi.fn().mockResolvedValue(
+    new Response(
+      JSON.stringify({
+        events: [
+          {
+            action: "CREATE",
+            actorId: "user_123",
+            timestamp: "2026-04-29T00:00:00.000Z",
+            ip: "203.0.113.10",
+          },
+        ],
+      }),
+      { status: 200 },
+    ),
+  );
+  vi.stubGlobal("fetch", fetchMock);
+
+  await expect(accountApi.listAudit(getToken)).resolves.toEqual({
+    events: [
+      {
+        action: "CREATE",
+        actorId: "user_123",
+        timestamp: "2026-04-29T00:00:00.000Z",
+        ip: "203.0.113.10",
+      },
+    ],
+  });
+  expect(fetchMock).toHaveBeenCalledWith(
+    "https://api.test.prontiq.dev/v1/account/audit",
+    expect.objectContaining({
+      headers: expect.objectContaining({
+        Authorization: "Bearer default-session-jwt",
+      }),
+    }),
+  );
+});
+
 test("account API returns Clerk reverification bodies so useReverification can inspect them", async () => {
   const getToken = vi.fn().mockResolvedValue("default-session-jwt");
   const clerkError = {

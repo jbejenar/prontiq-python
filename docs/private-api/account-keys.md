@@ -67,6 +67,31 @@ Member-allowed list endpoint. Returns active key metadata only.
 
 Never returns `raw` or `apiKeyHash`.
 
+### `GET /v1/account/audit`
+
+Member-allowed audit endpoint. Returns the latest API-key lifecycle events
+(`CREATE`, `ROTATE`, `REVOKE`) for the active organization, newest first.
+
+```json
+{
+  "events": [
+    {
+      "action": "CREATE",
+      "actorId": "user_...",
+      "timestamp": "2026-04-29T00:00:00.000Z",
+      "metadata": { "keyId": "key_01HX...", "label": "Production" },
+      "ip": "203.0.113.10",
+      "userAgent": "Mozilla/5.0 ..."
+    }
+  ]
+}
+```
+
+The console displays actor, timestamp, action, and IP. `metadata` is allowlisted
+for public fields such as `keyId` and `label`; internal fields such as
+`apiKeyHash` and `oldApiKeyHash` are never returned. Hashes remain in DynamoDB
+audit rows for operator correlation only.
+
 ### `POST /v1/account/keys/create`
 
 Admin-only. Optional body:

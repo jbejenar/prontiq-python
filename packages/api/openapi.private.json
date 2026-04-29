@@ -872,6 +872,157 @@
                 }
             }
         },
+        "/v1/account/audit": {
+            "get": {
+                "summary": "List recent account audit events (member-allowed)",
+                "description": "Returns the latest API-key lifecycle audit events for the caller's org, newest first. Used by the console key-management page to show recent CREATE / ROTATE / REVOKE activity. Raw API keys, key hashes, and hash-bearing internal metadata are never present.",
+                "security": [
+                    {
+                        "ClerkJwt": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Recent audit events for this org",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "events": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "action": {
+                                                        "type": "string"
+                                                    },
+                                                    "actorId": {
+                                                        "type": "string"
+                                                    },
+                                                    "timestamp": {
+                                                        "type": "string"
+                                                    },
+                                                    "metadata": {
+                                                        "type": "object",
+                                                        "properties": {
+                                                            "keyId": {
+                                                                "type": "string"
+                                                            },
+                                                            "label": {
+                                                                "type": "string"
+                                                            }
+                                                        }
+                                                    },
+                                                    "ip": {
+                                                        "type": "string"
+                                                    },
+                                                    "userAgent": {
+                                                        "type": "string"
+                                                    }
+                                                },
+                                                "required": [
+                                                    "action",
+                                                    "actorId",
+                                                    "timestamp"
+                                                ]
+                                            }
+                                        }
+                                    },
+                                    "required": [
+                                        "events"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Missing/invalid JWT",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "type": "object",
+                                            "properties": {
+                                                "code": {
+                                                    "type": "string"
+                                                },
+                                                "message": {
+                                                    "type": "string"
+                                                },
+                                                "status": {
+                                                    "type": "integer"
+                                                },
+                                                "request_id": {
+                                                    "type": "string"
+                                                },
+                                                "details": {
+                                                    "type": "object",
+                                                    "additionalProperties": {}
+                                                }
+                                            },
+                                            "required": [
+                                                "code",
+                                                "message",
+                                                "status",
+                                                "request_id"
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "error"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Server error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "type": "object",
+                                            "properties": {
+                                                "code": {
+                                                    "type": "string"
+                                                },
+                                                "message": {
+                                                    "type": "string"
+                                                },
+                                                "status": {
+                                                    "type": "integer"
+                                                },
+                                                "request_id": {
+                                                    "type": "string"
+                                                },
+                                                "details": {
+                                                    "type": "object",
+                                                    "additionalProperties": {}
+                                                }
+                                            },
+                                            "required": [
+                                                "code",
+                                                "message",
+                                                "status",
+                                                "request_id"
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "error"
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/v1/account/keys/rotate": {
             "post": {
                 "summary": "Rotate an API key (admin + step-up)",

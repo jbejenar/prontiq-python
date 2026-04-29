@@ -265,6 +265,18 @@ async function getList(
   return { status: res.status, body: json };
 }
 
+async function getAudit(
+  app: OpenAPIHono,
+  headers: Record<string, string> = {},
+): Promise<{ status: number; body: Record<string, unknown> }> {
+  const res = await app.request("/v1/account/audit", {
+    method: "GET",
+    headers: { Authorization: "Bearer good_token", ...headers },
+  });
+  const json = (await res.json()) as Record<string, unknown>;
+  return { status: res.status, body: json };
+}
+
 async function getStatus(
   app: OpenAPIHono,
 ): Promise<{ status: number; body: Record<string, unknown> }> {
@@ -493,12 +505,92 @@ test("(b) list: excludes ORG envelope (sentinel) and revoked keys (active flag)"
   );
 });
 
+test("(b2) audit: member-allowed endpoint returns recent key lifecycle events newest first", async () => {
+  const orgId = `org_AuditTail${SUFFIX}`;
+  const app = buildApp({ orgId });
+  await seedEnvelope(orgId);
+
+  const created = await postCreate(
+    app,
+    { label: "Audit test" },
+    {
+      "x-forwarded-for": "203.0.113.10",
+      "user-agent": "audit-test/1.0",
+    },
+  );
+  assert.equal(created.status, 201);
+  assert.equal(typeof created.body.keyId, "string");
+
+  const rotated = await postRotate(
+    app,
+    { keyId: created.body.keyId as string },
+    {
+      "x-forwarded-for": "203.0.113.11",
+      "user-agent": "audit-rotate-test/1.0",
+    },
+  );
+  assert.equal(rotated.status, 200);
+
+  for (let index = 0; index < 60; index += 1) {
+    await ddb.send(
+      new PutCommand({
+        TableName: AUDIT_TABLE,
+        Item: {
+          orgId,
+          "timestamp#eventId": `2999-01-01T00:00:${String(index).padStart(2, "0")}.000Z#evt_non_key_${index}`,
+          action: "UPGRADE",
+          actorId: "user_billing_test",
+          metadata: { internal: "billing-action" },
+          ttl: Math.floor(Date.now() / 1000) + 3600,
+        },
+      }),
+    );
+  }
+
+  const { status, body } = await getAudit(app);
+
+  assert.equal(status, 200);
+  const events = body.events as Array<Record<string, unknown>>;
+  assert.ok(Array.isArray(events));
+  assert.equal(events.length, 2);
+  assert.equal(events[0]?.action, "ROTATE");
+  assert.equal(events[0]?.actorId, "user_keys_test");
+  assert.equal(events[0]?.ip, "203.0.113.11");
+  assert.equal(events[0]?.userAgent, "audit-rotate-test/1.0");
+  assert.equal(typeof events[0]?.timestamp, "string");
+  const serialized = JSON.stringify(events);
+  assert.equal(serialized.includes("UPGRADE"), false, "non-key audit actions stay out of key UI");
+  assert.equal(serialized.includes("apiKeyHash"), false, "hash fields stay server-side");
+  assert.equal(
+    serialized.includes("oldApiKeyHash"),
+    false,
+    "internal rotate hash metadata stays server-side",
+  );
+  assert.deepEqual(events[0]?.metadata, {
+    keyId: created.body.keyId,
+  });
+  assert.equal(events[1]?.action, "CREATE");
+  assert.equal(events[1]?.ip, "203.0.113.10");
+  assert.deepEqual(events[1]?.metadata, {
+    keyId: created.body.keyId,
+    label: "Audit test",
+  });
+
+  const memberApp = buildApp({ orgId, orgRole: "org:member" });
+  const memberAudit = await getAudit(memberApp);
+  assert.equal(memberAudit.status, 200);
+  assert.equal((memberAudit.body.events as unknown[]).length, 2);
+});
+
 test("(c) concurrent under-limit: max=2, two parallel creates → both 201, activeKeyCount=2", async () => {
   const orgId = `org_KeysConc${SUFFIX}`;
   await seedEnvelope(orgId);
   const app = buildApp({ orgId });
 
-  const [r1, r2] = await Promise.all([postCreate(app, { label: "c1" }), postCreate(app, { label: "c2" })]);
+  const [r1, r2] = await Promise.all([
+    postCreate(app, { label: "c1" }),
+    postCreate(app, { label: "c2" }),
+  ]);
   assert.equal(r1.status, 201);
   assert.equal(r2.status, 201);
   assert.notEqual(r1.body.keyId, r2.body.keyId);
@@ -515,7 +607,10 @@ test("(d) concurrent at-limit: max=2, activeKeyCount=1, two parallel creates →
   await seedEnvelope(orgId, { activeKeyCount: 1, hasFirstKey: true });
   const app = buildApp({ orgId });
 
-  const [r1, r2] = await Promise.all([postCreate(app, { label: "race-a" }), postCreate(app, { label: "race-b" })]);
+  const [r1, r2] = await Promise.all([
+    postCreate(app, { label: "race-a" }),
+    postCreate(app, { label: "race-b" }),
+  ]);
   const statuses = [r1.status, r2.status].sort((a, b) => a - b);
   assert.deepEqual(statuses, [201, 403], "exactly one 201 and one 403");
 
@@ -878,7 +973,10 @@ test("(q) reverification: stale fva[1] (> 10 min) → 403 with Clerk-native body
     error?: unknown;
   };
   // Body must be the Clerk-native shape — NOT our standard error envelope.
-  assert.ok(body.clerk_error, "body must use Clerk-native shape so useReverification() recognises it");
+  assert.ok(
+    body.clerk_error,
+    "body must use Clerk-native shape so useReverification() recognises it",
+  );
   assert.equal(body.error, undefined, "must NOT use the standard error envelope");
   assert.equal(body.clerk_error?.type, "forbidden");
   assert.equal(body.clerk_error?.reason, "reverification-error");
@@ -1119,8 +1217,7 @@ test("(w) rotate retries on concurrent hot-path increment (version sentinel catc
               new UpdateCommand({
                 TableName: USAGE_TABLE,
                 Key: { apiKeyHash: oldHash, scope: "address#2026-04" },
-                UpdateExpression:
-                  "ADD #requestCount :one, #version :one",
+                UpdateExpression: "ADD #requestCount :one, #version :one",
                 ExpressionAttributeNames: {
                   "#requestCount": "requestCount",
                   "#version": "version",
@@ -1170,11 +1267,7 @@ test("(w) rotate retries on concurrent hot-path increment (version sentinel catc
     951,
     "NEW partition reflects the concurrent increment, not the stale Query value",
   );
-  assert.equal(
-    newRow.Item?.version,
-    6,
-    "version sentinel reflects the concurrent writer's bump",
-  );
+  assert.equal(newRow.Item?.version, 6, "version sentinel reflects the concurrent writer's bump");
 
   // OLD partition: counter row deleted on the retry attempt.
   const oldRow = await ddb.send(
@@ -1290,8 +1383,7 @@ test("(y) rotate retries when concurrent writer changes warningEmailSent without
               new UpdateCommand({
                 TableName: USAGE_TABLE,
                 Key: { apiKeyHash: oldHash, scope: "address#2026-04" },
-                UpdateExpression:
-                  "SET #sent = :true ADD #version :one",
+                UpdateExpression: "SET #sent = :true ADD #version :one",
                 ExpressionAttributeNames: {
                   "#sent": "warningEmailSent",
                   "#version": "version",
@@ -1376,8 +1468,9 @@ test("(z) rotate uses a fresh ClientRequestToken per outer attempt (Bug 2 regres
       return async (cmd: unknown) => {
         const ctorName = (cmd as { constructor: { name: string } }).constructor.name;
         if (ctorName === "TransactWriteCommand") {
-          const input = (cmd as { input?: { TransactItems?: unknown[]; ClientRequestToken?: string } })
-            .input;
+          const input = (
+            cmd as { input?: { TransactItems?: unknown[]; ClientRequestToken?: string } }
+          ).input;
           const items = (input?.TransactItems as { Delete?: { TableName?: string } }[]) ?? [];
           if (items[0]?.Delete?.TableName === KEYS_TABLE) {
             const token = input?.ClientRequestToken;

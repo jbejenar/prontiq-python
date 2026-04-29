@@ -1,10 +1,11 @@
 import { TransactionCanceledException } from "@aws-sdk/client-dynamodb";
-import type { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
+import type { DynamoDBDocumentClient, QueryCommandInput } from "@aws-sdk/lib-dynamodb";
 import { GetCommand, QueryCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 import {
   PLANS,
   generateKey,
   type ApiKeyRecord,
+  type AuditRecord,
   type OrgEnvelopeRecord,
   type UsageCounterRecord,
 } from "@prontiq/shared";
@@ -16,6 +17,9 @@ const ulid = monotonicFactory();
 const ORG_ID_INDEX = "orgId-index";
 const ENVELOPE_PREFIX = "ORG#";
 const REDIRECT_SCOPE = "REDIRECT";
+const KEY_AUDIT_ACTIONS = new Set(["CREATE", "ROTATE", "REVOKE"]);
+const AUDIT_QUERY_PAGE_SIZE = 50;
+const AUDIT_QUERY_MAX_PAGES = 10;
 
 /**
  * Maximum number of times rotateKey re-Queries usage rows + retries
@@ -80,7 +84,8 @@ function pickEnvelopeSnapshot(envelope: OrgEnvelopeRecord) {
     snapshot.billingPeriodStartedAt = envelope.billingPeriodStartedAt;
   if (envelope.billingPeriodEndingAt !== undefined)
     snapshot.billingPeriodEndingAt = envelope.billingPeriodEndingAt;
-  if (envelope.billingPeriodKey !== undefined) snapshot.billingPeriodKey = envelope.billingPeriodKey;
+  if (envelope.billingPeriodKey !== undefined)
+    snapshot.billingPeriodKey = envelope.billingPeriodKey;
   if (envelope.lagoPaymentOverdueInvoiceId !== undefined)
     snapshot.lagoPaymentOverdueInvoiceId = envelope.lagoPaymentOverdueInvoiceId;
   return snapshot;
@@ -169,6 +174,26 @@ export interface ListedKey {
   products: string[];
 }
 
+export interface ListedAuditEvent {
+  action: string;
+  actorId: string;
+  timestamp: string;
+  metadata?: {
+    keyId?: string;
+    label?: string;
+  };
+  ip?: string;
+  userAgent?: string;
+}
+
+function publicAuditMetadata(metadata: AuditRecord["metadata"]): ListedAuditEvent["metadata"] {
+  if (!metadata || typeof metadata !== "object") return undefined;
+  const out: Record<string, unknown> = {};
+  if (typeof metadata.keyId === "string") out.keyId = metadata.keyId;
+  if (typeof metadata.label === "string") out.label = metadata.label;
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
 export type OrgKeyStatus =
   | {
       orgId: string;
@@ -191,6 +216,7 @@ export interface KeyManagementService {
   getOrgStatus(input: { orgId: string; orgRole: string }): Promise<OrgKeyStatus>;
   createKey(input: CreateKeyInput): Promise<CreateKeyResult>;
   listOrgKeys(input: { orgId: string }): Promise<ListedKey[]>;
+  listAuditTail(input: { orgId: string; limit?: number }): Promise<ListedAuditEvent[]>;
   rotateKey(input: RotateKeyInput): Promise<RotateKeyResult>;
   revokeKey(input: RevokeKeyInput): Promise<RevokeKeyResult>;
 }
@@ -199,9 +225,7 @@ export function getOrgEnvelopeKey(orgId: string): string {
   return `${ENVELOPE_PREFIX}${orgId}`;
 }
 
-export function createKeyManagementService(
-  deps: KeyManagementDependencies,
-): KeyManagementService {
+export function createKeyManagementService(deps: KeyManagementDependencies): KeyManagementService {
   const { ddb, keysTableName, auditTableName, usageTableName } = deps;
   const logger = deps.logger ?? noopLogger;
   const generateKeyId = deps.generateKeyId ?? (() => `key_${ulid()}`);
@@ -217,10 +241,7 @@ export function createKeyManagementService(
     return result.Item as OrgEnvelopeRecord | undefined;
   }
 
-  async function getOrgStatus(input: {
-    orgId: string;
-    orgRole: string;
-  }): Promise<OrgKeyStatus> {
+  async function getOrgStatus(input: { orgId: string; orgRole: string }): Promise<OrgKeyStatus> {
     const canManageKeys = input.orgRole.length > 0 && getAdminRoles().has(input.orgRole);
     const envelope = await loadEnvelope(input.orgId);
     if (!envelope) {
@@ -455,10 +476,7 @@ export function createKeyManagementService(
    * ~100 keys/org. Add a `keyId-index` GSI when enterprise plans grow
    * past that ceiling — out of scope for this PR.
    */
-  async function findKeyByKeyId(
-    orgId: string,
-    keyId: string,
-  ): Promise<ApiKeyRecord | undefined> {
+  async function findKeyByKeyId(orgId: string, keyId: string): Promise<ApiKeyRecord | undefined> {
     const result = await ddb.send(
       new QueryCommand({
         TableName: keysTableName,
@@ -526,6 +544,63 @@ export function createKeyManagementService(
     return out;
   }
 
+  async function listAuditTail(input: {
+    orgId: string;
+    limit?: number;
+  }): Promise<ListedAuditEvent[]> {
+    const requestedLimit = input.limit ?? 10;
+    const limit = Math.max(1, Math.min(requestedLimit, 50));
+    const rows: AuditRecord[] = [];
+    let exclusiveStartKey: QueryCommandInput["ExclusiveStartKey"] | undefined;
+    let pagesRead = 0;
+
+    do {
+      const result = await ddb.send(
+        new QueryCommand({
+          TableName: auditTableName,
+          KeyConditionExpression: "orgId = :orgId",
+          ExpressionAttributeValues: { ":orgId": input.orgId },
+          ScanIndexForward: false,
+          Limit: AUDIT_QUERY_PAGE_SIZE,
+          ...(exclusiveStartKey ? { ExclusiveStartKey: exclusiveStartKey } : {}),
+        }),
+      );
+      pagesRead += 1;
+      for (const row of (result.Items as AuditRecord[] | undefined) ?? []) {
+        if (KEY_AUDIT_ACTIONS.has(row.action)) {
+          rows.push(row);
+          if (rows.length >= limit) break;
+        }
+      }
+      exclusiveStartKey = result.LastEvaluatedKey;
+    } while (
+      rows.length < limit &&
+      exclusiveStartKey !== undefined &&
+      pagesRead < AUDIT_QUERY_MAX_PAGES
+    );
+
+    if (rows.length < limit && exclusiveStartKey !== undefined) {
+      logger.warn("listAuditTail: truncated before collecting requested key lifecycle events", {
+        orgId: input.orgId,
+        requestedLimit: limit,
+        pagesRead,
+      });
+    }
+
+    return rows.slice(0, limit).map((row) => {
+      const [timestamp = row["timestamp#eventId"]] = row["timestamp#eventId"].split("#", 1);
+      const metadata = publicAuditMetadata(row.metadata);
+      return {
+        action: row.action,
+        actorId: row.actorId,
+        timestamp,
+        ...(metadata !== undefined ? { metadata } : {}),
+        ...(row.ip !== undefined ? { ip: row.ip } : {}),
+        ...(row.userAgent !== undefined ? { userAgent: row.userAgent } : {}),
+      };
+    });
+  }
+
   /**
    * Read all usage rows partitioned under `oldApiKeyHash` that need
    * to be migrated to the new hash on rotate. Excludes the `REDIRECT`
@@ -551,9 +626,7 @@ export function createKeyManagementService(
    * write + backfill + cutover. Until that lands, rotateKey carries
    * the rows forward in the same atomic transaction.
    */
-  async function loadUsageRowsForMigration(
-    oldApiKeyHash: string,
-  ): Promise<UsageCounterRecord[]> {
+  async function loadUsageRowsForMigration(oldApiKeyHash: string): Promise<UsageCounterRecord[]> {
     // KeyConditionExpression on a DynamoDB sort key supports `=`, `<`,
     // `>`, `<=`, `>=`, `BETWEEN`, `begins_with` — but NOT `<>`. So we
     // pull every row for this partition and filter REDIRECT in-memory.
@@ -686,8 +759,7 @@ export function createKeyManagementService(
             // touching the row will set/bump version → first branch
             // false (#v exists) AND second branch false (#v != 0) →
             // CondExpr fails → cancel → retry.
-            ConditionExpression:
-              "(attribute_not_exists(#v) AND :rv = :zero) OR #v = :rv",
+            ConditionExpression: "(attribute_not_exists(#v) AND :rv = :zero) OR #v = :rv",
             ExpressionAttributeNames: { "#v": "version" },
             ExpressionAttributeValues: { ":rv": readVersion, ":zero": 0 },
           },
@@ -804,23 +876,16 @@ export function createKeyManagementService(
           const usageRangeEnd = usageRangeStart + 2 * oldUsageRows.length;
           const usageMigrationRaceLost = reasons
             .slice(usageRangeStart, usageRangeEnd)
-            .some(
-              (r) =>
-                r?.Code === "ConditionalCheckFailed" ||
-                r?.Code === "TransactionConflict",
-            );
+            .some((r) => r?.Code === "ConditionalCheckFailed" || r?.Code === "TransactionConflict");
 
           if (usageMigrationRaceLost && attempt < ROTATE_USAGE_RETRY_MAX) {
-            logger.warn(
-              "rotateKey: usage-row concurrency race; re-Querying and retrying",
-              {
-                orgId: input.orgId,
-                keyId: input.keyId,
-                attempt: attempt + 1,
-                maxAttempts: ROTATE_USAGE_RETRY_MAX + 1,
-                reasons: reasons.map((r) => r?.Code ?? null),
-              },
-            );
+            logger.warn("rotateKey: usage-row concurrency race; re-Querying and retrying", {
+              orgId: input.orgId,
+              keyId: input.keyId,
+              attempt: attempt + 1,
+              maxAttempts: ROTATE_USAGE_RETRY_MAX + 1,
+              reasons: reasons.map((r) => r?.Code ?? null),
+            });
             continue;
           }
         }
@@ -952,5 +1017,5 @@ export function createKeyManagementService(
     };
   }
 
-  return { getOrgStatus, createKey, listOrgKeys, rotateKey, revokeKey };
+  return { getOrgStatus, createKey, listOrgKeys, listAuditTail, rotateKey, revokeKey };
 }

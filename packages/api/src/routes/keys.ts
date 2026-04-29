@@ -1,10 +1,7 @@
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
-import {
-  createKeyManagementService,
-  type KeyManagementService,
-} from "@prontiq/control-plane";
+import { createKeyManagementService, type KeyManagementService } from "@prontiq/control-plane";
 import { createLogger } from "@prontiq/shared";
 import {
   clerkAdminOnly,
@@ -38,10 +35,7 @@ const apiErrorResponseSchema = z.object({
  * mis-type the actual runtime body. `z.union` translates to OpenAPI
  * `oneOf` via `@asteasolutions/zod-to-openapi`.
  */
-const stepUpRoute403Schema = z.union([
-  apiErrorResponseSchema,
-  clerkReverificationError403Schema,
-]);
+const stepUpRoute403Schema = z.union([apiErrorResponseSchema, clerkReverificationError403Schema]);
 
 const jsonResponse = (schema: z.ZodType, description: string) => ({
   content: { "application/json": { schema } },
@@ -81,6 +75,22 @@ const listedKeySchema = z.object({
 
 const listKeysSuccessSchema = z.object({ keys: z.array(listedKeySchema) });
 
+const auditEventSchema = z.object({
+  action: z.string(),
+  actorId: z.string(),
+  timestamp: z.string(),
+  metadata: z
+    .object({
+      keyId: z.string().optional(),
+      label: z.string().optional(),
+    })
+    .optional(),
+  ip: z.string().optional(),
+  userAgent: z.string().optional(),
+});
+
+const listAuditSuccessSchema = z.object({ events: z.array(auditEventSchema) });
+
 const accountStatusSchema = z.discriminatedUnion("provisioned", [
   z.object({
     orgId: z.string(),
@@ -115,7 +125,9 @@ const rotateKeySuccessSchema = z.object({
       "The raw key for the rotated identity. Returned ONCE in this response. Old raw remains valid for 5 minutes via the REDIRECT grace.",
   }),
   keyPrefix: z.string(),
-  createdAt: z.string().openapi({ description: "Original creation timestamp — preserved across rotation." }),
+  createdAt: z
+    .string()
+    .openapi({ description: "Original creation timestamp — preserved across rotation." }),
   rotatedAt: z.string().openapi({ description: "ISO-8601 timestamp of this rotation." }),
 });
 
@@ -274,9 +286,7 @@ export function createKeysRoutes(overrides: KeysRouteOverrides = {}) {
     // `defaultHook` and surfaces as 400 INVALID_PARAMETERS — the
     // handler never sees it. Reading `c.req.json()` directly here
     // would silently bypass that validation.
-    const validated = c.req.valid("json") as
-      | z.infer<typeof createKeyBodySchema>
-      | undefined;
+    const validated = c.req.valid("json") as z.infer<typeof createKeyBodySchema> | undefined;
     const label = validated?.label;
 
     const ip = getCallerIp(c);
@@ -374,6 +384,48 @@ export function createKeysRoutes(overrides: KeysRouteOverrides = {}) {
       return c.json({ keys }, 200);
     } catch (error) {
       logger.error("listOrgKeys failed", {
+        request_id: requestId,
+        orgId: principal.orgId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return c.json(
+        {
+          error: {
+            code: "INTERNAL_ERROR",
+            message: "Internal server error",
+            status: 500,
+            request_id: requestId,
+          },
+        },
+        500,
+      );
+    }
+  });
+
+  const listAuditRoute = createRoute({
+    method: "get",
+    path: "/audit",
+    summary: "List recent account audit events (member-allowed)",
+    description:
+      "Returns the latest API-key lifecycle audit events for the caller's org, newest first. Used by the console key-management page to show recent CREATE / ROTATE / REVOKE activity. Raw API keys, key hashes, and hash-bearing internal metadata are never present.",
+    security: clerkJwtSecurity,
+    responses: {
+      200: jsonResponse(listAuditSuccessSchema, "Recent audit events for this org"),
+      401: jsonResponse(apiErrorResponseSchema, "Missing/invalid JWT"),
+      500: jsonResponse(apiErrorResponseSchema, "Server error"),
+    },
+  });
+
+  keysRoutes.openapi(listAuditRoute, async (c) => {
+    const principal = c.get("clerkPrincipal");
+    const requestId = c.get("requestId");
+    const service = overrides.service ?? getDefaultService();
+
+    try {
+      const events = await service.listAuditTail({ orgId: principal.orgId });
+      return c.json({ events }, 200);
+    } catch (error) {
+      logger.error("listAuditTail failed", {
         request_id: requestId,
         orgId: principal.orgId,
         error: error instanceof Error ? error.message : String(error),
@@ -569,10 +621,7 @@ export function createKeysRoutes(overrides: KeysRouteOverrides = {}) {
       );
     }
 
-    return c.json(
-      { keyId: result.keyId, revokedAt: result.revokedAt },
-      200,
-    );
+    return c.json({ keyId: result.keyId, revokedAt: result.revokedAt }, 200);
   });
 
   return keysRoutes;

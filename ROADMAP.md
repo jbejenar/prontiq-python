@@ -1195,7 +1195,6 @@ disposition, queue/DLQ/alarm checks, runbook and evidence updates.
   future Vercel Lago BFF direction
 - changing Stripe integration outside Lago payment-provider configuration
 
->
 > **Lago migration progress.** `10/10` implemented for `P1B.14`–`P1B.22` plus `P1B.18a`. The `P1B` epic rollup includes completed historical Stripe-path work, so treat the Lago migration sequence as complete.
 >
 > **Scope boundary.** The hot-path middleware rewrite (hash-based lookup, REDIRECT fallback, new usage-table writes) ships in **P1B.04b** (cutover), NOT in P1B.02. P1B.02 is pure crypto primitives only — no DDB dependency — which is why it remains parallel-safe. P1B.04b flips schema + code atomically once P1B.02 and P1B.04 are both done.
@@ -3389,8 +3388,10 @@ Backend substrate is partially complete:
 - [x] PR 2 shipped `POST /v1/account/keys/rotate`, `POST /v1/account/keys/revoke`, REDIRECT grace handling, usage-counter migration on rotate, and step-up enforcement.
 - [x] PR 2.5 shipped `GET /v1/account/status` so the console can select missing-org, first-key, and list states without probing mutation endpoints.
 - [x] PR 3 shipped console list/create/recovery UI using `GET /v1/account/status`, reveal-once raw-key modal, and direct Clerk-token calls to the private account API.
-- [x] PR 4 in review: console rotate/revoke UI with Clerk `useReverification()`.
-- [ ] PR 5 remains: audit panel and key-limit indicator.
+- [x] PR 4 shipped console rotate/revoke UI with Clerk `useReverification()`.
+- [ ] PR 5 is implemented on the current branch for review: audit panel,
+      `GET /v1/account/audit`, key-limit polish, and dev CI
+      `smoke:keys-audit`. It is not marked shipped until merged and deployed.
 
 #### User Story
 
@@ -3443,7 +3444,9 @@ Key rotation must be atomic (TransactWrite swap) with a REDIRECT record per §5.
   - `Evidence:` DDB record shows `active: false`; integration test covers REVOKE-after-ROTATE
 - [ ] Audit trail visible on the page (last 10 lifecycle events from `prontiq-audit`)
   - `Verify:` Each action (create, rotate, revoke) appears with actor, timestamp, IP
-  - `Evidence:` `prontiq-audit` query
+  - `Evidence:` Implemented on the PR 5 branch with `GET /v1/account/audit`
+    integration coverage, console component coverage, and dev CI
+    `smoke:keys-audit`; mark complete after merge, dev deploy, and smoke.
 - [x] Key limits enforced for Free and the active paid commercial contract — atomic `activeKeyCount` on `ORG#{orgId}` in the same transaction as key creation. The list query still uses the sentinel filter against `orgId-index`; the limit check does not rely on a race-prone preflight count.
   - `Verify:` Two tests: (a) Attempt 3rd key on Free tier → 403 `KEY_LIMIT_EXCEEDED`; (b) Verify the ORG envelope row is NOT counted — sign up + immediately try to create 2 keys on Free tier; both succeed (envelope doesn't count as a key)
   - `Evidence:` Error response on (a); 2 successful creates on (b) proving sentinel filter works
@@ -4397,6 +4400,9 @@ Currently the API is at a random AWS URL (`59jym47ia1.execute-api...`) and the f
 - [ ] `api.prontiq.dev` → API Gateway custom domain
   - `Verify:` `curl https://api.prontiq.dev/v1/health` returns 200
   - `Evidence:` DNS CNAME configured, ACM cert validated
+- [ ] `api.dev.prontiq.dev` → dev API Gateway custom domain
+  - `Verify:` `curl https://api.dev.prontiq.dev/v1/address/autocomplete?q=test` reaches API Gateway and returns an application-level response, not TLS failure
+  - `Evidence:` DNS/CNAME target and certificate validation recorded; local smoke no longer needs direct API Gateway fallback
 - [ ] `console.prontiq.dev` → Console app
   - `Verify:` `curl https://console.prontiq.dev` returns console HTML
   - `Evidence:` hosting/domain configuration active
@@ -4582,7 +4588,7 @@ gaps:
    `pq_live_4a85` and `pq_live_03f7` were retired during P1B.21).
 3. `smoke-dev` is informational. A red ✗ on a merged PR is a notification,
    not a gate. Once the smoke job has been stable for ~1 week post-merge,
-   it should be a *required* status check on `main` so deploys cannot
+   it should be a _required_ status check on `main` so deploys cannot
    land green-but-unverified.
 4. The smoke-pattern boundary needs to be explicit: which smokes belong
    in CI (non-mutating, every-deploy) and which stay runbook-only

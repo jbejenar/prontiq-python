@@ -24,6 +24,8 @@
     "smoke:keys:prod": "pnpm -w build --filter @prontiq/api... && PRONTIQ_API=https://api.prontiq.dev node dist/scripts/smoke-keys.js",
     "smoke:keys-stepup": "pnpm -w build --filter @prontiq/api... && node dist/scripts/smoke-keys-stepup.js",
     "smoke:keys-stepup:prod": "pnpm -w build --filter @prontiq/api... && PRONTIQ_API=https://api.prontiq.dev node dist/scripts/smoke-keys-stepup.js",
+    "smoke:keys-audit": "pnpm -w build --filter @prontiq/api... && node dist/scripts/smoke-keys-audit.js",
+    "smoke:keys-audit:prod": "pnpm -w build --filter @prontiq/api... && PRONTIQ_API=https://api.prontiq.dev node dist/scripts/smoke-keys-audit.js",
     "migrate:api-keys": "pnpm -w build --filter @prontiq/api... && node dist/scripts/migrate-api-keys.js",
     "rotate:prod-key": "pnpm -w build --filter @prontiq/api... && node dist/scripts/rotate-prod-key.js",
     "lint": "eslint src/",

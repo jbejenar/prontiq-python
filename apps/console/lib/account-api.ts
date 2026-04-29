@@ -49,6 +49,18 @@ export interface RevokedKey {
   revokedAt: string;
 }
 
+export interface AccountAuditEvent {
+  action: string;
+  actorId: string;
+  timestamp: string;
+  metadata?: {
+    keyId?: string;
+    label?: string;
+  };
+  ip?: string;
+  userAgent?: string;
+}
+
 export interface AccountSetupResult {
   status: "created" | "already_exists";
   orgId: string;
@@ -84,8 +96,7 @@ function isClerkReverificationHint(value: unknown) {
   }
   const reverification = clerkError.metadata.reverification;
   return (
-    typeof reverification.level === "string" &&
-    typeof reverification.afterMinutes === "number"
+    typeof reverification.level === "string" && typeof reverification.afterMinutes === "number"
   );
 }
 
@@ -131,12 +142,13 @@ async function authedFetch<T>(
 }
 
 export const accountApi = {
-  getStatus: (getToken: GetToken) =>
-    authedFetch<AccountStatus>(getToken, "/v1/account/status"),
+  getStatus: (getToken: GetToken) => authedFetch<AccountStatus>(getToken, "/v1/account/status"),
   runSetup: (getToken: GetToken) =>
     authedFetch<AccountSetupResult>(getToken, "/v1/account/setup", { method: "POST" }),
   listKeys: (getToken: GetToken) =>
     authedFetch<{ keys: ListedKey[] }>(getToken, "/v1/account/keys"),
+  listAudit: (getToken: GetToken) =>
+    authedFetch<{ events: AccountAuditEvent[] }>(getToken, "/v1/account/audit"),
   createKey: (getToken: GetToken, input: { label?: string }) =>
     authedFetch<CreatedKey>(getToken, "/v1/account/keys/create", {
       method: "POST",

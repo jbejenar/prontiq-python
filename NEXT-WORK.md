@@ -1,15 +1,17 @@
 # NEXT-WORK.md — Active Sprint
 
-> Last updated: 2026-04-29 for P1C.03 PR 3. P1B.22 (Clerk org commercial
+> Last updated: 2026-04-29 for P1C.03 PR 5. P1B.22 (Clerk org commercial
 > identity) shipped in commit 5e6afe2. P1C.03 PRs 0 (backfill), 1 (create +
 > list), 2 (rotate + revoke + step-up), and 2.5 (status endpoint + docs) are
-> deployed to dev and prod. PR 3 implements the console list/create/recovery UI.
+> deployed to dev and prod. PR 5 implements the audit panel and audit API.
 
 ## Current Phase
 
-P1C.03 PR 3: Console keys page for missing-org recovery, first-key creation,
-key listing, and reveal-once raw key handling. Next implementation slice is PR
-4: rotate/revoke UI with Clerk step-up.
+P1C.03 PR 5: Console audit panel and key-limit polish. Key management already
+covers missing-org recovery, first-key creation, key listing, rotate/revoke,
+Clerk step-up, and reveal-once raw key handling. Dev smoke found
+`api.dev.prontiq.dev` has a TLS issue from local tooling; use the direct dev API
+Gateway host for smoke until the vanity domain is fixed.
 
 ## Active Commercial Contract
 
@@ -45,6 +47,7 @@ POST /v1/account/setup            (admin-gated)
 GET  /v1/account/status           (member-allowed; P1C.03 PR 2.5)
 POST /v1/account/keys/create      (admin-gated; P1C.03 PR 1)
 GET  /v1/account/keys             (member-allowed; P1C.03 PR 1)
+GET  /v1/account/audit            (member-allowed; P1C.03 PR 5)
 POST /v1/account/keys/rotate      (admin + reverification; P1C.03 PR 2)
 POST /v1/account/keys/revoke      (admin + reverification; P1C.03 PR 2)
 ```
@@ -63,11 +66,11 @@ POST /v1/account/billing/portal-session
   list state machine, reveal-once raw modal. Uses @tanstack/react-query and
   sonner. Console fetches direct from client with Clerk `getToken()` against
   `NEXT_PUBLIC_API_URL`.
-- **P1C.03 PR 4** (in review) — rotate / revoke UI with step-up
+- **P1C.03 PR 4** — rotate / revoke UI with step-up
   modal via `useReverification()`. Operator gate: prod Clerk dashboard
   must emit `fva` claim.
-- **P1C.03 PR 5** (last) — audit panel + key-limit indicator. Adds
-  `GET /v1/account/audit`.
+- **P1C.03 PR 5** (active) — audit panel + key-limit indicator. Adds
+  `GET /v1/account/audit` and dev CI `smoke:keys-audit`.
 - P1B.23 (pre-go-live cleanup) is gated on P1C.03 + P1C.05.
 - All console billing surfaces remain out of scope for the platform
   backend; future Vercel BFF reads Lago directly.
