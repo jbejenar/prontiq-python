@@ -21,6 +21,9 @@
 - Overview is now implemented as a read-only account summary: it consumes
   `GET /v1/account/status` and `GET /v1/account/keys`, shows masked key
   metadata, and links all setup/key mutations to `/keys`.
+- If the Lago-derived `activeKeyCount` projection says keys exist but the key
+  list is empty, the overview renders an explicit retry/drift state instead of
+  telling the user there are no keys.
 - Fake usage values were removed from the overview; usage charts remain P1C.04
   and billing remains P1C.05.
 - The remaining handoff is review, preview smoke, dev deploy, and final roadmap

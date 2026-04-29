@@ -42,8 +42,12 @@ function getErrorMessage(error: unknown) {
   return "Something went wrong. Please try again.";
 }
 
-function formatTier(tier: string) {
-  return `${tier.charAt(0).toUpperCase()}${tier.slice(1)}`;
+function formatPlanCode(planCode: string) {
+  return planCode;
+}
+
+function formatKeyLimit(maxKeys: number) {
+  return maxKeys >= Number.MAX_SAFE_INTEGER ? "unlimited" : String(maxKeys);
 }
 
 function keyLabel(key: ListedKey) {
@@ -58,17 +62,40 @@ function buildSnippets(apiUrl: string) {
     },
     {
       label: "TypeScript",
-      code: `import { Prontiq } from "@prontiq/sdk";\n\nconst client = new Prontiq({\n  serverURL: "${apiUrl}",\n  apiKeyAuth: process.env.PRONTIQ_API_KEY,\n});\nconst result = await client.getV1AddressAutocomplete("2000");`,
+      code: `import { Prontiq } from "@prontiq/sdk";\n\nconst client = new Prontiq({\n  serverURL: "${apiUrl}",\n  apiKeyAuth: "${SNIPPET_KEY_PLACEHOLDER}",\n});\nconst result = await client.getV1AddressAutocomplete("2000");`,
     },
     {
       label: "Python",
-      code: `from prontiq import Prontiq\n\nclient = Prontiq(api_key="${SNIPPET_KEY_PLACEHOLDER}")\nresult = client.address.autocomplete(q="2000")`,
+      code: `import requests\n\nresponse = requests.get(\n    "${apiUrl}/v1/address/autocomplete",\n    params={"q": "2000"},\n    headers={"X-Api-Key": "${SNIPPET_KEY_PLACEHOLDER}"},\n)\nresult = response.json()`,
     },
   ];
 }
 
-function KeyPreviewTable({ keys }: { keys: ListedKey[] }) {
+function KeyPreviewTable({
+  expectedActiveKeyCount,
+  keys,
+  onRetry,
+}: {
+  expectedActiveKeyCount: number;
+  keys: ListedKey[];
+  onRetry: () => void;
+}) {
   if (keys.length === 0) {
+    if (expectedActiveKeyCount > 0) {
+      return (
+        <div className="space-y-4 rounded-lg border border-amber-300 bg-amber-50/70 p-4 text-sm text-amber-950">
+          <p>
+            Key count projection says this organization has active keys, but the key list returned
+            none. Retry the list before creating or rotating keys.
+          </p>
+          <Button type="button" variant="outline" onClick={onRetry}>
+            <RefreshCcw className="h-4 w-4" />
+            Retry key list
+          </Button>
+        </div>
+      );
+    }
+
     return (
       <div className="rounded-lg border border-border bg-background/70 p-4 text-sm text-muted-foreground">
         No active keys yet. Create your first key from the Keys page.
@@ -191,15 +218,15 @@ export function OverviewPanel({ apiUrl }: { apiUrl: string }) {
           <section className="grid gap-4 xl:grid-cols-3">
             <Card>
               <CardHeader>
-                <CardDescription>Account</CardDescription>
+                <CardDescription>Plan code</CardDescription>
                 <CardTitle className="text-4xl">
-                  {status.provisioned ? formatTier(status.tier) : "Setup required"}
+                  {status.provisioned ? formatPlanCode(status.tier) : "Setup required"}
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4 text-sm text-muted-foreground">
                 <p>
                   {status.provisioned
-                    ? "Provisioned for the active organization."
+                    ? "Current Lago-derived enforcement projection for the active organization."
                     : "The org envelope is missing. Setup recovery lives on the Keys page."}
                 </p>
                 <Button asChild>
@@ -212,12 +239,14 @@ export function OverviewPanel({ apiUrl }: { apiUrl: string }) {
               <CardHeader>
                 <CardDescription>Keys</CardDescription>
                 <CardTitle className="text-4xl">
-                  {status.provisioned ? `${status.activeKeyCount} / ${status.maxKeys}` : "0 / 0"}
+                  {status.provisioned
+                    ? `${status.activeKeyCount} / ${formatKeyLimit(status.maxKeys)}`
+                    : "0 / 0"}
                 </CardTitle>
               </CardHeader>
               <CardContent className="text-sm text-muted-foreground">
-                Existing keys are shown as masked metadata only. Raw values appear once on create
-                or rotate.
+                Existing keys are shown as masked metadata only. Raw values appear once on create or
+                rotate.
               </CardContent>
             </Card>
 
@@ -267,7 +296,11 @@ export function OverviewPanel({ apiUrl }: { apiUrl: string }) {
                     </Button>
                   </div>
                 ) : (
-                  <KeyPreviewTable keys={keys} />
+                  <KeyPreviewTable
+                    expectedActiveKeyCount={status.activeKeyCount}
+                    keys={keys}
+                    onRetry={() => void keysQuery.refetch()}
+                  />
                 )}
                 <Button asChild variant="outline">
                   <Link href="/keys">Open Keys</Link>
@@ -296,8 +329,8 @@ export function OverviewPanel({ apiUrl }: { apiUrl: string }) {
             <CardTitle className="text-3xl">Lago-backed billing next</CardTitle>
           </CardHeader>
           <CardContent className="text-sm leading-6 text-muted-foreground">
-            Billing reads and actions remain P1C.05. The forward path is a Prontiq-owned
-            Lago-backed surface, not embedded Stripe UI.
+            Billing reads and actions remain P1C.05. The forward path is a Prontiq-owned Lago-backed
+            surface, not embedded Stripe UI.
           </CardContent>
         </Card>
 
@@ -325,7 +358,10 @@ export function OverviewPanel({ apiUrl }: { apiUrl: string }) {
         </CardHeader>
         <CardContent className="grid gap-4 xl:grid-cols-3">
           {snippets.map((snippet) => (
-            <div className="space-y-3 rounded-lg border border-border bg-background/70 p-4" key={snippet.label}>
+            <div
+              className="space-y-3 rounded-lg border border-border bg-background/70 p-4"
+              key={snippet.label}
+            >
               <div className="flex items-center justify-between gap-3">
                 <Badge variant="secondary">{snippet.label}</Badge>
                 <Button

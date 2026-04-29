@@ -7,9 +7,10 @@
 
 P1C.02: Console Overview Page. Implementation is on the active branch for
 review: overview now reads live account status/key metadata, remains read-only,
-uses placeholder quickstarts, and routes setup/key mutations to `/keys`. Dev
-smoke found `api.dev.prontiq.dev` has a TLS issue from local tooling; use the
-direct dev API Gateway host for smoke until the vanity domain is fixed.
+uses placeholder quickstarts, renders status/key-list drift explicitly, and
+routes setup/key mutations to `/keys`. Dev smoke found `api.dev.prontiq.dev`
+has a TLS issue from local tooling; use the direct dev API Gateway host for
+smoke until the vanity domain is fixed.
 
 ## Active Commercial Contract
 
@@ -67,8 +68,9 @@ POST /v1/account/billing/portal-session
   handling, audit trail, and key-limit indicator.
 - **P1C.02** (active) — overview page. Branch implementation replaces static
   placeholders with live account status, masked key metadata, safe quickstart
-  snippets, and real-data-only usage/billing handoffs. Do not mark complete
-  until review, merge, preview smoke, and deploy verification are done.
+  snippets, explicit status/key-list drift handling, and real-data-only
+  usage/billing handoffs. Do not mark complete until review, merge, preview
+  smoke, and deploy verification are done.
 - P1B.23 (pre-go-live cleanup) is gated on P1C.03 + P1C.05.
 - All console billing surfaces remain out of scope for the platform
   backend; future Vercel BFF reads Lago directly.

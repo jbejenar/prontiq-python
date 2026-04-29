@@ -1390,15 +1390,15 @@ this table are historical migration data only.
 
 Six operations. Every mutation writes to `prontiq-audit`.
 
-| Operation  | Implementation                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | Trigger                                            |
-| ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
-| **STATUS** | `GetItem` the `ORG#{orgId}` envelope and return provisioning state, `hasFirstKey`, `activeKeyCount`, tier, max keys, and whether the caller's `org_role` is allowed to manage keys. Member-allowed. Never returns key hashes or raw key material.                                                                                                                                                                                                                                | Console app state machine                          |
-| **CREATE** | Generate `pq_live_` + `randomBytes(24).toString('hex')`; SHA-256 hash; generate stable opaque `keyId = key_<ulid>`. `TransactWriteItems`: conditional put new key row, update `ORG#{orgId}` with `SET hasFirstKey = true, activeKeyCount = if_not_exists(activeKeyCount, 0) + 1` guarded by `attribute_not_exists(activeKeyCount) OR activeKeyCount < maxKeys`, and write CREATE audit with actor/IP/UA. `maxKeys` is projected from Lago entitlements. Return raw key once. No billing registry mutation.          | User-driven "Create Key" action in the console app |
-| **VERIFY** | Hash incoming `X-Api-Key`. `GetItem` from `prontiq-keys` by hash. On miss, check `prontiq-usage/{oldHash, REDIRECT}` and re-resolve to `newHash` only while `authValidUntil > now`. Check `active`, products, payment-overdue, quota, and burst limits from local DynamoDB snapshots.                                                                                                                                                                                            | Every API request (hot path)                       |
-| **ROTATE** | Locate key by `keyId` within the org, generate a new raw/hash, and `TransactWriteItems`: delete old hash, put new hash preserving `keyId` and original `createdAt`, write REDIRECT `{ oldHash -> newHash, authValidUntil, ttl }`, migrate current usage counters to the new hash, and write ROTATE audit. `activeKeyCount` is unchanged. Return new raw key once. No billing registry mutation.                                                                                  | "Rotate" button in the console app                 |
-| **REVOKE** | Locate key by `keyId` within the org and `TransactWriteItems`: set live key `active=false`, set `revokedAt`, decrement `ORG#{orgId}.activeKeyCount`, and write REVOKE audit. No REDIRECT cleanup: a rotated-out raw key re-resolves to the current hash and then fails the `active=false` check (§5.5.3 step 3).                                                                                                                                                                 | "Revoke" button in the console app                 |
-| **LIST**   | `Query` GSI `orgId-index` with sentinel filter `attribute_exists(keyPrefix) AND attribute_exists(active)`, return active key metadata with masked `keyPrefix`. Never return raw key or hash.                                                                                                                                                                                                                                                                                     | Console app API Key tab                            |
-| **AUDIT**  | `Query` `prontiq-audit` by org partition, newest first, paginate through org-level rows, filter to API-key lifecycle actions (`CREATE`, `ROTATE`, `REVOKE`), limit 10 by default. Return event action, actor, timestamp, optional IP/User-Agent, and allowlisted public metadata such as `keyId` / `label`. Member-allowed; raw keys, API key hashes, and hash-bearing internal metadata are never returned. Hashes remain only in DynamoDB audit rows for operator correlation. | Console app API Key tab audit panel                |
+| Operation  | Implementation                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | Trigger                                            |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| **STATUS** | `GetItem` the `ORG#{orgId}` envelope and return provisioning state, `hasFirstKey`, `activeKeyCount`, tier, max keys, and whether the caller's `org_role` is allowed to manage keys. Member-allowed. Never returns key hashes or raw key material.                                                                                                                                                                                                                                                          | Console app state machine                          |
+| **CREATE** | Generate `pq_live_` + `randomBytes(24).toString('hex')`; SHA-256 hash; generate stable opaque `keyId = key_<ulid>`. `TransactWriteItems`: conditional put new key row, update `ORG#{orgId}` with `SET hasFirstKey = true, activeKeyCount = if_not_exists(activeKeyCount, 0) + 1` guarded by `attribute_not_exists(activeKeyCount) OR activeKeyCount < maxKeys`, and write CREATE audit with actor/IP/UA. `maxKeys` is projected from Lago entitlements. Return raw key once. No billing registry mutation. | User-driven "Create Key" action in the console app |
+| **VERIFY** | Hash incoming `X-Api-Key`. `GetItem` from `prontiq-keys` by hash. On miss, check `prontiq-usage/{oldHash, REDIRECT}` and re-resolve to `newHash` only while `authValidUntil > now`. Check `active`, products, payment-overdue, quota, and burst limits from local DynamoDB snapshots.                                                                                                                                                                                                                      | Every API request (hot path)                       |
+| **ROTATE** | Locate key by `keyId` within the org, generate a new raw/hash, and `TransactWriteItems`: delete old hash, put new hash preserving `keyId` and original `createdAt`, write REDIRECT `{ oldHash -> newHash, authValidUntil, ttl }`, migrate current usage counters to the new hash, and write ROTATE audit. `activeKeyCount` is unchanged. Return new raw key once. No billing registry mutation.                                                                                                            | "Rotate" button in the console app                 |
+| **REVOKE** | Locate key by `keyId` within the org and `TransactWriteItems`: set live key `active=false`, set `revokedAt`, decrement `ORG#{orgId}.activeKeyCount`, and write REVOKE audit. No REDIRECT cleanup: a rotated-out raw key re-resolves to the current hash and then fails the `active=false` check (§5.5.3 step 3).                                                                                                                                                                                           | "Revoke" button in the console app                 |
+| **LIST**   | `Query` GSI `orgId-index` with sentinel filter `attribute_exists(keyPrefix) AND attribute_exists(active)`, return active key metadata with masked `keyPrefix`. Never return raw key or hash.                                                                                                                                                                                                                                                                                                               | Console app API Key tab                            |
+| **AUDIT**  | `Query` `prontiq-audit` by org partition, newest first, paginate through org-level rows, filter to API-key lifecycle actions (`CREATE`, `ROTATE`, `REVOKE`), limit 10 by default. Return event action, actor, timestamp, optional IP/User-Agent, and allowlisted public metadata such as `keyId` / `label`. Member-allowed; raw keys, API key hashes, and hash-bearing internal metadata are never returned. Hashes remain only in DynamoDB audit rows for operator correlation.                           | Console app API Key tab audit panel                |
 
 **Current shipped runtime key limits:** Free currently allows 2 keys, while the
 legacy paid-plan ladder still carries higher limits during the migration
@@ -2169,10 +2169,11 @@ decision record.
    Fully typed. Works immediately.
 
 6. USAGE
-   Usage ticks up in real-time in the console (pulled from prontiq-usage).
-   DynamoDB middleware enforces quota (monthly, atomic) + burst
-   (per-second) per product. At 80% of quota: upgrade nudge in the console
-   + async SES threshold email via `PqQuotaEmailWorker`.
+   Current P1C.02 overview does not render usage numbers. P1C.04 adds a real
+   usage surface backed by platform usage counters. DynamoDB middleware already
+   enforces quota (billing-period, atomic) + burst (per-second) per product.
+   At 80% of quota: upgrade nudge in the console + async SES threshold email
+   via `PqQuotaEmailWorker`.
 
 7. UPGRADE
    Current Lago path: Prontiq-owned billing surface proxies Lago-backed plan
@@ -2212,14 +2213,14 @@ The console is a client-rendered app below the auth boundary. `P1C.07` establish
 
 Initial console pages:
 
-| Route area      | Data source                                                      | Notes                                         |
-| --------------- | ---------------------------------------------------------------- | --------------------------------------------- |
-| **Overview**    | `/v1/account/status` + `/v1/account/keys`                        | Read-only account/key posture and safe quickstart. Existing raw keys are never recoverable. |
-| **Keys**        | `/v1/account/keys*`                                              | First-key flow, create, rotate, revoke, audit |
-| **Usage**       | `/v1/account/usage`                                              | Charts, quota visibility, export              |
-| **Billing**     | Prontiq-rendered billing state + Lago-backed commercial surfaces | Migration-aware plan and invoice management   |
-| **Playground**  | `@prontiq/sdk` + public API                                      | Pre-authenticated exploration                 |
-| **Danger Zone** | dedicated account-management flow                                | Self-service org deletion                     |
+| Route area      | Data source                                  | Notes                                                                                                                                                                  |
+| --------------- | -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Overview**    | `/v1/account/status` + `/v1/account/keys`    | Read-only Lago-derived enforcement projection, masked key posture, explicit status/key-list drift state, and safe quickstart. Existing raw keys are never recoverable. |
+| **Keys**        | `/v1/account/keys*`                          | First-key flow, create, rotate, revoke, audit                                                                                                                          |
+| **Usage**       | Planned P1C.04 usage summary/charts endpoint | Not live in P1C.02. Charts, quota visibility, export                                                                                                                   |
+| **Billing**     | Planned P1C.05 Vercel BFF backed by Lago     | Browser never receives Lago/Stripe credentials                                                                                                                         |
+| **Playground**  | `@prontiq/sdk` + public API                  | Pre-authenticated exploration                                                                                                                                          |
+| **Danger Zone** | dedicated account-management flow            | Self-service org deletion                                                                                                                                              |
 
 Identity model:
 
@@ -2252,13 +2253,13 @@ SameSite=Lax cookies. All state-mutating requests require Clerk session token in
 
 ##### Account Endpoint Rate Limits
 
-| Endpoint Group                 | Limit  | Window   | Scope    |
-| ------------------------------ | ------ | -------- | -------- |
-| `POST /v1/account/keys/*`      | 5 req  | 1 minute | Per org  |
-| `POST /v1/account/keys/rotate` | 3 req  | 1 minute | Per org  |
-| `POST /v1/account/keys/revoke` | 3 req  | 1 minute | Per org  |
-| `GET /v1/account/usage`        | 30 req | 1 minute | Per user |
-| `GET /v1/account/keys`         | 30 req | 1 minute | Per user |
+| Endpoint Group                  | Limit  | Window   | Scope    |
+| ------------------------------- | ------ | -------- | -------- |
+| `POST /v1/account/keys/*`       | 5 req  | 1 minute | Per org  |
+| `POST /v1/account/keys/rotate`  | 3 req  | 1 minute | Per org  |
+| `POST /v1/account/keys/revoke`  | 3 req  | 1 minute | Per org  |
+| Planned `GET /v1/account/usage` | 30 req | 1 minute | Per user |
+| `GET /v1/account/keys`          | 30 req | 1 minute | Per user |
 
 ##### Audit Trail Visibility
 

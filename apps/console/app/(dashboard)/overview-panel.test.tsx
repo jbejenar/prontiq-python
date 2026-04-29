@@ -64,6 +64,9 @@ function renderWithQueryClient(children: ReactNode) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  apiMocks.getStatus.mockReset();
+  apiMocks.listKeys.mockReset();
+  toastMocks.success.mockReset();
   authState.orgId = "org_123";
   apiMocks.listKeys.mockResolvedValue({ keys: [] });
   Object.defineProperty(navigator, "clipboard", {
@@ -119,7 +122,9 @@ test("first-key state links to Keys without performing mutations", async () => {
     "/keys",
   );
   expect(screen.getByText("0 / 2")).toBeInTheDocument();
-  expect(screen.getByText("No active keys yet. Create your first key from the Keys page.")).toBeInTheDocument();
+  expect(
+    screen.getByText("No active keys yet. Create your first key from the Keys page."),
+  ).toBeInTheDocument();
 });
 
 test("existing keys render masked metadata only", async () => {
@@ -175,12 +180,16 @@ test("quickstart snippets use placeholders and the configured API URL", async ()
   renderWithQueryClient(<OverviewPanel apiUrl="https://api.test.prontiq.dev" />);
 
   expect(await screen.findByText("Quickstart")).toBeInTheDocument();
-  expect(screen.getByText(/https:\/\/api\.test\.prontiq\.dev\/v1\/address\/autocomplete/)).toBeInTheDocument();
-  expect(screen.getAllByText(/<YOUR_API_KEY>/).length).toBeGreaterThan(0);
+  expect(
+    screen.getAllByText(/https:\/\/api\.test\.prontiq\.dev\/v1\/address\/autocomplete/).length,
+  ).toBeGreaterThan(0);
+  expect(screen.getAllByText(/<YOUR_API_KEY>/)).toHaveLength(3);
 
   await userEvent.click(screen.getAllByRole("button", { name: /copy/i })[0]!);
 
-  expect(navigator.clipboard.writeText).toHaveBeenCalledWith(expect.stringContaining("<YOUR_API_KEY>"));
+  expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
+    expect.stringContaining("<YOUR_API_KEY>"),
+  );
   expect(toastMocks.success).toHaveBeenCalledWith("Copied quickstart");
 });
 
@@ -214,15 +223,69 @@ test("key-list errors render a retry action without pretending there are no keys
     tier: "free",
     maxKeys: 2,
   });
-  apiMocks.listKeys.mockRejectedValueOnce(new Error("List failed")).mockResolvedValueOnce({ keys: [] });
+  apiMocks.listKeys.mockRejectedValueOnce(new Error("List failed")).mockResolvedValueOnce({
+    keys: [
+      {
+        keyId: "key_01HX0000000000000000000000",
+        keyPrefix: "pq_live_abcd",
+        createdAt: "2026-04-29T00:00:00.000Z",
+        lastUsedAt: null,
+        active: true,
+        products: ["address"],
+      },
+    ],
+  });
 
   renderWithQueryClient(<OverviewPanel apiUrl="https://api.test.prontiq.dev" />);
 
   expect(await screen.findByText("List failed")).toBeInTheDocument();
-  expect(screen.queryByText("No active keys yet. Create your first key from the Keys page.")).not.toBeInTheDocument();
+  expect(
+    screen.queryByText("No active keys yet. Create your first key from the Keys page."),
+  ).not.toBeInTheDocument();
 
   await userEvent.click(screen.getByRole("button", { name: /retry key list/i }));
 
   await waitFor(() => expect(apiMocks.listKeys).toHaveBeenCalledTimes(2));
-  expect(await screen.findByText("No active keys yet. Create your first key from the Keys page.")).toBeInTheDocument();
+  expect(await screen.findByText("pq_live_abcd••••")).toBeInTheDocument();
+});
+
+test("key-count projection drift renders explicit retry state", async () => {
+  apiMocks.getStatus.mockResolvedValue({
+    orgId: "org_123",
+    orgRole: "org:admin",
+    canManageKeys: true,
+    provisioned: true,
+    hasFirstKey: true,
+    activeKeyCount: 2,
+    tier: "payg_aud",
+    maxKeys: Number.MAX_SAFE_INTEGER,
+  });
+  apiMocks.listKeys.mockResolvedValueOnce({ keys: [] }).mockResolvedValueOnce({
+    keys: [
+      {
+        keyId: "key_01HX0000000000000000000000",
+        keyPrefix: "pq_live_abcd",
+        createdAt: "2026-04-29T00:00:00.000Z",
+        lastUsedAt: null,
+        active: true,
+        products: ["address"],
+      },
+    ],
+  });
+
+  renderWithQueryClient(<OverviewPanel apiUrl="https://api.test.prontiq.dev" />);
+
+  expect(await screen.findByText("payg_aud")).toBeInTheDocument();
+  expect(screen.getByText("2 / unlimited")).toBeInTheDocument();
+  expect(
+    await screen.findByText(/Key count projection says this organization has active keys/i),
+  ).toBeInTheDocument();
+  expect(
+    screen.queryByText("No active keys yet. Create your first key from the Keys page."),
+  ).not.toBeInTheDocument();
+
+  await userEvent.click(screen.getByRole("button", { name: /retry key list/i }));
+
+  await waitFor(() => expect(apiMocks.listKeys).toHaveBeenCalledTimes(2));
+  expect(await screen.findByText("pq_live_abcd••••")).toBeInTheDocument();
 });

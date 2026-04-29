@@ -3364,9 +3364,9 @@ and key-list surfaces, show masked key metadata only, and route all raw-key
 creation/recovery actions through `/keys`.
 
 Usage and billing also have narrower ownership after the Lago architecture
-cutover. P1C.02 may show a lightweight current-period usage snapshot only if the
-backend exposes a safe org-level summary; detailed charts remain P1C.04 and
-plan/payment management remains P1C.05.
+cutover. P1C.02 must not show usage numbers until P1C.04 exposes a safe
+org-level usage summary; detailed charts remain P1C.04 and plan/payment
+management remains P1C.05.
 
 #### Definition of Done
 
@@ -3386,9 +3386,13 @@ plan/payment management remains P1C.05.
     users to `/keys` to create or rotate a real key
   - `Evidence:` copy buttons work and snippets point to `NEXT_PUBLIC_API_URL`
 - [ ] Current plan/key posture is visible without billing mutations
-  - `Verify:` Shows tier, active key count, max keys, and next action
-  - `Evidence:` Data comes from `GET /v1/account/status` and `GET
-    /v1/account/keys`
+  - `Verify:` Shows Lago plan code, active key count, max keys, and next action
+  - `Evidence:` Data comes from `GET /v1/account/status` and
+    `GET /v1/account/keys`
+- [ ] Status/key-list drift is surfaced explicitly
+  - `Verify:` If `activeKeyCount > 0` but `/keys` returns no rows, the overview
+    renders a retry/drift state instead of "no keys yet"
+  - `Evidence:` component tests cover the drift state and retry recovery
 - [ ] Lightweight usage snapshot is either implemented from a safe backend
       summary endpoint or explicitly remains a P1C.04 placeholder
   - `Verify:` If implemented, usage increments after address API calls within the
