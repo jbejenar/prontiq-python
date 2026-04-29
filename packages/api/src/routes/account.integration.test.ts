@@ -147,6 +147,29 @@ function makeLagoStub(): LagoStubControl {
         status: "active",
       };
     },
+    async getSubscriptionCharges() {
+      return [
+        {
+          billableMetricCode: "prontiq_address_requests",
+          chargeModel: "package",
+          properties: { free_units: 10_000 },
+        },
+      ];
+    },
+    async getSubscriptionEntitlements() {
+      return [
+        { featureCode: "api_keys", privileges: { max: 2 } },
+        {
+          featureCode: "address_api",
+          privileges: {
+            enabled: true,
+            monthly_quota: 10_000,
+            rate_limit_per_second: 10,
+            enforcement_mode: "hard_cap",
+          },
+        },
+      ];
+    },
     async upsertCustomer() {
       calls += 1;
     },

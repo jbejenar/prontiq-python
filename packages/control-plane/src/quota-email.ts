@@ -6,7 +6,6 @@ import {
 } from "@aws-sdk/lib-dynamodb";
 import {
   DEFAULT_BILLING_URL,
-  PLANS,
   QUOTA_EMAIL_PENDING_LEASE_MINUTES,
   QUOTA_WARNING_THRESHOLD_FRACTION,
   createLogger,
@@ -14,6 +13,7 @@ import {
   type QuotaEmailTask,
   type UsageCounterRecord,
   getBillingEndpointsForProduct,
+  resolveEffectiveCommercialProjection,
 } from "@prontiq/shared";
 import { SERVICE_NAMES, wrapLambdaHandler } from "@prontiq/observability";
 import { isSuppressedEmail, sendSignedSesEmail } from "./email.js";
@@ -92,22 +92,29 @@ function getLeaseCutoff(now: Date): string {
   return cutoff.toISOString();
 }
 
-function buildQuotaEmailSubject(task: QuotaEmailTask, tier: OrgEnvelopeRecord["tier"]): string {
+function buildQuotaEmailSubject(task: QuotaEmailTask, envelope: OrgEnvelopeRecord): string {
   if (task.threshold === "warning") {
     return `${getFamilyDisplayName(task.product)} credits are nearing the limit`;
   }
-  if (tier === "free") {
+  if (isHardCappedEnvelope(envelope)) {
     return `${getFamilyDisplayName(task.product)} credits are exhausted`;
   }
   return `${getFamilyDisplayName(task.product)} included credits are exhausted`;
+}
+
+function isHardCappedEnvelope(envelope: OrgEnvelopeRecord): boolean {
+  return resolveEffectiveCommercialProjection(envelope).enforcementMode === "hard_cap";
+}
+
+function getIncludedCredits(envelope: OrgEnvelopeRecord): number | null {
+  return resolveEffectiveCommercialProjection(envelope).quotaPerProduct;
 }
 
 function buildQuotaEmailBody(task: QuotaEmailTask, envelope: OrgEnvelopeRecord): string {
   const familyDisplayName = getFamilyDisplayName(task.product);
   const billingUrl = getOptionalEnv("PRONTIQ_BILLING_URL", DEFAULT_BILLING_URL);
   const docsUrl = getOptionalEnv("PRONTIQ_DOCS_URL", "https://docs.prontiq.dev");
-  const plan = PLANS[envelope.tier];
-  const includedCredits = plan.quotaPerProduct;
+  const includedCredits = getIncludedCredits(envelope);
 
   if (task.threshold === "warning") {
     return [
@@ -123,7 +130,7 @@ function buildQuotaEmailBody(task: QuotaEmailTask, envelope: OrgEnvelopeRecord):
     ].join("\n");
   }
 
-  if (envelope.tier === "free") {
+  if (isHardCappedEnvelope(envelope)) {
     return [
       `${familyDisplayName} has exhausted the free monthly credits for this cycle.`,
       "",
@@ -318,7 +325,7 @@ async function sendQuotaEmailDefault(
     configurationSetName: process.env.SES_CONFIGURATION_SET_NAME,
     fromEmail: emailFrom,
     region: getOptionalEnv("AWS_REGION", "ap-southeast-2"),
-    subject: buildQuotaEmailSubject(task, envelope.tier),
+    subject: buildQuotaEmailSubject(task, envelope),
     toEmail: envelope.ownerEmail,
   });
 }
@@ -356,8 +363,11 @@ export function createQuotaEmailService(
       return;
     }
 
-    const plan = PLANS[envelope.tier];
-    if (plan.quotaPerProduct == null || !thresholdStillEligible(usageRow, task.threshold, plan.quotaPerProduct)) {
+    const includedCredits = getIncludedCredits(envelope);
+    if (
+      includedCredits == null ||
+      !thresholdStillEligible(usageRow, task.threshold, includedCredits)
+    ) {
       return;
     }
 

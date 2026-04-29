@@ -1,4 +1,4 @@
-import type { ProductConfig, Tier } from "./types.js";
+import type { EnforcementMode, LegacyTier, ProductConfig } from "./types.js";
 
 export interface BillingEndpointDefinition {
   creditCost: number;
@@ -60,7 +60,7 @@ export const PRODUCT_REGISTRY: Record<string, ProductConfig> = {
 
 export interface PlanDefinition {
   includedCreditsPerMonth: number | null;
-  enforcementMode: "hard_cap" | "soft_overage" | "uncapped_tracked";
+  enforcementMode: EnforcementMode;
   quotaPerProduct: number | null;
   rateLimit: number | null;
   products: string[];
@@ -68,7 +68,7 @@ export interface PlanDefinition {
   overagePerThousandCredits: number | null;
 }
 
-export const PLANS: Record<Tier, PlanDefinition> = {
+export const PLANS: Record<LegacyTier, PlanDefinition> = {
   free: {
     includedCreditsPerMonth: 10_000,
     enforcementMode: "hard_cap",

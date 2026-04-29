@@ -2,8 +2,8 @@ import { TransactionCanceledException } from "@aws-sdk/client-dynamodb";
 import type { DynamoDBDocumentClient, QueryCommandInput } from "@aws-sdk/lib-dynamodb";
 import { GetCommand, QueryCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 import {
-  PLANS,
   generateKey,
+  resolveEffectiveCommercialProjection,
   type ApiKeyRecord,
   type AuditRecord,
   type OrgEnvelopeRecord,
@@ -60,8 +60,11 @@ const noopLogger: Logger = {
  */
 function pickEnvelopeSnapshot(envelope: OrgEnvelopeRecord) {
   const snapshot: Partial<ApiKeyRecord> = {
+    enforcementMode: envelope.enforcementMode,
     paymentOverdue: envelope.paymentOverdue,
     products: envelope.products,
+    quotaPerProduct: envelope.quotaPerProduct,
+    rateLimit: envelope.rateLimit,
     stripeCustomerId: envelope.stripeCustomerId,
     stripeSubscriptionId: envelope.stripeSubscriptionId,
     subscriptionItems: envelope.subscriptionItems,
@@ -89,6 +92,10 @@ function pickEnvelopeSnapshot(envelope: OrgEnvelopeRecord) {
   if (envelope.lagoPaymentOverdueInvoiceId !== undefined)
     snapshot.lagoPaymentOverdueInvoiceId = envelope.lagoPaymentOverdueInvoiceId;
   return snapshot;
+}
+
+function getProjectedMaxKeys(envelope: OrgEnvelopeRecord): number {
+  return resolveEffectiveCommercialProjection(envelope).maxKeys;
 }
 
 export interface KeyManagementDependencies {
@@ -252,7 +259,6 @@ export function createKeyManagementService(deps: KeyManagementDependencies): Key
         provisioned: false,
       };
     }
-    const plan = PLANS[envelope.tier];
     const activeKeyCount = envelope.activeKeyCount ?? 0;
     return {
       orgId: input.orgId,
@@ -262,7 +268,7 @@ export function createKeyManagementService(deps: KeyManagementDependencies): Key
       hasFirstKey: envelope.hasFirstKey || activeKeyCount > 0,
       activeKeyCount,
       tier: envelope.tier,
-      maxKeys: plan.maxKeys,
+      maxKeys: getProjectedMaxKeys(envelope),
     };
   }
 
@@ -271,7 +277,7 @@ export function createKeyManagementService(deps: KeyManagementDependencies): Key
     if (!envelope) {
       return { status: "org_not_provisioned" };
     }
-    const plan = PLANS[envelope.tier];
+    const maxKeys = getProjectedMaxKeys(envelope);
 
     // Capture all derivable values once, OUTSIDE any retry boundary.
     //
@@ -309,6 +315,7 @@ export function createKeyManagementService(deps: KeyManagementDependencies): Key
     const keyId = generateKeyId();
     const auditEventId = ulid(now.getTime());
     const snapshot = pickEnvelopeSnapshot(envelope);
+    const effectiveProjection = resolveEffectiveCommercialProjection(envelope);
 
     const keyItem: ApiKeyRecord = {
       apiKeyHash: generated.hash,
@@ -316,13 +323,14 @@ export function createKeyManagementService(deps: KeyManagementDependencies): Key
       keyPrefix: generated.prefix,
       ownerEmail: envelope.ownerEmail,
       orgId: input.orgId,
-      quotaPerProduct: plan.quotaPerProduct,
-      rateLimit: plan.rateLimit,
+      quotaPerProduct: effectiveProjection.quotaPerProduct,
+      enforcementMode: effectiveProjection.enforcementMode,
+      rateLimit: effectiveProjection.rateLimit,
       active: true,
       createdAt: now.toISOString(),
       lastUsedAt: null,
       paymentOverdue: snapshot.paymentOverdue ?? false,
-      products: snapshot.products ?? [],
+      products: effectiveProjection.products,
       stripeCustomerId: snapshot.stripeCustomerId ?? null,
       stripeSubscriptionId: snapshot.stripeSubscriptionId ?? null,
       subscriptionItems: snapshot.subscriptionItems ?? {},
@@ -411,7 +419,7 @@ export function createKeyManagementService(deps: KeyManagementDependencies): Key
                   ":true": true,
                   ":zero": 0,
                   ":one": 1,
-                  ":max": plan.maxKeys,
+                  ":max": maxKeys,
                 },
               },
             },

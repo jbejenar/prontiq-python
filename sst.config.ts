@@ -1230,6 +1230,38 @@ export default $config({
 
     api.route("POST /webhooks/lago", lagoWebhookFn.arn);
 
+    const lagoReconcileFn = new sst.aws.Function("PqLagoReconcile", {
+      handler: "packages/control-plane/src/lago-reconcile.bootstrap.handler",
+      architecture: "arm64",
+      runtime: "nodejs24.x",
+      memory: "512 MB",
+      timeout: "2 minutes",
+      link: [authKeysTable],
+      environment: {
+        ...observabilityEnv(),
+        KEYS_TABLE_NAME: authKeysTable.name,
+        LAGO_API_KEY: $util.secret(readGithubSecret("LAGO_API_KEY")),
+        LAGO_API_URL: readGithubVar("LAGO_API_URL"),
+        LAGO_RECONCILIATION_ENABLED: readGithubVar("LAGO_RECONCILIATION_ENABLED") || "false",
+      },
+    });
+
+    const lagoReconcileRule = new aws.cloudwatch.EventRule("PqLagoReconcileSchedule", {
+      scheduleExpression: "rate(1 hour)",
+    });
+
+    new aws.cloudwatch.EventTarget("PqLagoReconcileScheduleTarget", {
+      rule: lagoReconcileRule.name,
+      arn: lagoReconcileFn.arn,
+    });
+
+    new aws.lambda.Permission("PqLagoReconcileSchedulePermission", {
+      action: "lambda:InvokeFunction",
+      function: lagoReconcileFn.name,
+      principal: "events.amazonaws.com",
+      sourceArn: lagoReconcileRule.arn,
+    });
+
     // CloudWatch alarm: > 5 5xx responses in 15 minutes on the Clerk
     // webhook route fires the existing ingestAlerts SNS topic.
     //
@@ -1284,6 +1316,24 @@ export default $config({
         ApiId: api.nodes.api.id,
         Stage: "$default",
         Route: "POST /webhooks/lago",
+      },
+    });
+
+    new aws.cloudwatch.MetricAlarm("PqLagoReconcileErrors", {
+      comparisonOperator: "GreaterThanThreshold",
+      evaluationPeriods: 1,
+      datapointsToAlarm: 1,
+      metricName: "Errors",
+      namespace: "AWS/Lambda",
+      period: 900,
+      statistic: "Sum",
+      threshold: 0,
+      treatMissingData: "notBreaching",
+      alarmDescription:
+        "Lago entitlement reconciliation Lambda recorded an error. Check projection drift logs before enabling or replaying reconciliation.",
+      alarmActions: [ingestAlerts.arn],
+      dimensions: {
+        FunctionName: lagoReconcileFn.name,
       },
     });
 

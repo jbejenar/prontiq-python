@@ -1012,7 +1012,7 @@ Rate limiting operates at three levels:
 
 2. **Burst rate limiting (per-key, per-second, application-level).** In-memory token bucket per `apiKeyHash` in Hono middleware. Prevents a single key from overwhelming OpenSearch in one second. See §5.4.1 below.
 
-3. **Billing-period quota enforcement (per-key, per-product family, application-level).** The DynamoDB key record includes `quotaPerProduct` plus plan enforcement mode. Usage counts live in `prontiq-usage`; calendar-month scopes remain the default, while `COUNTER_PERIOD_SOURCE=lago` uses denormalized Lago billing-period keys populated by webhook reconciliation. Each request is rated into credits via `BILLING_ENDPOINTS` before the family row is atomically incremented. Hard-capped plans (Free) return `429 QUOTA_EXCEEDED`; soft-overage plans proceed with `X-RateLimit-Over: true`; PAYG and Enterprise are uncapped but still tracked.
+3. **Billing-period quota enforcement (per-key, per-product family, application-level).** Lago effective charges and entitlements are the commercial source of truth. Reconciliation projects them onto DynamoDB key records as `quotaPerProduct`, `enforcementMode`, `rateLimit`, `maxKeys`, products, and billing-period fields. Usage counts live in `prontiq-usage`; calendar-month scopes remain the fallback, while `COUNTER_PERIOD_SOURCE=lago` uses denormalized Lago billing-period keys. Each request is rated into credits via `BILLING_ENDPOINTS` before the family row is atomically incremented. Hard-capped plans return `429 QUOTA_EXCEEDED`; PAYG is uncapped but still tracked. During the projection rollout, records on legacy `free`, `payg`, `starter`, `growth`, `max`, or `enterprise` tiers that do not yet have projected fields keep their historical `PLANS` behavior; unknown dynamic Lago plan codes without a projection fail conservatively to the Free hard-cap posture until reconciliation succeeds.
 
 #### 5.4.1 Burst Rate Limiting
 
@@ -1298,19 +1298,26 @@ PK:   apiKeyHash           "ORG#{orgId}"             (reserved — not a real ke
                                                      app to show "Create your first key" CTA vs
                                                      the keys-list view.
       activeKeyCount       number                    Atomic active-key counter used to enforce
-                                                     PLANS[tier].maxKeys without a read-count-write
-                                                     race.
+                                                     Lago-projected maxKeys without a
+                                                     read-count-write race.
+      maxKeys              number                    Lago-projected active API key ceiling.
+      quotaPerProduct      number?                   Lago-projected included credits. null = PAYG.
+      enforcementMode      string                    Lago-projected bouncer mode.
       completedAt          string                    ISO 8601 — when the org-envelope TransactWrite
                                                      committed. Permanent (no TTL).
 ```
 
 > **Why an "org envelope" instead of a provisioning lock that holds a key hash?** The raw API key cannot be safely minted in a webhook — there's no in-flight HTTP response to the user, and DDB stores only the hash. The Clerk webhook provisions everything _except_ the key. The user's first sign-in to `apps/console` on `console.prontiq.dev` calls `/v1/account/keys/create`, which mints the key and returns the raw value in the HTTP response (shown once). See §5.7.1 + §10 Developer Journey.
 
-Provisioning writes the local org envelope first, then idempotently bootstraps
-the Lago customer and `lago_sub_${orgId}` Free subscription before
-returning success. It does not create Stripe customers; Stripe is configured
-inside Lago as the payment rail. See §5.7.1 for the full flow and §12.2 for
-failure modes.
+Provisioning idempotently confirms the Lago customer and `lago_sub_${orgId}`
+Free subscription, validates the required Lago bouncer projection, then writes
+the local org envelope and audit row in one DynamoDB transaction. New envelopes
+must not be created with `products: []` or missing enforcement fields; if Lago
+projection cannot be validated, provisioning returns retryable failure before
+the envelope exists. Existing incomplete envelopes are recoverable by replaying
+the same provisioning path. It does not create Stripe customers; Stripe is
+configured inside Lago as the payment rail. See §5.7.1 for the full flow and
+§12.2 for failure modes.
 
 ##### REDIRECT Record (stored in `prontiq-usage`)
 
@@ -1386,7 +1393,7 @@ Six operations. Every mutation writes to `prontiq-audit`.
 | Operation  | Implementation                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | Trigger                                            |
 | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
 | **STATUS** | `GetItem` the `ORG#{orgId}` envelope and return provisioning state, `hasFirstKey`, `activeKeyCount`, tier, max keys, and whether the caller's `org_role` is allowed to manage keys. Member-allowed. Never returns key hashes or raw key material.                                                                                                                                                                                                                                | Console app state machine                          |
-| **CREATE** | Generate `pq_live_` + `randomBytes(24).toString('hex')`; SHA-256 hash; generate stable opaque `keyId = key_<ulid>`. `TransactWriteItems`: conditional put new key row, update `ORG#{orgId}` with `SET hasFirstKey = true, activeKeyCount = if_not_exists(activeKeyCount, 0) + 1` guarded by `attribute_not_exists(activeKeyCount) OR activeKeyCount < PLANS[tier].maxKeys`, and write CREATE audit with actor/IP/UA. Return raw key once. No billing registry mutation.          | User-driven "Create Key" action in the console app |
+| **CREATE** | Generate `pq_live_` + `randomBytes(24).toString('hex')`; SHA-256 hash; generate stable opaque `keyId = key_<ulid>`. `TransactWriteItems`: conditional put new key row, update `ORG#{orgId}` with `SET hasFirstKey = true, activeKeyCount = if_not_exists(activeKeyCount, 0) + 1` guarded by `attribute_not_exists(activeKeyCount) OR activeKeyCount < maxKeys`, and write CREATE audit with actor/IP/UA. `maxKeys` is projected from Lago entitlements. Return raw key once. No billing registry mutation.          | User-driven "Create Key" action in the console app |
 | **VERIFY** | Hash incoming `X-Api-Key`. `GetItem` from `prontiq-keys` by hash. On miss, check `prontiq-usage/{oldHash, REDIRECT}` and re-resolve to `newHash` only while `authValidUntil > now`. Check `active`, products, payment-overdue, quota, and burst limits from local DynamoDB snapshots.                                                                                                                                                                                            | Every API request (hot path)                       |
 | **ROTATE** | Locate key by `keyId` within the org, generate a new raw/hash, and `TransactWriteItems`: delete old hash, put new hash preserving `keyId` and original `createdAt`, write REDIRECT `{ oldHash -> newHash, authValidUntil, ttl }`, migrate current usage counters to the new hash, and write ROTATE audit. `activeKeyCount` is unchanged. Return new raw key once. No billing registry mutation.                                                                                  | "Rotate" button in the console app                 |
 | **REVOKE** | Locate key by `keyId` within the org and `TransactWriteItems`: set live key `active=false`, set `revokedAt`, decrement `ORG#{orgId}.activeKeyCount`, and write REVOKE audit. No REDIRECT cleanup: a rotated-out raw key re-resolves to the current hash and then fails the `active=false` check (§5.5.3 step 3).                                                                                                                                                                 | "Revoke" button in the console app                 |
@@ -1437,14 +1444,14 @@ Request arrives with X-Api-Key header
 │  3. CHECK       active? product? burst (§5.4.1)? paymentOverdue?      ~0ms
 │                 (Quota is checked atomically in step 4 — not here.)
 │  4. INCREMENT   DynamoDB UpdateItem → prontiq-usage                   ~3-5ms
-│                   ADD requestCount :one
+│                   ADD requestCount :creditCost
 │                   ConditionExpression:
 │                     attribute_not_exists(requestCount)
-│                       OR requestCount < :quota
-│                       OR :tierAllowsOverage
-│                 If ConditionalCheckFailed AND tier='free':
+│                       OR requestCount + :creditCost <= :quota
+│                       OR :uncappedTracked
+│                 If ConditionalCheckFailed on a hard-capped projection:
 │                   → 429 QUOTA_EXCEEDED (response body has resets_at)
-│                 If success on paid tier with newCount > quota:
+│                 If success on an overage-enabled projection:
 │                   → set X-RateLimit-Over: true header
 │                 Returned attributes: new requestCount,
 │                   warningEmailSent, limitEmailSent (for step 7)
@@ -1463,7 +1470,10 @@ Request arrives with X-Api-Key header
 
 > **Why synchronous increment?** The previous design (read count → serve → async write) created a race window: two concurrent free-tier requests near `quotaPerProduct` could both observe the same count, both pass the check, both serve, and only count once because the writes raced. A leaked free-tier key could fan out to hundreds of in-flight requests and ride the boundary indefinitely. The atomic conditional `UpdateItem` closes this window — DDB executes the condition + increment as one operation. Cost: +3–5ms in the critical path. Acceptable given the 50ms total budget.
 
-> **Why two `tierAllowsOverage` codepaths in one expression?** The condition uses an OR: "no item yet" OR "under quota" OR "tier permits overage." Free tier passes only the first two; paid tiers pass the third unconditionally and we detect overage from `newCount > quota` post-update.
+> **Why one projected enforcement-mode branch?** The condition uses local
+> Lago-projected enforcement state: no item yet, under quota, or uncapped
+> tracking. Free/package plans do not pass the uncapped branch. PAYG passes it
+> and remains counted locally without blocking the request.
 
 **Total client-perceived latency:** ~16-40ms (steps 1-6).
 
@@ -1668,15 +1678,21 @@ evidence.
 
 Local mutation boundary:
 
-- plan code maps directly to Prontiq `Tier` (`free`, `payg`, etc.); unknown
-  plan codes are drift and return 500 so Lago retries while operators fix config
+- plan code is a Lago-owned commercial label; unknown/new plan codes are valid
+  if effective Lago charges and entitlements project cleanly
 - Lago subscription lifecycle status gates entitlements. Active snapshots grant
   paid/local plan access. Pending snapshots record pending metadata only and do
-  not change request-time entitlements. Terminated/canceled snapshots downgrade
-  local entitlements to Free only when no active replacement snapshot is
-  returned.
+  not change request-time entitlements. Terminated/canceled snapshots remove
+  request entitlement locally by projecting `hard_cap` with
+  `quotaPerProduct = 0` unless an active replacement subscription snapshot is
+  returned. Free access must come from an active Lago Free subscription.
 - `prontiq-keys` org envelope and API-key rows receive denormalized Lago plan,
   subscription, billing-period, and payment-overdue fields
+- `address_api.rate_limit_per_second` is required for every enabled address
+  product and must project to a positive integer. Missing, null, zero,
+  fractional, negative, or non-numeric values are drift and must preserve
+  last-known-good local enforcement state rather than writing an unlimited
+  request-time rate limit.
 - `prontiq-usage` remains the request-time enforcement counter store; Lago never
   becomes a synchronous read dependency
 - prior Lago-period usage rows are marked `closed=true` when a new billing
@@ -1684,8 +1700,8 @@ Local mutation boundary:
   billing-period key
 - PAYG is `uncapped_tracked`: no hard quota reset is needed, but counters still
   move to the current billing-period scope for visibility and reconciliation
-- Free is `hard_cap`; Starter/Growth/Max are retained as legacy
-  `soft_overage` migration values; Enterprise is uncapped tracked
+- Free/package plans are Lago-projected from package charges and entitlements;
+  retained legacy `Starter`/`Growth`/`Max` semantics are migration evidence only
 
 Rollout flags:
 
@@ -1782,13 +1798,21 @@ tab to hosted Stripe customer-management surfaces. Treat that as
 legacy migration context only; the canonical target architecture is Lago-backed
 commercial state exposed through Prontiq-owned surfaces.
 
-**How the legacy plan model connects to the middleware:** the upgrade webhook
-(§5.7) reads `PLANS[tier]` from `constants.ts` and writes `quotaPerProduct`,
-`rateLimit`, `products`, `maxKeys` to all org keys in `prontiq-keys`. The
-middleware still enforces family-level entitlement and quota state from
-DynamoDB on every request, and now applies endpoint credit weights inline
-before incrementing the family usage row. Plan changes take effect on the next
-request after the webhook processes.
+**How the Lago projection connects to the middleware:** Lago webhook and
+scheduled/manual reconciliation read effective subscription charges and
+entitlements, then write `quotaPerProduct`, `enforcementMode`, `rateLimit`,
+`products`, `maxKeys`, subscription status, and current billing-period fields
+to `prontiq-keys`. The org envelope is compared and refreshed independently of
+active-key repair, because it is the source for future keys. The middleware
+enforces key-row local fields on every request and applies endpoint credit
+weights inline before incrementing the family usage row. Plan changes and
+billing-period rollovers take effect after reconciliation projects the new
+state. The only local-plan exception is migration
+compatibility: if a legacy-tier row is missing projected fields, the shared
+commercial-projection helper derives the same behavior it had before P1B.24.
+That fallback is not commercial truth for new Lago plans; unknown dynamic plan
+codes without a projection are treated as Free/hard-capped until reconciliation
+writes a valid snapshot.
 
 #### 5.6.2 Legacy Hourly Billing Cron (Removed)
 
@@ -2010,10 +2034,22 @@ raw value is returned in the HTTP response and shown to the user once.
    ├─ Found  → return 200 (already provisioned; idempotent no-op)
    └─ Missing → continue to step 3
 
-3. TransactWriteItems (DDB):
+3. Forward-mode billing bootstrap:
+   a. Upsert Lago customer using `external_id=orgId`.
+   b. Ensure Lago Free subscription using `external_subscription_id=lago_sub_${orgId}`.
+   c. Validate the snapshot is exactly `planCode="free"` and
+      `status="active"`, then read and validate the Lago Free subscription
+      bouncer projection (`products`, `quotaPerProduct`, `enforcementMode`,
+      `rateLimit`, `maxKeys`, billing period, and entitlement hash).
+      Non-Free, inactive, or projection-drift snapshots return retryable
+      failure before any local envelope is committed.
+
+4. TransactWriteItems (DDB):
    a. ConditionalPut prontiq-keys/ORG#{orgId} where attribute_not_exists(apiKeyHash)
       Item: { orgId, stripeCustomerId=null, ownerEmail, tier="free",
-              products=["address"], completedAt, hasFirstKey: false }
+              products=["address"], quotaPerProduct, enforcementMode,
+              rateLimit, maxKeys, lagoSubscriptionExternalId,
+              billingPeriodKey, completedAt, hasFirstKey: false }
       // ORG#{orgId} is the org-envelope record. No raw API key
       // material lives here — only org identity, billing linkage,
       // entitlement snapshot, and provisioning state.
@@ -2027,11 +2063,6 @@ raw value is returned in the HTTP response and shown to the user once.
    On TransactionCanceled (concurrent provisioning):
      Re-read ORG#{orgId} → return 200. The competing call already won.
 
-4. Forward-mode billing bootstrap:
-   a. Upsert Lago customer using `external_id=orgId`.
-   b. Ensure Lago Free subscription using `external_subscription_id=lago_sub_${orgId}`.
-   c. Write local Lago linkage and billing-period fields back to the org
-      envelope for local enforcement reads.
 5. Send welcome email via SES — best-effort and suppression-aware. Subject: "Welcome to Prontiq."
    Body: "Your account is ready. Sign in at https://console.prontiq.dev
    to create your first API key." Includes docs link.
@@ -2052,7 +2083,7 @@ The `/v1/account/keys/create` endpoint (P1C.03):
 2. Check ORG#{orgId} exists (else: 404 ORG_NOT_PROVISIONED — typically
    means user signed in faster than webhook landed; retry after a
    second)
-3. Read ORG#{orgId}.activeKeyCount and PLANS[tier].maxKeys
+3. Read ORG#{orgId}.activeKeyCount and Lago-projected maxKeys
 4. Generate API key via generateKey() (P1B.02)
 5. TransactWriteItems:
    a. ConditionalPut prontiq-keys/{apiKeyHash} (full v2.2 shape)
@@ -2060,7 +2091,7 @@ The `/v1/account/keys/create` endpoint (P1C.03):
       SET hasFirstKey = true,
           activeKeyCount = if_not_exists(activeKeyCount, 0) + 1
       ConditionExpression: attribute_not_exists(activeKeyCount)
-                           OR activeKeyCount < PLANS[tier].maxKeys
+                           OR activeKeyCount < maxKeys
    c. PutItem prontiq-audit (action="CREATE", actorId=user)
 6. Return 201 with body { keyId, raw: rawKey, keyPrefix, createdAt }
    The raw key is shown ONCE in the response. The console app renders
@@ -2446,10 +2477,10 @@ This is a summary. **§5.5.3 is the authoritative hot-path flow** — quota is e
 4. **Atomic INCREMENT on prontiq-usage**       (per §5.5.3 step 4)
    ConditionExpression:
      attribute_not_exists(requestCount)
-       OR requestCount < :quota
-       OR :tierAllowsOverage = :true
-   ConditionalCheckFailed AND tier='free' → 429 QUOTA_EXCEEDED
-   newCount > quota AND tier paid → set X-RateLimit-Over: true header
+       OR requestCount + :creditCost <= :quota
+       OR :uncappedTracked = :true
+   ConditionalCheckFailed on hard-capped projection → 429 QUOTA_EXCEEDED
+   uncapped PAYG projection → count and continue
 5. Route handler → OpenSearch → 200 + rate limit headers
    (Remaining = quota - newCount from step 4's ReturnValues=UPDATED_NEW)
 ```

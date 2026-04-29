@@ -254,7 +254,7 @@ export function createKeysRoutes(overrides: KeysRouteOverrides = {}) {
     path: "/keys/create",
     summary: "Create a new API key (admin only)",
     description:
-      "Mints a fresh `pq_live_*` key, stores its hash, and returns the raw value once. The raw key is never persisted, never logged, and cannot be retrieved later. Free-tier orgs are capped per `PLANS[tier].maxKeys`; the cap is enforced atomically.",
+      "Mints a fresh `pq_live_*` key, stores its hash, and returns the raw value once. The raw key is never persisted, never logged, and cannot be retrieved later. Org key limits are projected from Lago entitlements and enforced atomically.",
     security: clerkJwtSecurity,
     request: {
       body: {

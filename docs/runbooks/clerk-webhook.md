@@ -61,8 +61,8 @@ The Clerk dashboard's webhook configuration points at the dev URL today. The pro
 
 1. Clerk fires `organizationMembership.created` with `data.role === "admin"` (org creator).
 2. Handler verifies Svix signature, extracts `orgId / userId / ownerEmail`, calls `provisionOrg`.
-3. Service writes the `ORG#{orgId}` envelope atomically with the audit row.
-4. In forward mode, service upserts the Lago customer/subscription, confirms the Free subscription, and writes Lago billing-period fields onto local state before returning success.
+3. Service upserts the Lago customer/subscription, confirms it is the active Free subscription, and validates the Lago-derived Free projection before creating any local envelope.
+4. Service writes the `ORG#{orgId}` envelope atomically with the audit row. The envelope already includes `products`, quota, enforcement mode, rate limit, max keys, Lago subscription linkage, and billing-period fields.
 5. Strong-read confirmation, optional best-effort suppression-aware SES welcome email, response: `200 { ok: true, status: "created", emailSent: true|false }`.
 6. CloudWatch log: `ORG envelope created`. Lago shows customer external ID `org_...` and subscription external ID `lago_sub_org_...`. DDB `prontiq-keys` has `ORG#{orgId}` with `orgId`, `lagoSubscriptionExternalId`, and billing-period fields. DDB `prontiq-audit` has the `ORG_PROVISIONED` row.
 
@@ -108,9 +108,9 @@ Recovery:
    - For `prod`: trigger the "Deploy to Production" workflow (`gh workflow run deploy-prod.yml`)
 3. **Check Lambda time vs UTC** if values match: `aws logs tail "/aws/lambda/$FUNC" --follow --region ap-southeast-2` and look at log timestamps for clock-skew evidence.
 
-### 5xx after local commit or Lago bootstrap (retryable_failure)
+### 5xx during Lago bootstrap or local commit (retryable_failure)
 
-Logged as `ORG envelope provisioning retryable failure`, `Existing ORG envelope Lago bootstrap failed`, or `Post-commit Lago bootstrap failed`. The local envelope may already be committed; retries are safe because the ORG envelope, Lago customer, and Lago subscription are all idempotent.
+Logged as `ORG envelope provisioning retryable failure`, `Pre-commit Lago bootstrap failed`, or `Existing ORG envelope Lago bootstrap failed`. For new orgs, Lago bootstrap/projection failure happens before the `ORG#{orgId}` envelope is committed so the repo does not persist a productless envelope. For existing incomplete envelopes, retries are safe because the ORG envelope, Lago customer, and Lago subscription are all idempotent.
 
 Svix retry schedule (default): 5s, 5min, 30min, 2h, 5h, 10h, 16h, 24h, 48h. The next retry should succeed.
 

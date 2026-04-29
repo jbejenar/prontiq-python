@@ -59,6 +59,30 @@ class FakeLagoClient implements LagoSubscriptionClient {
   async getSubscription(): Promise<LagoSubscriptionSnapshot | null> {
     return this.snapshot;
   }
+
+  async getSubscriptionCharges() {
+    return [
+      {
+        billableMetricCode: "prontiq_address_requests",
+        chargeModel: "standard",
+        properties: {},
+      },
+    ];
+  }
+
+  async getSubscriptionEntitlements() {
+    return [
+      { featureCode: "api_keys", privileges: { max: 3 } },
+      {
+        featureCode: "address_api",
+        privileges: {
+          enabled: true,
+          rate_limit_per_second: 25,
+          enforcement_mode: "uncapped_tracked",
+        },
+      },
+    ];
+  }
 }
 
 async function waitForTable(tableName: string): Promise<void> {
@@ -578,7 +602,7 @@ test("subscription terminated with active replacement snapshot preserves entitle
   assert.equal(key.Item?.billingPeriodKey, "2026-05-25_2026-06-25");
 });
 
-test("subscription terminated with a returned terminated snapshot downgrades entitlements", async () => {
+test("subscription terminated with a returned terminated snapshot removes request entitlement", async () => {
   await setPaidEntitlementForTerminationRegression();
   const lagoClient = new FakeLagoClient();
   lagoClient.snapshot = {
@@ -606,8 +630,9 @@ test("subscription terminated with a returned terminated snapshot downgrades ent
   const key = await ddb.send(
     new GetCommand({ TableName: KEYS_TABLE, Key: { apiKeyHash: API_KEY_HASH } }),
   );
-  assert.equal(key.Item?.tier, "free");
-  assert.equal(key.Item?.quotaPerProduct, 10_000);
+  assert.equal(key.Item?.tier, "payg");
+  assert.equal(key.Item?.quotaPerProduct, 0);
+  assert.equal(key.Item?.enforcementMode, "hard_cap");
   assert.equal(key.Item?.paymentOverdue, false);
   assert.equal(key.Item?.lagoPaymentOverdueInvoiceId, null);
   assert.equal(key.Item?.lagoPlanCode, "payg");
@@ -625,7 +650,7 @@ test("subscription terminated with a returned terminated snapshot downgrades ent
   assert.equal(priorUsage.Item?.closed, true);
 });
 
-test("subscription terminated without a Lago snapshot downgrades entitlements", async () => {
+test("subscription terminated without a Lago snapshot removes request entitlement", async () => {
   await setPaidEntitlementForTerminationRegression();
   const lagoClient = new FakeLagoClient();
   lagoClient.snapshot = null;
@@ -647,7 +672,8 @@ test("subscription terminated without a Lago snapshot downgrades entitlements", 
     new GetCommand({ TableName: KEYS_TABLE, Key: { apiKeyHash: API_KEY_HASH } }),
   );
   assert.equal(key.Item?.tier, "free");
-  assert.equal(key.Item?.quotaPerProduct, 10_000);
+  assert.equal(key.Item?.quotaPerProduct, 0);
+  assert.equal(key.Item?.enforcementMode, "hard_cap");
   assert.equal(key.Item?.paymentOverdue, false);
   assert.equal(key.Item?.lagoPaymentOverdueInvoiceId, null);
   assert.equal(key.Item?.lagoPlanCode, "free");

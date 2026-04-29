@@ -51,6 +51,7 @@ jobs:
           LAGO_API_KEY: ${{ secrets.LAGO_API_KEY }}
           LAGO_API_URL: ${{ vars.LAGO_API_URL }}
           LAGO_PAYMENT_PROVIDER_CODE: ${{ vars.LAGO_PAYMENT_PROVIDER_CODE }}
+          LAGO_RECONCILIATION_ENABLED: ${{ vars.LAGO_RECONCILIATION_ENABLED }}
           LAGO_WEBHOOK_HMAC_SECRET: ${{ secrets.LAGO_WEBHOOK_HMAC_SECRET }}
         shell: bash
         run: |

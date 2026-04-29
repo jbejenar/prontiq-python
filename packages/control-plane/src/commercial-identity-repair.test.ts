@@ -70,6 +70,12 @@ function makeLagoClient(): LagoProvisioningClient & {
     async getSubscription() {
       return null;
     },
+    async getSubscriptionCharges() {
+      return [];
+    },
+    async getSubscriptionEntitlements() {
+      return [];
+    },
     async upsertCustomer(input) {
       client.customers.push(input.orgId);
     },

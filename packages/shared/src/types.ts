@@ -101,6 +101,7 @@ export interface ApiKeyRecord {
   tier: Tier;
   products: string[];
   quotaPerProduct: number | null;
+  enforcementMode?: EnforcementMode;
   rateLimit: number | null;
   active: boolean;
   paymentOverdue: boolean;
@@ -210,6 +211,10 @@ export interface OrgEnvelopeRecord {
   ownerEmail: string;
   tier: Tier;
   products: string[];
+  quotaPerProduct?: number | null;
+  enforcementMode?: EnforcementMode;
+  rateLimit?: number | null;
+  maxKeys?: number;
   paymentOverdue: boolean;
   stripeSubscriptionId: string | null;
   subscriptionItems: ApiKeySubscriptionItems;
@@ -235,6 +240,10 @@ export interface OrgEnvelopeRecord {
    * P1C.03 PR 0.
    */
   activeKeyCount?: number;
+  lagoLastSyncedAt?: string;
+  lagoLastSyncStatus?: "synced" | "drift" | "error";
+  lagoLastSyncError?: string;
+  lagoEntitlementsHash?: string;
 }
 
 export type CustomerStatus = "active" | "archived" | "migration_conflict";
@@ -276,7 +285,9 @@ export interface AuditRecord {
   ttl: number;
 }
 
-export type Tier = "free" | "payg" | "starter" | "growth" | "max" | "enterprise";
+export type LegacyTier = "free" | "payg" | "starter" | "growth" | "max" | "enterprise";
+export type Tier = LegacyTier | (string & {});
+export type EnforcementMode = "hard_cap" | "soft_overage" | "uncapped_tracked";
 
 /** The inner error object — used by middleware/handlers to construct errors */
 export interface ApiErrorBody {

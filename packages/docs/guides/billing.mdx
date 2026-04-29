@@ -7,7 +7,8 @@ Prontiq uses a **Lago-centered** commercial architecture.
 
 The target model is:
 
-- **Lago** owns plans, pricing, invoicing, and metering truth
+- **Lago** owns plans, pricing, invoicing, included units, PAYG/package
+  behavior, and entitlement truth
 - **Stripe** handles payment processing only
 - **Prontiq** keeps request-time credit enforcement in DynamoDB and emits billing events asynchronously
 
@@ -16,6 +17,8 @@ The target model is:
 - Credits remain the public usage unit
 - Free and PAYG are the target commercial direction
 - API response headers still reflect request-time quota state from Prontiq
+- Plan and quota changes are configured in Lago and projected into Prontiq's
+  local enforcement state
 
 <Note>
   The live platform still contains a legacy paid-tier ladder during migration. Public docs in this

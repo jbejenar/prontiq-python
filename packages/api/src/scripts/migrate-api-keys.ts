@@ -10,7 +10,14 @@ import {
   ScanCommand,
   type PutCommandInput,
 } from "@aws-sdk/lib-dynamodb";
-import { PLANS, type ApiKeyRecord, type RedirectRecord, type Tier, type UsageCounterRecord } from "@prontiq/shared";
+import {
+  PLANS,
+  type ApiKeyRecord,
+  type LegacyTier,
+  type RedirectRecord,
+  type Tier,
+  type UsageCounterRecord,
+} from "@prontiq/shared";
 import { hashKey } from "@prontiq/shared";
 import { monotonicFactory } from "ulid";
 
@@ -80,6 +87,14 @@ function uniqueProducts(products: string[]): string[] {
   return [...new Set(products)];
 }
 
+function isLegacyTier(tier: Tier): tier is LegacyTier {
+  return Object.prototype.hasOwnProperty.call(PLANS, tier);
+}
+
+function legacyPlan(tier: Tier) {
+  return PLANS[isLegacyTier(tier) ? tier : "free"];
+}
+
 function deriveMigratedProducts(legacyRecord: LegacyApiKeyRecord, tier: Tier): string[] {
   const explicitProducts = uniqueProducts(legacyRecord.products ?? []);
   const usageProducts = uniqueProducts(Object.keys(legacyRecord.usage ?? {}));
@@ -92,11 +107,11 @@ function deriveMigratedProducts(legacyRecord: LegacyApiKeyRecord, tier: Tier): s
     return uniqueProducts([...LEGACY_FREE_PRODUCTS, ...usageProducts]);
   }
 
-  return uniqueProducts([...PLANS[tier].products, ...usageProducts]);
+  return uniqueProducts([...legacyPlan(tier).products, ...usageProducts]);
 }
 
 function deriveMigratedQuota(legacyRecord: LegacyApiKeyRecord, tier: Tier): number | null {
-  return legacyRecord.monthlyQuotaPerProduct ?? PLANS[tier].quotaPerProduct;
+  return legacyRecord.monthlyQuotaPerProduct ?? legacyPlan(tier).quotaPerProduct;
 }
 
 function normalizeRecordForCompare<T>(record: T): T {
@@ -135,7 +150,7 @@ export function buildMigrationPlan(
   existingKeyId?: string,
 ): MigrationPlan {
   const tier = normalizeTier(legacyRecord.tier);
-  const plan = PLANS[tier];
+  const plan = legacyPlan(tier);
   const apiKeyHash = hashKey(legacyRecord.apiKey);
   const products = deriveMigratedProducts(legacyRecord, tier);
   const usageRecords: UsageCounterRecord[] = [];

@@ -1080,7 +1080,20 @@ Options:
 
 > **Goal:** Sign-up → DDB-native API key → hash-verified requests → rate-limited with burst limiter → usage tracked per-month → migrate the commercial layer from the shipped Stripe path to the Lago-backed architecture.
 >
-> **Current state.** P1B.02 through P1B.22 are implemented. P1B.22 pivots the active commercial identity to Clerk `orgId`. Lago remains the commercial system of record, Stripe remains only Lago's payment rail, Prontiq keeps hot-path credit enforcement in DynamoDB, and SQS buffers usage events away from the request path. Active billing events are `BillingUsageEventV2` with `orgId`; Lago customer `external_id = orgId`; Lago subscription `external_id = lago_sub_${orgId}`. The AWS private account API owns setup recovery and key management only; account billing routes are retired. Former `customerId` / `pq_cust_*` / `pq_sub_*` records and account billing APIs are legacy evidence only.
+> **Current state.** P1B.02 through P1B.22 are implemented. P1B.22 pivots the active commercial identity to Clerk `orgId`. Lago remains the commercial system of record, Stripe remains only Lago's payment rail, Prontiq keeps hot-path credit enforcement in DynamoDB, and SQS buffers usage events away from the request path. Active billing events are `BillingUsageEventV2` with `orgId`; Lago customer `external_id = orgId`; Lago subscription `external_id = lago_sub_${orgId}`. P1B.24 retrofits plan enforcement so Lago effective charges and entitlements project into local DynamoDB bouncer fields; local `PLANS` is not active commercial truth. The AWS private account API owns setup recovery and key management only; account billing routes are retired. Former `customerId` / `pq_cust_*` / `pq_sub_*` records and account billing APIs are legacy evidence only.
+
+### P1B.24 — Lago Source-of-Truth Enforcement Projection
+
+Status: in progress.
+
+Acceptance criteria:
+
+- [ ] Lago effective charges and entitlements project `quotaPerProduct`, `enforcementMode`, `rateLimit`, `maxKeys`, and product access into local org/key records.
+- [ ] Dynamic Lago plan codes such as `payg_aud` and package plans do not require TypeScript tier changes.
+- [ ] API hot-path enforcement reads only DynamoDB projection fields and does not call Lago.
+- [ ] Manual and scheduled reconciliation exist, with scheduled apply disabled by default.
+- [ ] Drift preserves last-known-good enforcement state and alerts operators.
+- [ ] Architecture, decision records, runbooks, private API docs, and handoff docs reflect that Lago owns plan limits.
 
 ### P1B.22 — Clerk org commercial identity pivot
 
@@ -2424,12 +2437,12 @@ Live today is a single `ApiKeyTable` with raw-key PK and nested `usage: {product
   UpdateExpression: "SET lastUsedAt = :now ADD requestCount :one"
   ConditionExpression: "attribute_not_exists(requestCount)
                         OR requestCount < :quota
-                        OR :tierAllowsOverage = :true"
+                        OR :uncappedTracked = :true"
   ExpressionAttributeValues: {
     ":now":               { S: <ISO timestamp> },
     ":one":               { N: "1" },
-    ":quota":             { N: <PLANS[tier].quotaPerProduct> },
-    ":tierAllowsOverage": { BOOL: <tier !== "free"> },
+    ":quota":             { N: <projected quotaPerProduct> },
+    ":uncappedTracked":   { BOOL: <projected enforcementMode is uncapped_tracked> },
     ":true":              { BOOL: true }
   }
   ReturnValues: "UPDATED_NEW"

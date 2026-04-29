@@ -7,7 +7,6 @@ import { createMiddleware } from "hono/factory";
 import {
   BILLING_ENDPOINTS,
   ERROR_CODES,
-  PLANS,
   PRODUCT_REGISTRY,
   QUOTA_EMAIL_PENDING_LEASE_MINUTES,
   QUOTA_WARNING_THRESHOLD_FRACTION,
@@ -15,6 +14,7 @@ import {
   createLogger,
   deriveBillingUsageEventId,
   getBillingEndpointsForProduct,
+  resolveEffectiveCommercialProjection,
 } from "@prontiq/shared";
 import { hashKey } from "@prontiq/shared";
 import type {
@@ -138,9 +138,7 @@ function getUsageResetAt(record: ApiKeyRecord, now: Date): string {
 function getPlanEnforcementMode(
   record: ApiKeyRecord,
 ): "hard_cap" | "soft_overage" | "uncapped_tracked" {
-  return (
-    PLANS[record.tier]?.enforcementMode ?? (record.tier === "free" ? "hard_cap" : "soft_overage")
-  );
+  return resolveEffectiveCommercialProjection(record).enforcementMode;
 }
 
 function isHardCapped(record: ApiKeyRecord): boolean {
@@ -149,6 +147,17 @@ function isHardCapped(record: ApiKeyRecord): boolean {
 
 function isSoftOverage(record: ApiKeyRecord): boolean {
   return getPlanEnforcementMode(record) === "soft_overage";
+}
+
+function withEffectiveCommercialProjection(record: ApiKeyRecord): ApiKeyRecord {
+  const projection = resolveEffectiveCommercialProjection(record);
+  return {
+    ...record,
+    products: projection.products,
+    quotaPerProduct: projection.quotaPerProduct,
+    enforcementMode: projection.enforcementMode,
+    rateLimit: projection.rateLimit,
+  };
 }
 
 function getUsageTtl(now: Date): number {
@@ -577,9 +586,9 @@ export function auth() {
     }
 
     const now = new Date();
-    const record = await resolveKeyRecord(rawApiKey, now);
+    const storedRecord = await resolveKeyRecord(rawApiKey, now);
 
-    if (!record || !record.active) {
+    if (!storedRecord || !storedRecord.active) {
       return c.json(
         {
           error: {
@@ -592,6 +601,7 @@ export function auth() {
       );
     }
 
+    const record = withEffectiveCommercialProjection(storedRecord);
     c.set("apiKey", record);
     c.set("apiKeyHash", record.apiKeyHash);
 

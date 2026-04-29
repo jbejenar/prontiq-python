@@ -7,7 +7,6 @@ import {
   UpdateCommand,
 } from "@aws-sdk/lib-dynamodb";
 import {
-  PLANS,
   createLogger,
   deriveLagoExternalSubscriptionIdForOrg,
   hashLagoWebhookPayload,
@@ -17,9 +16,15 @@ import {
   type LagoWebhookLedgerRecord,
   type LagoWebhookProcessingStatus,
   type OrgEnvelopeRecord,
-  type Tier,
 } from "@prontiq/shared";
 import { writeAudit } from "./audit.js";
+import {
+  HttpLagoEntitlementsClient,
+  projectLagoEntitlements,
+  type LagoEntitlementProjection,
+  type LagoSubscriptionCharge,
+  type LagoSubscriptionEntitlement,
+} from "./lago-entitlements.js";
 
 type Logger = Pick<Console, "error" | "warn" | "info">;
 
@@ -37,6 +42,10 @@ export interface LagoSubscriptionSnapshot {
 
 export interface LagoSubscriptionClient {
   getSubscription(externalSubscriptionId: string): Promise<LagoSubscriptionSnapshot | null>;
+  getSubscriptionCharges(externalSubscriptionId: string): Promise<LagoSubscriptionCharge[]>;
+  getSubscriptionEntitlements(
+    externalSubscriptionId: string,
+  ): Promise<LagoSubscriptionEntitlement[]>;
 }
 
 export interface LagoWebhookReconciliationDependencies {
@@ -257,18 +266,6 @@ function buildBillingPeriodKey(snapshot: LagoSubscriptionSnapshot): string | nul
   return `${snapshot.billingPeriodStartedAt.slice(0, 10)}_${snapshot.billingPeriodEndingAt.slice(0, 10)}`;
 }
 
-function isTier(value: string): value is Tier {
-  return Object.prototype.hasOwnProperty.call(PLANS, value);
-}
-
-function getPlan(tier: Tier) {
-  const plan = PLANS[tier];
-  if (!plan) {
-    throw new Error(`Plan ${tier} is not configured`);
-  }
-  return plan;
-}
-
 function assertKnownLagoSubscriptionStatus(status: string): void {
   if (!LAGO_KNOWN_SUBSCRIPTION_STATUSES.has(status)) {
     throw new Error(`Lago subscription status ${status} is not a recognized entitlement status`);
@@ -370,11 +367,11 @@ async function updateEnvelopeForSubscription(
   keysTableName: string,
   orgId: string,
   snapshot: LagoSubscriptionSnapshot,
-  tier: Tier,
+  projection: LagoEntitlementProjection,
   paymentOverdue: boolean,
   overdueInvoiceId: string | null,
 ): Promise<void> {
-  const plan = getPlan(tier);
+  const syncedAt = new Date().toISOString();
   await ddb.send(
     new UpdateCommand({
       TableName: keysTableName,
@@ -382,6 +379,10 @@ async function updateEnvelopeForSubscription(
       UpdateExpression: [
         "SET #tier = :tier",
         "#products = :products",
+        "#quotaPerProduct = :quotaPerProduct",
+        "#enforcementMode = :enforcementMode",
+        "#rateLimit = :rateLimit",
+        "#maxKeys = :maxKeys",
         "#paymentOverdue = :paymentOverdue",
         "#lagoPlanCode = :planCode",
         "#lagoSubscriptionExternalId = :externalSubscriptionId",
@@ -394,6 +395,10 @@ async function updateEnvelopeForSubscription(
         "#billingPeriodEndingAt = :periodEnd",
         "#billingPeriodKey = :periodKey",
         "#lagoPaymentOverdueInvoiceId = :overdueInvoiceId",
+        "#lagoEntitlementsHash = :lagoEntitlementsHash",
+        "#lagoLastSyncedAt = :lagoLastSyncedAt",
+        "#lagoLastSyncStatus = :lagoLastSyncStatus",
+        "#lagoLastSyncError = :lagoLastSyncError",
       ].join(", "),
       ExpressionAttributeNames: {
         "#billingPeriodEndingAt": "billingPeriodEndingAt",
@@ -409,6 +414,14 @@ async function updateEnvelopeForSubscription(
         "#lagoSubscriptionStatus": "lagoSubscriptionStatus",
         "#paymentOverdue": "paymentOverdue",
         "#products": "products",
+        "#quotaPerProduct": "quotaPerProduct",
+        "#enforcementMode": "enforcementMode",
+        "#rateLimit": "rateLimit",
+        "#maxKeys": "maxKeys",
+        "#lagoEntitlementsHash": "lagoEntitlementsHash",
+        "#lagoLastSyncedAt": "lagoLastSyncedAt",
+        "#lagoLastSyncStatus": "lagoLastSyncStatus",
+        "#lagoLastSyncError": "lagoLastSyncError",
         "#tier": "tier",
       },
       ExpressionAttributeValues: {
@@ -420,9 +433,17 @@ async function updateEnvelopeForSubscription(
         ":periodKey": buildBillingPeriodKey(snapshot),
         ":periodStart": snapshot.billingPeriodStartedAt,
         ":planCode": snapshot.planCode,
-        ":products": plan.products,
+        ":products": projection.products,
+        ":quotaPerProduct": projection.quotaPerProduct,
+        ":enforcementMode": projection.enforcementMode,
+        ":rateLimit": projection.rateLimit,
+        ":maxKeys": projection.maxKeys,
+        ":lagoEntitlementsHash": projection.lagoEntitlementsHash,
+        ":lagoLastSyncedAt": syncedAt,
+        ":lagoLastSyncStatus": "synced",
+        ":lagoLastSyncError": null,
         ":subscriptionStatus": snapshot.status,
-        ":tier": tier,
+        ":tier": snapshot.planCode,
       },
     }),
   );
@@ -433,11 +454,10 @@ async function updateKeyForSubscription(
   keysTableName: string,
   key: ApiKeyRecord,
   snapshot: LagoSubscriptionSnapshot,
-  tier: Tier,
+  projection: LagoEntitlementProjection,
   paymentOverdue: boolean,
   overdueInvoiceId: string | null,
 ): Promise<void> {
-  const plan = getPlan(tier);
   await ddb.send(
     new UpdateCommand({
       TableName: keysTableName,
@@ -446,6 +466,7 @@ async function updateKeyForSubscription(
         "SET #tier = :tier",
         "#products = :products",
         "#quotaPerProduct = :quotaPerProduct",
+        "#enforcementMode = :enforcementMode",
         "#rateLimit = :rateLimit",
         "#paymentOverdue = :paymentOverdue",
         "#lagoPlanCode = :planCode",
@@ -475,6 +496,7 @@ async function updateKeyForSubscription(
         "#paymentOverdue": "paymentOverdue",
         "#products": "products",
         "#quotaPerProduct": "quotaPerProduct",
+        "#enforcementMode": "enforcementMode",
         "#rateLimit": "rateLimit",
         "#tier": "tier",
       },
@@ -487,11 +509,12 @@ async function updateKeyForSubscription(
         ":periodKey": buildBillingPeriodKey(snapshot),
         ":periodStart": snapshot.billingPeriodStartedAt,
         ":planCode": snapshot.planCode,
-        ":products": plan.products,
-        ":quotaPerProduct": plan.quotaPerProduct,
-        ":rateLimit": plan.rateLimit,
+        ":products": projection.products,
+        ":quotaPerProduct": projection.quotaPerProduct,
+        ":enforcementMode": projection.enforcementMode,
+        ":rateLimit": projection.rateLimit,
         ":subscriptionStatus": snapshot.status,
-        ":tier": tier,
+        ":tier": snapshot.planCode,
       },
     }),
   );
@@ -680,11 +703,6 @@ async function reconcileSubscriptionState(
   }
 
   const grantsEntitlements = snapshot ? grantsPlanEntitlements(snapshot) : false;
-  if (grantsEntitlements && snapshot && !isTier(snapshot.planCode)) {
-    throw new Error(`Lago plan_code ${snapshot.planCode} is not a configured Prontiq tier`);
-  }
-  const effectiveTier: Tier =
-    grantsEntitlements && snapshot && isTier(snapshot.planCode) ? snapshot.planCode : "free";
   const effectiveSnapshot =
     grantsEntitlements && snapshot
       ? snapshot
@@ -693,6 +711,29 @@ async function reconcileSubscriptionState(
           orgId,
           expectedSubscriptionId,
         );
+  const projection =
+    grantsEntitlements && snapshot
+      ? projectLagoEntitlements({
+          snapshot,
+          charges: await dependencies.lagoClient.getSubscriptionCharges(snapshot.externalSubscriptionId),
+          entitlements: await dependencies.lagoClient.getSubscriptionEntitlements(
+            snapshot.externalSubscriptionId,
+          ),
+        })
+      : ({
+          status: "projected",
+          projection: {
+            products: getExistingProducts(resolved),
+            quotaPerProduct: 0,
+            enforcementMode: "hard_cap",
+            rateLimit: null,
+            maxKeys: resolved.orgEnvelope.maxKeys ?? resolved.orgEnvelope.activeKeyCount ?? 0,
+            lagoEntitlementsHash: "inactive-subscription",
+          },
+        } as const);
+  if (projection.status === "drift") {
+    throw new Error(`Lago subscription projection drift: ${projection.reason}`);
+  }
   const nextPeriodKey = grantsEntitlements ? buildBillingPeriodKey(effectiveSnapshot) : null;
 
   const paymentOverdue =
@@ -715,7 +756,7 @@ async function reconcileSubscriptionState(
     dependencies.ddb,
     dependencies.usageTableName,
     resolved.keys,
-    grantsEntitlements ? getPlan(effectiveTier).products : getExistingProducts(resolved),
+    projection.projection.products,
     nextPeriodKey,
   );
   await updateEnvelopeForSubscription(
@@ -723,7 +764,7 @@ async function reconcileSubscriptionState(
     dependencies.keysTableName,
     resolved.orgId,
     effectiveSnapshot,
-    effectiveTier,
+    projection.projection,
     paymentOverdue,
     overdueInvoiceId,
   );
@@ -733,7 +774,7 @@ async function reconcileSubscriptionState(
       dependencies.keysTableName,
       key,
       effectiveSnapshot,
-      effectiveTier,
+      projection.projection,
       paymentOverdue,
       overdueInvoiceId,
     );
@@ -1072,6 +1113,26 @@ export class HttpLagoSubscriptionClient implements LagoSubscriptionClient {
       ]),
       status: firstString(subscription, [["status"]]) ?? "unknown",
     };
+  }
+
+  async getSubscriptionCharges(externalSubscriptionId: string): Promise<LagoSubscriptionCharge[]> {
+    return new HttpLagoEntitlementsClient({
+      apiKey: this.apiKey,
+      baseUrl: this.baseUrl,
+      fetchImpl: this.fetchImpl,
+      timeoutMs: this.timeoutMs,
+    }).getSubscriptionCharges(externalSubscriptionId);
+  }
+
+  async getSubscriptionEntitlements(
+    externalSubscriptionId: string,
+  ): Promise<LagoSubscriptionEntitlement[]> {
+    return new HttpLagoEntitlementsClient({
+      apiKey: this.apiKey,
+      baseUrl: this.baseUrl,
+      fetchImpl: this.fetchImpl,
+      timeoutMs: this.timeoutMs,
+    }).getSubscriptionEntitlements(externalSubscriptionId);
   }
 }
 

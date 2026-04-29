@@ -83,6 +83,9 @@ function makeEnvelope(overrides: Partial<OrgEnvelopeRecord> = {}): OrgEnvelopeRe
     ownerEmail: "owner@example.com",
     paymentOverdue: false,
     products: ["address"],
+    quotaPerProduct: PLANS.starter.quotaPerProduct,
+    enforcementMode: PLANS.starter.enforcementMode,
+    rateLimit: PLANS.starter.rateLimit,
     stripeCustomerId: null,
     stripeSubscriptionId: null,
     subscriptionItems: {},
@@ -155,6 +158,36 @@ test("quota email worker sends warning email once and marks the scope sent", asy
   assert.equal(sent.length, 1);
   assert.equal(usage.Item?.warningEmailSent, true);
   assert.equal(usage.Item?.warningEmailPendingAt, undefined);
+});
+
+test("quota email worker uses legacy paid quota fallback when projection fields are absent", async () => {
+  const sent: QuotaEmailTask[] = [];
+  const envelope = makeEnvelope({
+    products: ["address", "abn", "lei", "cve", "patents"],
+    tier: "growth",
+  });
+  delete (envelope as Partial<OrgEnvelopeRecord>).quotaPerProduct;
+  delete (envelope as Partial<OrgEnvelopeRecord>).enforcementMode;
+  delete (envelope as Partial<OrgEnvelopeRecord>).rateLimit;
+  await seedEnvelope(envelope);
+  await seedUsage(makeUsage({ requestCount: 80_000 }));
+
+  const service = createQuotaEmailService({
+    ddb,
+    keysTableName: KEYS_TABLE,
+    logger: console,
+    sendQuotaEmail: async ({ envelope: sentEnvelope, task }) => {
+      sent.push(task);
+      assert.equal(sentEnvelope.tier, "growth");
+      return true;
+    },
+    suppressionsTableName: SUPPRESSIONS_TABLE,
+    usageTableName: USAGE_TABLE,
+  });
+
+  await service.processTask(warningTask);
+
+  assert.equal(sent.length, 1);
 });
 
 test("quota email worker finalizes suppressed warning emails without retry loops", async () => {

@@ -17,6 +17,8 @@ direct dev API Gateway host for smoke until the vanity domain is fixed.
 - Lago customer `external_id = orgId`.
 - Lago subscription `external_id = lago_sub_${orgId}`.
 - Stripe remains only the payment rail configured inside Lago.
+- Lago effective charges and entitlements are the source for plan limits; the
+  platform stores only a DynamoDB enforcement projection.
 - The platform keeps hot-path API key auth, credit enforcement, usage counters,
   SQS event production, and webhook reconciliation.
 - The platform does not provide active account billing read/mutation APIs.

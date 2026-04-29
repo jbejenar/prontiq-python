@@ -99,6 +99,11 @@ const completeEnvelope = (orgId: string) => ({
   completedAt: "2026-04-17T00:00:00.000Z",
 });
 
+const incompleteProductlessEnvelope = (orgId: string) => ({
+  ...completeEnvelope(orgId),
+  products: [],
+});
+
 const legacyEnvelope = (orgId: string) => ({
   ...completeEnvelope(orgId),
   customerId: legacyCustomerId,
@@ -109,10 +114,18 @@ const lagoBootstrappedEnvelope = (orgId: string) => ({
   billingPeriodEndingAt: "2026-05-26T00:00:00.000Z",
   billingPeriodKey: "2026-04-26T00:00:00.000Z__2026-05-26T00:00:00.000Z",
   billingPeriodStartedAt: "2026-04-26T00:00:00.000Z",
+  enforcementMode: "hard_cap",
+  lagoEntitlementsHash: "hash_test",
+  lagoLastSyncError: null,
+  lagoLastSyncStatus: "synced",
+  lagoLastSyncedAt: "2026-04-26T00:00:00.000Z",
   lagoPaymentOverdueInvoiceId: null,
   lagoPlanCode: "free",
   lagoSubscriptionExternalId: deriveLagoExternalSubscriptionIdForOrg(orgId),
   lagoSubscriptionStatus: "active",
+  maxKeys: 2,
+  quotaPerProduct: 10_000,
+  rateLimit: 10,
 });
 
 const legacyLagoBootstrappedEnvelope = (orgId: string) => ({
@@ -129,6 +142,9 @@ const legacyLagoBootstrappedEnvelope = (orgId: string) => ({
 function makeLagoProvisioningClient(
   options: {
     getSubscriptionResponses?: Array<"snapshot" | null>;
+    omitRateLimitEntitlement?: boolean;
+    snapshotPlanCode?: string;
+    snapshotStatus?: string;
     throwIfCalled?: boolean;
   } = {},
 ) {
@@ -161,9 +177,32 @@ function makeLagoProvisioningClient(
           billingPeriodStartedAt: "2026-04-26T00:00:00.000Z",
           externalCustomerId: lastExternalCustomerId ?? "org_unknown",
           externalSubscriptionId: String(args),
-          planCode: "free",
-          status: "active",
+          planCode: options.snapshotPlanCode ?? "free",
+          status: options.snapshotStatus ?? "active",
         };
+      },
+      async getSubscriptionCharges() {
+        return [
+          {
+            billableMetricCode: "prontiq_address_requests",
+            chargeModel: "package",
+            properties: { free_units: 10_000 },
+          },
+        ];
+      },
+      async getSubscriptionEntitlements() {
+        return [
+          { featureCode: "api_keys", privileges: { max: 2 } },
+          {
+            featureCode: "address_api",
+            privileges: {
+              enabled: true,
+              monthly_quota: 10_000,
+              ...(options.omitRateLimitEntitlement ? {} : { rate_limit_per_second: 10 }),
+              enforcement_mode: "hard_cap",
+            },
+          },
+        ];
       },
     },
   };
@@ -205,7 +244,10 @@ test("returns already_exists when complete Lago ORG envelope is already present"
 
 test("existing incomplete active Lago envelope is bootstrapped before replay returns", async () => {
   const { client, log } = makeDdbStub({
-    getResponses: [completeEnvelope("org_bootstrap"), lagoBootstrappedEnvelope("org_bootstrap")],
+    getResponses: [
+      incompleteProductlessEnvelope("org_bootstrap"),
+      lagoBootstrappedEnvelope("org_bootstrap"),
+    ],
   });
   const lago = makeLagoProvisioningClient({ getSubscriptionResponses: [null, "snapshot"] });
   const service = createProvisioningService({ ...baseDeps, ddb: client, lagoClient: lago.client });
@@ -219,6 +261,10 @@ test("existing incomplete active Lago envelope is bootstrapped before replay ret
 
   assert.equal(result.status, "already_exists");
   assert.equal(result.orgEnvelope?.orgId, "org_bootstrap");
+  assert.deepEqual(result.orgEnvelope?.products, ["address"]);
+  assert.equal(result.orgEnvelope?.quotaPerProduct, 10_000);
+  assert.equal(result.orgEnvelope?.rateLimit, 10);
+  assert.equal(result.orgEnvelope?.maxKeys, 2);
   assert.equal(result.orgEnvelope?.lagoSubscriptionExternalId, "lago_sub_org_bootstrap");
   assert.deepEqual(
     lago.calls.map((call) => call.method),
@@ -229,7 +275,7 @@ test("existing incomplete active Lago envelope is bootstrapped before replay ret
 
 test("creates org envelope and bootstraps Lago Free subscription", async () => {
   const { client, log } = makeDdbStub({
-    getResponses: [undefined, completeEnvelope("org_new"), lagoBootstrappedEnvelope("org_new")],
+    getResponses: [undefined, lagoBootstrappedEnvelope("org_new")],
   });
   const lago = makeLagoProvisioningClient();
   const service = createProvisioningService({ ...baseDeps, ddb: client, lagoClient: lago.client });
@@ -253,20 +299,33 @@ test("creates org envelope and bootstraps Lago Free subscription", async () => {
 
   assert.equal(result.status, "created");
   assert.equal(result.orgEnvelope?.orgId, "org_new");
+  assert.deepEqual(result.orgEnvelope?.products, ["address"]);
+  assert.equal(result.orgEnvelope?.quotaPerProduct, 10_000);
+  assert.equal(result.orgEnvelope?.rateLimit, 10);
+  assert.equal(result.orgEnvelope?.maxKeys, 2);
   assert.equal(result.orgEnvelope?.lagoSubscriptionExternalId, "lago_sub_org_new");
   assert.equal(result.stripeCustomerId, null);
   assert.equal(result.emailSent, true);
   assert.equal(log.filter((entry) => entry.type === "TransactWrite").length, 1);
-  assert.equal(log.filter((entry) => entry.type === "Update").length, 1);
+  assert.equal(log.filter((entry) => entry.type === "Update").length, 0);
+  const tx = log.find((entry) => entry.type === "TransactWrite")?.args as {
+    TransactItems?: Array<{ Put?: { Item?: Record<string, unknown> } }>;
+  };
+  const envelopeItem = tx.TransactItems?.[0]?.Put?.Item;
+  assert.deepEqual(envelopeItem?.products, ["address"]);
+  assert.equal(envelopeItem?.quotaPerProduct, 10_000);
+  assert.equal(envelopeItem?.rateLimit, 10);
+  assert.equal(envelopeItem?.maxKeys, 2);
+  assert.equal(envelopeItem?.lagoLastSyncStatus, "synced");
   assert.deepEqual(
     lago.calls.map((call) => call.method),
     ["upsertCustomer", "getSubscription"],
   );
 });
 
-test("post-commit Lago bootstrap failure is retryable after durable envelope commit", async () => {
-  const { client } = makeDdbStub({
-    getResponses: [undefined, completeEnvelope("org_retry")],
+test("pre-commit Lago bootstrap failure does not create a productless envelope", async () => {
+  const { client, log } = makeDdbStub({
+    getResponses: [undefined],
   });
   const lago = makeLagoProvisioningClient({ throwIfCalled: true });
   const service = createProvisioningService({ ...baseDeps, ddb: client, lagoClient: lago.client });
@@ -279,8 +338,85 @@ test("post-commit Lago bootstrap failure is retryable after durable envelope com
   });
 
   assert.equal(result.status, "retryable_failure");
-  assert.equal(result.orgEnvelope?.orgId, "org_retry");
+  assert.equal(result.orgEnvelope, undefined);
   assert.equal(result.stripeCustomerId, null);
+  assert.equal(log.filter((entry) => entry.type === "TransactWrite").length, 0);
+});
+
+test("pre-commit Lago projection drift does not create a productless envelope", async () => {
+  const { client, log } = makeDdbStub({
+    getResponses: [undefined],
+  });
+  const lago = makeLagoProvisioningClient({ omitRateLimitEntitlement: true });
+  const service = createProvisioningService({ ...baseDeps, ddb: client, lagoClient: lago.client });
+
+  const result = await service.provisionOrg({
+    orgId: "org_drift",
+    ownerEmail: "owner@example.com",
+    actorId: "user_x",
+    source: "clerk-webhook",
+  });
+
+  assert.equal(result.status, "retryable_failure");
+  assert.equal(result.orgEnvelope, undefined);
+  assert.equal(log.filter((entry) => entry.type === "TransactWrite").length, 0);
+  assert.deepEqual(
+    lago.calls.map((call) => call.method),
+    ["upsertCustomer", "getSubscription"],
+  );
+});
+
+test("pre-commit existing paid Lago subscription does not create a local envelope", async () => {
+  const { client, log } = makeDdbStub({
+    getResponses: [undefined],
+  });
+  const lago = makeLagoProvisioningClient({ snapshotPlanCode: "payg_aud" });
+  const service = createProvisioningService({ ...baseDeps, ddb: client, lagoClient: lago.client });
+
+  const result = await service.provisionOrg({
+    orgId: "org_paidlago",
+    ownerEmail: "owner@example.com",
+    actorId: "user_x",
+    source: "account-setup",
+  });
+
+  assert.equal(result.status, "retryable_failure");
+  assert.equal(result.orgEnvelope, undefined);
+  assert.equal(log.filter((entry) => entry.type === "TransactWrite").length, 0);
+  assert.deepEqual(
+    lago.calls.map((call) => call.method),
+    ["upsertCustomer", "getSubscription"],
+  );
+});
+
+test("pre-commit existing inactive Lago subscription does not create a local envelope", async () => {
+  for (const status of ["canceled", "terminated", "pending"] as const) {
+    const { client, log } = makeDdbStub({
+      getResponses: [undefined],
+    });
+    const lago = makeLagoProvisioningClient({ snapshotStatus: status });
+    const service = createProvisioningService({
+      ...baseDeps,
+      ddb: client,
+      lagoClient: lago.client,
+    });
+
+    const result = await service.provisionOrg({
+      orgId: `org_${status}lago`,
+      ownerEmail: "owner@example.com",
+      actorId: "user_x",
+      source: "account-setup",
+    });
+
+    assert.equal(result.status, "retryable_failure", status);
+    assert.equal(result.orgEnvelope, undefined, status);
+    assert.equal(log.filter((entry) => entry.type === "TransactWrite").length, 0, status);
+    assert.deepEqual(
+      lago.calls.map((call) => call.method),
+      ["upsertCustomer", "getSubscription"],
+      status,
+    );
+  }
 });
 
 test("transient preflight read returns retryable failure", async () => {
@@ -322,7 +458,6 @@ test("transient transaction conflicts are retried", async () => {
     getResponses: [
       undefined,
       undefined,
-      completeEnvelope("org_tx"),
       lagoBootstrappedEnvelope("org_tx"),
     ],
     transactWriteBehaviours: [makeTransactionCanceledException(["TransactionConflict"]), "ok"],
@@ -363,7 +498,7 @@ test("existing complete legacy Lago ORG envelope still replays without migration
 
 test("welcome email remains best-effort after successful Lago bootstrap", async () => {
   const { client } = makeDdbStub({
-    getResponses: [undefined, completeEnvelope("org_email"), lagoBootstrappedEnvelope("org_email")],
+    getResponses: [undefined, lagoBootstrappedEnvelope("org_email")],
   });
   const lago = makeLagoProvisioningClient();
   const throwingEmail: EmailSender = async () => {

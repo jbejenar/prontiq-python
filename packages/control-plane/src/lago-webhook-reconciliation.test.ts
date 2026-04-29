@@ -62,6 +62,30 @@ class FakeLagoClient implements LagoSubscriptionClient {
   async getSubscription(): Promise<LagoSubscriptionSnapshot | null> {
     return this.snapshot;
   }
+
+  async getSubscriptionCharges() {
+    return [
+      {
+        billableMetricCode: "prontiq_address_requests",
+        chargeModel: "standard",
+        properties: {},
+      },
+    ];
+  }
+
+  async getSubscriptionEntitlements() {
+    return [
+      { featureCode: "api_keys", privileges: { max: 3 } },
+      {
+        featureCode: "address_api",
+        privileges: {
+          enabled: true,
+          rate_limit_per_second: 25,
+          enforcement_mode: "uncapped_tracked",
+        },
+      },
+    ];
+  }
 }
 
 test("normalizes Lago webhook payloads with invoice subscription arrays", () => {

@@ -45,6 +45,9 @@ Provisioned response:
 }
 ```
 
+`tier` is a display/back-compat field. `maxKeys` is projected from Lago
+effective entitlements and enforced by the platform locally.
+
 ### `GET /v1/account/keys`
 
 Member-allowed list endpoint. Returns active key metadata only.

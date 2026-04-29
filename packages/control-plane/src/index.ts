@@ -52,3 +52,17 @@ export type {
   LagoWebhookReconciliationInput,
   LagoWebhookReconciliationResult,
 } from "./lago-webhook-reconciliation.js";
+
+export {
+  HttpLagoEntitlementsClient,
+  buildBillingPeriodKeyFromProjection,
+  projectLagoEntitlements,
+} from "./lago-entitlements.js";
+export type {
+  LagoEntitlementProjection,
+  LagoEntitlementProjectionResult,
+  LagoEntitlementsClient,
+  LagoSubscriptionCharge,
+  LagoSubscriptionEntitlement,
+  LagoSubscriptionProjectionSnapshot,
+} from "./lago-entitlements.js";

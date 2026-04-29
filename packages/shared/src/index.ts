@@ -15,6 +15,8 @@ export type {
   CustomerRecord,
   CustomerStatus,
   AuditRecord,
+  EnforcementMode,
+  LegacyTier,
   Tier,
   ApiErrorBody,
   ApiErrorResponse,
@@ -62,6 +64,15 @@ export {
   deriveLagoExternalSubscriptionId,
 } from "./billing-events.js";
 export type { BillingEventIdInput, BillingUsageEventV1, BillingUsageEventV2 } from "./billing-events.js";
+
+export {
+  isLegacyTier,
+  resolveEffectiveCommercialProjection,
+} from "./commercial-projection.js";
+export type {
+  CommercialProjectionInput,
+  EffectiveCommercialProjection,
+} from "./commercial-projection.js";
 
 export {
   LAGO_WEBHOOK_EVENT_TYPES,

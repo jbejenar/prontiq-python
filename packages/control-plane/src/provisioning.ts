@@ -8,7 +8,6 @@ import {
 } from "@aws-sdk/lib-dynamodb";
 import {
   DEFAULT_ACCOUNT_URL,
-  PLANS,
   createLogger,
   deriveLagoExternalSubscriptionIdForOrg,
   type OrgEnvelopeRecord,
@@ -16,6 +15,14 @@ import {
 } from "@prontiq/shared";
 import { buildAuditTransactItem } from "./audit.js";
 import { isSuppressedEmail, sendSignedSesEmail } from "./email.js";
+import {
+  HttpLagoEntitlementsClient,
+  buildBillingPeriodKeyFromProjection,
+  projectLagoEntitlements,
+  type LagoEntitlementProjection,
+  type LagoSubscriptionCharge,
+  type LagoSubscriptionEntitlement,
+} from "./lago-entitlements.js";
 
 // Three classes of error vocabulary surface from a DynamoDB call:
 //
@@ -69,6 +76,7 @@ const FATAL_TOP_LEVEL_NAMES = new Set([
 const MAX_ATTEMPTS = 3;
 const BACKOFF_MS = 150;
 const FREE_TIER = "free" as const;
+const ACTIVE_LAGO_SUBSCRIPTION_STATUS = "active" as const;
 
 type Logger = Pick<Console, "error" | "warn" | "info">;
 type Sleep = (ms: number) => Promise<void>;
@@ -112,10 +120,20 @@ export interface LagoProvisioningSubscriptionSnapshot {
   status: string;
 }
 
+interface LagoBootstrapProjection {
+  periodKey: string;
+  projected: LagoEntitlementProjection;
+  snapshot: LagoProvisioningSubscriptionSnapshot;
+}
+
 export interface LagoProvisioningClient {
   getSubscription(
     externalSubscriptionId: string,
   ): Promise<LagoProvisioningSubscriptionSnapshot | null>;
+  getSubscriptionCharges(externalSubscriptionId: string): Promise<LagoSubscriptionCharge[]>;
+  getSubscriptionEntitlements(
+    externalSubscriptionId: string,
+  ): Promise<LagoSubscriptionEntitlement[]>;
   upsertCustomer(input: {
     orgId: string;
     email: string;
@@ -299,6 +317,24 @@ export class HttpLagoProvisioningClient implements LagoProvisioningClient {
       throw new Error(`Lago subscription lookup failed with HTTP ${response.status}`);
     return parseLagoSubscription(payload);
   }
+
+  async getSubscriptionCharges(externalSubscriptionId: string): Promise<LagoSubscriptionCharge[]> {
+    return new HttpLagoEntitlementsClient({
+      apiKey: this.apiKey,
+      baseUrl: this.baseUrl,
+      fetchImpl: this.fetchImpl,
+    }).getSubscriptionCharges(externalSubscriptionId);
+  }
+
+  async getSubscriptionEntitlements(
+    externalSubscriptionId: string,
+  ): Promise<LagoSubscriptionEntitlement[]> {
+    return new HttpLagoEntitlementsClient({
+      apiKey: this.apiKey,
+      baseUrl: this.baseUrl,
+      fetchImpl: this.fetchImpl,
+    }).getSubscriptionEntitlements(externalSubscriptionId);
+  }
 }
 
 function getDefaultLagoClient(): LagoProvisioningClient {
@@ -416,21 +452,32 @@ function buildProvisioningTransactWrite(
   keysTableName: string,
   auditTableName: string,
   now: Date,
+  bootstrap: LagoBootstrapProjection,
 ): TransactWriteCommand {
   const completedAt = now.toISOString();
-  const freePlan = PLANS[FREE_TIER];
-  if (!freePlan) {
-    throw new Error(`Plan ${FREE_TIER} is not configured`);
-  }
   const envelope: OrgEnvelopeRecord = {
     apiKeyHash: getOrgEnvelopeKey(input.orgId),
+    billingPeriodEndingAt: bootstrap.snapshot.billingPeriodEndingAt,
+    billingPeriodKey: bootstrap.periodKey,
+    billingPeriodStartedAt: bootstrap.snapshot.billingPeriodStartedAt,
     completedAt,
     hasFirstKey: false,
     activeKeyCount: 0,
+    lagoEntitlementsHash: bootstrap.projected.lagoEntitlementsHash,
+    lagoLastSyncStatus: "synced",
+    lagoLastSyncedAt: completedAt,
+    lagoPaymentOverdueInvoiceId: null,
+    lagoPlanCode: bootstrap.snapshot.planCode,
+    lagoSubscriptionExternalId: bootstrap.snapshot.externalSubscriptionId,
+    lagoSubscriptionStatus: bootstrap.snapshot.status,
+    maxKeys: bootstrap.projected.maxKeys,
     orgId: input.orgId,
     ownerEmail: input.ownerEmail,
     paymentOverdue: false,
-    products: freePlan.products,
+    products: bootstrap.projected.products,
+    quotaPerProduct: bootstrap.projected.quotaPerProduct,
+    rateLimit: bootstrap.projected.rateLimit,
+    enforcementMode: bootstrap.projected.enforcementMode,
     stripeCustomerId,
     stripeSubscriptionId: null,
     subscriptionItems: {},
@@ -524,21 +571,19 @@ async function loadOrgKeys(
 async function writeLagoBootstrapState(
   dependencies: ProvisioningDependencies,
   orgId: string,
-  snapshot: LagoProvisioningSubscriptionSnapshot,
+  bootstrap: LagoBootstrapProjection,
 ): Promise<OrgEnvelopeRecord> {
+  const { snapshot, projected, periodKey } = bootstrap;
   if (snapshot.externalCustomerId.length === 0) {
     throw new Error("Lago subscription snapshot is missing external customer id");
   }
   if (snapshot.planCode !== FREE_TIER) {
     throw new Error(`Lago bootstrap subscription must use plan ${FREE_TIER}`);
   }
-  const periodKey = buildBillingPeriodKey(snapshot);
-  if (!periodKey || !snapshot.billingPeriodStartedAt || !snapshot.billingPeriodEndingAt) {
-    throw new Error("Lago bootstrap subscription is missing billing period fields");
+  if (snapshot.status !== ACTIVE_LAGO_SUBSCRIPTION_STATUS) {
+    throw new Error("Lago bootstrap subscription must be active");
   }
   const keys = await loadOrgKeys(dependencies.ddb, dependencies.keysTableName, orgId);
-  const plan = PLANS[FREE_TIER];
-  if (!plan) throw new Error(`Plan ${FREE_TIER} is not configured`);
 
   const commonNames = {
     "#billingPeriodEndingAt": "billingPeriodEndingAt",
@@ -549,7 +594,15 @@ async function writeLagoBootstrapState(
     "#lagoSubscriptionExternalId": "lagoSubscriptionExternalId",
     "#lagoSubscriptionStatus": "lagoSubscriptionStatus",
     "#paymentOverdue": "paymentOverdue",
+    "#enforcementMode": "enforcementMode",
+    "#lagoEntitlementsHash": "lagoEntitlementsHash",
+    "#lagoLastSyncError": "lagoLastSyncError",
+    "#lagoLastSyncStatus": "lagoLastSyncStatus",
+    "#lagoLastSyncedAt": "lagoLastSyncedAt",
+    "#maxKeys": "maxKeys",
     "#products": "products",
+    "#quotaPerProduct": "quotaPerProduct",
+    "#rateLimit": "rateLimit",
     "#tier": "tier",
   };
   const commonValues = {
@@ -557,12 +610,20 @@ async function writeLagoBootstrapState(
     ":overdueInvoiceId": null,
     ":paymentOverdue": false,
     ":periodEnd": snapshot.billingPeriodEndingAt,
-    ":periodKey": periodKey,
+    ":periodKey": buildBillingPeriodKeyFromProjection(snapshot) ?? periodKey,
     ":periodStart": snapshot.billingPeriodStartedAt,
-    ":planCode": FREE_TIER,
-    ":products": plan.products,
+    ":planCode": snapshot.planCode,
+    ":products": projected.products,
+    ":quota": projected.quotaPerProduct,
+    ":rateLimit": projected.rateLimit,
+    ":enforcementMode": projected.enforcementMode,
+    ":maxKeys": projected.maxKeys,
+    ":lagoEntitlementsHash": projected.lagoEntitlementsHash,
+    ":lagoLastSyncedAt": new Date().toISOString(),
+    ":lagoLastSyncStatus": "synced",
+    ":lagoLastSyncError": null,
     ":subscriptionStatus": snapshot.status,
-    ":tier": FREE_TIER,
+    ":tier": snapshot.planCode,
   };
 
   await dependencies.ddb.send(
@@ -573,6 +634,10 @@ async function writeLagoBootstrapState(
         "SET #tier = :tier",
         "#products = :products",
         "#paymentOverdue = :paymentOverdue",
+        "#quotaPerProduct = :quota",
+        "#enforcementMode = :enforcementMode",
+        "#rateLimit = :rateLimit",
+        "#maxKeys = :maxKeys",
         "#lagoPlanCode = :planCode",
         "#lagoSubscriptionExternalId = :externalSubscriptionId",
         "#lagoSubscriptionStatus = :subscriptionStatus",
@@ -580,6 +645,10 @@ async function writeLagoBootstrapState(
         "#billingPeriodEndingAt = :periodEnd",
         "#billingPeriodKey = :periodKey",
         "#lagoPaymentOverdueInvoiceId = :overdueInvoiceId",
+        "#lagoEntitlementsHash = :lagoEntitlementsHash",
+        "#lagoLastSyncedAt = :lagoLastSyncedAt",
+        "#lagoLastSyncStatus = :lagoLastSyncStatus",
+        "#lagoLastSyncError = :lagoLastSyncError",
       ].join(", "),
       ExpressionAttributeNames: commonNames,
       ExpressionAttributeValues: commonValues,
@@ -596,6 +665,7 @@ async function writeLagoBootstrapState(
             "SET #tier = :tier",
             "#products = :products",
             "#quotaPerProduct = :quota",
+            "#enforcementMode = :enforcementMode",
             "#rateLimit = :rateLimit",
             "#paymentOverdue = :paymentOverdue",
             "#lagoPlanCode = :planCode",
@@ -613,8 +683,9 @@ async function writeLagoBootstrapState(
           },
           ExpressionAttributeValues: {
             ...commonValues,
-            ":quota": plan.quotaPerProduct,
-            ":rateLimit": plan.rateLimit,
+            ":quota": projected.quotaPerProduct,
+            ":rateLimit": projected.rateLimit,
+            ":enforcementMode": projected.enforcementMode,
           },
         }),
       ),
@@ -628,17 +699,14 @@ async function writeLagoBootstrapState(
   return confirm.record;
 }
 
-async function bootstrapLagoFreeSubscription(
+async function loadLagoFreeBootstrapProjection(
   dependencies: ProvisioningDependencies,
   input: ProvisioningInput,
-  envelope: OrgEnvelopeRecord,
-): Promise<OrgEnvelopeRecord> {
-  if (isCompleteLagoBootstrap(envelope)) {
-    return envelope;
-  }
-  const externalCustomerId = envelope.customerId ?? input.orgId;
-  const externalSubscriptionId = envelope.customerId
-    ? `pq_sub_${envelope.customerId.slice("pq_cust_".length)}`
+  existingEnvelope?: OrgEnvelopeRecord,
+): Promise<LagoBootstrapProjection> {
+  const externalCustomerId = existingEnvelope?.customerId ?? input.orgId;
+  const externalSubscriptionId = existingEnvelope?.customerId
+    ? `pq_sub_${existingEnvelope.customerId.slice("pq_cust_".length)}`
     : deriveLagoExternalSubscriptionIdForOrg(input.orgId);
   await dependencies.lagoClient.upsertCustomer({
     orgId: externalCustomerId,
@@ -662,7 +730,39 @@ async function bootstrapLagoFreeSubscription(
   ) {
     throw new Error("Lago bootstrap subscription identifiers do not match Clerk org");
   }
-  return writeLagoBootstrapState(dependencies, input.orgId, snapshot);
+  if (snapshot.planCode !== FREE_TIER) {
+    throw new Error(`Lago bootstrap subscription must use plan ${FREE_TIER}`);
+  }
+  if (snapshot.status !== ACTIVE_LAGO_SUBSCRIPTION_STATUS) {
+    throw new Error("Lago bootstrap subscription must be active");
+  }
+  const periodKey = buildBillingPeriodKey(snapshot);
+  if (!periodKey || !snapshot.billingPeriodStartedAt || !snapshot.billingPeriodEndingAt) {
+    throw new Error("Lago bootstrap subscription is missing billing period fields");
+  }
+  const projection = projectLagoEntitlements({
+    snapshot,
+    charges: await dependencies.lagoClient.getSubscriptionCharges(snapshot.externalSubscriptionId),
+    entitlements: await dependencies.lagoClient.getSubscriptionEntitlements(
+      snapshot.externalSubscriptionId,
+    ),
+  });
+  if (projection.status === "drift") {
+    throw new Error(`Lago bootstrap subscription projection drift: ${projection.reason}`);
+  }
+  return { periodKey, projected: projection.projection, snapshot };
+}
+
+async function bootstrapLagoFreeSubscription(
+  dependencies: ProvisioningDependencies,
+  input: ProvisioningInput,
+  envelope: OrgEnvelopeRecord,
+): Promise<OrgEnvelopeRecord> {
+  if (isCompleteLagoBootstrap(envelope)) {
+    return envelope;
+  }
+  const bootstrap = await loadLagoFreeBootstrapProjection(dependencies, input, envelope);
+  return writeLagoBootstrapState(dependencies, input.orgId, bootstrap);
 }
 
 type DdbClassification = "transient" | "fatal" | "ambiguous";
@@ -871,6 +971,21 @@ export function createProvisioningService(overrides: Partial<ProvisioningDepende
     }
 
     const stripeCustomerId: string | null = null;
+    let bootstrap: LagoBootstrapProjection;
+    try {
+      bootstrap = await loadLagoFreeBootstrapProjection(dependencies, input);
+    } catch (error) {
+      dependencies.logger.error("Pre-commit Lago bootstrap failed", {
+        error: error instanceof Error ? error.message : String(error),
+        orgId: input.orgId,
+        stripeCustomerId,
+      });
+      return {
+        status: "retryable_failure",
+        emailSent: false,
+        stripeCustomerId,
+      };
+    }
 
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
       try {
@@ -882,6 +997,7 @@ export function createProvisioningService(overrides: Partial<ProvisioningDepende
             dependencies.keysTableName,
             dependencies.auditTableName,
             now,
+            bootstrap,
           ),
         );
         // Strong-read confirmation: a successful TransactWriteItems
@@ -899,27 +1015,6 @@ export function createProvisioningService(overrides: Partial<ProvisioningDepende
         );
         switch (confirm.kind) {
           case "found": {
-            let orgEnvelope: OrgEnvelopeRecord;
-            try {
-              orgEnvelope = await bootstrapLagoFreeSubscription(
-                dependencies,
-                input,
-                confirm.record,
-              );
-            } catch (error) {
-              dependencies.logger.error("Post-commit Lago bootstrap failed", {
-                attempt,
-                error: error instanceof Error ? error.message : String(error),
-                orgId: input.orgId,
-                stripeCustomerId,
-              });
-              return {
-                status: "retryable_failure",
-                emailSent: false,
-                orgEnvelope: confirm.record,
-                stripeCustomerId,
-              };
-            }
             // The org is durably committed at this point. The welcome
             // email is genuinely best-effort — ANY failure here (a
             // rejecting injected sender, a misconfigured SES identity,
@@ -944,7 +1039,7 @@ export function createProvisioningService(overrides: Partial<ProvisioningDepende
             return {
               status: "created",
               emailSent,
-              orgEnvelope,
+              orgEnvelope: confirm.record,
               stripeCustomerId,
             };
           }

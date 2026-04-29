@@ -27,6 +27,14 @@ function makeFreeEnvelope(): OrgEnvelopeRecord {
   };
 }
 
+function makeLegacyGrowthEnvelope(): OrgEnvelopeRecord {
+  return {
+    ...makeFreeEnvelope(),
+    tier: "growth",
+    products: ["address", "abn", "lei", "cve", "patents"],
+  };
+}
+
 function makeDdbStub(envelope: OrgEnvelopeRecord | undefined): {
   client: DynamoDBDocumentClient;
   log: CommandLog[];
@@ -119,4 +127,52 @@ test("createKey ClientRequestToken matches keyId char-class (DDB accepts [A-Za-z
   assert.ok(token, "ClientRequestToken must be present");
   assert.match(token, /^key_[0-9A-Z]{26}$/, "keyId-shaped");
   assert.ok(token.length <= 36, `token length ${token.length} must be <= 36 for DDB`);
+});
+
+test("legacy paid envelope without Lago projection keeps prior maxKeys and key entitlements", async () => {
+  const { client, log } = makeDdbStub(makeLegacyGrowthEnvelope());
+  const service = createKeyManagementService({
+    ddb: client,
+    keysTableName: "prontiq-keys-test",
+    auditTableName: "prontiq-audit-test",
+    usageTableName: "prontiq-usage-test",
+    generateKeyId: () => "key_01HXLEGACYGROWTH0000000000",
+    generateRawKey: () => ({
+      raw: "pq_test_static",
+      hash: "h".repeat(64),
+      prefix: "pq_test_stat",
+    }),
+  });
+
+  const status = await service.getOrgStatus({ orgId: "org_test", orgRole: "org:admin" });
+  assert.equal(status.provisioned, true);
+  if (status.provisioned) {
+    assert.equal(status.maxKeys, 20);
+  }
+
+  const result = await service.createKey({
+    orgId: "org_test",
+    actorId: "user_test",
+  });
+  assert.equal(result.status, "created");
+
+  const tx = [...log].reverse().find((entry) => entry.type === "TransactWrite");
+  assert.ok(tx, "expected TransactWriteCommand");
+  const txInput = tx.args as {
+    TransactItems: [
+      { Put: { Item: Record<string, unknown> } },
+      { Update: { ExpressionAttributeValues: Record<string, unknown> } },
+    ];
+  };
+  assert.equal(txInput.TransactItems[0].Put.Item.quotaPerProduct, 100_000);
+  assert.equal(txInput.TransactItems[0].Put.Item.enforcementMode, "soft_overage");
+  assert.equal(txInput.TransactItems[0].Put.Item.rateLimit, 100);
+  assert.deepEqual(txInput.TransactItems[0].Put.Item.products, [
+    "address",
+    "abn",
+    "lei",
+    "cve",
+    "patents",
+  ]);
+  assert.equal(txInput.TransactItems[1].Update.ExpressionAttributeValues[":max"], 20);
 });

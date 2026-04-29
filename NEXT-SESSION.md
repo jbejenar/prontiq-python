@@ -8,6 +8,13 @@
 
 **Focus:** P1C.03 closeout and P1C.02 overview implementation.
 
+### P1B.24 Plan-Limit Retrofit
+
+- Started the Lago source-of-truth retrofit so Lago effective charges and
+  entitlements, not local `PLANS`, drive platform enforcement projection.
+- Added the implementation plan and DEC-037; DEC-024 is now historical
+  migration context.
+
 ### P1C.02 Implementation Handoff
 
 - Started P1C.02 implementation after PR #187 corrected the ticket contract.

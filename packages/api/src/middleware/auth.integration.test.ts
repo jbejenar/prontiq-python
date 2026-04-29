@@ -311,6 +311,7 @@ test("valid free-tier key allows requests up to quota then rejects the next one"
 test("growth-tier key can exceed quota and gets the overage header", async () => {
   const rawKey = "pq_test_growth_key_123";
   await seedKey(rawKey, {
+    enforcementMode: "soft_overage",
     products: ["address", "abn"],
     quotaPerProduct: 1,
     rateLimit: 10,
@@ -324,6 +325,41 @@ test("growth-tier key can exceed quota and gets the overage header", async () =>
   const second = await request("/v1/address/autocomplete", rawKey);
   assert.equal(second.status, 200);
   assert.equal(second.headers.get("X-RateLimit-Over"), "true");
+});
+
+test("legacy growth key without projected fields preserves soft-overage fallback before reconciliation", async () => {
+  const rawKey = "pq_test_legacy_growth_key_123";
+  const record = makeKeyRecord({
+    apiKeyHash: hashKey(rawKey),
+    products: ["address", "abn"],
+    tier: "growth",
+  });
+  delete (record as Partial<ApiKeyRecord>).enforcementMode;
+  delete (record as Partial<ApiKeyRecord>).quotaPerProduct;
+  delete (record as Partial<ApiKeyRecord>).rateLimit;
+  await docClient.send(new PutCommand({ TableName: KEYS_TABLE, Item: record }));
+
+  const first = await request("/v1/address/autocomplete", rawKey);
+  assert.equal(first.status, 200);
+  assert.equal(first.headers.get("X-RateLimit-Limit"), "100000");
+
+  const usageScope = `address#${CURRENT_MONTH}`;
+  await docClient.send(
+    new PutCommand({
+      TableName: USAGE_TABLE,
+      Item: {
+        apiKeyHash: record.apiKeyHash,
+        lastPushedCumulativeCount: 0,
+        requestCount: 100_000,
+        scope: usageScope,
+        ttl: NOW_SECONDS + 3_600,
+      } satisfies UsageCounterRecord,
+    }),
+  );
+
+  const overQuota = await request("/v1/address/autocomplete", rawKey);
+  assert.equal(overQuota.status, 200);
+  assert.equal(overQuota.headers.get("X-RateLimit-Over"), "true");
 });
 
 test("payg key is uncapped but still writes usage counters", async () => {

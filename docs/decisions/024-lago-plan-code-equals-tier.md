@@ -2,7 +2,11 @@
 
 ## Status
 
-Accepted.
+Superseded by [DEC-037](037-lago-entitlements-drive-platform-enforcement.md).
+
+This decision is retained as historical migration context only. Active runtime
+now accepts dynamic Lago plan codes and derives Prontiq enforcement from Lago
+effective charges and entitlements.
 
 ## Context
 

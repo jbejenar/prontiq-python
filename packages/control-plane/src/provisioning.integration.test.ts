@@ -130,6 +130,29 @@ function makeLagoProvisioningClient() {
           status: "active",
         };
       },
+      async getSubscriptionCharges() {
+        return [
+          {
+            billableMetricCode: "prontiq_address_requests",
+            chargeModel: "package",
+            properties: { free_units: 10_000 },
+          },
+        ];
+      },
+      async getSubscriptionEntitlements() {
+        return [
+          { featureCode: "api_keys", privileges: { max: 2 } },
+          {
+            featureCode: "address_api",
+            privileges: {
+              enabled: true,
+              monthly_quota: 10_000,
+              rate_limit_per_second: 10,
+              enforcement_mode: "hard_cap",
+            },
+          },
+        ];
+      },
     },
   };
 }
@@ -173,6 +196,13 @@ test("happy path: provisions envelope + audit row, then replay is no-op", async 
   assert.equal(envelopeRow.Item?.customerId, undefined);
   assert.equal(envelopeRow.Item?.lagoPlanCode, "free");
   assert.equal(envelopeRow.Item?.lagoSubscriptionExternalId, expectedSubscriptionId);
+  assert.deepEqual(envelopeRow.Item?.products, ["address"]);
+  assert.equal(envelopeRow.Item?.quotaPerProduct, 10_000);
+  assert.equal(envelopeRow.Item?.enforcementMode, "hard_cap");
+  assert.equal(envelopeRow.Item?.rateLimit, 10);
+  assert.equal(envelopeRow.Item?.maxKeys, 2);
+  assert.equal(envelopeRow.Item?.lagoLastSyncStatus, "synced");
+  assert.equal(typeof envelopeRow.Item?.lagoEntitlementsHash, "string");
 
   const auditRows = await ddb.send(
     new QueryCommand({
