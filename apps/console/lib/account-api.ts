@@ -36,6 +36,19 @@ export interface CreatedKey {
   label?: string;
 }
 
+export interface RotatedKey {
+  keyId: string;
+  raw: string;
+  keyPrefix: string;
+  createdAt: string;
+  rotatedAt: string;
+}
+
+export interface RevokedKey {
+  keyId: string;
+  revokedAt: string;
+}
+
 export interface AccountSetupResult {
   status: "created" | "already_exists";
   orgId: string;
@@ -81,6 +94,15 @@ async function authedFetch<T>(
   });
 
   const body = (await response.json().catch(() => ({}))) as unknown;
+  if (
+    !response.ok &&
+    typeof body === "object" &&
+    body !== null &&
+    "clerk_error" in body
+  ) {
+    throw body;
+  }
+
   if (!response.ok) {
     const error = body as {
       error?: { code?: string; message?: string; status?: number };
@@ -106,5 +128,15 @@ export const accountApi = {
     authedFetch<CreatedKey>(getToken, "/v1/account/keys/create", {
       method: "POST",
       body: JSON.stringify(input.label ? { label: input.label } : {}),
+    }),
+  rotateKey: (getToken: GetToken, input: { keyId: string }) =>
+    authedFetch<RotatedKey>(getToken, "/v1/account/keys/rotate", {
+      method: "POST",
+      body: JSON.stringify({ keyId: input.keyId }),
+    }),
+  revokeKey: (getToken: GetToken, input: { keyId: string }) =>
+    authedFetch<RevokedKey>(getToken, "/v1/account/keys/revoke", {
+      method: "POST",
+      body: JSON.stringify({ keyId: input.keyId }),
     }),
 };

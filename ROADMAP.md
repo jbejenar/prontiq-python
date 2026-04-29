@@ -3389,7 +3389,7 @@ Backend substrate is partially complete:
 - [x] PR 2 shipped `POST /v1/account/keys/rotate`, `POST /v1/account/keys/revoke`, REDIRECT grace handling, usage-counter migration on rotate, and step-up enforcement.
 - [x] PR 2.5 shipped `GET /v1/account/status` so the console can select missing-org, first-key, and list states without probing mutation endpoints.
 - [x] PR 3 shipped console list/create/recovery UI using `GET /v1/account/status`, reveal-once raw-key modal, and direct Clerk-token calls to the private account API.
-- [ ] PR 4 remains: console rotate/revoke UI with Clerk `useReverification()`.
+- [x] PR 4 in review: console rotate/revoke UI with Clerk `useReverification()`.
 - [ ] PR 5 remains: audit panel and key-limit indicator.
 
 #### User Story

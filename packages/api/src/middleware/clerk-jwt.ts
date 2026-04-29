@@ -515,8 +515,8 @@ export function clerkAdminOnly(options: ClerkAdminOnlyOptions = {}) {
  *
  *   - Stale `fva[1]` (or `-1`, "never verified") → 403 with the
  *     Clerk-native body shape `{ clerk_error: { type: "forbidden",
- *     reason: "reverification-error", metadata: { level:
- *     "second_factor", afterMinutes: <max> } } }`. Clerk's
+ *     reason: "reverification-error", metadata: { reverification: {
+ *     level: "second_factor", afterMinutes: <max> } } } }`. Clerk's
  *     `useReverification()` hook recognises this exact shape and
  *     transparently triggers the reverify modal + retries the
  *     request. We only emit this when `fva` is present (template
@@ -572,14 +572,19 @@ export const clerkReverificationError403Schema = z.object({
     type: z.literal("forbidden"),
     reason: z.literal("reverification-error"),
     metadata: z.object({
-      level: z.enum(["first_factor", "second_factor", "multi_factor"]),
-      afterMinutes: z.number().int().min(0),
+      reverification: z.object({
+        level: z.enum(["first_factor", "second_factor", "multi_factor"]),
+        afterMinutes: z.number().int().min(1),
+      }),
     }),
   }),
 });
 
 export function requireReverification(options: RequireReverificationOptions = {}) {
   const max = options.maxSecondFactorAgeMinutes ?? 10;
+  if (!Number.isInteger(max) || max < 1) {
+    throw new Error("requireReverification maxSecondFactorAgeMinutes must be a positive integer");
+  }
 
   return createMiddleware(async (c, next) => {
     if (STEP_UP_BYPASS_ENABLED) {
@@ -637,8 +642,10 @@ export function requireReverification(options: RequireReverificationOptions = {}
             type: "forbidden",
             reason: "reverification-error",
             metadata: {
-              level: "second_factor",
-              afterMinutes: max,
+              reverification: {
+                level: "second_factor",
+                afterMinutes: max,
+              },
             },
           },
         },

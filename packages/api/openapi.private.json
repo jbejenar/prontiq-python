@@ -1084,22 +1084,30 @@
                                                         "metadata": {
                                                             "type": "object",
                                                             "properties": {
-                                                                "level": {
-                                                                    "type": "string",
-                                                                    "enum": [
-                                                                        "first_factor",
-                                                                        "second_factor",
-                                                                        "multi_factor"
+                                                                "reverification": {
+                                                                    "type": "object",
+                                                                    "properties": {
+                                                                        "level": {
+                                                                            "type": "string",
+                                                                            "enum": [
+                                                                                "first_factor",
+                                                                                "second_factor",
+                                                                                "multi_factor"
+                                                                            ]
+                                                                        },
+                                                                        "afterMinutes": {
+                                                                            "type": "integer",
+                                                                            "minimum": 1
+                                                                        }
+                                                                    },
+                                                                    "required": [
+                                                                        "level",
+                                                                        "afterMinutes"
                                                                     ]
-                                                                },
-                                                                "afterMinutes": {
-                                                                    "type": "integer",
-                                                                    "minimum": 0
                                                                 }
                                                             },
                                                             "required": [
-                                                                "level",
-                                                                "afterMinutes"
+                                                                "reverification"
                                                             ]
                                                         }
                                                     },
@@ -1404,22 +1412,30 @@
                                                         "metadata": {
                                                             "type": "object",
                                                             "properties": {
-                                                                "level": {
-                                                                    "type": "string",
-                                                                    "enum": [
-                                                                        "first_factor",
-                                                                        "second_factor",
-                                                                        "multi_factor"
+                                                                "reverification": {
+                                                                    "type": "object",
+                                                                    "properties": {
+                                                                        "level": {
+                                                                            "type": "string",
+                                                                            "enum": [
+                                                                                "first_factor",
+                                                                                "second_factor",
+                                                                                "multi_factor"
+                                                                            ]
+                                                                        },
+                                                                        "afterMinutes": {
+                                                                            "type": "integer",
+                                                                            "minimum": 1
+                                                                        }
+                                                                    },
+                                                                    "required": [
+                                                                        "level",
+                                                                        "afterMinutes"
                                                                     ]
-                                                                },
-                                                                "afterMinutes": {
-                                                                    "type": "integer",
-                                                                    "minimum": 0
                                                                 }
                                                             },
                                                             "required": [
-                                                                "level",
-                                                                "afterMinutes"
+                                                                "reverification"
                                                             ]
                                                         }
                                                     },

@@ -873,7 +873,7 @@ test("(q) reverification: stale fva[1] (> 10 min) → 403 with Clerk-native body
     clerk_error?: {
       type: string;
       reason: string;
-      metadata: { level: string; afterMinutes: number };
+      metadata: { reverification: { level: string; afterMinutes: number } };
     };
     error?: unknown;
   };
@@ -882,8 +882,8 @@ test("(q) reverification: stale fva[1] (> 10 min) → 403 with Clerk-native body
   assert.equal(body.error, undefined, "must NOT use the standard error envelope");
   assert.equal(body.clerk_error?.type, "forbidden");
   assert.equal(body.clerk_error?.reason, "reverification-error");
-  assert.equal(body.clerk_error?.metadata.level, "second_factor");
-  assert.equal(body.clerk_error?.metadata.afterMinutes, 10);
+  assert.equal(body.clerk_error?.metadata.reverification.level, "second_factor");
+  assert.equal(body.clerk_error?.metadata.reverification.afterMinutes, 10);
 });
 
 test("(r) reverification: -1 fva (factor never used) → 403 with Clerk-native body", async () => {

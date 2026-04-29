@@ -18,7 +18,9 @@ Operating the P1C.03 key-management surface:
 
 Missing `fva` on rotate/revoke is an operator configuration error and returns
 `500 STEP_UP_MISCONFIGURED`. Stale `fva[1]` returns Clerk-native
-`403 reverification-error` so the console can invoke `useReverification()`.
+`403 reverification-error` with `metadata.reverification.level` and
+`metadata.reverification.afterMinutes`, so the console can invoke
+`useReverification()`.
 
 ## Create
 

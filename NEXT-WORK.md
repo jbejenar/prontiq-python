@@ -63,7 +63,7 @@ POST /v1/account/billing/portal-session
   list state machine, reveal-once raw modal. Uses @tanstack/react-query and
   sonner. Console fetches direct from client with Clerk `getToken()` against
   `NEXT_PUBLIC_API_URL`.
-- **P1C.03 PR 4** (next) — rotate / revoke UI with step-up
+- **P1C.03 PR 4** (in review) — rotate / revoke UI with step-up
   modal via `useReverification()`. Operator gate: prod Clerk dashboard
   must emit `fva` claim.
 - **P1C.03 PR 5** (last) — audit panel + key-limit indicator. Adds

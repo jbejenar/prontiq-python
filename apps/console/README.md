@@ -19,7 +19,9 @@ with keys → key list. Raw `pq_live_*` keys are reveal-once transient state onl
 Queries are keyed by active Clerk `orgId`; if no organization is active, the UI
 asks the user to select one before calling the account API. The QueryClient and
 Sonner toaster are mounted in `app/providers.tsx`; private account API helpers
-live in `lib/account-api.ts`.
+live in `lib/account-api.ts`. Members can view masked key metadata only; org
+admins create, rotate, and revoke keys, with rotate/revoke protected by Clerk
+reverification.
 
 Billing surfaces for this app are Lago-backed and should use a Vercel
 server-side BFF, not browser calls to Lago/Stripe and not `/v1/account/billing*`.

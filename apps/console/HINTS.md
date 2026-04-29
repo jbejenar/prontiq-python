@@ -21,6 +21,9 @@
 - Raw API keys are transient UI state only. Never put `pq_live_*` values in
   localStorage, sessionStorage, URLs, React Query persisted cache, logs, or
   analytics payloads.
+- Key raw values are never recoverable from the console after the reveal-once
+  create/rotate dialog closes. Members may view masked key metadata only; org
+  admins create, rotate, and revoke keys.
 - Rotate/revoke UI must use Clerk `useReverification()` and must not loop on
   `STEP_UP_MISCONFIGURED`; that error means the Clerk token lacks `fva`.
 - `P1C.07` provides the Tailwind/shadcn/theme shell base and the env-gated Clerk boundary.

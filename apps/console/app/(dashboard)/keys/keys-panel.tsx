@@ -1,12 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useAuth } from "@clerk/nextjs";
+import { useAuth, useReverification } from "@clerk/nextjs";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Copy, KeyRound, Loader2, RefreshCcw } from "lucide-react";
+import { Copy, KeyRound, Loader2, RefreshCcw, RotateCcw, ShieldX } from "lucide-react";
 import { toast } from "sonner";
 
-import { accountApi, AccountApiError, type CreatedKey, type ListedKey } from "../../../lib/account-api.js";
+import { accountApi, AccountApiError, type CreatedKey, type ListedKey, type RotatedKey } from "../../../lib/account-api.js";
 import { Badge } from "../../../components/ui/badge.js";
 import { Button } from "../../../components/ui/button.js";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../../components/ui/card.js";
@@ -38,7 +38,47 @@ function getErrorMessage(error: unknown) {
   return "Something went wrong. Please try again.";
 }
 
-function KeyTable({ keys }: { keys: ListedKey[] }) {
+function isRotatedKey(value: unknown): value is RotatedKey {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "keyId" in value &&
+    "raw" in value &&
+    "keyPrefix" in value &&
+    "createdAt" in value &&
+    "rotatedAt" in value &&
+    typeof value.keyId === "string" &&
+    typeof value.raw === "string" &&
+    typeof value.keyPrefix === "string" &&
+    typeof value.createdAt === "string" &&
+    typeof value.rotatedAt === "string"
+  );
+}
+
+function isRevokedKey(value: unknown) {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "keyId" in value &&
+    "revokedAt" in value &&
+    typeof value.keyId === "string" &&
+    typeof value.revokedAt === "string"
+  );
+}
+
+function KeyTable({
+  canManageKeys,
+  keys,
+  onRequestRevoke,
+  onRotate,
+  pendingKeyId,
+}: {
+  canManageKeys: boolean;
+  keys: ListedKey[];
+  onRequestRevoke: (key: ListedKey) => void;
+  onRotate: (key: ListedKey) => void;
+  pendingKeyId: string | null;
+}) {
   if (keys.length === 0) {
     return (
       <div className="rounded-lg border border-border bg-background/70 p-4 text-sm text-muted-foreground">
@@ -56,6 +96,7 @@ function KeyTable({ keys }: { keys: ListedKey[] }) {
           <TableHead>Products</TableHead>
           <TableHead>Created</TableHead>
           <TableHead>Last used</TableHead>
+          <TableHead className="text-right">Actions</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -66,6 +107,30 @@ function KeyTable({ keys }: { keys: ListedKey[] }) {
             <TableCell>{key.products.join(", ")}</TableCell>
             <TableCell>{formatDate(key.createdAt)}</TableCell>
             <TableCell>{key.lastUsedAt ? formatDate(key.lastUsedAt) : "Never"}</TableCell>
+            <TableCell className="text-right">
+              <div className="flex justify-end gap-2">
+                <Button
+                  disabled={!canManageKeys || pendingKeyId !== null}
+                  size="sm"
+                  type="button"
+                  variant="outline"
+                  onClick={() => onRotate(key)}
+                >
+                  {pendingKeyId === key.keyId ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
+                  Rotate
+                </Button>
+                <Button
+                  disabled={!canManageKeys || pendingKeyId !== null}
+                  size="sm"
+                  type="button"
+                  variant="outline"
+                  onClick={() => onRequestRevoke(key)}
+                >
+                  <ShieldX className="h-3.5 w-3.5" />
+                  Revoke
+                </Button>
+              </div>
+            </TableCell>
           </TableRow>
         ))}
       </TableBody>
@@ -77,10 +142,12 @@ export function KeysPanel() {
   const { getToken, isLoaded, orgId } = useAuth();
   const queryClient = useQueryClient();
   const [label, setLabel] = useState("");
-  const [createdKey, setCreatedKey] = useState<CreatedKey | null>(null);
+  const [revealedKey, setRevealedKey] = useState<(CreatedKey & { reason: "created" }) | (RotatedKey & { reason: "rotated" }) | null>(null);
   const [isRevealOpen, setIsRevealOpen] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [isSettingUp, setIsSettingUp] = useState(false);
+  const [pendingKeyId, setPendingKeyId] = useState<string | null>(null);
+  const [keyPendingRevoke, setKeyPendingRevoke] = useState<ListedKey | null>(null);
   const activeOrgRef = useRef<string | null>(null);
   const createRequestSeq = useRef(0);
   const setupRequestSeq = useRef(0);
@@ -94,12 +161,21 @@ export function KeysPanel() {
     activeOrgRef.current = orgId ?? null;
     createRequestSeq.current += 1;
     setupRequestSeq.current += 1;
-    setCreatedKey(null);
+    setRevealedKey(null);
     setIsRevealOpen(false);
     setLabel("");
     setIsCreating(false);
     setIsSettingUp(false);
+    setPendingKeyId(null);
+    setKeyPendingRevoke(null);
   }, [orgId]);
+
+  const rotateKeyWithReverification = useReverification((keyId: string) =>
+    accountApi.rotateKey(tokenGetter, { keyId }),
+  );
+  const revokeKeyWithReverification = useReverification((keyId: string) =>
+    accountApi.revokeKey(tokenGetter, { keyId }),
+  );
 
   const statusQuery = useQuery({
     enabled: hasActiveOrg,
@@ -146,7 +222,7 @@ export function KeysPanel() {
         ...(label.trim() ? { label: label.trim() } : {}),
       });
       if (requestId !== createRequestSeq.current || requestOrgId !== activeOrgRef.current) return;
-      setCreatedKey(created);
+      setRevealedKey({ ...created, reason: "created" });
       setIsRevealOpen(true);
       setLabel("");
       toast.success("API key created");
@@ -164,9 +240,56 @@ export function KeysPanel() {
     }
   }
 
+  async function rotateKey(key: ListedKey) {
+    const requestOrgId = orgId ?? null;
+    setPendingKeyId(key.keyId);
+    try {
+      const rotated = (await rotateKeyWithReverification(key.keyId)) as unknown;
+      if (requestOrgId !== activeOrgRef.current) return;
+      if (!isRotatedKey(rotated)) return;
+      setRevealedKey({ ...rotated, reason: "rotated" });
+      setIsRevealOpen(true);
+      toast.success("API key rotated");
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: activeStatusQueryKey }),
+        queryClient.invalidateQueries({ queryKey: activeKeysQueryKey }),
+      ]);
+    } catch (error) {
+      if (requestOrgId !== activeOrgRef.current) return;
+      toast.error(getErrorMessage(error));
+    } finally {
+      if (requestOrgId === activeOrgRef.current) {
+        setPendingKeyId(null);
+      }
+    }
+  }
+
+  async function revokeKey(key: ListedKey) {
+    const requestOrgId = orgId ?? null;
+    setPendingKeyId(key.keyId);
+    try {
+      const revoked = (await revokeKeyWithReverification(key.keyId)) as unknown;
+      if (requestOrgId !== activeOrgRef.current) return;
+      if (!isRevokedKey(revoked)) return;
+      setKeyPendingRevoke(null);
+      toast.success("API key revoked");
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: activeStatusQueryKey }),
+        queryClient.invalidateQueries({ queryKey: activeKeysQueryKey }),
+      ]);
+    } catch (error) {
+      if (requestOrgId !== activeOrgRef.current) return;
+      toast.error(getErrorMessage(error));
+    } finally {
+      if (requestOrgId === activeOrgRef.current) {
+        setPendingKeyId(null);
+      }
+    }
+  }
+
   async function copyRawKey() {
-    if (!createdKey) return;
-    await navigator.clipboard.writeText(createdKey.raw);
+    if (!revealedKey) return;
+    await navigator.clipboard.writeText(revealedKey.raw);
     toast.success("Copied API key");
   }
 
@@ -177,7 +300,7 @@ export function KeysPanel() {
   const createDisabledReason = !canManageKeys
     ? "Members can view keys, but only org admins can create new keys."
     : isAtKeyLimit
-      ? `This org has reached its ${status.maxKeys}-key limit. Revoke an existing key or upgrade the plan before creating another key.`
+      ? `This org has reached its ${status.maxKeys}-key limit. Revoke an existing key before creating another key.`
       : "Name the key by environment or use case. The raw key appears once after creation.";
 
   return (
@@ -289,7 +412,9 @@ export function KeysPanel() {
           <Card>
             <CardHeader>
               <CardTitle>Active keys</CardTitle>
-              <CardDescription>Only masked key metadata is returned by the API.</CardDescription>
+              <CardDescription>
+                Only masked key metadata is returned by the API. Admins can rotate or revoke keys; members can only view them.
+              </CardDescription>
             </CardHeader>
             <CardContent>
               {keysQuery.isPending && shouldListKeys ? (
@@ -306,7 +431,13 @@ export function KeysPanel() {
                   </Button>
                 </div>
               ) : (
-                <KeyTable keys={keysQuery.data?.keys ?? []} />
+                <KeyTable
+                  canManageKeys={canManageKeys}
+                  keys={keysQuery.data?.keys ?? []}
+                  pendingKeyId={pendingKeyId}
+                  onRequestRevoke={setKeyPendingRevoke}
+                  onRotate={(key) => void rotateKey(key)}
+                />
               )}
             </CardContent>
           </Card>
@@ -317,25 +448,54 @@ export function KeysPanel() {
         open={isRevealOpen}
         onOpenChange={(open) => {
           setIsRevealOpen(open);
-          if (!open) setCreatedKey(null);
+          if (!open) setRevealedKey(null);
         }}
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Copy your API key now</DialogTitle>
+            <DialogTitle>
+              {revealedKey?.reason === "rotated" ? "Copy your rotated API key now" : "Copy your API key now"}
+            </DialogTitle>
             <DialogDescription>
               This raw key is shown once. Store it in your secret manager before closing.
             </DialogDescription>
           </DialogHeader>
-          {createdKey ? (
+          {revealedKey ? (
             <div className="rounded-lg border border-border bg-background/80 p-4 font-mono text-sm break-all">
-              {createdKey.raw}
+              {revealedKey.raw}
             </div>
           ) : null}
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => void copyRawKey()}>
               <Copy className="h-4 w-4" />
               Copy key
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={keyPendingRevoke !== null} onOpenChange={(open) => !open && setKeyPendingRevoke(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Revoke API key?</DialogTitle>
+            <DialogDescription>
+              This marks {keyPendingRevoke?.keyPrefix ?? "the selected key"} as inactive. Existing clients using this raw key will receive 401 responses.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setKeyPendingRevoke(null)}>
+              Cancel
+            </Button>
+            <Button
+              disabled={pendingKeyId !== null}
+              type="button"
+              variant="destructive"
+              onClick={() => {
+                if (keyPendingRevoke) void revokeKey(keyPendingRevoke);
+              }}
+            >
+              {pendingKeyId === keyPendingRevoke?.keyId ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              Revoke key
             </Button>
           </DialogFooter>
         </DialogContent>

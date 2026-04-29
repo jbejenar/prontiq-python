@@ -36,7 +36,8 @@ test("public docs navigation excludes private account API reference pages", () =
 // producing TWO mutually-exclusive 403 bodies — `{ error: { code:
 // "INSUFFICIENT_ROLE", ... } }` (standard envelope, admin gate) and
 // `{ clerk_error: { type: "forbidden", reason: "reverification-error",
-// metadata: { level, afterMinutes } } }` (Clerk-native, stale fva).
+// metadata: { reverification: { level, afterMinutes } } } }`
+// (Clerk-native, stale fva).
 // The 403 OpenAPI response must document BOTH branches via union/oneOf
 // or generated clients / contract tests will mis-type the runtime body.
 // ────────────────────────────────────────────────────────────────────
@@ -80,12 +81,12 @@ function assertStepUp403Union(routePath) {
   assert.ok(clerkErrorProps?.type, "clerk_error.type required");
   assert.ok(clerkErrorProps?.reason, "clerk_error.reason required");
   assert.ok(
-    clerkErrorProps?.metadata?.properties?.level,
-    "clerk_error.metadata.level required",
+    clerkErrorProps?.metadata?.properties?.reverification?.properties?.level,
+    "clerk_error.metadata.reverification.level required",
   );
   assert.ok(
-    clerkErrorProps?.metadata?.properties?.afterMinutes,
-    "clerk_error.metadata.afterMinutes required",
+    clerkErrorProps?.metadata?.properties?.reverification?.properties?.afterMinutes,
+    "clerk_error.metadata.reverification.afterMinutes required",
   );
   // The literal values clerk_error.{type,reason} take are the only
   // ones the frontend's useReverification() hook matches against.

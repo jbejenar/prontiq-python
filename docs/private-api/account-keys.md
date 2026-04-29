@@ -121,7 +121,7 @@ minutes, then returns `401 INVALID_API_KEY`.
 Common failures:
 
 - `403 INSUFFICIENT_ROLE`
-- `403 { "clerk_error": { "reason": "reverification-error" } }`
+- `403 { "clerk_error": { "type": "forbidden", "reason": "reverification-error", "metadata": { "reverification": { "level": "second_factor", "afterMinutes": 10 } } } }`
 - `404 KEY_NOT_FOUND`
 - `500 STEP_UP_MISCONFIGURED`
 
@@ -145,7 +145,7 @@ Success:
 Common failures:
 
 - `403 INSUFFICIENT_ROLE`
-- `403 { "clerk_error": { "reason": "reverification-error" } }`
+- `403 { "clerk_error": { "type": "forbidden", "reason": "reverification-error", "metadata": { "reverification": { "level": "second_factor", "afterMinutes": 10 } } } }`
 - `404 KEY_NOT_FOUND`
 - `409 KEY_ALREADY_REVOKED`
 - `500 STEP_UP_MISCONFIGURED`

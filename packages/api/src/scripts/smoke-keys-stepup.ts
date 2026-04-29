@@ -114,7 +114,7 @@ interface ClerkReverificationError403 {
   clerk_error: {
     type: "forbidden";
     reason: "reverification-error";
-    metadata: { level: string; afterMinutes: number };
+    metadata: { reverification: { level: string; afterMinutes: number } };
   };
 }
 
@@ -245,15 +245,15 @@ async function expectStepUpBlocked(
     // by scripts/openapi-boundary.test.mjs in CI, but a runtime mismatch
     // (e.g., a future middleware change that drops a field) would only
     // be caught here.
-    const meta = res.body.clerk_error.metadata;
+    const meta = res.body.clerk_error.metadata.reverification;
     if (meta.level !== "second_factor") {
       throw new SmokeAssertionError(
-        `${segment}: clerk_error.metadata.level expected "second_factor", got "${meta.level}"`,
+        `${segment}: clerk_error.metadata.reverification.level expected "second_factor", got "${meta.level}"`,
       );
     }
     if (typeof meta.afterMinutes !== "number" || meta.afterMinutes < 0) {
       throw new SmokeAssertionError(
-        `${segment}: clerk_error.metadata.afterMinutes invalid: ${meta.afterMinutes}`,
+        `${segment}: clerk_error.metadata.reverification.afterMinutes invalid: ${meta.afterMinutes}`,
       );
     }
     return "reverification_required_403";

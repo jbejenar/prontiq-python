@@ -600,7 +600,7 @@ test("requireReverification: fva[1] over max → 403 Clerk-native body shape", a
     clerk_error?: {
       type: string;
       reason: string;
-      metadata: { level: string; afterMinutes: number };
+      metadata: { reverification: { level: string; afterMinutes: number } };
     };
     error?: unknown;
   };
@@ -608,8 +608,8 @@ test("requireReverification: fva[1] over max → 403 Clerk-native body shape", a
   assert.equal(body.error, undefined, "must NOT use the standard error envelope");
   assert.equal(body.clerk_error?.type, "forbidden");
   assert.equal(body.clerk_error?.reason, "reverification-error");
-  assert.equal(body.clerk_error?.metadata.level, "second_factor");
-  assert.equal(body.clerk_error?.metadata.afterMinutes, 10);
+  assert.equal(body.clerk_error?.metadata.reverification.level, "second_factor");
+  assert.equal(body.clerk_error?.metadata.reverification.afterMinutes, 10);
 });
 
 test("requireReverification: fva[1] = -1 (never verified) → 403 (treated as stale)", async () => {
@@ -641,6 +641,17 @@ test("requireReverification: custom maxSecondFactorAgeMinutes is honoured", asyn
   const loose = makeAppWithStepUp(verifier);
   const looseRes = await postSetup(loose, { Authorization: "Bearer x" });
   assert.equal(looseRes.status, 200);
+});
+
+test("requireReverification: custom maxSecondFactorAgeMinutes must be positive", () => {
+  assert.throws(
+    () => requireReverification({ maxSecondFactorAgeMinutes: 0 }),
+    /positive integer/,
+  );
+  assert.throws(
+    () => requireReverification({ maxSecondFactorAgeMinutes: 1.5 }),
+    /positive integer/,
+  );
 });
 
 test("requireReverification: fva[1] is non-number (e.g., due to corrupted token) → 403 Clerk-native body", async () => {
