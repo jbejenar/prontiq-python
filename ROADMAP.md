@@ -3323,43 +3323,73 @@ status: pending
 priority: p0-critical
 epic: P1C
 persona: [api-consumer]
-depends_on: [P1C.00, P1B.04, P1B.05, P1C.07]
+depends_on: [P1C.00, P1B.04, P1B.05, P1C.03, P1C.07]
 completed: null
 ```
 
 #### User Story
 
-As a logged-in developer, I land in `apps/console` and see my API key, usage summary, and quick-start code snippets so that I can start using the API within 60 seconds of signing up.
+As a logged-in developer, I land in `apps/console` and see the safest next
+action for my account — setup recovery, first-key creation, key management, or
+API quickstart — so I can start using the API within 60 seconds without exposing
+raw credentials after their one-time reveal window.
+
+#### Problem Statement
+
+The pre-P1C.03 overview ticket assumed the dashboard could reveal an existing
+raw API key. That is now explicitly wrong: P1C.03 made raw keys reveal-once only
+at create/rotate time. The overview page must consume the P1C.03 account status
+and key-list surfaces, show masked key metadata only, and route all raw-key
+creation/recovery actions through `/keys`.
+
+Usage and billing also have narrower ownership after the Lago architecture
+cutover. P1C.02 may show a lightweight current-period usage snapshot only if the
+backend exposes a safe org-level summary; detailed charts remain P1C.04 and
+plan/payment management remains P1C.05.
 
 #### Definition of Done
 
 ##### Functional
 
-- [ ] API key displayed (masked by default, click to reveal, click to copy)
-  - `Verify:` Key shows as `pq_live_****...****`; click reveals full key
-  - `Evidence:` Clipboard API copies key
-- [ ] Usage chart showing current month's usage across all products
-  - `Verify:` Chart renders with bars/lines per product
-  - `Evidence:` Data from DynamoDB usage counters
-- [ ] Current plan name and quota remaining displayed
-  - `Verify:` Shows "Free Plan — 4,200 / 10,000 credits remaining"
-  - `Evidence:` Calculated from key metadata
-- [ ] Quick-start code snippets with key pre-filled (curl, TypeScript, Python)
-  - `Verify:` Snippets include the user's actual API key
-  - `Evidence:` Copy button works; snippet is runnable
-- [ ] Upgrade nudge banner when > 80% quota used
-  - `Verify:` Seed key at 85% usage; banner appears
-  - `Evidence:` "Upgrade to PAYG" or equivalent migration-safe billing message
+- [ ] Overview state is driven by `GET /v1/account/status`
+  - `Verify:` missing-org, first-key, and existing-key accounts render different
+    primary CTAs without probing mutation endpoints
+  - `Evidence:` component tests cover `provisioned=false`, `hasFirstKey=false`,
+    and active-key states
+- [ ] Existing keys are shown as masked metadata only
+  - `Verify:` Key rows show prefix/label/created/last-used and link to `/keys`
+  - `Evidence:` no raw key reveal, no raw-key copy button, and no `pq_live_*`
+    value is persisted or rendered unless created in the P1C.03 reveal-once flow
+- [ ] Quick-start code snippets are safe by default
+  - `Verify:` curl, TypeScript, and Python snippets use `<YOUR_API_KEY>` and link
+    users to `/keys` to create or rotate a real key
+  - `Evidence:` copy buttons work and snippets point to `NEXT_PUBLIC_API_URL`
+- [ ] Current plan/key posture is visible without billing mutations
+  - `Verify:` Shows tier, active key count, max keys, and next action
+  - `Evidence:` Data comes from `GET /v1/account/status` and `GET
+    /v1/account/keys`
+- [ ] Lightweight usage snapshot is either implemented from a safe backend
+      summary endpoint or explicitly remains a P1C.04 placeholder
+  - `Verify:` If implemented, usage increments after address API calls within the
+    accepted consistency window; if deferred, the page clearly links to P1C.04
+    usage work and does not display fabricated numbers
+  - `Evidence:` tests assert no hard-coded usage numbers remain
+- [ ] Upgrade nudge is migration-safe
+  - `Verify:` >80% usage, if available, links to billing/plan follow-up surfaces
+    without presenting Stripe-hosted UX as the forward path
+  - `Evidence:` copy references Lago-backed billing posture and P1C.05 ownership
 
 #### Scope
 
-**In:** Overview dashboard, key display, usage chart, quick-start, upgrade nudge
+**In:** Overview dashboard, account state, masked key metadata, safe quickstart,
+plan/key posture, lightweight usage snapshot only if backed by real data
 
 **Out — Do Not Implement:**
 
 - Multi-key management → P1C.03
 - Detailed per-product usage charts → P1C.04
 - Billing management → P1C.05
+- Raw-key recovery/reveal for existing keys → forbidden by P1C.03 security model
 
 ---
 
@@ -3368,12 +3398,12 @@ As a logged-in developer, I land in `apps/console` and see my API key, usage sum
 ```yaml
 id: P1C.03
 title: API Key Management Page (incl. first-key flow)
-status: pending
+status: complete
 priority: p1-high
 epic: P1C
 persona: [api-consumer]
 depends_on: [P1C.00, P1B.02, P1B.04b, P1B.05, P1C.07]
-completed: null
+completed: 2026-04-29
 tech_stack:
   ui: Next.js 15 + shadcn/ui
   keys: @prontiq/api account endpoints (DDB-backed, see ARCHITECTURE.MD §7.3)
@@ -3381,7 +3411,7 @@ tech_stack:
 
 #### Implementation Status
 
-Backend substrate is partially complete:
+P1C.03 is shipped to dev and prod:
 
 - [x] PR 0 backfilled stable `keyId` and `activeKeyCount` before route rollout.
 - [x] PR 1 shipped `POST /v1/account/keys/create` and `GET /v1/account/keys`.
@@ -3389,9 +3419,9 @@ Backend substrate is partially complete:
 - [x] PR 2.5 shipped `GET /v1/account/status` so the console can select missing-org, first-key, and list states without probing mutation endpoints.
 - [x] PR 3 shipped console list/create/recovery UI using `GET /v1/account/status`, reveal-once raw-key modal, and direct Clerk-token calls to the private account API.
 - [x] PR 4 shipped console rotate/revoke UI with Clerk `useReverification()`.
-- [ ] PR 5 is implemented on the current branch for review: audit panel,
-      `GET /v1/account/audit`, key-limit polish, and dev CI
-      `smoke:keys-audit`. It is not marked shipped until merged and deployed.
+- [x] PR 5 shipped audit panel, `GET /v1/account/audit`, key-limit polish, and
+      dev CI `smoke:keys-audit`. PR #186 merged, dev deploy completed, and prod
+      deploy completed via workflow run `25094034637`.
 
 #### User Story
 
@@ -3442,11 +3472,11 @@ Key rotation must be atomic (TransactWrite swap) with a REDIRECT record per §5.
 - [x] Revoke key via `POST /v1/account/keys/revoke` (requires Clerk step-up; UpdateItem `active: false`; audit REVOKE; **does NOT touch REDIRECT records** — see §5.5.2 / §12.3 for why active-flag check naturally handles REVOKE-after-ROTATE)
   - `Verify:` Click "Revoke" → confirmation dialog with step-up → key returns 401 on next API call. Separately: rotate key A → B, then revoke B; request with old raw A returns 401 (re-resolved through REDIRECT, fails active check on B)
   - `Evidence:` DDB record shows `active: false`; integration test covers REVOKE-after-ROTATE
-- [ ] Audit trail visible on the page (last 10 lifecycle events from `prontiq-audit`)
+- [x] Audit trail visible on the page (last 10 lifecycle events from `prontiq-audit`)
   - `Verify:` Each action (create, rotate, revoke) appears with actor, timestamp, IP
-  - `Evidence:` Implemented on the PR 5 branch with `GET /v1/account/audit`
-    integration coverage, console component coverage, and dev CI
-    `smoke:keys-audit`; mark complete after merge, dev deploy, and smoke.
+  - `Evidence:` `GET /v1/account/audit` integration coverage, console component
+    coverage, dev CI `smoke:keys-audit`, manual preview smoke, and prod deploy
+    run `25094034637`
 - [x] Key limits enforced for Free and the active paid commercial contract — atomic `activeKeyCount` on `ORG#{orgId}` in the same transaction as key creation. The list query still uses the sentinel filter against `orgId-index`; the limit check does not rely on a race-prone preflight count.
   - `Verify:` Two tests: (a) Attempt 3rd key on Free tier → 403 `KEY_LIMIT_EXCEEDED`; (b) Verify the ORG envelope row is NOT counted — sign up + immediately try to create 2 keys on Free tier; both succeed (envelope doesn't count as a key)
   - `Evidence:` Error response on (a); 2 successful creates on (b) proving sentinel filter works

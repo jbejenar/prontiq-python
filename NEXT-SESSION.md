@@ -8,6 +8,17 @@
 
 **Focus:** P1C.03 final key-management slice.
 
+### Closeout Update
+
+- PR #186 merged to `main`.
+- Dev deploy completed.
+- Production deploy completed successfully in GitHub Actions run
+  `25094034637`.
+- P1C.03 is now complete at code, docs, dev deploy, and prod deploy level.
+- The next ticket is P1C.02 — Console Overview Page, but its original roadmap
+  scope has been corrected so it does not reintroduce raw-key reveal or fake
+  usage numbers after the P1C.03 security model.
+
 ### Implemented on the P1C.03 PR 5 branch
 
 - Added `GET /v1/account/audit` as the member-allowed audit read path for the
@@ -26,10 +37,11 @@
 
 ### Next session should start with
 
-1. Review/merge the P1C.03 PR 5 branch and deploy to dev.
-2. Run `smoke:keys-audit` in dev after deploy, then manually verify the console
-   audit panel shows CREATE / ROTATE / REVOKE entries.
-3. Decide whether to fix `api.dev.prontiq.dev` before the next console ticket.
+1. Start P1C.02 from `plans/P1C.02-implementation-plan.md`.
+2. Keep overview raw-key handling aligned with P1C.03: masked existing keys
+   only; raw values are reveal-once on create/rotate and never recoverable.
+3. Decide whether to fix `api.dev.prontiq.dev` before browser smoke uses the
+   vanity dev API domain.
 
 ## Session 43 — 2026-04-27
 
