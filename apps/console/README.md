@@ -23,6 +23,11 @@ live in `lib/account-api.ts`. Members can view masked key metadata only; org
 admins create, rotate, and revoke keys, with rotate/revoke protected by Clerk
 reverification.
 
+P1C.02 overview UI is read-only. It uses the same Clerk session-token account
+API path to render account/key posture, masked key metadata, and safe quickstart
+snippets. It never performs setup or key mutations and never renders existing
+raw API keys; all mutation and reveal-once flows remain on `/keys`.
+
 Billing surfaces for this app are Lago-backed and should use a Vercel
 server-side BFF, not browser calls to Lago/Stripe and not `/v1/account/billing*`.
 

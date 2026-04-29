@@ -6,7 +6,18 @@
 
 ## Session 44 — 2026-04-29
 
-**Focus:** P1C.03 final key-management slice.
+**Focus:** P1C.03 closeout and P1C.02 overview implementation.
+
+### P1C.02 Implementation Handoff
+
+- Started P1C.02 implementation after PR #187 corrected the ticket contract.
+- Overview is now implemented as a read-only account summary: it consumes
+  `GET /v1/account/status` and `GET /v1/account/keys`, shows masked key
+  metadata, and links all setup/key mutations to `/keys`.
+- Fake usage values were removed from the overview; usage charts remain P1C.04
+  and billing remains P1C.05.
+- The remaining handoff is review, preview smoke, dev deploy, and final roadmap
+  closeout after verification.
 
 ### Closeout Update
 
@@ -37,9 +48,9 @@
 
 ### Next session should start with
 
-1. Start P1C.02 from `plans/P1C.02-implementation-plan.md`.
-2. Keep overview raw-key handling aligned with P1C.03: masked existing keys
-   only; raw values are reveal-once on create/rotate and never recoverable.
+1. Review and merge the P1C.02 overview implementation branch.
+2. Run preview smoke: sign in, load `/`, verify live status/key posture,
+   placeholder quickstarts, and no raw-key reveal.
 3. Decide whether to fix `api.dev.prontiq.dev` before browser smoke uses the
    vanity dev API domain.
 

@@ -3319,13 +3319,21 @@ P1C.01 shipped functional surfaces (live demo, pricing, CTAs) on a generic shadc
 ```yaml
 id: P1C.02
 title: Console Overview Page
-status: pending
+status: in-progress
 priority: p0-critical
 epic: P1C
 persona: [api-consumer]
 depends_on: [P1C.00, P1B.04, P1B.05, P1C.03, P1C.07]
 completed: null
 ```
+
+#### Implementation Status
+
+Implemented on the current P1C.02 branch for review: the overview uses
+`GET /v1/account/status` and `GET /v1/account/keys`, renders masked key
+metadata only, links setup/key mutations to `/keys`, removes fabricated usage
+numbers, and keeps usage/billing as P1C.04/P1C.05 handoffs. Mark complete only
+after PR merge, preview smoke, dev deploy, and any requested prod smoke.
 
 #### User Story
 

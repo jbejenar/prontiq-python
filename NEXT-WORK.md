@@ -1,16 +1,15 @@
 # NEXT-WORK.md — Active Sprint
 
-> Last updated: 2026-04-29 for P1C.02 planning. P1C.03 is merged and deployed to
-> dev/prod through PR #186 and production deploy run `25094034637`.
+> Last updated: 2026-04-29 for P1C.02 implementation. P1C.03 is merged and
+> deployed to dev/prod through PR #186 and production deploy run `25094034637`.
 
 ## Current Phase
 
-P1C.02: Console Overview Page. The overview must build on the shipped P1C.03
-contract: raw API keys are reveal-once only on create/rotate, existing keys are
-masked metadata only, and account setup/first-key recovery routes through the
-Keys page. Dev smoke found `api.dev.prontiq.dev` has a TLS issue from local
-tooling; use the direct dev API Gateway host for smoke until the vanity domain
-is fixed.
+P1C.02: Console Overview Page. Implementation is on the active branch for
+review: overview now reads live account status/key metadata, remains read-only,
+uses placeholder quickstarts, and routes setup/key mutations to `/keys`. Dev
+smoke found `api.dev.prontiq.dev` has a TLS issue from local tooling; use the
+direct dev API Gateway host for smoke until the vanity domain is fixed.
 
 ## Active Commercial Contract
 
@@ -64,10 +63,10 @@ POST /v1/account/billing/portal-session
 - **P1C.03** — complete. Keys page covers missing-org recovery, first-key
   creation, key listing, create/rotate/revoke, Clerk step-up, reveal-once raw
   handling, audit trail, and key-limit indicator.
-- **P1C.02** (next) — overview page. Replace static overview placeholders with
-  live account status, masked key metadata, safe quickstart snippets, and a
-  real-data-only usage/plan posture. Do not reintroduce raw-key reveal outside
-  the P1C.03 create/rotate response.
+- **P1C.02** (active) — overview page. Branch implementation replaces static
+  placeholders with live account status, masked key metadata, safe quickstart
+  snippets, and real-data-only usage/billing handoffs. Do not mark complete
+  until review, merge, preview smoke, and deploy verification are done.
 - P1B.23 (pre-go-live cleanup) is gated on P1C.03 + P1C.05.
 - All console billing surfaces remain out of scope for the platform
   backend; future Vercel BFF reads Lago directly.

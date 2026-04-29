@@ -2183,7 +2183,7 @@ Initial console pages:
 
 | Route area      | Data source                                                      | Notes                                         |
 | --------------- | ---------------------------------------------------------------- | --------------------------------------------- |
-| **Overview**    | DynamoDB-backed account endpoints                                | Usage summary, plan state, onboarding         |
+| **Overview**    | `/v1/account/status` + `/v1/account/keys`                        | Read-only account/key posture and safe quickstart. Existing raw keys are never recoverable. |
 | **Keys**        | `/v1/account/keys*`                                              | First-key flow, create, rotate, revoke, audit |
 | **Usage**       | `/v1/account/usage`                                              | Charts, quota visibility, export              |
 | **Billing**     | Prontiq-rendered billing state + Lago-backed commercial surfaces | Migration-aware plan and invoice management   |

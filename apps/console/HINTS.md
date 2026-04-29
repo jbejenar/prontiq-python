@@ -13,14 +13,21 @@
 - P1C.03 key-management UI starts from `GET /v1/account/status` to choose
   missing-org recovery, first-key CTA, or key-list state. Do not infer that by
   probing mutation endpoints.
+- P1C.02 overview UI is read-only. It may call `GET /v1/account/status` and
+  `GET /v1/account/keys`, but setup recovery and key create/rotate/revoke
+  actions must stay on `/keys`.
 - Key-management queries must be scoped by active Clerk `orgId`; if no
   organization is active, show an organization-selection state instead of
   calling the account API.
+- Use the shared account query-key helpers from `lib/account-query-keys.ts` for
+  status/key/audit queries so overview and keys pages share cache identity.
 - `app/providers.tsx` owns the QueryClient and Sonner toaster for console
   client data flows.
 - Raw API keys are transient UI state only. Never put `pq_live_*` values in
   localStorage, sessionStorage, URLs, React Query persisted cache, logs, or
   analytics payloads.
+- Overview must never render or copy existing raw API keys. Quickstart snippets
+  use `<YOUR_API_KEY>` placeholders and link users to `/keys`.
 - Key raw values are never recoverable from the console after the reveal-once
   create/rotate dialog closes. Members may view masked key metadata only; org
   admins create, rotate, and revoke keys.

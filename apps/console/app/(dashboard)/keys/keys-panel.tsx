@@ -14,6 +14,11 @@ import {
   type ListedKey,
   type RotatedKey,
 } from "../../../lib/account-api.js";
+import {
+  accountAuditQueryKey,
+  accountKeysQueryKey,
+  accountStatusQueryKey,
+} from "../../../lib/account-query-keys.js";
 import { Badge } from "../../../components/ui/badge.js";
 import { Button } from "../../../components/ui/button.js";
 import {
@@ -40,10 +45,6 @@ import {
   TableHeader,
   TableRow,
 } from "../../../components/ui/table.js";
-
-const statusQueryKey = (orgId: string) => ["account-status", orgId] as const;
-const keysQueryKey = (orgId: string) => ["account-keys", orgId] as const;
-const auditQueryKey = (orgId: string) => ["account-audit", orgId] as const;
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat("en-AU", {
@@ -255,9 +256,9 @@ export function KeysPanel() {
 
   const tokenGetter = (options?: { template?: string }) => getToken(options);
   const hasActiveOrg = isLoaded && typeof orgId === "string" && orgId.length > 0;
-  const activeStatusQueryKey = statusQueryKey(orgId ?? "no-active-org");
-  const activeKeysQueryKey = keysQueryKey(orgId ?? "no-active-org");
-  const activeAuditQueryKey = auditQueryKey(orgId ?? "no-active-org");
+  const activeStatusQueryKey = accountStatusQueryKey(orgId ?? "no-active-org");
+  const activeKeysQueryKey = accountKeysQueryKey(orgId ?? "no-active-org");
+  const activeAuditQueryKey = accountAuditQueryKey(orgId ?? "no-active-org");
 
   useEffect(() => {
     activeOrgRef.current = orgId ?? null;
