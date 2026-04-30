@@ -3332,21 +3332,20 @@ P1C.01 shipped functional surfaces (live demo, pricing, CTAs) on a generic shadc
 ```yaml
 id: P1C.02
 title: Console Overview Page
-status: in-progress
+status: complete
 priority: p0-critical
 epic: P1C
 persona: [api-consumer]
 depends_on: [P1C.00, P1B.04, P1B.05, P1C.03, P1C.07]
-completed: null
+completed: 2026-04-30
 ```
 
 #### Implementation Status
 
-Implemented on the current P1C.02 branch for review: the overview uses
+Shipped: the overview uses
 `GET /v1/account/status` and `GET /v1/account/keys`, renders masked key
 metadata only, links setup/key mutations to `/keys`, removes fabricated usage
-numbers, and keeps usage/billing as P1C.04/P1C.05 handoffs. Mark complete only
-after PR merge, preview smoke, dev deploy, and any requested prod smoke.
+numbers, and keeps usage/billing on their dedicated P1C.04/P1C.05 surfaces.
 
 #### User Story
 
@@ -3524,12 +3523,12 @@ Key rotation must be atomic (TransactWrite swap) with a REDIRECT record per §5.
 ```yaml
 id: P1C.04
 title: Usage Charts Page
-status: in_progress
+status: complete
 priority: p1-high
 epic: P1C
 persona: [api-consumer]
 depends_on: [P1C.00, P1C.07]
-completed: null
+completed: 2026-04-30
 tech_stack:
   ui: Next.js 15 + shadcn/ui
   charts: Recharts
@@ -3580,7 +3579,7 @@ organization, granularity toggle, CSV export, Recharts
 ```yaml
 id: P1C.05
 title: Billing Page
-status: pending
+status: in-progress
 priority: p1-high
 epic: P1C
 persona: [api-consumer]
@@ -3593,6 +3592,16 @@ tech_stack:
 > Stripe-specific Billing Page planning in this ticket is superseded. The
 > forward path is Lago-backed billing state and plan-management surfaces in
 > `apps/console`.
+
+#### Implementation Status
+
+Implemented on the current P1C.05 branch for review: the console Billing page
+uses a Vercel server-side BFF, reads Lago subscription state, visible Lago plan
+catalog, current billing usage estimate, and recent invoices, and exposes
+admin-only payment-method and invoice-payment links. It does not call Lago or
+Stripe from browser code, does not reintroduce AWS `/v1/account/billing*`, and
+does not mutate subscriptions. Replay-safe subscription changes are split to
+P1C.05a.
 
 #### User Story
 
@@ -3611,18 +3620,21 @@ not the target design.
 
 ##### Functional
 
-- [ ] Console billing page shows platform-owned billing state and plan
+- [x] Console billing page shows platform-owned billing state and plan
       information
   - `Verify:` Authenticated developer sees current commercial status in-app
-  - `Evidence:` Console billing page renders without relying on embedded Stripe UI
-- [ ] Upgrade and plan-management controls align to the active commercial
+  - `Evidence:` `apps/console/app/(dashboard)/billing/billing-panel.tsx`
+    renders from `GET /api/billing/summary`
+- [x] Upgrade and plan-management controls align to the active commercial
       backend contract
-  - `Verify:` UI actions route through the current supported orchestration path
-  - `Evidence:` Billing page wiring matches the architecture in `ARCHITECTURE.MD`
-- [ ] Migration-era payment-method or invoice links are clearly labeled if they
+  - `Verify:` UI actions route through Lago-backed Vercel BFF endpoints
+  - `Evidence:` `POST /api/billing/checkout` creates a Lago checkout URL;
+    actual subscription mutation is deferred to P1C.05a
+- [x] Migration-era payment-method or invoice links are clearly labeled if they
       still point to legacy Stripe-hosted surfaces
   - `Verify:` No Stripe-hosted surface is presented as the forward-looking UX
-  - `Evidence:` UI copy and docs match the Lago-backed posture
+  - `Evidence:` UI copy labels checkout as Lago/Stripe payment setup and docs
+    keep Stripe as payment rail only
 
 #### Scope
 
@@ -3634,6 +3646,63 @@ legacy-link labeling where needed
 - Pricing Table-based upgrades → superseded
 - treating Stripe-hosted controls as the long-term billing UX
 - Custom commercial contracts → future
+
+---
+
+### Ticket P1C.05a — Replay-safe Lago Plan Changes
+
+```yaml
+id: P1C.05a
+title: Replay-safe Lago Plan Changes
+status: pending
+priority: p1-high
+epic: P1C
+persona: [api-consumer]
+depends_on: [P1C.05]
+completed: null
+tech_stack:
+  billing: Lago subscription mutation + idempotency store
+```
+
+#### User Story
+
+As an org admin, I can change the active subscription plan from the console and
+trust that browser retries, refreshes, and duplicate submissions do not create
+duplicate or conflicting billing mutations.
+
+#### Problem Statement
+
+P1C.05 intentionally renders plans and creates payment links only. Actual
+subscription mutation needs an idempotency boundary because Vercel route
+handlers do not currently have a Prontiq-owned replay-safe billing-action
+ledger. Lago remains the source of truth, but Prontiq must still ensure a user
+click cannot be replayed into multiple conflicting plan changes.
+
+#### Definition of Done
+
+##### Functional
+
+- [ ] Choose and document the idempotency store for Vercel-initiated billing
+      mutations
+  - `Verify:` duplicate request with the same action key returns the same result
+  - `Evidence:` decision record and tests
+- [ ] Implement admin-only plan change against Lago
+  - `Verify:` selected plan updates the active Lago subscription exactly once
+  - `Evidence:` integration test or controlled dev smoke against a test org
+- [ ] Reconcile updated subscription back into local enforcement projection
+  - `Verify:` API key records receive the new Lago-derived bouncer fields
+  - `Evidence:` reconciliation logs and DDB diff for a test org
+
+#### Scope
+
+**In:** subscription plan mutation, replay safety, reconciliation trigger or
+operator flow, rollback notes
+
+**Out — Do Not Implement:**
+
+- custom negotiated contracts
+- browser-side Lago calls
+- direct Stripe subscription mutation
 
 ---
 

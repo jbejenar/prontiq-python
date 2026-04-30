@@ -14,9 +14,17 @@ Active AWS private account routes are setup recovery and key management:
 commercial identity. They are documented separately in
 `docs/private-api/account-keys.md`.
 
-Future console billing should be implemented as a Vercel server-side BFF:
+Console billing is implemented as a Vercel server-side BFF:
 
 - verify Clerk auth server-side
 - read the active Clerk `org_id`
 - call Lago with a server-held Lago API key
 - never expose Lago or Stripe credentials to the browser
+
+Current BFF routes live inside `apps/console`, not the AWS private API:
+
+- `GET /api/billing/summary`
+- `POST /api/billing/checkout`
+- `POST /api/billing/invoices/payment-url`
+
+These routes are intentionally not part of `packages/api/openapi.private.json`.

@@ -40,6 +40,13 @@ In the target architecture:
   through a future console BFF
 - confirm console billing changes use `docs/runbooks/console-billing.md`
   and do not reintroduce platform-owned account billing routes
+- confirm console-visible plans carry `prontiq_console_visible=true` in Lago
+  metadata. Use `prontiq_environment=dev|prod|all` to scope visibility and
+  `prontiq_test=true` or `prontiq_internal=true` to hide test/internal plans.
+  Do not rely on plan names like `TEST - ...` for filtering.
+- confirm Free, PAYG, and pack/package plans expose their actual Lago charges;
+  the console billing page renders those charges dynamically and must not use a
+  hard-coded plan catalog.
 - confirm each enabled metric code matches the platform `meterEventName`
 - confirm credit metrics aggregate the `credits` property by sum
 - confirm subscriptions use `lago_sub_${orgId}` external IDs derived from

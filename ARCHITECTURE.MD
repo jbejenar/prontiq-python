@@ -1765,11 +1765,29 @@ The former AWS account billing routes are retired:
 - `POST /v1/account/billing/plan-change`
 - `POST /v1/account/billing/portal-session`
 
-Future console billing surfaces should use a Vercel server-side BFF. The BFF
-reads Clerk session/org claims, keeps Lago API keys in Vercel server
-environment, and calls Lago directly for billing reads/actions. The platform
+Console billing uses a Vercel server-side BFF in `apps/console`. The BFF reads
+Clerk session/org claims, keeps Lago API keys in Vercel server environment, and
+calls Lago directly for billing reads and payment-link actions. The platform
 backend remains responsible for account setup recovery, API key lifecycle,
 request-time enforcement, queued usage events, and webhook reconciliation.
+
+Active console billing BFF routes:
+
+- `GET /api/billing/summary` reads Lago subscription state, current-usage
+  billing estimate, visible plan catalog, and recent invoices for the active
+  Clerk org.
+- `POST /api/billing/checkout` is org-admin-only and returns a Lago-generated
+  Stripe checkout URL for payment-method setup. It does not change the
+  subscription plan.
+- `POST /api/billing/invoices/payment-url` is org-admin-only and returns a
+  Lago-generated invoice payment URL after verifying the invoice belongs to the
+  active org.
+
+Plan catalog visibility is controlled by Lago metadata:
+`prontiq_console_visible=true` includes a plan; `prontiq_test=true` or
+`prontiq_internal=true` excludes it; `prontiq_environment=dev|prod|all` scopes
+visibility by deployment environment. The console must not fall back to
+hard-coded plans if Lago returns no visible plans.
 
 #### 5.6.1 Legacy Stripe Billing Model (Historical)
 
@@ -2253,7 +2271,7 @@ Initial console pages:
 | **Overview**    | `/v1/account/status` + `/v1/account/keys`    | Read-only Lago-derived enforcement projection, masked key posture, explicit status/key-list drift state, and safe quickstart. Existing raw keys are never recoverable. |
 | **Keys**        | `/v1/account/keys*`                          | First-key flow, create, rotate, revoke, audit                                                                                                                          |
 | **Usage**       | `/v1/account/usage`                          | Member-readable usage cards from `prontiq-usage`; charts and CSV export from the async `prontiq-usage-daily` projection, with a baseline delta while missing or partial projection catches up. |
-| **Billing**     | Planned P1C.05 Vercel BFF backed by Lago     | Browser never receives Lago/Stripe credentials                                                                                                                         |
+| **Billing**     | P1C.05 Vercel BFF backed by Lago             | Browser never receives Lago/Stripe credentials. P1C.05 supports reads, payment-method setup, and invoice payment links; replay-safe plan mutation is deferred to P1C.05a. |
 | **Playground**  | `@prontiq/sdk` + public API                  | Pre-authenticated exploration                                                                                                                                          |
 | **Danger Zone** | dedicated account-management flow            | Self-service org deletion                                                                                                                                              |
 

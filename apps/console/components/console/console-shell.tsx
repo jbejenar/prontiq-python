@@ -17,7 +17,7 @@ const navGroups = [
       { href: "#overview", icon: Gauge, label: "Overview" },
       { href: "/keys", icon: KeyRound, label: "Keys" },
       { href: "/usage", icon: Activity, label: "Usage" },
-      { href: "#billing", icon: ReceiptText, label: "Billing" },
+      { href: "/billing", icon: ReceiptText, label: "Billing" },
       { href: "#playground", icon: PlaySquare, label: "Playground" },
       { href: "#danger-zone", icon: ShieldAlert, label: "Danger Zone" },
     ],
@@ -74,7 +74,7 @@ function ConsoleNav() {
       ))}
       <div className="mt-auto rounded-lg border border-border bg-card/60 p-4 text-xs leading-6 text-muted-foreground">
         <p>UI shell extracted from the canonical console prototype.</p>
-        <p>Key management now lives on the dedicated Keys page.</p>
+        <p>Keys, usage, and billing now live on dedicated pages.</p>
       </div>
     </div>
   );

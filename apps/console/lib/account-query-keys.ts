@@ -6,3 +6,5 @@ export const accountAuditQueryKey = (orgId: string) => ["account-audit", orgId] 
 
 export const accountUsageQueryKey = (orgId: string, granularity: string) =>
   ["account-usage", orgId, granularity] as const;
+
+export const accountBillingQueryKey = (orgId: string) => ["account-billing", orgId] as const;

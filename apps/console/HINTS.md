@@ -7,9 +7,18 @@
 - P1B.22 makes Clerk `orgId` the active Prontiq/Lago customer identity and
   keeps Stripe as Lago's payment rail only. Do not render Stripe or Lago
   provider IDs as canonical account state.
-- Billing UI work must not call Lago or Stripe from the browser. Future billing
-  surfaces should use a Vercel server-side BFF that verifies Clerk auth, reads
-  the active `org_id`, and calls Lago with a server-held Lago API key.
+- Billing UI work must not call Lago or Stripe from the browser. Billing
+  surfaces use the Vercel server-side BFF under `app/api/billing/*`, verify
+  Clerk auth, read the active `org_id`, and call Lago with a server-held Lago
+  API key.
+- Billing plans must be rendered from Lago responses. Do not hard-code Free,
+  PAYG, packs, prices, quotas, or local `PLANS` values in the console.
+- Billing plan visibility is controlled by Lago metadata:
+  `prontiq_console_visible=true` includes a plan;
+  `prontiq_test=true` and `prontiq_internal=true` exclude a plan;
+  `prontiq_environment=dev|prod|all` scopes a plan to an environment.
+- P1C.05 payment setup and invoice payment links do not mutate subscriptions.
+  Replay-safe plan changes belong to P1C.05a.
 - P1C.03 key-management UI starts from `GET /v1/account/status` to choose
   missing-org recovery, first-key CTA, or key-list state. Do not infer that by
   probing mutation endpoints.

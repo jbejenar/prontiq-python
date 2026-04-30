@@ -38,7 +38,7 @@ test("dashboard anchors route back to the dashboard and route pages stay direct"
 
   expect(screen.getAllByRole("link", { name: /overview/i })[0]).toHaveAttribute("href", "/#overview");
   expect(screen.getAllByRole("link", { name: /usage/i })[0]).toHaveAttribute("href", "/usage");
-  expect(screen.getAllByRole("link", { name: /billing/i })[0]).toHaveAttribute("href", "/#billing");
+  expect(screen.getAllByRole("link", { name: /billing/i })[0]).toHaveAttribute("href", "/billing");
   expect(screen.getAllByRole("link", { name: /playground/i })[0]).toHaveAttribute("href", "/#playground");
   expect(screen.getAllByRole("link", { name: /danger zone/i })[0]).toHaveAttribute("href", "/#danger-zone");
 });

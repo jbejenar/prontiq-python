@@ -1,11 +1,12 @@
 # NEXT-WORK.md — Active Sprint
 
-> Last updated: 2026-04-30 for P1C.04 usage charts implementation.
+> Last updated: 2026-04-30 for P1C.05 billing page implementation.
 
 ## Current Phase
 
-P1C.04: Usage Charts Page. Active branch implements platform-owned usage chart
-projection, private `GET /v1/account/usage`, and console `/usage` charts/CSV.
+P1C.05: Billing Page. Active branch implements the console `/billing` surface
+with a Vercel server-side BFF that reads Lago plans, subscription state, usage
+estimates, invoices, and payment links using server-held Lago credentials.
 Lago remains plan/billing truth; Prontiq remains usage enforcement and chart
 truth.
 
@@ -51,6 +52,14 @@ POST /v1/account/keys/rotate      (admin + reverification; P1C.03 PR 2)
 POST /v1/account/keys/revoke      (admin + reverification; P1C.03 PR 2)
 ```
 
+Console Vercel BFF:
+
+```text
+GET  /api/billing/summary
+POST /api/billing/checkout
+POST /api/billing/invoices/payment-url
+```
+
 Retired AWS routes:
 
 ```text
@@ -64,13 +73,16 @@ POST /v1/account/billing/portal-session
 - **P1C.03** — complete. Keys page covers missing-org recovery, first-key
   creation, key listing, create/rotate/revoke, Clerk step-up, reveal-once raw
   handling, audit trail, and key-limit indicator.
-- **P1C.02** — overview page complete after merge/deploy verification.
-- **P1C.04** (active) — usage charts page. Implementing `prontiq-usage-daily`
-  projection from billing events, authoritative counter-backed usage cards,
-  Recharts trend views, and CSV export.
+- **P1C.02** — complete. Overview page is read-only, masked-key safe, and
+  routes mutation flows to dedicated pages.
+- **P1C.04** — complete. Usage charts use `GET /v1/account/usage`, current
+  counters, `prontiq-usage-daily`, Recharts trend views, and CSV export.
+- **P1C.05** (active) — billing page. Console BFF reads Lago directly from
+  Vercel server-side code. It does not reintroduce AWS billing routes and does
+  not mutate subscriptions.
 - P1B.23 (pre-go-live cleanup) is gated on P1C.03 + P1C.05.
-- All console billing surfaces remain out of scope for the platform
-  backend; future Vercel BFF reads Lago directly.
+- **P1C.05a** (follow-up) — replay-safe subscription plan changes after an
+  idempotency store and Lago mutation contract are chosen.
 
 ## Operator Commands
 

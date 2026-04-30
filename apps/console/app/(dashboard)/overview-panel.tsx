@@ -326,11 +326,16 @@ export function OverviewPanel({ apiUrl }: { apiUrl: string }) {
         <Card className="scroll-mt-24" id="billing">
           <CardHeader>
             <CardDescription>Billing</CardDescription>
-            <CardTitle className="text-3xl">Lago-backed billing next</CardTitle>
+            <CardTitle className="text-3xl">Lago-backed billing</CardTitle>
           </CardHeader>
-          <CardContent className="text-sm leading-6 text-muted-foreground">
-            Billing reads and actions remain P1C.05. The forward path is a Prontiq-owned Lago-backed
-            surface, not embedded Stripe UI.
+          <CardContent className="space-y-4 text-sm leading-6 text-muted-foreground">
+            <p>
+              View the active Lago subscription, plans, payment setup, and invoices on the Billing
+              page.
+            </p>
+            <Button asChild variant="outline">
+              <Link href="/billing">Open Billing</Link>
+            </Button>
           </CardContent>
         </Card>
 

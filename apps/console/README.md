@@ -35,8 +35,27 @@ when the projection is missing or partial. CSV export is client-side from the
 returned series and includes each point's `kind`. Do not call Lago or Stripe
 from browser code.
 
-Billing surfaces for this app are Lago-backed and should use a Vercel
-server-side BFF, not browser calls to Lago/Stripe and not `/v1/account/billing*`.
+P1C.05 billing UI uses a Vercel server-side BFF under `app/api/billing/*`.
+The browser calls same-origin BFF routes; those route handlers verify the Clerk
+session and active org, then call Lago with server-held credentials. The page
+shows the active Lago subscription, current billing usage estimate, dynamic
+Lago plan cards, recent invoices, payment-method setup, and invoice payment
+links. It does not call Lago or Stripe from browser code and does not use
+`/v1/account/billing*`.
+
+Billing route handlers require these server env vars:
+
+- `LAGO_API_URL`
+- `LAGO_API_KEY`
+
+Optional billing env:
+
+- `PRONTIQ_BILLING_CATALOG_ENV=dev|prod|all`
+
+Plan cards are rendered only from Lago plans with
+`prontiq_console_visible=true`. Plans with `prontiq_test=true` or
+`prontiq_internal=true` are hidden. If `prontiq_environment` is present, it must
+match the current billing catalog environment or `all`.
 
 `pnpm --filter console dev`, `build`, `typecheck`, and `test` are
 self-sufficient from a fresh checkout: they build `@prontiq/sdk` and
