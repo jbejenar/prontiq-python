@@ -51,10 +51,10 @@ test("billing reverification fails loud when Clerk JWT lacks fva", async () => {
   });
 });
 
-test("billing reverification returns Clerk-native shape for stale second factor", async () => {
+test("billing reverification returns Clerk-native shape for stale first factor", async () => {
   const response = requireBillingReverification({
     canManageBilling: true,
-    fva: [0, -1],
+    fva: [11, -1],
     orgId: "org_123",
     orgRole: "org:admin",
     userId: "user_123",
@@ -67,7 +67,7 @@ test("billing reverification returns Clerk-native shape for stale second factor"
       reason: "reverification-error",
       metadata: {
         reverification: {
-          level: "second_factor",
+          level: "first_factor",
           afterMinutes: 10,
         },
       },
@@ -75,11 +75,11 @@ test("billing reverification returns Clerk-native shape for stale second factor"
   });
 });
 
-test("billing reverification accepts fresh second factor", () => {
+test("billing reverification accepts fresh first factor without requiring MFA", () => {
   expect(
     requireBillingReverification({
       canManageBilling: true,
-      fva: [0, 1],
+      fva: [1, -1],
       orgId: "org_123",
       orgRole: "org:admin",
       userId: "user_123",

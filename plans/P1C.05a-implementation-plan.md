@@ -86,8 +86,8 @@ state remains unchanged until Lago webhook reconciliation updates DynamoDB.
   fencing, per-attempt token conditions, immutable terminal rows,
   provider-accepted replay, `provider_in_flight` replay, permanent failures,
   and `outcome_unknown` replay.
-- Billing auth tests: missing/malformed/stale/fresh `fva` and Clerk-native
-  reverification body.
+- Billing auth tests: missing/malformed/stale/fresh first-factor `fva`,
+  password-only admin compatibility, and Clerk-native reverification body.
 - Lago client tests: `POST /subscriptions` request shape and pending transition
   parsing.
 - Route tests: origin, auth, admin, feature flag, allowlist, idempotency,

@@ -36,11 +36,13 @@ record but has not created or linked the backing Stripe customer yet. Run the
 Lago customer sync repair flow, then retry checkout.
 
 `POST /api/billing/plan-change` is admin-only and Clerk step-up protected. The
-browser sends a per-click `Idempotency-Key`; the Vercel BFF writes a
-`prontiq-billing-actions*` action row and an org-level lock row before calling
-Lago's subscription upgrade/downgrade flow. The route does not update local API
-enforcement directly. Lago webhook reconciliation updates the DynamoDB bouncer
-projection after Lago accepts or applies the transition.
+route requires recent first-factor reverification, so password-only admins can
+change plans without being forced to enroll MFA. The browser sends a per-click
+`Idempotency-Key`; the Vercel BFF writes a `prontiq-billing-actions*` action
+row and an org-level lock row before calling Lago's subscription
+upgrade/downgrade flow. The route does not update local API enforcement
+directly. Lago webhook reconciliation updates the DynamoDB bouncer projection
+after Lago accepts or applies the transition.
 If the ledger cannot be inspected or claimed, the route returns
 `BILLING_ACTION_LEDGER_UNAVAILABLE` and does not call Lago.
 Immediately before calling Lago, the route transitions the action to

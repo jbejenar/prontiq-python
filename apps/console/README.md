@@ -44,12 +44,12 @@ links. It does not call Lago or Stripe from browser code and does not use
 `/v1/account/billing*`.
 
 P1C.05a adds replay-safe plan changes through the same BFF. The plan-change
-route requires Clerk step-up, an `Idempotency-Key`, and a dedicated DynamoDB
-billing-action ledger credential. It calls Lago for the subscription change and
-waits for Lago webhook reconciliation to update local API enforcement. Terminal
-ledger rows are immutable; the route marks actions `provider_in_flight` before
-calling Lago, and ambiguous/unfinalized Lago outcomes replay without another
-Lago mutation until an operator inspects Lago.
+route requires Clerk first-factor step-up, an `Idempotency-Key`, and a dedicated
+DynamoDB billing-action ledger credential. It calls Lago for the subscription
+change and waits for Lago webhook reconciliation to update local API
+enforcement. Terminal ledger rows are immutable; the route marks actions
+`provider_in_flight` before calling Lago, and ambiguous/unfinalized Lago
+outcomes replay without another Lago mutation until an operator inspects Lago.
 
 Billing route handlers require these server env vars:
 

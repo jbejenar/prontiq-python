@@ -88,9 +88,9 @@ export function requireBillingAdmin(principal: BillingPrincipal): Response | nul
 
 export function requireBillingReverification(
   principal: BillingPrincipal,
-  input: { maxSecondFactorAgeMinutes?: number } = {},
+  input: { maxFirstFactorAgeMinutes?: number } = {},
 ): Response | null {
-  const max = input.maxSecondFactorAgeMinutes ?? 10;
+  const max = input.maxFirstFactorAgeMinutes ?? 10;
   if (!principal.fva || !Array.isArray(principal.fva)) {
     return Response.json(
       {
@@ -104,11 +104,11 @@ export function requireBillingReverification(
     );
   }
 
-  const secondFactorAgeMinutes = principal.fva[1];
+  const firstFactorAgeMinutes = principal.fva[0];
   if (
-    typeof secondFactorAgeMinutes !== "number" ||
-    secondFactorAgeMinutes < 0 ||
-    secondFactorAgeMinutes > max
+    typeof firstFactorAgeMinutes !== "number" ||
+    firstFactorAgeMinutes < 0 ||
+    firstFactorAgeMinutes > max
   ) {
     return Response.json(
       {
@@ -117,7 +117,7 @@ export function requireBillingReverification(
           reason: "reverification-error",
           metadata: {
             reverification: {
-              level: "second_factor",
+              level: "first_factor",
               afterMinutes: max,
             },
           },

@@ -25,6 +25,9 @@
   billing-action rows are immutable; `provider_in_flight` and
   `outcome_unknown` rows require operator Lago inspection and must not be
   auto-replayed into another provider mutation.
+- Billing plan-change step-up requires fresh first-factor verification.
+  Password-only admins must be able to complete plan changes; do not require
+  second-factor freshness here unless product policy changes to mandatory MFA.
 - P1C.03 key-management UI starts from `GET /v1/account/status` to choose
   missing-org recovery, first-key CTA, or key-list state. Do not infer that by
   probing mutation endpoints.
