@@ -327,6 +327,7 @@ export function createClerkHandler(overrides: HandlerOverrides = {}) {
         const result = await service.syncOwnerEmail({
           orgId: membership.organization.id,
           ownerEmail: emailLookup.email,
+          ownerName: emailLookup.displayName,
           actorId: userId,
           source: "clerk-user-updated",
         });
@@ -435,6 +436,7 @@ export function createClerkHandler(overrides: HandlerOverrides = {}) {
     const result = await service.provisionOrg({
       orgId: data.organization.id,
       ownerEmail: emailLookup.email,
+      ownerName: emailLookup.displayName,
       actorId: data.public_user_data.user_id,
       source: "clerk-webhook",
     });

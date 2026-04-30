@@ -143,6 +143,7 @@ async function ensureLagoCommercialIdentity(input: {
 }): Promise<void> {
   await input.client.upsertCustomer({
     email: input.email,
+    name: input.email,
     orgId: input.orgId,
     paymentProviderCode: input.paymentProviderCode,
   });

@@ -251,6 +251,7 @@ test("Lago customer upsert requests Stripe provider sync through Lago", async ()
 
   await client.upsertCustomer({
     email: "owner@example.com",
+    name: "Owner Person",
     orgId: "org_abc",
     paymentProviderCode: "stripe-main",
   });
@@ -270,9 +271,39 @@ test("Lago customer upsert requests Stripe provider sync through Lago", async ()
       currency: "AUD",
       email: "owner@example.com",
       external_id: "org_abc",
-      name: "owner@example.com",
+      name: "Owner Person",
     },
   });
+});
+
+test("Lago customer upsert falls back to email when display name is blank", async () => {
+  const requests: Array<{ body: unknown; path: string }> = [];
+  const fetchMock = (async (url: string | URL | Request, init?: RequestInit) => {
+    requests.push({
+      body: init?.body ? JSON.parse(String(init.body)) : null,
+      path: String(url),
+    });
+    return new Response(JSON.stringify({ customer: { external_id: "org_abc" } }), {
+      status: 200,
+    });
+  }) as typeof fetch;
+  const client = new HttpLagoProvisioningClient({
+    apiKey: "test-key",
+    baseUrl: "https://billing-dev.prontiq.dev",
+    fetchImpl: fetchMock,
+  });
+
+  await client.upsertCustomer({
+    email: "owner@example.com",
+    name: "   ",
+    orgId: "org_abc",
+    paymentProviderCode: "stripe-main",
+  });
+
+  assert.equal(
+    (requests[0]?.body as { customer?: { name?: string } } | undefined)?.customer?.name,
+    "owner@example.com",
+  );
 });
 
 test("returns already_exists when complete Lago ORG envelope is already present", async () => {
@@ -326,6 +357,7 @@ test("syncOwnerEmail upserts Lago customer and updates envelope plus key owner e
   const result = await service.syncOwnerEmail({
     orgId: "org_email",
     ownerEmail: "new@example.com",
+    ownerName: "New Owner",
     actorId: "user_owner",
     source: "clerk-user-updated",
   });
@@ -338,6 +370,7 @@ test("syncOwnerEmail upserts Lago customer and updates envelope plus key owner e
     args: {
       orgId: "org_email",
       email: "new@example.com",
+      name: "New Owner",
       paymentProviderCode: "stripe-main",
     },
   });
@@ -370,16 +403,22 @@ test("syncOwnerEmail still upserts Lago when local ownerEmail is already current
   const result = await service.syncOwnerEmail({
     orgId: "org_same",
     ownerEmail: "owner@example.com",
+    ownerName: "Owner Person",
     actorId: "user_owner",
     source: "clerk-user-updated",
   });
 
   assert.equal(result.status, "already_current");
   assert.equal(result.keysUpdated, 0);
-  assert.deepEqual(
-    lago.calls.map((call) => call.method),
-    ["upsertCustomer"],
-  );
+  assert.deepEqual(lago.calls[0], {
+    method: "upsertCustomer",
+    args: {
+      orgId: "org_same",
+      email: "owner@example.com",
+      name: "Owner Person",
+      paymentProviderCode: "stripe-main",
+    },
+  });
   assert.equal(log.filter((entry) => entry.type === "Update").length, 0);
 });
 

@@ -15,10 +15,12 @@ from P1B.14-P1B.21 and must not be used for new provisioning or repair logic.
 
 ## Provisioning Flow
 
-1. Clerk webhook or `POST /v1/account/setup` resolves the verified primary email.
+1. Clerk webhook or `POST /v1/account/setup` resolves the verified primary email and Clerk display name.
 2. `createProvisioningService().provisionOrg(...)` writes `ORG#{orgId}` to
    `prontiq-keys`.
 3. Provisioning upserts Lago customer `external_id = orgId`.
+   - Lago `email` is the verified primary email.
+   - Lago `name` is Clerk `firstName lastName` when present, otherwise the email address.
    - The customer billing configuration sets Stripe as the Lago payment
      provider, passes `LAGO_PAYMENT_PROVIDER_CODE`, and requests Lago provider
      sync with `sync=true`, `sync_with_provider=true`, and
@@ -33,7 +35,7 @@ from P1B.14-P1B.21 and must not be used for new provisioning or repair logic.
 
 Clerk remains the human identity system. When the recorded owner's verified
 primary email changes, the Clerk webhook consumes `user.updated`, resolves the
-verified primary email from Clerk Backend API, and calls
+verified primary email and display name from Clerk Backend API, and calls
 `createProvisioningService().syncOwnerEmail(...)` for every candidate admin org
 membership. Admin role is only a candidate filter; the service updates billing
 contact state only when `ORG#{orgId}.ownerUserId` matches the `user.updated`
@@ -41,8 +43,8 @@ subject.
 
 The sync:
 
-- upserts Lago customer `external_id = orgId` with the new email and the same
-  Stripe-provider sync flags used during provisioning
+- upserts Lago customer `external_id = orgId` with the new email/display name
+  and the same Stripe-provider sync flags used during provisioning
 - updates local `ORG#{orgId}.ownerEmail`
 - updates the org's bounded set of API-key `ownerEmail` snapshots
 - ignores non-admin memberships and invited admins who are not the recorded
@@ -51,7 +53,9 @@ The sync:
   `owner_identity_missing` status until support records the intended owner
 
 If this event was missed before deployment, follow the manual owner-email repair
-section in `docs/runbooks/clerk-webhook.md`.
+section in `docs/runbooks/clerk-webhook.md`. Display-name-only drift must be
+repaired by replaying `user.updated`; the repair command below reads local org
+envelopes and does not have Clerk first/last name context.
 
 ## Repair Flow
 
@@ -76,7 +80,8 @@ pnpm --filter @prontiq/control-plane repair:commercial-identity -- --apply
 The apply path upserts Lago customer/subscription identity and updates local
 `lagoSubscriptionExternalId` fields. It also repairs customers that were created
 before provider sync was enabled by re-upserting them with the Lago Stripe sync
-flags. It does not create API keys.
+flags. It does not create API keys and does not repair Lago display names from
+Clerk profile fields.
 
 ## Verification
 

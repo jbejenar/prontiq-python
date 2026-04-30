@@ -36,10 +36,18 @@ import { createLogger } from "@prontiq/shared";
  */
 
 export type EmailLookupResult =
-  | { kind: "found"; email: string }
+  | { kind: "found"; email: string; displayName: string | null }
   | { kind: "not_found" }
   | { kind: "not_verified"; verificationStatus: string | null }
   | { kind: "transient_failure"; error: Error };
+
+function buildDisplayName(user: { firstName?: string | null; lastName?: string | null }): string | null {
+  const parts = [user.firstName, user.lastName]
+    .filter((part): part is string => typeof part === "string")
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0);
+  return parts.length > 0 ? parts.join(" ") : null;
+}
 
 export async function resolvePrimaryEmail(
   client: ClerkClient,
@@ -63,7 +71,7 @@ export async function resolvePrimaryEmail(
     if (status !== "verified") {
       return { kind: "not_verified", verificationStatus: status };
     }
-    return { kind: "found", email: primary.emailAddress };
+    return { kind: "found", email: primary.emailAddress, displayName: buildDisplayName(user) };
   } catch (raw) {
     const error = raw instanceof Error ? raw : new Error(String(raw));
     return { kind: "transient_failure", error };

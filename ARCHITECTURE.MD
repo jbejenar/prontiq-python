@@ -2096,7 +2096,10 @@ raw value is returned in the HTTP response and shown to the user once.
    └─ Missing → continue to step 3
 
 3. Forward-mode billing bootstrap:
-   a. Upsert Lago customer using `external_id=orgId`.
+   a. Upsert Lago customer using `external_id=orgId`, billing email from the
+      verified Clerk primary email, and customer display name from Clerk
+      `firstName lastName` when present. If no usable Clerk display name
+      exists, Lago `name` falls back to the email address.
    b. Ensure Lago Free subscription using `external_subscription_id=lago_sub_${orgId}`.
    c. Validate the snapshot is exactly `planCode="free"` and
       `status="active"`, then read and validate the Lago Free subscription
@@ -2138,14 +2141,17 @@ raw value is returned in the HTTP response and shown to the user once.
 **Owner email sync** (Clerk `user.updated`):
 
 When a user changes their verified primary email in Clerk, Clerk emits
-`user.updated`. The webhook resolves the user's verified primary email through
-the Clerk Backend API, lists that user's organization memberships, and syncs
-only candidate memberships whose role is in `CLERK_ADMIN_ROLES` (default
-`org:admin`, `admin`). Admin role alone is not ownership. The sync service then
-loads `ORG#{orgId}` and requires `ownerUserId` to equal the `user.updated`
-subject before it updates the local `ORG#{orgId}.ownerEmail`, the bounded set of
-API-key owner-email snapshots for that org, and the Lago customer
-`external_id=orgId` via the same customer upsert used by provisioning.
+`user.updated`. The webhook resolves the user's verified primary email and
+display name through the Clerk Backend API, lists that user's organization
+memberships, and syncs only candidate memberships whose role is in
+`CLERK_ADMIN_ROLES` (default `org:admin`, `admin`). Admin role alone is not
+ownership. The sync service then loads `ORG#{orgId}` and requires `ownerUserId`
+to equal the `user.updated` subject before it updates the local
+`ORG#{orgId}.ownerEmail`, the bounded set of API-key owner-email snapshots for
+that org, and the Lago customer `external_id=orgId` via the same customer upsert
+used by provisioning. Lago `email` remains the verified primary email. Lago
+`name` is Clerk `firstName lastName` when available and falls back to email only
+when the user has no usable first/last name.
 
 Non-admin memberships are ignored before sync, invited admins whose Clerk user
 id does not match `ownerUserId` return `not_owner`, and legacy envelopes missing

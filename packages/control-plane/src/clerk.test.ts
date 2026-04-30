@@ -10,6 +10,8 @@ interface ClerkEmailAddressStub {
 }
 
 interface ClerkUserStub {
+  firstName?: string | null;
+  lastName?: string | null;
   primaryEmailAddressId: string | null;
   emailAddresses: ClerkEmailAddressStub[];
 }
@@ -43,13 +45,36 @@ function makeFakeClerkClient(opts: { user?: ClerkUserStub; throwOnGetUser?: unkn
 test("found: verified primary email returns kind 'found' with the email", async () => {
   const { client, getUserCalls } = makeFakeClerkClient({
     user: {
+      firstName: "Ada",
+      lastName: "Lovelace",
       primaryEmailAddressId: "idn_admin",
       emailAddresses: [verifiedEmail("idn_admin", "admin@example.com")],
     },
   });
   const result = await resolvePrimaryEmail(client, "user_abc");
-  assert.deepEqual(result, { kind: "found", email: "admin@example.com" });
+  assert.deepEqual(result, {
+    kind: "found",
+    email: "admin@example.com",
+    displayName: "Ada Lovelace",
+  });
   assert.deepEqual(getUserCalls, ["user_abc"]);
+});
+
+test("found: verified primary email falls back to null displayName when first and last name are blank", async () => {
+  const { client } = makeFakeClerkClient({
+    user: {
+      firstName: "  ",
+      lastName: null,
+      primaryEmailAddressId: "idn_admin",
+      emailAddresses: [verifiedEmail("idn_admin", "admin@example.com")],
+    },
+  });
+  const result = await resolvePrimaryEmail(client, "user_abc");
+  assert.deepEqual(result, {
+    kind: "found",
+    email: "admin@example.com",
+    displayName: null,
+  });
 });
 
 test("not_found: user has no primaryEmailAddressId (phone-first / OAuth-only signup)", async () => {

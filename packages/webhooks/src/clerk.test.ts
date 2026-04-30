@@ -54,6 +54,8 @@ interface ClerkEmailAddressStub {
 }
 
 interface ClerkUserStub {
+  firstName?: string | null;
+  lastName?: string | null;
   primaryEmailAddressId: string | null;
   emailAddresses: ClerkEmailAddressStub[];
 }
@@ -100,6 +102,8 @@ function makeFakeClerkClient(opts: {
 }
 
 const STANDARD_USER: ClerkUserStub = {
+  firstName: "Admin",
+  lastName: "User",
   primaryEmailAddressId: "idn_admin",
   emailAddresses: [
     verifiedEmail("idn_admin", "admin@example.com"),
@@ -234,6 +238,7 @@ test("valid signature + admin membership + new org → 200 + provisionOrg called
   // Bug 2 regression: ownerEmail is resolved via Clerk Backend API,
   // NOT the identifier (which is "+15551234567" in this fixture).
   assert.equal(service.calls[0]?.ownerEmail, "admin@example.com");
+  assert.equal(service.calls[0]?.ownerName, "Admin User");
   assert.equal(service.calls[0]?.actorId, "user_admin_1");
   assert.equal(service.calls[0]?.source, "clerk-webhook");
   assert.equal(getUserCalls.length, 1);
@@ -307,6 +312,8 @@ test("user.updated + admin membership → syncs verified primary email to local 
   );
   const { client: clerkClient, getUserCalls, membershipListCalls } = makeFakeClerkClient({
     user: {
+      firstName: "New",
+      lastName: "Owner",
       primaryEmailAddressId: "idn_new",
       emailAddresses: [verifiedEmail("idn_new", "new-owner@example.com")],
     },
@@ -324,6 +331,7 @@ test("user.updated + admin membership → syncs verified primary email to local 
     actorId: "user_owner",
     orgId: "org_email_sync",
     ownerEmail: "new-owner@example.com",
+    ownerName: "New Owner",
     source: "clerk-user-updated",
   });
   assert.deepEqual(getUserCalls, ["user_owner"]);

@@ -205,6 +205,7 @@ export function createAccountRoutes(overrides: AccountRouteOverrides = {}) {
       actorId: principal.userId,
       orgId: principal.orgId,
       ownerEmail: emailLookup.email,
+      ownerName: emailLookup.displayName,
       source: "account-setup",
     });
 

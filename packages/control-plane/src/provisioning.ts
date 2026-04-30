@@ -91,6 +91,7 @@ export interface ProvisioningInput {
   actorId: string;
   orgId: string;
   ownerEmail: string;
+  ownerName?: string | null;
   source: string;
 }
 
@@ -114,6 +115,7 @@ export interface OwnerEmailSyncInput {
   actorId: string;
   orgId: string;
   ownerEmail: string;
+  ownerName?: string | null;
   source: string;
 }
 
@@ -159,6 +161,7 @@ export interface LagoProvisioningClient {
   upsertCustomer(input: {
     orgId: string;
     email: string;
+    name?: string | null;
     paymentProviderCode: string;
   }): Promise<void>;
   upsertSubscription(input: {
@@ -284,8 +287,10 @@ export class HttpLagoProvisioningClient implements LagoProvisioningClient {
   async upsertCustomer(input: {
     orgId: string;
     email: string;
+    name?: string | null;
     paymentProviderCode: string;
   }): Promise<void> {
+    const name = typeof input.name === "string" && input.name.trim().length > 0 ? input.name.trim() : input.email;
     await this.request("/customers", {
       body: JSON.stringify({
         customer: {
@@ -300,7 +305,7 @@ export class HttpLagoProvisioningClient implements LagoProvisioningClient {
           currency: "AUD",
           email: input.email,
           external_id: input.orgId,
-          name: input.email,
+          name,
         },
       }),
       method: "POST",
@@ -737,6 +742,7 @@ async function loadLagoFreeBootstrapProjection(
   await dependencies.lagoClient.upsertCustomer({
     orgId: externalCustomerId,
     email: input.ownerEmail,
+    ...(input.ownerName !== undefined ? { name: input.ownerName } : {}),
     paymentProviderCode: dependencies.lagoPaymentProviderCode,
   });
   let snapshot = await dependencies.lagoClient.getSubscription(externalSubscriptionId);
@@ -1239,6 +1245,7 @@ export function createProvisioningService(overrides: Partial<ProvisioningDepende
       await dependencies.lagoClient.upsertCustomer({
         orgId: input.orgId,
         email: input.ownerEmail,
+        ...(input.ownerName !== undefined ? { name: input.ownerName } : {}),
         paymentProviderCode: dependencies.lagoPaymentProviderCode,
       });
     } catch (error) {
