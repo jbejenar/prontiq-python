@@ -8,7 +8,11 @@ import {
   UpdateCommand,
 } from "@aws-sdk/lib-dynamodb";
 import { deriveLagoExternalSubscriptionIdForOrg } from "@prontiq/shared";
-import { createProvisioningService, type EmailSender } from "./provisioning.js";
+import {
+  HttpLagoProvisioningClient,
+  createProvisioningService,
+  type EmailSender,
+} from "./provisioning.js";
 
 interface CommandLog {
   type: "Get" | "Query" | "TransactWrite" | "Update";
@@ -220,6 +224,49 @@ const baseDeps = {
   sleep: noopSleep,
   sendWelcomeEmail: noopEmail,
 };
+
+test("Lago customer upsert requests Stripe provider sync through Lago", async () => {
+  const requests: Array<{ body: unknown; path: string }> = [];
+  const fetchMock = (async (url: string | URL | Request, init?: RequestInit) => {
+    requests.push({
+      body: init?.body ? JSON.parse(String(init.body)) : null,
+      path: String(url),
+    });
+    return new Response(JSON.stringify({ customer: { external_id: "org_abc" } }), {
+      status: 200,
+    });
+  }) as typeof fetch;
+  const client = new HttpLagoProvisioningClient({
+    apiKey: "test-key",
+    baseUrl: "https://billing-dev.prontiq.dev",
+    fetchImpl: fetchMock,
+  });
+
+  await client.upsertCustomer({
+    email: "owner@example.com",
+    orgId: "org_abc",
+    paymentProviderCode: "stripe-main",
+  });
+
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0]?.path, "https://billing-dev.prontiq.dev/api/v1/customers");
+  assert.deepEqual(requests[0]?.body, {
+    customer: {
+      billing_configuration: {
+        invoice_grace_period: 0,
+        payment_provider: "stripe",
+        payment_provider_code: "stripe-main",
+        provider_payment_methods: ["card", "link"],
+        sync: true,
+        sync_with_provider: true,
+      },
+      currency: "AUD",
+      email: "owner@example.com",
+      external_id: "org_abc",
+      name: "owner@example.com",
+    },
+  });
+});
 
 test("returns already_exists when complete Lago ORG envelope is already present", async () => {
   const { client, log } = makeDdbStub({

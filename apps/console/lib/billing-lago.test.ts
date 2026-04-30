@@ -1,6 +1,6 @@
 import { expect, test, vi } from "vitest";
 
-import { LagoBillingClient } from "./billing-lago.js";
+import { LagoBillingClient, type LagoBillingError } from "./billing-lago.js";
 
 function makeClient(fetchMock: typeof fetch, catalogEnv: "dev" | "prod" | "all" = "dev") {
   return new LagoBillingClient({
@@ -235,4 +235,22 @@ test("Lago billing client preserves HTTP status when Lago returns a non-JSON err
   await expect(makeClient(fetchMock).listVisiblePlans()).rejects.toThrow(
     "Lago request failed with HTTP 503",
   );
+});
+
+test("Lago billing client preserves validation error details for safe route mapping", async () => {
+  const fetchMock = vi.fn().mockResolvedValue(
+    new Response(
+      JSON.stringify({
+        code: "validation_errors",
+        error_details: { base: ["no_linked_payment_provider"] },
+      }),
+      { status: 422 },
+    ),
+  ) as unknown as typeof fetch;
+
+  await expect(makeClient(fetchMock).createCheckoutUrl("org_123")).rejects.toMatchObject({
+    code: "validation_errors",
+    details: { base: ["no_linked_payment_provider"] },
+    status: 422,
+  } satisfies Partial<LagoBillingError>);
 });

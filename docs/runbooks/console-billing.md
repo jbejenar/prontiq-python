@@ -30,7 +30,9 @@ org.
 
 `POST /api/billing/checkout` is admin-only. It returns a Lago-generated Stripe
 checkout URL for payment-method setup. It does not change the subscription
-plan.
+plan. If the BFF returns `PAYMENT_PROVIDER_NOT_LINKED`, Lago has the customer
+record but has not created or linked the backing Stripe customer yet. Run the
+Lago customer sync repair flow, then retry checkout.
 
 `POST /api/billing/invoices/payment-url` is admin-only. It verifies the invoice
 belongs to the active org before asking Lago for a payment URL.
@@ -42,6 +44,8 @@ belongs to the active org before asking Lago for a payment URL.
 - Lago customer external id must equal the Clerk org id.
 - Lago subscription external id must equal `lago_sub_${orgId}`.
 - Stripe customer/payment state is managed through Lago, not platform routes.
+- Lago customers must be upserted with Stripe provider sync enabled
+  (`sync=true`, `sync_with_provider=true`) and card/link payment methods.
 - Vercel preview/production must set `LAGO_API_URL` and `LAGO_API_KEY`.
 - Plan catalog visibility is driven by Lago metadata:
   `prontiq_console_visible=true` includes a plan;
@@ -60,6 +64,9 @@ belongs to the active org before asking Lago for a payment URL.
    hidden.
 5. As an admin, click payment setup and confirm the generated URL opens the
    Lago/Stripe checkout flow.
+   - If this fails with `PAYMENT_PROVIDER_NOT_LINKED`, run
+     `repair:commercial-identity -- --apply` for the stage and confirm the Lago
+     customer has a non-empty provider customer id before retesting.
 6. If an unpaid invoice fixture exists, click "Pay invoice" and confirm the URL
    belongs to the active org's invoice.
 

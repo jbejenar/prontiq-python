@@ -5,6 +5,7 @@ import {
   requireBillingAdmin,
   requireSameOrigin,
 } from "../../../../lib/billing-auth.js";
+import { LagoBillingError } from "../../../../lib/billing-lago.js";
 import { createCheckoutUrl } from "../../../../lib/billing-service.js";
 
 const checkoutRequestSchema = z
@@ -44,6 +45,19 @@ export async function POST(request: Request) {
       intendedPlanCode: body.data?.intendedPlanCode ?? null,
     });
   } catch (error) {
+    if (error instanceof LagoBillingError && error.hasDetail("no_linked_payment_provider")) {
+      return Response.json(
+        {
+          error: {
+            code: "PAYMENT_PROVIDER_NOT_LINKED",
+            message:
+              "Billing is not ready for payment method setup yet. The Lago customer has not been linked to Stripe.",
+            status: 409,
+          },
+        },
+        { status: 409 },
+      );
+    }
     const message = error instanceof Error ? error.message : "Could not create checkout URL.";
     return Response.json(
       { error: { code: "BILLING_CHECKOUT_FAILED", message, status: 502 } },

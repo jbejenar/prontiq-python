@@ -3629,7 +3629,9 @@ not the target design.
       backend contract
   - `Verify:` UI actions route through Lago-backed Vercel BFF endpoints
   - `Evidence:` `POST /api/billing/checkout` creates a Lago checkout URL;
-    actual subscription mutation is deferred to P1C.05a
+    customers missing Lago-linked Stripe provider state return
+    `PAYMENT_PROVIDER_NOT_LINKED` and are repaired through the Lago customer
+    sync runbook; actual subscription mutation is deferred to P1C.05a
 - [x] Migration-era payment-method or invoice links are clearly labeled if they
       still point to legacy Stripe-hosted surfaces
   - `Verify:` No Stripe-hosted surface is presented as the forward-looking UX

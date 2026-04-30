@@ -1345,13 +1345,16 @@ PK:   apiKeyHash           "ORG#{orgId}"             (reserved — not a real ke
 
 Provisioning idempotently confirms the Lago customer and `lago_sub_${orgId}`
 Free subscription, validates the required Lago bouncer projection, then writes
-the local org envelope and audit row in one DynamoDB transaction. New envelopes
-must not be created with `products: []` or missing enforcement fields; if Lago
-projection cannot be validated, provisioning returns retryable failure before
-the envelope exists. Existing incomplete envelopes are recoverable by replaying
-the same provisioning path. It does not create Stripe customers; Stripe is
-configured inside Lago as the payment rail. See §5.7.1 for the full flow and
-§12.2 for failure modes.
+the local org envelope and audit row in one DynamoDB transaction. The Lago
+customer upsert requests `sync_with_provider=true`, `sync=true`, and
+card/link payment methods so Lago owns creation/linkage of the backing Stripe
+customer. New envelopes must not be created with `products: []` or missing
+enforcement fields; if Lago projection cannot be validated, provisioning returns
+retryable failure before the envelope exists. Existing incomplete envelopes are
+recoverable by replaying the same provisioning path or the commercial identity
+repair runbook. Prontiq does not call Stripe directly; Stripe is configured
+inside Lago as the payment rail. See §5.7.1 for the full flow and §12.2 for
+failure modes.
 
 ##### REDIRECT Record (stored in `prontiq-usage`)
 
@@ -1778,7 +1781,9 @@ Active console billing BFF routes:
   Clerk org.
 - `POST /api/billing/checkout` is org-admin-only and returns a Lago-generated
   Stripe checkout URL for payment-method setup. It does not change the
-  subscription plan.
+  subscription plan. If Lago reports `no_linked_payment_provider`, the customer
+  must be repaired/replayed through the Lago customer sync path so Lago creates
+  or links the Stripe customer before checkout can be generated.
 - `POST /api/billing/invoices/payment-url` is org-admin-only and returns a
   Lago-generated invoice payment URL after verifying the invoice belongs to the
   active org.

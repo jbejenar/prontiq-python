@@ -60,6 +60,29 @@ export interface BillingInvoicePaymentUrl {
 
 const DEFAULT_TIMEOUT_MS = 10_000;
 
+export class LagoBillingError extends Error {
+  readonly code: string | null;
+  readonly details: Readonly<Record<string, readonly string[]>>;
+  readonly status: number;
+
+  constructor(input: {
+    code?: string | null;
+    details?: Record<string, string[]>;
+    message: string;
+    status: number;
+  }) {
+    super(input.message);
+    this.name = "LagoBillingError";
+    this.code = input.code ?? null;
+    this.details = input.details ?? {};
+    this.status = input.status;
+  }
+
+  hasDetail(value: string) {
+    return Object.values(this.details).some((items) => items.includes(value));
+  }
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -183,6 +206,43 @@ function parseJsonPayload(text: string): unknown {
   } catch {
     throw new Error("Lago response was not valid JSON");
   }
+}
+
+function parseLagoErrorDetails(payload: unknown): Record<string, string[]> {
+  const rawDetails = getObject(payload, [["error_details"]]);
+  if (!rawDetails) return {};
+  const details: Record<string, string[]> = {};
+  for (const [key, value] of Object.entries(rawDetails)) {
+    if (Array.isArray(value)) {
+      const items = value.filter((item): item is string => typeof item === "string");
+      if (items.length > 0) details[key] = items;
+      continue;
+    }
+    if (typeof value === "string" && value.length > 0) details[key] = [value];
+  }
+  return details;
+}
+
+function buildLagoBillingError(status: number, text: string) {
+  let payload: unknown = {};
+  if (text.length > 0) {
+    try {
+      payload = JSON.parse(text) as unknown;
+    } catch {
+      return new LagoBillingError({
+        message: `Lago request failed with HTTP ${status}`,
+        status,
+      });
+    }
+  }
+  const code = getString(payload, [["code"]]);
+  const details = parseLagoErrorDetails(payload);
+  return new LagoBillingError({
+    code,
+    details,
+    message: `Lago request failed with HTTP ${status}${code ? ` (${code})` : ""}`,
+    status,
+  });
 }
 
 function parsePlanCharge(value: unknown): BillingPlanCharge {
@@ -335,7 +395,7 @@ export class LagoBillingClient {
     if (response.status === 404) return null;
     const text = await response.text();
     if (!response.ok) {
-      throw new Error(`Lago request failed with HTTP ${response.status}`);
+      throw buildLagoBillingError(response.status, text);
     }
     return parseJsonPayload(text);
   }
