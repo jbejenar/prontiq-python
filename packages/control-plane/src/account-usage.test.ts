@@ -294,6 +294,102 @@ test("getUsage excludes stale key-period counters from current-period card total
   assert.equal(result.usage.period.scopeConsistency, "mixed_key_periods");
 });
 
+for (const granularity of ["daily", "weekly", "monthly"] as const) {
+  test(`getUsage falls back to an aggregate ${granularity} chart point when projection is missing`, async () => {
+    const ddb = new FakeDdb({
+      envelope: makeEnvelope({ quotaPerProduct: 100 }),
+      keys: [makeKey()],
+      usageRows: [
+        {
+          apiKeyHash: "h".repeat(64),
+          scope: "address#period#2026-04-25_2026-05-25",
+          requestCount: 20,
+          lastPushedCumulativeCount: 0,
+          ttl: 1,
+        },
+      ],
+      dailyRows: [],
+    });
+    const service = createAccountUsageService({
+      ddb: ddb as never,
+      keysTableName: "keys",
+      usageTableName: "usage",
+      usageDailyTableName: "daily",
+      counterPeriodSource: () => "lago",
+    });
+
+    const result = await service.getUsage({
+      orgId: "org_test",
+      granularity,
+      now: new Date("2026-04-30T00:00:00.000Z"),
+    });
+
+    assert.equal(result.status, "ok");
+    if (result.status !== "ok") return;
+    assert.deepEqual(result.usage.products[0]?.series, [
+      {
+        bucket: "2026-04-25_2026-05-25",
+        label: "Current period",
+        credits: 20,
+      },
+    ]);
+  });
+}
+
+for (const granularity of ["daily", "weekly", "monthly"] as const) {
+  test(`getUsage falls back to an authoritative aggregate ${granularity} point during partial projection lag`, async () => {
+    const ddb = new FakeDdb({
+      envelope: makeEnvelope({ quotaPerProduct: 100 }),
+      keys: [makeKey()],
+      usageRows: [
+        {
+          apiKeyHash: "h".repeat(64),
+          scope: "address#period#2026-04-25_2026-05-25",
+          requestCount: 20,
+          lastPushedCumulativeCount: 0,
+          ttl: 1,
+        },
+      ],
+      dailyRows: [
+        {
+          orgId: "org_test",
+          bucketKey: "period#2026-04-25_2026-05-25#day#2026-04-30#product#address",
+          product: "address",
+          periodKey: "2026-04-25_2026-05-25",
+          bucketDate: "2026-04-30",
+          credits: 7,
+          eventCount: 7,
+          updatedAt: "2026-04-30T00:00:00.000Z",
+          ttl: 1,
+        },
+      ],
+    });
+    const service = createAccountUsageService({
+      ddb: ddb as never,
+      keysTableName: "keys",
+      usageTableName: "usage",
+      usageDailyTableName: "daily",
+      counterPeriodSource: () => "lago",
+    });
+
+    const result = await service.getUsage({
+      orgId: "org_test",
+      granularity,
+      now: new Date("2026-04-30T00:00:00.000Z"),
+    });
+
+    assert.equal(result.status, "ok");
+    if (result.status !== "ok") return;
+    assert.deepEqual(result.usage.products[0]?.series, [
+      {
+        bucket: "2026-04-25_2026-05-25",
+        label: "Current period",
+        credits: 20,
+      },
+    ]);
+  });
+}
+
 test("getUsage reports mixed_key_periods when Lago-mode key period projection is missing", async () => {
   const keyHash = "c".repeat(64);
   const ddb = new FakeDdb({

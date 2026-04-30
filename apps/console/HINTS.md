@@ -18,7 +18,8 @@
   actions must stay on `/keys`.
 - Usage UI must call the private `GET /v1/account/usage` API. Do not call Lago
   or Stripe from the browser. Cards use authoritative platform counters; charts
-  may lag the SQS projection and should label that clearly.
+  use API-returned series, including the API's aggregate current-period
+  fallback while missing or partial SQS projection catches up.
 - Key-management queries must be scoped by active Clerk `orgId`; if no
   organization is active, show an organization-selection state instead of
   calling the account API.

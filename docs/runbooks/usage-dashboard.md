@@ -9,7 +9,10 @@ The console usage page reads `GET /v1/account/usage`.
   surfaced via `scopeConsistency = mixed_key_periods`. Keys missing their
   Lago-period projection are also treated as drift; calendar fallback counters
   are not silently added to Lago-period cards.
-- Chart buckets are read from `prontiq-usage-daily`.
+- Chart buckets are read from `prontiq-usage-daily`. If projection rows are
+  missing or only partially caught up, the API returns one aggregate `Current
+  period` point so the chart does not disappear or under-report while the worker
+  catches up.
 - Entitlements and billing-period labels come from Lago-projected org envelope
   fields.
 
@@ -17,7 +20,7 @@ Lago remains commercial truth. Prontiq remains enforced usage truth.
 
 ## Projection Lag
 
-If cards update but charts do not:
+If cards update but charts only show a single aggregate `Current period` point:
 
 1. Confirm the address API request succeeded and returned a request id.
 2. Confirm `BILLING_EVENTS_ENABLED=true`.
@@ -27,7 +30,8 @@ If cards update but charts do not:
 6. Confirm the ledger row has `usageAnalyticsAppliedAt`.
 
 The chart starts from post-P1C.04 projected events. Pre-existing usage counters
-are not backfilled into chart buckets in v1.
+are not backfilled into daily buckets in v1. Missing or partial projections
+appear only as the aggregate fallback until projected totals match counters.
 
 ## Counter / Projection Mismatch
 

@@ -3542,7 +3542,7 @@ As a developer, I see per-product usage over time so that I can understand my co
 
 #### Problem Statement
 
-Usage data lives in DynamoDB as atomic counters (per-key, per-product, per-period). The dashboard queries active-org-period counters for authoritative current totals and reads `prontiq-usage-daily`, an idempotent projection from active V2 billing-event SQS messages, for charts. Stale key-period counters and missing key period projections are excluded from current cards and surfaced as `mixed_key_periods`. Legacy V1 events can still drain to Lago but do not feed org-scoped dashboard buckets. Lago remains plan/billing truth; Prontiq remains usage enforcement truth. The forward path is not Stripe-derived usage.
+Usage data lives in DynamoDB as atomic counters (per-key, per-product, per-period). The dashboard queries active-org-period counters for authoritative current totals and reads `prontiq-usage-daily`, an idempotent projection from active V2 billing-event SQS messages, for charts. If projected rows are missing or partial, the usage API returns one aggregate current-period chart point from authoritative counters so the trend panel remains visible and does not under-report. Stale key-period counters and missing key period projections are excluded from current cards and surfaced as `mixed_key_periods`. Legacy V1 events can still drain to Lago but do not feed org-scoped dashboard buckets. Lago remains plan/billing truth; Prontiq remains usage enforcement truth. The forward path is not Stripe-derived usage.
 
 #### Definition of Done
 

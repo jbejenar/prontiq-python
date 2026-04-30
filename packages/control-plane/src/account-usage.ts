@@ -140,21 +140,32 @@ function groupSeries(input: {
   periodEndingAt: string | null;
   periodStartedAt: string | null;
   product: string;
+  usedCredits: number;
 }): UsageSeriesPoint[] {
   const rows = input.dailyRows
     .filter((row) => row.product === input.product)
     .sort((a, b) => a.bucketDate.localeCompare(b.bucketDate));
-  if (input.granularity === "daily") {
-    return rows.map((row) => ({ bucket: row.bucketDate, label: dateLabel(row.bucketDate), credits: row.credits }));
-  }
-  if (input.granularity === "monthly") {
-    const credits = rows.reduce((sum, row) => sum + row.credits, 0);
+  const projectedCredits = rows.reduce((sum, row) => sum + row.credits, 0);
+  if (projectedCredits !== input.usedCredits) {
+    if (input.usedCredits === 0) return [];
     return [{
       bucket: input.periodStartedAt && input.periodEndingAt
         ? `${input.periodStartedAt.slice(0, 10)}_${input.periodEndingAt.slice(0, 10)}`
         : "current_period",
       label: "Current period",
-      credits,
+      credits: input.usedCredits,
+    }];
+  }
+  if (input.granularity === "daily") {
+    return rows.map((row) => ({ bucket: row.bucketDate, label: dateLabel(row.bucketDate), credits: row.credits }));
+  }
+  if (input.granularity === "monthly") {
+    return [{
+      bucket: input.periodStartedAt && input.periodEndingAt
+        ? `${input.periodStartedAt.slice(0, 10)}_${input.periodEndingAt.slice(0, 10)}`
+        : "current_period",
+      label: "Current period",
+      credits: projectedCredits,
     }];
   }
 
@@ -359,6 +370,7 @@ export function createAccountUsageService(
           periodEndingAt: period.endingAt,
           periodStartedAt: period.startedAt,
           product,
+          usedCredits,
         }),
       };
     });

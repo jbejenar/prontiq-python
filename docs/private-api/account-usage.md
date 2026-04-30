@@ -22,9 +22,11 @@ When a key still carries a stale Lago period during reconciliation drift, its
 prior-period counter is intentionally excluded from the current-period cards.
 When a key has no Lago-period projection yet, any calendar fallback counter for
 that key is also excluded from the current-period cards and drift is surfaced.
-Chart series come from `prontiq-usage-daily`, which is projected asynchronously
-from billing events. The cards are authoritative for the active period; charts
-may lag until the SQS worker processes the event.
+Chart series primarily come from `prontiq-usage-daily`, which is projected
+asynchronously from billing events. The cards are authoritative for the active
+period. If projected rows are missing or only partially caught up, the API
+returns a single `Current period` aggregate point from the authoritative counter
+total instead of an empty or under-reporting chart.
 
 PAYG / uncapped plans return `null` for `quotaCredits`, `remainingCredits`, and
 `overageCredits`.
