@@ -24,7 +24,9 @@ type GetBehaviour = Record<string, unknown> | undefined | Error;
 function makeDdbStub(
   options: {
     getResponses?: GetBehaviour[];
+    queryResponses?: unknown[][];
     transactWriteBehaviours?: ("ok" | Error)[];
+    updateBehaviours?: ("ok" | Error)[];
   } = {},
 ): {
   client: DynamoDBDocumentClient;
@@ -32,7 +34,9 @@ function makeDdbStub(
 } {
   const log: CommandLog[] = [];
   const getQueue = [...(options.getResponses ?? [])];
+  const queryQueue = [...(options.queryResponses ?? [])];
   const txQueue = [...(options.transactWriteBehaviours ?? [])];
+  const updateQueue = [...(options.updateBehaviours ?? [])];
   const client = {
     async send(command: unknown) {
       if (command instanceof GetCommand) {
@@ -43,7 +47,7 @@ function makeDdbStub(
       }
       if (command instanceof QueryCommand) {
         log.push({ type: "Query", args: command.input });
-        return { Items: [] };
+        return { Items: queryQueue.shift() ?? [] };
       }
       if (command instanceof TransactWriteCommand) {
         log.push({ type: "TransactWrite", args: command.input });
@@ -53,6 +57,8 @@ function makeDdbStub(
       }
       if (command instanceof UpdateCommand) {
         log.push({ type: "Update", args: command.input });
+        const next = updateQueue.shift() ?? "ok";
+        if (next instanceof Error) throw next;
         return {};
       }
       throw new Error(
@@ -94,6 +100,7 @@ const completeEnvelope = (orgId: string) => ({
   orgId,
   stripeCustomerId: null,
   ownerEmail: "owner@example.com",
+  ownerUserId: "user_owner",
   paymentOverdue: false,
   stripeSubscriptionId: null,
   subscriptionItems: {},
@@ -289,6 +296,231 @@ test("returns already_exists when complete Lago ORG envelope is already present"
   assert.equal(log.length, 1);
 });
 
+test("syncOwnerEmail upserts Lago customer and updates envelope plus key owner emails", async () => {
+  const keyRows = [
+    {
+      apiKeyHash: "hash_1",
+      keyPrefix: "pq_live_1111",
+      orgId: "org_email",
+      ownerEmail: "old@example.com",
+    },
+    {
+      apiKeyHash: "hash_2",
+      keyPrefix: "pq_live_2222",
+      orgId: "org_email",
+      ownerEmail: "old@example.com",
+    },
+    {
+      apiKeyHash: "ORG#org_email",
+      orgId: "org_email",
+      ownerEmail: "old@example.com",
+    },
+  ];
+  const { client, log } = makeDdbStub({
+    getResponses: [lagoBootstrappedEnvelope("org_email")],
+    queryResponses: [keyRows],
+  });
+  const lago = makeLagoProvisioningClient();
+  const service = createProvisioningService({ ...baseDeps, ddb: client, lagoClient: lago.client });
+
+  const result = await service.syncOwnerEmail({
+    orgId: "org_email",
+    ownerEmail: "new@example.com",
+    actorId: "user_owner",
+    source: "clerk-user-updated",
+  });
+
+  assert.equal(result.status, "updated");
+  assert.equal(result.orgEnvelope?.ownerEmail, "new@example.com");
+  assert.equal(result.keysUpdated, 2);
+  assert.deepEqual(lago.calls[0], {
+    method: "upsertCustomer",
+    args: {
+      orgId: "org_email",
+      email: "new@example.com",
+      paymentProviderCode: "stripe-main",
+    },
+  });
+  const updateInputs = log
+    .filter((entry) => entry.type === "Update")
+    .map((entry) => entry.args as { Key?: Record<string, unknown> });
+  assert.deepEqual(
+    updateInputs.map((input) => input.Key?.apiKeyHash),
+    ["ORG#org_email", "hash_1", "hash_2"],
+  );
+});
+
+test("syncOwnerEmail still upserts Lago when local ownerEmail is already current", async () => {
+  const { client, log } = makeDdbStub({
+    getResponses: [lagoBootstrappedEnvelope("org_same")],
+    queryResponses: [
+      [
+        {
+          apiKeyHash: "hash_same",
+          keyPrefix: "pq_live_same",
+          orgId: "org_same",
+          ownerEmail: "owner@example.com",
+        },
+      ],
+    ],
+  });
+  const lago = makeLagoProvisioningClient();
+  const service = createProvisioningService({ ...baseDeps, ddb: client, lagoClient: lago.client });
+
+  const result = await service.syncOwnerEmail({
+    orgId: "org_same",
+    ownerEmail: "owner@example.com",
+    actorId: "user_owner",
+    source: "clerk-user-updated",
+  });
+
+  assert.equal(result.status, "already_current");
+  assert.equal(result.keysUpdated, 0);
+  assert.deepEqual(
+    lago.calls.map((call) => call.method),
+    ["upsertCustomer"],
+  );
+  assert.equal(log.filter((entry) => entry.type === "Update").length, 0);
+});
+
+test("syncOwnerEmail repairs stale key owner emails even when envelope is already current", async () => {
+  const { client, log } = makeDdbStub({
+    getResponses: [lagoBootstrappedEnvelope("org_keystale")],
+    queryResponses: [
+      [
+        {
+          apiKeyHash: "hash_stale",
+          keyPrefix: "pq_live_stale",
+          orgId: "org_keystale",
+          ownerEmail: "old@example.com",
+        },
+        {
+          apiKeyHash: "hash_current",
+          keyPrefix: "pq_live_current",
+          orgId: "org_keystale",
+          ownerEmail: "owner@example.com",
+        },
+      ],
+    ],
+  });
+  const lago = makeLagoProvisioningClient();
+  const service = createProvisioningService({ ...baseDeps, ddb: client, lagoClient: lago.client });
+
+  const result = await service.syncOwnerEmail({
+    orgId: "org_keystale",
+    ownerEmail: "owner@example.com",
+    actorId: "user_owner",
+    source: "clerk-user-updated",
+  });
+
+  assert.equal(result.status, "updated");
+  assert.equal(result.keysUpdated, 1);
+  const updateInputs = log
+    .filter((entry) => entry.type === "Update")
+    .map((entry) => entry.args as { Key?: Record<string, unknown> });
+  assert.deepEqual(
+    updateInputs.map((input) => input.Key?.apiKeyHash),
+    ["hash_stale"],
+  );
+});
+
+test("syncOwnerEmail skips invited admins who are not the recorded owner", async () => {
+  const { client, log } = makeDdbStub({
+    getResponses: [lagoBootstrappedEnvelope("org_invitedadmin")],
+  });
+  const lago = makeLagoProvisioningClient({ throwIfCalled: true });
+  const service = createProvisioningService({ ...baseDeps, ddb: client, lagoClient: lago.client });
+
+  const result = await service.syncOwnerEmail({
+    orgId: "org_invitedadmin",
+    ownerEmail: "invited-admin@example.com",
+    actorId: "user_invited_admin",
+    source: "clerk-user-updated",
+  });
+
+  assert.equal(result.status, "not_owner");
+  assert.equal(log.filter((entry) => entry.type === "Update").length, 0);
+});
+
+test("syncOwnerEmail requires ownerUserId on existing envelopes before updating Lago", async () => {
+  const envelope = lagoBootstrappedEnvelope("org_missingowner");
+  delete (envelope as { ownerUserId?: string }).ownerUserId;
+  const { client, log } = makeDdbStub({
+    getResponses: [envelope],
+  });
+  const lago = makeLagoProvisioningClient({ throwIfCalled: true });
+  const service = createProvisioningService({ ...baseDeps, ddb: client, lagoClient: lago.client });
+
+  const result = await service.syncOwnerEmail({
+    orgId: "org_missingowner",
+    ownerEmail: "new@example.com",
+    actorId: "user_owner",
+    source: "clerk-user-updated",
+  });
+
+  assert.equal(result.status, "owner_identity_missing");
+  assert.equal(log.filter((entry) => entry.type === "Update").length, 0);
+});
+
+test("syncOwnerEmail always uses Clerk orgId for Lago customer external id", async () => {
+  const { client } = makeDdbStub({
+    getResponses: [legacyLagoBootstrappedEnvelope("org_legacy_email")],
+    queryResponses: [[]],
+  });
+  const lago = makeLagoProvisioningClient();
+  const service = createProvisioningService({ ...baseDeps, ddb: client, lagoClient: lago.client });
+
+  const result = await service.syncOwnerEmail({
+    orgId: "org_legacy_email",
+    ownerEmail: "new@example.com",
+    actorId: "user_owner",
+    source: "clerk-user-updated",
+  });
+
+  assert.equal(result.status, "updated");
+  assert.deepEqual(lago.calls[0], {
+    method: "upsertCustomer",
+    args: {
+      orgId: "org_legacy_email",
+      email: "new@example.com",
+      paymentProviderCode: "stripe-main",
+    },
+  });
+});
+
+test("syncOwnerEmail returns not_found for unprovisioned org and does not call Lago", async () => {
+  const { client } = makeDdbStub({ getResponses: [undefined] });
+  const lago = makeLagoProvisioningClient({ throwIfCalled: true });
+  const service = createProvisioningService({ ...baseDeps, ddb: client, lagoClient: lago.client });
+
+  const result = await service.syncOwnerEmail({
+    orgId: "org_missing",
+    ownerEmail: "new@example.com",
+    actorId: "user_owner",
+    source: "clerk-user-updated",
+  });
+
+  assert.equal(result.status, "not_found");
+});
+
+test("syncOwnerEmail returns retryable_failure when Lago customer upsert fails", async () => {
+  const { client, log } = makeDdbStub({
+    getResponses: [lagoBootstrappedEnvelope("org_lagodown")],
+  });
+  const lago = makeLagoProvisioningClient({ throwIfCalled: true });
+  const service = createProvisioningService({ ...baseDeps, ddb: client, lagoClient: lago.client });
+
+  const result = await service.syncOwnerEmail({
+    orgId: "org_lagodown",
+    ownerEmail: "new@example.com",
+    actorId: "user_owner",
+    source: "clerk-user-updated",
+  });
+
+  assert.equal(result.status, "retryable_failure");
+  assert.equal(log.filter((entry) => entry.type === "Update").length, 0);
+});
+
 test("existing incomplete active Lago envelope is bootstrapped before replay returns", async () => {
   const { client, log } = makeDdbStub({
     getResponses: [
@@ -364,6 +596,7 @@ test("creates org envelope and bootstraps Lago Free subscription", async () => {
   assert.equal(envelopeItem?.rateLimit, 10);
   assert.equal(envelopeItem?.maxKeys, 2);
   assert.equal(envelopeItem?.lagoLastSyncStatus, "synced");
+  assert.equal(envelopeItem?.ownerUserId, "user_x");
   assert.deepEqual(
     lago.calls.map((call) => call.method),
     ["upsertCustomer", "getSubscription"],

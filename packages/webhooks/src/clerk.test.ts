@@ -3,7 +3,12 @@ import assert from "node:assert/strict";
 import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from "aws-lambda";
 import { Webhook } from "svix";
 import type { ClerkClient } from "@clerk/backend";
-import type { ProvisioningInput, ProvisioningResult } from "@prontiq/control-plane";
+import type {
+  OwnerEmailSyncInput,
+  OwnerEmailSyncResult,
+  ProvisioningInput,
+  ProvisioningResult,
+} from "@prontiq/control-plane";
 import { createClerkHandler } from "./clerk.js";
 
 // 32-byte secret encoded as `whsec_<base64>` per Svix convention.
@@ -11,16 +16,27 @@ const TEST_SECRET = "whsec_MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaSw";
 
 interface FakeService {
   provisionOrg: (input: ProvisioningInput) => Promise<ProvisioningResult>;
+  syncOwnerEmail: (input: OwnerEmailSyncInput) => Promise<OwnerEmailSyncResult>;
   calls: ProvisioningInput[];
+  syncCalls: OwnerEmailSyncInput[];
 }
 
-function makeFakeService(result: ProvisioningResult): FakeService {
+function makeFakeService(
+  result: ProvisioningResult,
+  syncResult: OwnerEmailSyncResult = { status: "updated", keysUpdated: 0 },
+): FakeService {
   const calls: ProvisioningInput[] = [];
+  const syncCalls: OwnerEmailSyncInput[] = [];
   return {
     calls,
+    syncCalls,
     async provisionOrg(input: ProvisioningInput) {
       calls.push(input);
       return result;
+    },
+    async syncOwnerEmail(input: OwnerEmailSyncInput) {
+      syncCalls.push(input);
+      return syncResult;
     },
   };
 }
@@ -28,6 +44,7 @@ function makeFakeService(result: ProvisioningResult): FakeService {
 interface FakeClerkClient {
   client: ClerkClient;
   getUserCalls: string[];
+  membershipListCalls: string[];
 }
 
 interface ClerkEmailAddressStub {
@@ -47,9 +64,12 @@ function verifiedEmail(id: string, address: string): ClerkEmailAddressStub {
 
 function makeFakeClerkClient(opts: {
   user?: ClerkUserStub;
+  memberships?: Array<{ organization: { id: string }; role: string }>;
+  throwOnGetMembershipList?: Error;
   throwOnGetUser?: Error;
 }): FakeClerkClient {
   const getUserCalls: string[] = [];
+  const membershipListCalls: string[] = [];
   const client = {
     users: {
       async getUser(userId: string) {
@@ -62,9 +82,21 @@ function makeFakeClerkClient(opts: {
           }
         );
       },
+      async getOrganizationMembershipList(params: { limit?: number; offset?: number; userId: string }) {
+        membershipListCalls.push(params.userId);
+        if (opts.throwOnGetMembershipList) throw opts.throwOnGetMembershipList;
+        const allMemberships = opts.memberships ?? [
+          { organization: { id: "org_test_admin" }, role: "org:admin" },
+        ];
+        const offset = params.offset ?? 0;
+        const limit = params.limit ?? allMemberships.length;
+        return {
+          data: allMemberships.slice(offset, offset + limit),
+        };
+      },
     },
   } as unknown as ClerkClient;
-  return { client, getUserCalls };
+  return { client, getUserCalls, membershipListCalls };
 }
 
 const STANDARD_USER: ClerkUserStub = {
@@ -145,6 +177,13 @@ function nonAdminMembershipPayload(role = "org:member"): object {
       role,
       created_at: Date.now(),
     },
+  };
+}
+
+function userUpdatedPayload(userId = "user_admin_1"): object {
+  return {
+    type: "user.updated",
+    data: { id: userId },
   };
 }
 
@@ -259,6 +298,172 @@ test("valid signature + unsubscribed event type → 200 forward-compat no-op", a
   assert.equal(body.skipped, true);
   assert.equal(body.reason, "unsubscribed_event_type");
   assert.equal(service.calls.length, 0);
+});
+
+test("user.updated + admin membership → syncs verified primary email to local envelope and Lago", async () => {
+  const service = makeFakeService(
+    { status: "already_exists", emailSent: false },
+    { status: "updated", keysUpdated: 2 },
+  );
+  const { client: clerkClient, getUserCalls, membershipListCalls } = makeFakeClerkClient({
+    user: {
+      primaryEmailAddressId: "idn_new",
+      emailAddresses: [verifiedEmail("idn_new", "new-owner@example.com")],
+    },
+    memberships: [{ organization: { id: "org_email_sync" }, role: "org:admin" }],
+  });
+  const handler = createClerkHandler({ service, webhookSecret: TEST_SECRET, clerkClient });
+  const result = await handler(signedEvent(userUpdatedPayload("user_owner")));
+  const { statusCode, body } = decodeBody(result);
+  assert.equal(statusCode, 200);
+  assert.equal(body.status, "owner_email_synced");
+  assert.equal(body.updated, 1);
+  assert.equal(service.calls.length, 0, "user.updated must not reprovision the org");
+  assert.equal(service.syncCalls.length, 1);
+  assert.deepEqual(service.syncCalls[0], {
+    actorId: "user_owner",
+    orgId: "org_email_sync",
+    ownerEmail: "new-owner@example.com",
+    source: "clerk-user-updated",
+  });
+  assert.deepEqual(getUserCalls, ["user_owner"]);
+  assert.deepEqual(membershipListCalls, ["user_owner"]);
+});
+
+test("user.updated + member-only memberships → 200 skipped and no Lago/local sync", async () => {
+  const service = makeFakeService({ status: "already_exists", emailSent: false });
+  const { client: clerkClient } = makeFakeClerkClient({
+    user: STANDARD_USER,
+    memberships: [{ organization: { id: "org_member_only" }, role: "org:member" }],
+  });
+  const handler = createClerkHandler({ service, webhookSecret: TEST_SECRET, clerkClient });
+  const result = await handler(signedEvent(userUpdatedPayload("user_member")));
+  const { statusCode, body } = decodeBody(result);
+  assert.equal(statusCode, 200);
+  assert.equal(body.skipped, true);
+  assert.equal(body.reason, "no_admin_memberships");
+  assert.equal(service.syncCalls.length, 0);
+});
+
+test("user.updated + invited admin who is not recorded owner → 200 skipped with notOwner count", async () => {
+  const service = makeFakeService(
+    { status: "already_exists", emailSent: false },
+    { status: "not_owner" },
+  );
+  const { client: clerkClient } = makeFakeClerkClient({
+    user: STANDARD_USER,
+    memberships: [{ organization: { id: "org_invited_admin" }, role: "org:admin" }],
+  });
+  const handler = createClerkHandler({ service, webhookSecret: TEST_SECRET, clerkClient });
+  const result = await handler(signedEvent(userUpdatedPayload("user_invited_admin")));
+  const { statusCode, body } = decodeBody(result);
+  assert.equal(statusCode, 200);
+  assert.equal(body.status, "owner_email_synced");
+  assert.equal(body.updated, 0);
+  assert.equal(body.notOwner, 1);
+  assert.equal(body.ownerIdentityMissing, 0);
+  assert.equal(service.syncCalls.length, 1);
+});
+
+test("user.updated + legacy envelope missing owner identity → 200 skipped with repair-visible count", async () => {
+  const service = makeFakeService(
+    { status: "already_exists", emailSent: false },
+    { status: "owner_identity_missing" },
+  );
+  const { client: clerkClient } = makeFakeClerkClient({
+    user: STANDARD_USER,
+    memberships: [{ organization: { id: "org_missing_owner_identity" }, role: "org:admin" }],
+  });
+  const handler = createClerkHandler({ service, webhookSecret: TEST_SECRET, clerkClient });
+  const result = await handler(signedEvent(userUpdatedPayload("user_owner")));
+  const { statusCode, body } = decodeBody(result);
+  assert.equal(statusCode, 200);
+  assert.equal(body.status, "owner_email_synced");
+  assert.equal(body.updated, 0);
+  assert.equal(body.notOwner, 0);
+  assert.equal(body.ownerIdentityMissing, 1);
+  assert.equal(service.syncCalls.length, 1);
+});
+
+test("user.updated paginates Clerk memberships before filtering admin orgs", async () => {
+  const service = makeFakeService(
+    { status: "already_exists", emailSent: false },
+    { status: "updated", keysUpdated: 0 },
+  );
+  const memberships = Array.from({ length: 101 }, (_, index) => ({
+    organization: { id: `org_page${index}` },
+    role: index === 100 ? "org:admin" : "org:member",
+  }));
+  const { client: clerkClient, membershipListCalls } = makeFakeClerkClient({
+    user: STANDARD_USER,
+    memberships,
+  });
+  const handler = createClerkHandler({ service, webhookSecret: TEST_SECRET, clerkClient });
+
+  const result = await handler(signedEvent(userUpdatedPayload("user_many_orgs")));
+  const { statusCode, body } = decodeBody(result);
+
+  assert.equal(statusCode, 200);
+  assert.equal(body.updated, 1);
+  assert.equal(service.syncCalls.length, 1);
+  assert.equal(service.syncCalls[0]?.orgId, "org_page100");
+  assert.deepEqual(membershipListCalls, ["user_many_orgs", "user_many_orgs"]);
+});
+
+test("user.updated + unverified primary email → 200 skipped so Svix does not retry forever", async () => {
+  const service = makeFakeService({ status: "already_exists", emailSent: false });
+  const { client: clerkClient } = makeFakeClerkClient({
+    user: {
+      primaryEmailAddressId: "idn_unverified",
+      emailAddresses: [
+        {
+          id: "idn_unverified",
+          emailAddress: "new-owner@example.com",
+          verification: { status: "unverified" },
+        },
+      ],
+    },
+  });
+  const handler = createClerkHandler({ service, webhookSecret: TEST_SECRET, clerkClient });
+  const result = await handler(signedEvent(userUpdatedPayload("user_unverified")));
+  const { statusCode, body } = decodeBody(result);
+  assert.equal(statusCode, 200);
+  assert.equal(body.skipped, true);
+  assert.equal(body.reason, "primary_email_unverified");
+  assert.equal(service.syncCalls.length, 0);
+});
+
+test("user.updated + Clerk membership lookup failure → 500 retryable", async () => {
+  const service = makeFakeService({ status: "already_exists", emailSent: false });
+  const { client: clerkClient } = makeFakeClerkClient({
+    user: STANDARD_USER,
+    throwOnGetMembershipList: new Error("Clerk memberships unavailable"),
+  });
+  const handler = createClerkHandler({ service, webhookSecret: TEST_SECRET, clerkClient });
+  const result = await handler(signedEvent(userUpdatedPayload("user_lookup_fail")));
+  const { statusCode, body } = decodeBody(result);
+  assert.equal(statusCode, 500);
+  assert.equal(body.error, "retryable_failure");
+  assert.equal(body.reason, "clerk_membership_lookup_failed");
+  assert.equal(service.syncCalls.length, 0);
+});
+
+test("user.updated + owner email sync failure → 500 so Svix retries", async () => {
+  const service = makeFakeService(
+    { status: "already_exists", emailSent: false },
+    { status: "retryable_failure" },
+  );
+  const { client: clerkClient } = makeFakeClerkClient({
+    user: STANDARD_USER,
+    memberships: [{ organization: { id: "org_sync_retry" }, role: "org:admin" }],
+  });
+  const handler = createClerkHandler({ service, webhookSecret: TEST_SECRET, clerkClient });
+  const result = await handler(signedEvent(userUpdatedPayload("user_sync_retry")));
+  const { statusCode, body } = decodeBody(result);
+  assert.equal(statusCode, 500);
+  assert.equal(body.error, "retryable_failure");
+  assert.equal(body.reason, "owner_email_sync_failed");
+  assert.equal(service.syncCalls.length, 1);
 });
 
 test("invalid signature → 401 (Clerk does not retry)", async () => {

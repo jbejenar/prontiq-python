@@ -101,6 +101,28 @@ export interface ProvisioningResult {
   stripeCustomerId?: string | null;
 }
 
+export type OwnerEmailSyncStatus =
+  | "updated"
+  | "already_current"
+  | "not_found"
+  | "not_owner"
+  | "owner_identity_missing"
+  | "retryable_failure"
+  | "fatal_failure";
+
+export interface OwnerEmailSyncInput {
+  actorId: string;
+  orgId: string;
+  ownerEmail: string;
+  source: string;
+}
+
+export interface OwnerEmailSyncResult {
+  status: OwnerEmailSyncStatus;
+  orgEnvelope?: OrgEnvelopeRecord;
+  keysUpdated?: number;
+}
+
 export interface EmailInput {
   docsUrl: string;
   fromEmail: string;
@@ -476,6 +498,7 @@ function buildProvisioningTransactWrite(
     maxKeys: bootstrap.projected.maxKeys,
     orgId: input.orgId,
     ownerEmail: input.ownerEmail,
+    ownerUserId: input.actorId,
     paymentOverdue: false,
     products: bootstrap.projected.products,
     quotaPerProduct: bootstrap.projected.quotaPerProduct,
@@ -914,6 +937,7 @@ async function sendWelcomeEmailSafely(
 
 export function createProvisioningService(overrides: Partial<ProvisioningDependencies> = {}): {
   provisionOrg: (input: ProvisioningInput) => Promise<ProvisioningResult>;
+  syncOwnerEmail: (input: OwnerEmailSyncInput) => Promise<OwnerEmailSyncResult>;
 } {
   const logger = overrides.logger ?? defaultLogger;
   const dependencies: ProvisioningDependencies = {
@@ -1164,5 +1188,137 @@ export function createProvisioningService(overrides: Partial<ProvisioningDepende
     };
   }
 
-  return { provisionOrg };
+  async function syncOwnerEmail(input: OwnerEmailSyncInput): Promise<OwnerEmailSyncResult> {
+    const preflight = await readOrgEnvelope(
+      dependencies.ddb,
+      dependencies.keysTableName,
+      input.orgId,
+    );
+    switch (preflight.kind) {
+      case "missing":
+        dependencies.logger.info("Skipping owner email sync for unprovisioned org", {
+          orgId: input.orgId,
+          source: input.source,
+        });
+        return { status: "not_found" };
+      case "transient_failure":
+        dependencies.logger.error("Owner email sync envelope read failed (transient)", {
+          error: preflight.error.message,
+          orgId: input.orgId,
+        });
+        return { status: "retryable_failure" };
+      case "fatal_failure":
+        dependencies.logger.error("Owner email sync envelope read failed (fatal)", {
+          error: preflight.error.message,
+          orgId: input.orgId,
+        });
+        return { status: "fatal_failure" };
+      case "found":
+        break;
+    }
+
+    if (preflight.record.ownerUserId === undefined || preflight.record.ownerUserId.length === 0) {
+      dependencies.logger.warn("Skipping owner email sync because envelope lacks ownerUserId", {
+        actorId: input.actorId,
+        orgId: input.orgId,
+        source: input.source,
+      });
+      return { status: "owner_identity_missing", orgEnvelope: preflight.record };
+    }
+    if (preflight.record.ownerUserId !== input.actorId) {
+      dependencies.logger.info("Skipping owner email sync for non-owner admin", {
+        actorId: input.actorId,
+        orgId: input.orgId,
+        ownerUserId: preflight.record.ownerUserId,
+        source: input.source,
+      });
+      return { status: "not_owner", orgEnvelope: preflight.record };
+    }
+
+    try {
+      await dependencies.lagoClient.upsertCustomer({
+        orgId: input.orgId,
+        email: input.ownerEmail,
+        paymentProviderCode: dependencies.lagoPaymentProviderCode,
+      });
+    } catch (error) {
+      dependencies.logger.error("Lago owner email sync failed", {
+        error: error instanceof Error ? error.message : String(error),
+        orgId: input.orgId,
+      });
+      return { status: "retryable_failure", orgEnvelope: preflight.record };
+    }
+
+    let keys: ApiKeyRecord[];
+    try {
+      keys = await loadOrgKeys(dependencies.ddb, dependencies.keysTableName, input.orgId);
+    } catch (raw) {
+      const error = raw instanceof Error ? raw : new Error(String(raw));
+      const classification = classifyDdbError(error);
+      dependencies.logger.error("Owner email sync key scan failed", {
+        classification,
+        error: error.message,
+        orgId: input.orgId,
+      });
+      return {
+        status: classification === "fatal" ? "fatal_failure" : "retryable_failure",
+        orgEnvelope: preflight.record,
+      };
+    }
+
+    const shouldUpdateEnvelope = preflight.record.ownerEmail !== input.ownerEmail;
+    const staleKeys = keys.filter((key) => key.ownerEmail !== input.ownerEmail);
+    if (!shouldUpdateEnvelope && staleKeys.length === 0) {
+      return { status: "already_current", orgEnvelope: preflight.record, keysUpdated: 0 };
+    }
+
+    try {
+      if (shouldUpdateEnvelope) {
+        await dependencies.ddb.send(
+          new UpdateCommand({
+            TableName: dependencies.keysTableName,
+            Key: { apiKeyHash: getOrgEnvelopeKey(input.orgId) },
+            UpdateExpression: "SET #ownerEmail = :ownerEmail",
+            ConditionExpression: "attribute_exists(apiKeyHash)",
+            ExpressionAttributeNames: { "#ownerEmail": "ownerEmail" },
+            ExpressionAttributeValues: { ":ownerEmail": input.ownerEmail },
+          }),
+        );
+      }
+      await Promise.all(
+        staleKeys.map((key) =>
+          dependencies.ddb.send(
+            new UpdateCommand({
+              TableName: dependencies.keysTableName,
+              Key: { apiKeyHash: key.apiKeyHash },
+              UpdateExpression: "SET #ownerEmail = :ownerEmail",
+              ConditionExpression: "attribute_exists(apiKeyHash)",
+              ExpressionAttributeNames: { "#ownerEmail": "ownerEmail" },
+              ExpressionAttributeValues: { ":ownerEmail": input.ownerEmail },
+            }),
+          ),
+        ),
+      );
+    } catch (raw) {
+      const error = raw instanceof Error ? raw : new Error(String(raw));
+      const classification = classifyDdbError(error);
+      dependencies.logger.error("Owner email sync DynamoDB update failed", {
+        classification,
+        error: error.message,
+        orgId: input.orgId,
+      });
+      return {
+        status: classification === "fatal" ? "fatal_failure" : "retryable_failure",
+        orgEnvelope: preflight.record,
+      };
+    }
+
+    const updatedEnvelope: OrgEnvelopeRecord = {
+      ...preflight.record,
+      ownerEmail: input.ownerEmail,
+    };
+    return { status: "updated", orgEnvelope: updatedEnvelope, keysUpdated: staleKeys.length };
+  }
+
+  return { provisionOrg, syncOwnerEmail };
 }

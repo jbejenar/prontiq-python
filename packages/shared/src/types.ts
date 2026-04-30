@@ -221,6 +221,8 @@ export interface OrgEnvelopeRecord {
   customerId?: string;
   stripeCustomerId: string | null;
   ownerEmail: string;
+  /** Clerk user id of the org owner/billing contact. Added after initial P1B.22 rows. */
+  ownerUserId?: string;
   tier: Tier;
   products: string[];
   quotaPerProduct?: number | null;

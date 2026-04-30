@@ -1321,6 +1321,9 @@ PK:   apiKeyHash           "ORG#{orgId}"             (reserved — not a real ke
       stripeCustomerId     string | null             "cus_..." only for migration/rollback linkage
       ownerEmail           string                    Resolved from the Clerk org-admin
                                                      membership provisioning flow
+      ownerUserId          string?                   Clerk user id recorded at provisioning/setup.
+                                                     Required before owner-email sync can update
+                                                     Lago/local billing contact fields.
       tier                 string                    "free" until Lago subscription reconciliation
       products             list                      Current enabled API products for the org.
                                                      Starts as ["address"] on free and is updated
@@ -2074,7 +2077,7 @@ One extra Stripe API call per webhook invocation was acceptable because the
 legacy Stripe webhook was never on the hot path. The platform-owned Stripe
 webhook is now removed.
 
-#### 5.7.1 Clerk: `organizationMembership.created`
+#### 5.7.1 Clerk: `organizationMembership.created` and `user.updated`
 
 **Critical invariant:** the **raw API key is never minted in a webhook**. A
 webhook response goes to Clerk, not to the user's browser, so any raw key
@@ -2104,7 +2107,7 @@ raw value is returned in the HTTP response and shown to the user once.
 
 4. TransactWriteItems (DDB):
    a. ConditionalPut prontiq-keys/ORG#{orgId} where attribute_not_exists(apiKeyHash)
-      Item: { orgId, stripeCustomerId=null, ownerEmail, tier="free",
+      Item: { orgId, stripeCustomerId=null, ownerEmail, ownerUserId, tier="free",
               products=["address"], quotaPerProduct, enforcementMode,
               rateLimit, maxKeys, lagoSubscriptionExternalId,
               billingPeriodKey, completedAt, hasFirstKey: false }
@@ -2131,6 +2134,28 @@ raw value is returned in the HTTP response and shown to the user once.
 
 6. Return 200
 ```
+
+**Owner email sync** (Clerk `user.updated`):
+
+When a user changes their verified primary email in Clerk, Clerk emits
+`user.updated`. The webhook resolves the user's verified primary email through
+the Clerk Backend API, lists that user's organization memberships, and syncs
+only candidate memberships whose role is in `CLERK_ADMIN_ROLES` (default
+`org:admin`, `admin`). Admin role alone is not ownership. The sync service then
+loads `ORG#{orgId}` and requires `ownerUserId` to equal the `user.updated`
+subject before it updates the local `ORG#{orgId}.ownerEmail`, the bounded set of
+API-key owner-email snapshots for that org, and the Lago customer
+`external_id=orgId` via the same customer upsert used by provisioning.
+
+Non-admin memberships are ignored before sync, invited admins whose Clerk user
+id does not match `ownerUserId` return `not_owner`, and legacy envelopes missing
+`ownerUserId` return `owner_identity_missing` with an operator-visible log so
+support can repair the recorded owner identity before replay. Unverified or
+missing primary emails are skipped with 200 for `user.updated` events to avoid
+infinite Svix retries; the existing `organizationMembership.created`
+provisioning event still fails loud when no verified primary email exists
+because a new customer cannot be created without a confirmed billing/contact
+email.
 
 **First-key creation** (separate, user-driven, after sign-in):
 

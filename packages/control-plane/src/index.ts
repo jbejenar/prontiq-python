@@ -7,6 +7,9 @@ export type {
   EmailSender,
   EmailInput,
   LagoProvisioningClient,
+  OwnerEmailSyncInput,
+  OwnerEmailSyncResult,
+  OwnerEmailSyncStatus,
 } from "./provisioning.js";
 
 export { repairCommercialIdentity } from "./commercial-identity-repair.js";

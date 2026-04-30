@@ -6,11 +6,12 @@ import {
   createProvisioningService,
   getAdminRoles,
   resolvePrimaryEmail,
+  type OwnerEmailSyncResult,
 } from "@prontiq/control-plane";
 import { createLogger } from "@prontiq/shared";
 
 /**
- * Clerk webhook handler for `organizationMembership.created`.
+ * Clerk webhook handler for Clerk org provisioning and owner-email sync.
  *
  * Per ARCHITECTURE.MD §5.7.1 (post-review), this handler provisions
  * the **org envelope** (Prontiq customer record + Lago Free subscription
@@ -21,6 +22,8 @@ import { createLogger } from "@prontiq/shared";
  * Events:
  *   - `organizationMembership.created` with admin role → resolve verified
  *     primary email from Clerk Backend API → provision
+ *   - `user.updated` → resolve verified primary email and sync it to every
+ *     admin org's local envelope + Lago customer
  *   - `organizationMembership.created` with non-admin role → 200 no-op
  *     (an invited user, not the org creator)
  *   - any other event type → 200 no-op (forward-compat)
@@ -53,6 +56,13 @@ interface ClerkOrganizationMembershipPayload {
       identifier?: string;
     };
     role: string;
+  };
+  type: string;
+}
+
+interface ClerkUserUpdatedPayload {
+  data: {
+    id: string;
   };
   type: string;
 }
@@ -131,6 +141,46 @@ function isOrganizationMembershipCreated(
   return true;
 }
 
+function isUserUpdated(parsed: ParsedClerkEvent): parsed is ClerkUserUpdatedPayload {
+  if (parsed.type !== "user.updated") return false;
+  const data = parsed.data as Partial<ClerkUserUpdatedPayload["data"]>;
+  return typeof data?.id === "string" && data.id.length > 0;
+}
+
+interface ClerkMembershipLike {
+  organization: { id: string };
+  role: string;
+}
+
+function isClerkMembershipLike(value: unknown): value is ClerkMembershipLike {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Partial<ClerkMembershipLike>;
+  return (
+    typeof candidate.role === "string" &&
+    typeof candidate.organization?.id === "string" &&
+    candidate.organization.id.length > 0
+  );
+}
+
+async function listUserMemberships(
+  clerkClient: ClerkClient,
+  userId: string,
+): Promise<ClerkMembershipLike[]> {
+  const memberships: ClerkMembershipLike[] = [];
+  const limit = 100;
+  for (let offset = 0; ; offset += limit) {
+    const response = await clerkClient.users.getOrganizationMembershipList({
+      userId,
+      limit,
+      offset,
+    });
+    const page = (response.data as unknown[] | undefined) ?? [];
+    memberships.push(...page.filter(isClerkMembershipLike));
+    if (page.length < limit) break;
+  }
+  return memberships;
+}
+
 function reply(statusCode: number, body: Record<string, unknown>): APIGatewayProxyResultV2 {
   return {
     statusCode,
@@ -144,6 +194,36 @@ export interface HandlerOverrides {
   webhookSecret?: string;
   clerkClient?: ClerkClient;
   adminRoles?: ReadonlySet<string>;
+}
+
+type ClerkClientLookup =
+  | { kind: "found"; client: ClerkClient }
+  | { kind: "error"; response: APIGatewayProxyResultV2 };
+
+function getRequestClerkClient(overrides: HandlerOverrides): ClerkClientLookup {
+  try {
+    return { kind: "found", client: overrides.clerkClient ?? getDefaultClerkClient() };
+  } catch (error) {
+    logger.error("Clerk client initialisation failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return { kind: "error", response: reply(500, { error: "internal_error" }) };
+  }
+}
+
+function statusCodeForSyncFailure(result: OwnerEmailSyncResult): 200 | 500 {
+  switch (result.status) {
+    case "updated":
+    case "already_current":
+    case "not_found":
+    case "not_owner":
+    case "owner_identity_missing":
+      return 200;
+    case "retryable_failure":
+    case "fatal_failure":
+      return 500;
+  }
+  return 500;
 }
 
 export function createClerkHandler(overrides: HandlerOverrides = {}) {
@@ -182,9 +262,110 @@ export function createClerkHandler(overrides: HandlerOverrides = {}) {
       return reply(500, { error: "internal_error" });
     }
 
-    if (parsed.type !== "organizationMembership.created") {
+    if (parsed.type !== "organizationMembership.created" && parsed.type !== "user.updated") {
       logger.info("Skipping non-provisioning event", { type: parsed.type });
       return reply(200, { skipped: true, reason: "unsubscribed_event_type", type: parsed.type });
+    }
+
+    if (parsed.type === "user.updated") {
+      if (!isUserUpdated(parsed)) {
+        logger.warn("user.updated payload missing required fields", {
+          type: parsed.type,
+        });
+        return reply(400, { error: "malformed_payload", type: parsed.type });
+      }
+
+      const clerkClientLookup = getRequestClerkClient(overrides);
+      if (clerkClientLookup.kind === "error") return clerkClientLookup.response;
+      const clerkClient = clerkClientLookup.client;
+
+      const userId = parsed.data.id;
+      const emailLookup = await resolvePrimaryEmail(clerkClient, userId);
+      switch (emailLookup.kind) {
+        case "transient_failure":
+          logger.error("Clerk Backend API lookup failed during owner email sync", {
+            userId,
+            error: emailLookup.error.message,
+          });
+          return reply(500, { error: "retryable_failure", reason: "clerk_api_lookup_failed" });
+        case "not_found":
+          logger.info("Skipping owner email sync because user has no primary email", { userId });
+          return reply(200, { skipped: true, reason: "user_has_no_primary_email" });
+        case "not_verified":
+          logger.info("Skipping owner email sync because primary email is not verified", {
+            userId,
+            verificationStatus: emailLookup.verificationStatus,
+          });
+          return reply(200, { skipped: true, reason: "primary_email_unverified" });
+        case "found":
+          break;
+      }
+
+      let memberships: ClerkMembershipLike[];
+      try {
+        memberships = await listUserMemberships(clerkClient, userId);
+      } catch (error) {
+        logger.error("Clerk membership lookup failed during owner email sync", {
+          error: error instanceof Error ? error.message : String(error),
+          userId,
+        });
+        return reply(500, { error: "retryable_failure", reason: "clerk_membership_lookup_failed" });
+      }
+
+      const adminRoles = overrides.adminRoles ?? getAdminRoles();
+      const adminMemberships = memberships.filter((membership) => adminRoles.has(membership.role));
+      if (adminMemberships.length === 0) {
+        logger.info("Skipping owner email sync because user has no admin org memberships", {
+          userId,
+        });
+        return reply(200, { skipped: true, reason: "no_admin_memberships" });
+      }
+
+      const service = overrides.service ?? getProvisioningService();
+      const results: OwnerEmailSyncResult[] = [];
+      for (const membership of adminMemberships) {
+        const result = await service.syncOwnerEmail({
+          orgId: membership.organization.id,
+          ownerEmail: emailLookup.email,
+          actorId: userId,
+          source: "clerk-user-updated",
+        });
+        results.push(result);
+        const failureStatus = statusCodeForSyncFailure(result);
+        if (failureStatus === 500) {
+          logger.error("Owner email sync failed", {
+            orgId: membership.organization.id,
+            status: result.status,
+            userId,
+          });
+          return reply(500, { error: result.status, reason: "owner_email_sync_failed" });
+        }
+      }
+
+      const updated = results.filter((result) => result.status === "updated").length;
+      const alreadyCurrent = results.filter((result) => result.status === "already_current").length;
+      const notFound = results.filter((result) => result.status === "not_found").length;
+      const notOwner = results.filter((result) => result.status === "not_owner").length;
+      const ownerIdentityMissing = results.filter(
+        (result) => result.status === "owner_identity_missing",
+      ).length;
+      logger.info("Owner email sync completed", {
+        alreadyCurrent,
+        notFound,
+        notOwner,
+        ownerIdentityMissing,
+        updated,
+        userId,
+      });
+      return reply(200, {
+        ok: true,
+        status: "owner_email_synced",
+        updated,
+        alreadyCurrent,
+        notFound,
+        notOwner,
+        ownerIdentityMissing,
+      });
     }
 
     if (!isOrganizationMembershipCreated(parsed)) {
@@ -209,15 +390,9 @@ export function createClerkHandler(overrides: HandlerOverrides = {}) {
     // public_user_data.identifier could be a phone, username, or
     // OAuth handle depending on the Clerk app's auth config — we
     // need a real email for Lago customer bootstrap + the welcome email path.
-    let clerkClient: ClerkClient;
-    try {
-      clerkClient = overrides.clerkClient ?? getDefaultClerkClient();
-    } catch (error) {
-      logger.error("Clerk client initialisation failed", {
-        error: error instanceof Error ? error.message : String(error),
-      });
-      return reply(500, { error: "internal_error" });
-    }
+    const clerkClientLookup = getRequestClerkClient(overrides);
+    if (clerkClientLookup.kind === "error") return clerkClientLookup.response;
+    const clerkClient = clerkClientLookup.client;
 
     const emailLookup = await resolvePrimaryEmail(clerkClient, data.public_user_data.user_id);
     switch (emailLookup.kind) {

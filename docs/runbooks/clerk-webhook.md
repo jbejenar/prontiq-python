@@ -2,7 +2,7 @@
 
 ## Scope
 
-Operating, debugging, and recovering the `POST /webhooks/clerk` endpoint that consumes Clerk's `organizationMembership.created` events and provisions the ORG envelope for the live Lago-centered provisioning path (Clerk-org-owned org envelope + Lago Free subscription bootstrap + audit row + best-effort welcome email). Per ARCHITECTURE.MD §5.7.1, this handler does NOT mint API keys — that's the user-driven `POST /v1/account/keys/create` (P1C.03).
+Operating, debugging, and recovering the `POST /webhooks/clerk` endpoint that consumes Clerk's `organizationMembership.created` events and provisions the ORG envelope for the live Lago-centered provisioning path (Clerk-org-owned org envelope + Lago Free subscription bootstrap + audit row + best-effort welcome email). It also consumes `user.updated` to sync the recorded owner's verified primary email to the local org envelope and Lago customer. Per ARCHITECTURE.MD §5.7.1, this handler does NOT mint API keys — that's the user-driven `POST /v1/account/keys/create` (P1C.03).
 
 ## Endpoint
 
@@ -35,7 +35,7 @@ The Clerk dashboard's webhook configuration points at the dev URL today. The pro
 
    **Do NOT use `sst secret set`** for these — the codebase's convention is GitHub Environment vars/secrets exported via the deploy workflow. `sst.Secret` (SSM-backed) was tried in an earlier iteration of this PR and conflicted with the env-var pattern.
 
-4. **Clerk dashboard configured**: `organizationMembership.created` event subscribed; signing secret matches the GitHub Environment value.
+4. **Clerk dashboard configured**: `organizationMembership.created` and `user.updated` events subscribed; signing secret matches the GitHub Environment value.
 5. **Optional — `CLERK_ADMIN_ROLES` GitHub Environment variable** (NOT a secret): Defaults to `"org:admin,admin"`. Override only if your Clerk app uses custom organization roles for the creator. Comma-separated list, e.g. `owner,principal`. Same end-to-end configuration path as the secrets above (Settings → Environments → `dev` / `prod` → Variables).
 
    **Applies to BOTH Lambdas** — the webhook gates on the Svix-signed `data.role` field, and the account-setup endpoint's `clerkAdminOnly()` middleware gates on the JWT `org_role` claim. Both call the same `getAdminRoles()` helper from `@prontiq/control-plane`, which reads this env var. `sst.config.ts` wires the same value into both Lambdas via the shared `controlPlaneEnv()` helper, so a divergence between the two ingress paths is impossible by construction.
@@ -62,9 +62,19 @@ The Clerk dashboard's webhook configuration points at the dev URL today. The pro
 1. Clerk fires `organizationMembership.created` with `data.role === "admin"` (org creator).
 2. Handler verifies Svix signature, extracts `orgId / userId / ownerEmail`, calls `provisionOrg`.
 3. Service upserts the Lago customer/subscription, confirms it is the active Free subscription, and validates the Lago-derived Free projection before creating any local envelope.
-4. Service writes the `ORG#{orgId}` envelope atomically with the audit row. The envelope already includes `products`, quota, enforcement mode, rate limit, max keys, Lago subscription linkage, and billing-period fields.
+4. Service writes the `ORG#{orgId}` envelope atomically with the audit row. The envelope already includes `ownerUserId`, `products`, quota, enforcement mode, rate limit, max keys, Lago subscription linkage, and billing-period fields.
 5. Strong-read confirmation, optional best-effort suppression-aware SES welcome email, response: `200 { ok: true, status: "created", emailSent: true|false }`.
 6. CloudWatch log: `ORG envelope created`. Lago shows customer external ID `org_...` and subscription external ID `lago_sub_org_...`. DDB `prontiq-keys` has `ORG#{orgId}` with `orgId`, `lagoSubscriptionExternalId`, and billing-period fields. DDB `prontiq-audit` has the `ORG_PROVISIONED` row.
+
+## Healthy owner-email sync
+
+1. Clerk fires `user.updated` after an account's primary email changes.
+2. Handler verifies Svix signature and resolves the user's verified primary email via the Clerk Backend API.
+3. Handler lists that user's organization memberships and keeps only roles in `CLERK_ADMIN_ROLES`.
+4. For each candidate admin org, `syncOwnerEmail` loads `ORG#{orgId}` and requires `ownerUserId` to match the `user.updated` subject before it upserts the Lago customer `external_id = orgId` with the new email and updates `ORG#{orgId}.ownerEmail` plus the org's API-key owner-email snapshots.
+5. Response: `200 { ok: true, status: "owner_email_synced", updated, alreadyCurrent, notFound, notOwner, ownerIdentityMissing }`.
+
+Non-admin memberships are skipped before sync. Invited admins are also skipped unless they are the recorded `ownerUserId`. This prevents an invited admin's personal email change from overwriting the billing/contact email for the org.
 
 ## Healthy redelivery (Svix retry)
 
@@ -80,6 +90,18 @@ Log: `ORG envelope exists`.
 ## Non-admin membership (invite flow)
 
 When a user accepts an invite (not the org creator), Clerk fires `organizationMembership.created` with `data.role !== "admin"`. The handler returns `200 { skipped: true, reason: "non_admin_membership", role: "..." }` and does no work. This is correct — the invitee is a user under an existing org, not a new org to provision.
+
+## Manual owner-email repair
+
+If a past `user.updated` event was not subscribed or failed before this handler was deployed, repair the affected customer through the Lago customer sync path:
+
+1. Confirm the target Clerk user has a verified primary email.
+2. Confirm the user is the recorded owner of the Clerk org by checking `prontiq-keys` item `ORG#{orgId}.ownerUserId`.
+3. Re-run the commercial identity repair command from `docs/runbooks/lago-customer-sync.md` for the stage. The repair path re-upserts Lago customers from local org envelopes and can correct Lago provider state.
+4. If the local `ORG#{orgId}.ownerEmail` itself is stale, update the email in Clerk and resend the `user.updated` webhook event from Clerk's webhook attempt log. If no attempt exists, use a one-off support script or DynamoDB console update to set `ORG#{orgId}.ownerEmail` and the org key-row `ownerEmail` fields, then re-run the Lago repair command.
+5. If the webhook response/logs report `ownerIdentityMissing`, repair the legacy envelope by setting `ORG#{orgId}.ownerUserId` to the intended Clerk owner user id before replaying `user.updated`; do not infer owner from admin role alone.
+
+Do not edit Stripe directly; Stripe is the payment rail behind Lago. Lago customer `external_id` remains `orgId`.
 
 ## Failure modes
 

@@ -29,6 +29,30 @@ from P1B.14-P1B.21 and must not be used for new provisioning or repair logic.
 5. API key rows carry `orgId` and `lagoSubscriptionExternalId` for hot-path
    billing-event emission.
 
+## Owner Email Sync
+
+Clerk remains the human identity system. When the recorded owner's verified
+primary email changes, the Clerk webhook consumes `user.updated`, resolves the
+verified primary email from Clerk Backend API, and calls
+`createProvisioningService().syncOwnerEmail(...)` for every candidate admin org
+membership. Admin role is only a candidate filter; the service updates billing
+contact state only when `ORG#{orgId}.ownerUserId` matches the `user.updated`
+subject.
+
+The sync:
+
+- upserts Lago customer `external_id = orgId` with the new email and the same
+  Stripe-provider sync flags used during provisioning
+- updates local `ORG#{orgId}.ownerEmail`
+- updates the org's bounded set of API-key `ownerEmail` snapshots
+- ignores non-admin memberships and invited admins who are not the recorded
+  owner so invited users cannot overwrite the billing contact
+- skips legacy envelopes that lack `ownerUserId` with an operator-visible
+  `owner_identity_missing` status until support records the intended owner
+
+If this event was missed before deployment, follow the manual owner-email repair
+section in `docs/runbooks/clerk-webhook.md`.
+
 ## Repair Flow
 
 Use the repair command for org envelopes or API key rows that predate P1B.22.
