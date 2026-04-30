@@ -25,6 +25,9 @@ export interface BillingSubscription {
   status: string;
   planCode: string;
   planName: string | null;
+  previousPlanCode: string | null;
+  nextPlanCode: string | null;
+  downgradePlanDate: string | null;
   currentBillingPeriodStartedAt: string | null;
   currentBillingPeriodEndingAt: string | null;
 }
@@ -315,6 +318,12 @@ function parseSubscription(payload: unknown): BillingSubscription | null {
     status: getString(subscription, [["status"]]) ?? "unknown",
     planCode,
     planName: getString(subscription, [["plan", "name"]]),
+    previousPlanCode: getString(subscription, [
+      ["previous_plan", "code"],
+      ["previous_plan_code"],
+    ]),
+    nextPlanCode: getString(subscription, [["next_plan", "code"], ["next_plan_code"]]),
+    downgradePlanDate: getString(subscription, [["downgrade_plan_date"]]),
     currentBillingPeriodStartedAt: getString(subscription, [
       ["current_billing_period_started_at"],
       ["current_billing_period_starts_at"],
@@ -412,6 +421,26 @@ export class LagoBillingClient {
   async getSubscription(externalSubscriptionId: string): Promise<BillingSubscription | null> {
     const payload = await this.request(`/subscriptions/${encodeURIComponent(externalSubscriptionId)}`);
     return payload ? parseSubscription(payload) : null;
+  }
+
+  async changeSubscriptionPlan(input: {
+    externalCustomerId: string;
+    externalSubscriptionId: string;
+    targetPlanCode: string;
+  }): Promise<BillingSubscription> {
+    const payload = await this.request("/subscriptions", {
+      method: "POST",
+      body: JSON.stringify({
+        subscription: {
+          external_customer_id: input.externalCustomerId,
+          external_id: input.externalSubscriptionId,
+          plan_code: input.targetPlanCode,
+        },
+      }),
+    });
+    const subscription = parseSubscription(payload);
+    if (!subscription) throw new Error("Lago subscription change response was missing subscription.");
+    return subscription;
   }
 
   async getCurrentUsage(input: {

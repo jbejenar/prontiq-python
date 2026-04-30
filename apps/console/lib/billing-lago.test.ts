@@ -254,3 +254,44 @@ test("Lago billing client preserves validation error details for safe route mapp
     status: 422,
   } satisfies Partial<LagoBillingError>);
 });
+
+test("Lago billing client changes plans through the replay-safe subscription creation endpoint", async () => {
+  const fetchMock = vi.fn().mockResolvedValue(
+    new Response(
+      JSON.stringify({
+        subscription: {
+          external_customer_id: "org_123",
+          external_id: "lago_sub_org_123",
+          plan: { code: "starter", name: "Starter" },
+          status: "active",
+        },
+      }),
+      { status: 200 },
+    ),
+  ) as unknown as typeof fetch;
+
+  await expect(
+    makeClient(fetchMock).changeSubscriptionPlan({
+      externalCustomerId: "org_123",
+      externalSubscriptionId: "lago_sub_org_123",
+      targetPlanCode: "starter",
+    }),
+  ).resolves.toMatchObject({
+    externalCustomerId: "org_123",
+    externalId: "lago_sub_org_123",
+    planCode: "starter",
+  });
+  expect(fetchMock).toHaveBeenCalledWith(
+    "https://billing-dev.prontiq.dev/api/v1/subscriptions",
+    expect.objectContaining({
+      body: JSON.stringify({
+        subscription: {
+          external_customer_id: "org_123",
+          external_id: "lago_sub_org_123",
+          plan_code: "starter",
+        },
+      }),
+      method: "POST",
+    }),
+  );
+});

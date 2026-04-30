@@ -4,6 +4,24 @@
 > the time they were written, not the current source of truth. Use
 > `ROADMAP.md`, `NEXT-WORK.md`, and `README.md` for current execution status.
 
+## Session 46 — 2026-04-30
+
+**Focus:** P1C.05a replay-safe Lago plan changes.
+
+- Added the implementation plan for console plan changes through the Vercel BFF.
+- The target contract is Lago as billing truth, `prontiq-billing-actions*` as
+  action/lock replay evidence, and Lago webhook reconciliation as the only local
+  bouncer projection writer after a plan change.
+- Also tracked the missing `PRONTIQ_LANDING_DEMO_API_KEY` as a landing Vercel
+  environment audit item.
+
+### Next session should start with
+
+1. Run console typecheck/tests for P1C.05a.
+2. Deploy Preview with billing-action Vercel env configured.
+3. Smoke plan change on an allowlisted dev org and verify Lago plus local
+   enforcement reconciliation.
+
 ## Session 45 — 2026-04-30
 
 **Focus:** P1C.04 usage charts implementation.

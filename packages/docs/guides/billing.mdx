@@ -80,6 +80,10 @@ reads the active `org_id`, and calls Lago with server-held credentials.
 API-key users should continue to integrate through the public data API and use
 the console UI for account billing actions.
 
+Plan changes from the console are Lago-backed. Prontiq records replay-safe
+action evidence, asks Lago to change the subscription, and waits for Lago
+webhook reconciliation to project the new plan into request-time enforcement.
+
 ## Related guides
 
 - [Credits](/guides/credits)

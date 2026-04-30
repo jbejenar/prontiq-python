@@ -12,6 +12,8 @@
   },
   "dependencies": {
     "@clerk/nextjs": "^6.32.6",
+    "@aws-sdk/client-dynamodb": "^3.1037.0",
+    "@aws-sdk/lib-dynamodb": "^3.1037.0",
     "@prontiq/sdk": "workspace:*",
     "@prontiq/tokens": "workspace:*",
     "@radix-ui/react-avatar": "^1.1.10",

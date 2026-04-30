@@ -23,6 +23,21 @@ Active identity rules:
 5. Replay the same unique key and confirm the route returns duplicate without
    mutating state again.
 
+## After Console Plan Changes
+
+`POST /api/billing/plan-change` records replay evidence and asks Lago to switch
+the subscription. The route does not update request-time enforcement directly.
+After Lago emits the subscription webhook, this reconciler must project the
+active or pending Lago state onto the org envelope and API-key rows.
+
+1. Confirm Lago subscription `external_id = lago_sub_${orgId}` shows the target
+   plan or a pending `next_plan`.
+2. Confirm the Lago webhook ledger has a successful row for the delivery.
+3. Confirm the org envelope and active API-key rows contain the expected
+   `lagoPlanCode`, pending transition fields, quotas, and enforcement mode.
+4. If the webhook lags or was missed, replay the Lago webhook or run
+   `pnpm --filter @prontiq/control-plane lago:reconcile` for the affected org.
+
 ## Troubleshooting
 
 - Signature failure: verify the Lago webhook secret in the target GitHub

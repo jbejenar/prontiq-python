@@ -18,7 +18,13 @@
   `prontiq_test=true` and `prontiq_internal=true` exclude a plan;
   `prontiq_environment=dev|prod|all` scopes a plan to an environment.
 - P1C.05 payment setup and invoice payment links do not mutate subscriptions.
-  Replay-safe plan changes belong to P1C.05a.
+- P1C.05a plan changes use the Vercel billing BFF, Clerk step-up, per-click
+  `Idempotency-Key`, and `prontiq-billing-actions*` action/lock rows. Do not
+  call Lago from the browser, do not reintroduce AWS `/v1/account/billing*`,
+  and do not optimistic-write local enforcement state from Vercel. Terminal
+  billing-action rows are immutable; `provider_in_flight` and
+  `outcome_unknown` rows require operator Lago inspection and must not be
+  auto-replayed into another provider mutation.
 - P1C.03 key-management UI starts from `GET /v1/account/status` to choose
   missing-org recovery, first-key CTA, or key-list state. Do not infer that by
   probing mutation endpoints.

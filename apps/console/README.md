@@ -43,6 +43,14 @@ Lago plan cards, recent invoices, payment-method setup, and invoice payment
 links. It does not call Lago or Stripe from browser code and does not use
 `/v1/account/billing*`.
 
+P1C.05a adds replay-safe plan changes through the same BFF. The plan-change
+route requires Clerk step-up, an `Idempotency-Key`, and a dedicated DynamoDB
+billing-action ledger credential. It calls Lago for the subscription change and
+waits for Lago webhook reconciliation to update local API enforcement. Terminal
+ledger rows are immutable; the route marks actions `provider_in_flight` before
+calling Lago, and ambiguous/unfinalized Lago outcomes replay without another
+Lago mutation until an operator inspects Lago.
+
 Billing route handlers require these server env vars:
 
 - `LAGO_API_URL`
@@ -51,6 +59,15 @@ Billing route handlers require these server env vars:
 Optional billing env:
 
 - `PRONTIQ_BILLING_CATALOG_ENV=dev|prod|all`
+- `PRONTIQ_BILLING_PLAN_CHANGES_ENABLED=true|false`
+- `PRONTIQ_BILLING_PLAN_CHANGE_ALLOWED_ORG_IDS=org_...,org_...`
+
+Plan-change billing action env:
+
+- `BILLING_ACTIONS_TABLE_NAME`
+- `BILLING_ACTIONS_AWS_REGION=ap-southeast-2`
+- `BILLING_ACTIONS_AWS_ACCESS_KEY_ID`
+- `BILLING_ACTIONS_AWS_SECRET_ACCESS_KEY`
 
 Plan cards are rendered only from Lago plans with
 `prontiq_console_visible=true`. Plans with `prontiq_test=true` or

@@ -5,6 +5,7 @@ import userEvent from "@testing-library/user-event";
 import { vi } from "vitest";
 
 const apiMocks = vi.hoisted(() => ({
+  changePlan: vi.fn(),
   createCheckout: vi.fn(),
   createInvoicePaymentUrl: vi.fn(),
   getSummary: vi.fn(),
@@ -20,6 +21,15 @@ vi.mock("@clerk/nextjs", () => ({
     isLoaded: clerkState.isLoaded,
     orgId: clerkState.orgId,
   }),
+  useReverification:
+    <TArgs extends unknown[], TResult>(fetcher: (...args: TArgs) => Promise<TResult>) =>
+    async (...args: TArgs) => {
+      const result = await fetcher(...args);
+      if (typeof result === "object" && result !== null && "clerk_error" in result) {
+        return fetcher(...args);
+      }
+      return result;
+    },
 }));
 
 vi.mock("../../../lib/billing-api.js", () => {
@@ -143,6 +153,14 @@ beforeEach(() => {
     checkoutUrl: "https://checkout.example",
     intendedPlanCode: "payg_aud",
   });
+  apiMocks.changePlan.mockResolvedValue({
+    currentPlanCode: "payg_aud",
+    downgradePlanDate: null,
+    nextPlanCode: null,
+    reconciliationState: "pending_lago_webhook",
+    status: "accepted",
+    targetPlanCode: "payg_aud",
+  });
   apiMocks.createInvoicePaymentUrl.mockResolvedValue({ paymentUrl: "https://pay.example" });
   Object.defineProperty(window, "location", {
     configurable: true,
@@ -176,12 +194,44 @@ test("admin checkout uses the selected Lago plan code for context", async () => 
   renderWithQueryClient(<BillingPanel />);
 
   await screen.findByText("Pay As You Go AUD");
-  await userEvent.click(screen.getByRole("button", { name: /set up payment method/i }));
+  await userEvent.click(screen.getAllByRole("button", { name: /set up payment method/i })[1]!);
 
   await waitFor(() =>
     expect(apiMocks.createCheckout).toHaveBeenCalledWith({ intendedPlanCode: "payg_aud" }),
   );
   expect(window.location.assign).toHaveBeenCalledWith("https://checkout.example");
+});
+
+test("admin plan change sends the selected Lago plan code", async () => {
+  renderWithQueryClient(<BillingPanel />);
+
+  await userEvent.click(await screen.findByRole("button", { name: /change to pay as you go aud/i }));
+
+  await waitFor(() =>
+    expect(apiMocks.changePlan).toHaveBeenCalledWith({
+      idempotencyKey: expect.any(String),
+      targetPlanCode: "payg_aud",
+    }),
+  );
+});
+
+test("pending Lago transitions disable further billing actions", async () => {
+  apiMocks.getSummary.mockResolvedValueOnce({
+    ...makeSummary(),
+    subscription: {
+      ...makeSummary().subscription,
+      nextPlanCode: "payg_aud",
+      downgradePlanDate: "2026-05-01",
+    },
+  });
+
+  renderWithQueryClient(<BillingPanel />);
+
+  expect(await screen.findByText(/Pending plan: payg_aud/i)).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /pending plan/i })).toBeDisabled();
+  for (const button of screen.getAllByRole("button", { name: /set up payment method/i })) {
+    expect(button).toBeDisabled();
+  }
 });
 
 test("members can view plans but cannot create payment links", async () => {

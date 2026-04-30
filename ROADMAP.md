@@ -1114,7 +1114,7 @@ Acceptance criteria:
 ```yaml
 id: P1B.23
 title: Pre-Go-Live Lago Test Fixture + Pricing Cleanup
-status: pending
+status: in_progress
 priority: p1-high
 epic: P1B
 persona: [ops]
@@ -3656,7 +3656,7 @@ legacy-link labeling where needed
 ```yaml
 id: P1C.05a
 title: Replay-safe Lago Plan Changes
-status: pending
+status: in_progress
 priority: p1-high
 epic: P1C
 persona: [api-consumer]
@@ -3687,7 +3687,8 @@ click cannot be replayed into multiple conflicting plan changes.
 - [ ] Choose and document the idempotency store for Vercel-initiated billing
       mutations
   - `Verify:` duplicate request with the same action key returns the same result
-  - `Evidence:` decision record and tests
+  - `Evidence:` `docs/decisions/040-vercel-billing-action-ledger.md`,
+    `apps/console/lib/billing-actions.ts`, and billing action tests
 - [ ] Implement admin-only plan change against Lago
   - `Verify:` selected plan updates the active Lago subscription exactly once
   - `Evidence:` integration test or controlled dev smoke against a test org

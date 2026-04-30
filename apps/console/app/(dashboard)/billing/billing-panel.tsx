@@ -1,7 +1,7 @@
 "use client";
 
-import { useAuth } from "@clerk/nextjs";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useAuth, useReverification } from "@clerk/nextjs";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CreditCard, ExternalLink, Loader2, ReceiptText, RefreshCcw } from "lucide-react";
 import { toast } from "sonner";
 
@@ -90,19 +90,38 @@ function chargeCopy(charge: BillingPlanCharge, currency: string | null) {
 function PlanCard({
   canManageBilling,
   currentPlanCode,
+  hasPendingTransition,
   isPending,
+  onChangePlan,
   onCheckout,
   plan,
+  pendingPlanCode,
 }: {
   canManageBilling: boolean;
   currentPlanCode: string | null;
+  hasPendingTransition: boolean;
   isPending: boolean;
+  onChangePlan: (plan: BillingPlan) => void;
   onCheckout: (plan: BillingPlan) => void;
+  pendingPlanCode: string | null;
   plan: BillingPlan;
 }) {
   const isCurrent = currentPlanCode === plan.code;
+  const isPendingPlan = pendingPlanCode === plan.code;
+  const isActionDisabled = isPending || hasPendingTransition;
+  let primaryActionLabel = "Admin required";
+  if (isCurrent) {
+    primaryActionLabel = "Current plan";
+  } else if (isPendingPlan) {
+    primaryActionLabel = "Pending plan";
+  } else if (hasPendingTransition) {
+    primaryActionLabel = "Plan change pending";
+  } else if (canManageBilling) {
+    primaryActionLabel = `Change to ${plan.name}`;
+  }
+
   return (
-    <Card className={isCurrent ? "border-primary/60 bg-primary/5" : undefined}>
+    <Card className={isCurrent ? "border-primary/60 bg-primary/5" : isPendingPlan ? "border-amber-500/60" : undefined}>
       <CardHeader>
         <div className="flex items-start justify-between gap-3">
           <div>
@@ -110,6 +129,7 @@ function PlanCard({
             <CardTitle>{plan.name}</CardTitle>
           </div>
           {isCurrent ? <Badge>Current</Badge> : null}
+          {!isCurrent && isPendingPlan ? <Badge variant="outline">Pending</Badge> : null}
         </div>
         {plan.description ? <CardDescription>{plan.description}</CardDescription> : null}
       </CardHeader>
@@ -134,23 +154,30 @@ function PlanCard({
         </div>
         <Button
           className="w-full"
-          disabled={isCurrent || !canManageBilling || isPending}
+          disabled={isCurrent || isPendingPlan || !canManageBilling || isActionDisabled}
           type="button"
           variant={isCurrent ? "outline" : "default"}
-          onClick={() => onCheckout(plan)}
+          onClick={() => onChangePlan(plan)}
         >
           {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
-          {isCurrent
-            ? "Current plan"
-            : canManageBilling
-              ? "Set up payment method"
-              : "Admin required"}
+          {primaryActionLabel}
         </Button>
         {!isCurrent ? (
           <p className="text-xs leading-5 text-muted-foreground">
-            Payment setup opens Lago/Stripe checkout. The subscription switch is intentionally
-            deferred until replay-safe plan changes ship.
+            Plan changes are sent to Lago. API enforcement updates after Lago reconciliation.
           </p>
+        ) : null}
+        {canManageBilling ? (
+          <Button
+            className="w-full"
+            disabled={isActionDisabled}
+            type="button"
+            variant="outline"
+            onClick={() => onCheckout(plan)}
+          >
+            <ExternalLink className="h-4 w-4" />
+            Set up payment method
+          </Button>
         ) : null}
       </CardContent>
     </Card>
@@ -231,6 +258,16 @@ function InvoiceTable({
 }
 
 function BillingLoaded({ summary, onRetry }: { summary: BillingSummary; onRetry: () => void }) {
+  const queryClient = useQueryClient();
+  const changePlanWithReverification = useReverification((input: {
+    idempotencyKey: string;
+    plan: BillingPlan;
+  }) =>
+    billingApi.changePlan({
+      idempotencyKey: input.idempotencyKey,
+      targetPlanCode: input.plan.code,
+    }),
+  );
   const checkout = useMutation({
     mutationFn: (plan: BillingPlan) => billingApi.createCheckout({ intendedPlanCode: plan.code }),
     onSuccess: (result) => {
@@ -245,8 +282,23 @@ function BillingLoaded({ summary, onRetry }: { summary: BillingSummary; onRetry:
     },
     onError: (error) => toast.error(getErrorMessage(error)),
   });
+  const planChange = useMutation({
+    mutationFn: (plan: BillingPlan) =>
+      changePlanWithReverification({
+        idempotencyKey: crypto.randomUUID(),
+        plan,
+      }),
+    onSuccess: async (result) => {
+      if (typeof result === "object" && result !== null && "clerk_error" in result) return;
+      toast.success("Plan change accepted. Lago reconciliation will update API enforcement.");
+      await queryClient.invalidateQueries({ queryKey: accountBillingQueryKey(summary.orgId) });
+    },
+    onError: (error) => toast.error(getErrorMessage(error)),
+  });
 
   const currentPlanCode = summary.subscription?.planCode ?? null;
+  const pendingPlanCode = summary.subscription?.nextPlanCode ?? null;
+  const hasPendingTransition = pendingPlanCode !== null;
   return (
     <>
       <section className="grid gap-4 lg:grid-cols-3">
@@ -257,6 +309,14 @@ function BillingLoaded({ summary, onRetry }: { summary: BillingSummary; onRetry:
           </CardHeader>
           <CardContent className="space-y-2 text-sm text-muted-foreground">
             <p>Status: {summary.subscription?.status ?? "No Lago subscription returned"}</p>
+            {pendingPlanCode ? (
+              <p>
+                Pending plan: {pendingPlanCode}
+                {summary.subscription?.downgradePlanDate
+                  ? ` on ${formatDate(summary.subscription.downgradePlanDate)}`
+                  : ""}
+              </p>
+            ) : null}
             <p>
               Billing period: {formatDate(summary.subscription?.currentBillingPeriodStartedAt ?? null)}
               {" - "}
@@ -315,9 +375,12 @@ function BillingLoaded({ summary, onRetry }: { summary: BillingSummary; onRetry:
               <PlanCard
                 canManageBilling={summary.canManageBilling}
                 currentPlanCode={currentPlanCode}
-                isPending={checkout.isPending}
+                hasPendingTransition={hasPendingTransition}
+                isPending={checkout.isPending || planChange.isPending}
                 key={plan.code}
+                pendingPlanCode={pendingPlanCode}
                 plan={plan}
+                onChangePlan={(selectedPlan) => planChange.mutate(selectedPlan)}
                 onCheckout={(selectedPlan) => checkout.mutate(selectedPlan)}
               />
             ))}

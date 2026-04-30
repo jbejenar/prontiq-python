@@ -40,3 +40,8 @@ Landing envs:
 - `PRONTIQ_LANDING_UNLOCK_TOKEN` optional root-page-only soft gate token. When
   set, `/` stays black until visited once as `/?unlock=<token>`, which sets a
   7-day cookie. API routes remain unchanged.
+
+`PRONTIQ_LANDING_DEMO_API_KEY` must be configured in the Vercel project that
+serves `apps/landing` for both Preview and Production. It is a labelled
+internal/demo Prontiq data API key, not a Lago key, and must never be exposed as
+`NEXT_PUBLIC_*`.

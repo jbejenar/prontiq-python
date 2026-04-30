@@ -47,6 +47,12 @@ importers:
 
   apps/console:
     dependencies:
+      '@aws-sdk/client-dynamodb':
+        specifier: ^3.1037.0
+        version: 3.1037.0
+      '@aws-sdk/lib-dynamodb':
+        specifier: ^3.1037.0
+        version: 3.1037.0(@aws-sdk/client-dynamodb@3.1037.0)
       '@clerk/nextjs':
         specifier: ^6.32.6
         version: 6.39.2(next@15.5.15(@opentelemetry/api@1.9.1)(react-dom@19.2.5(react@19.2.5))(react@19.2.5))(react-dom@19.2.5(react@19.2.5))(react@19.2.5)

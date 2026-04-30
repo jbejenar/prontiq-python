@@ -1,14 +1,13 @@
 # NEXT-WORK.md — Active Sprint
 
-> Last updated: 2026-04-30 for P1C.05 billing page implementation.
+> Last updated: 2026-04-30 for P1C.05a replay-safe Lago plan changes.
 
 ## Current Phase
 
-P1C.05: Billing Page. Active branch implements the console `/billing` surface
-with a Vercel server-side BFF that reads Lago plans, subscription state, usage
-estimates, invoices, and payment links using server-held Lago credentials.
-Lago remains plan/billing truth; Prontiq remains usage enforcement and chart
-truth.
+P1C.05a: Replay-safe Lago Plan Changes. Active branch adds
+`POST /api/billing/plan-change` to the console Vercel BFF with Clerk step-up,
+per-click idempotency, the `prontiq-billing-actions*` action/lock ledger, and
+Lago webhook reconciliation as the enforcement convergence path.
 
 ## Active Commercial Contract
 
@@ -57,6 +56,7 @@ Console Vercel BFF:
 ```text
 GET  /api/billing/summary
 POST /api/billing/checkout
+POST /api/billing/plan-change
 POST /api/billing/invoices/payment-url
 ```
 
@@ -77,12 +77,12 @@ POST /v1/account/billing/portal-session
   routes mutation flows to dedicated pages.
 - **P1C.04** — complete. Usage charts use `GET /v1/account/usage`, current
   counters, `prontiq-usage-daily`, Recharts trend views, and CSV export.
-- **P1C.05** (active) — billing page. Console BFF reads Lago directly from
+- **P1C.05** — complete. Billing page. Console BFF reads Lago directly from
   Vercel server-side code. It does not reintroduce AWS billing routes and does
   not mutate subscriptions.
+- **P1C.05a** (active) — replay-safe subscription plan changes from the console
+  Billing page.
 - P1B.23 (pre-go-live cleanup) is gated on P1C.03 + P1C.05.
-- **P1C.05a** (follow-up) — replay-safe subscription plan changes after an
-  idempotency store and Lago mutation contract are chosen.
 
 ## Operator Commands
 

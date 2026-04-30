@@ -25,6 +25,10 @@ Current BFF routes live inside `apps/console`, not the AWS private API:
 
 - `GET /api/billing/summary`
 - `POST /api/billing/checkout`
+- `POST /api/billing/plan-change`
 - `POST /api/billing/invoices/payment-url`
 
 These routes are intentionally not part of `packages/api/openapi.private.json`.
+`POST /api/billing/plan-change` uses the retained
+`prontiq-billing-actions*` DynamoDB ledger from the Vercel BFF; it does not
+revive the retired AWS account billing API.
