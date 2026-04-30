@@ -43,10 +43,10 @@ function csvEscape(value: string | number) {
 }
 
 function downloadCsv(usage: AccountUsage) {
-  const rows = [["date", "product", "credits"]];
+  const rows = [["bucket", "product", "credits", "kind"]];
   for (const product of usage.products) {
     for (const point of product.series) {
-      rows.push([point.bucket, product.product, String(point.credits)]);
+      rows.push([point.bucket, product.product, String(point.credits), point.kind]);
     }
   }
   const csv = rows.map((row) => row.map(csvEscape).join(",")).join("\n");
@@ -88,12 +88,16 @@ function UsageChart({ products }: { products: AccountUsageProduct[] }) {
     const buckets = new Map<string, Record<string, string | number>>();
     for (const product of products) {
       for (const point of product.series) {
-        const row = buckets.get(point.bucket) ?? { bucket: point.bucket, label: point.label };
+        const row = buckets.get(point.bucket) ?? {
+          bucket: point.bucket,
+          label: point.label,
+          sortKey: point.sortKey,
+        };
         row[product.product] = point.credits;
         buckets.set(point.bucket, row);
       }
     }
-    return [...buckets.values()].sort((a, b) => String(a.bucket).localeCompare(String(b.bucket)));
+    return [...buckets.values()].sort((a, b) => String(a.sortKey).localeCompare(String(b.sortKey)));
   }, [products]);
 
   if (data.length === 0) {
@@ -133,6 +137,10 @@ function UsageChart({ products }: { products: AccountUsageProduct[] }) {
       </ResponsiveContainer>
     </div>
   );
+}
+
+function hasBaselineSeries(products: AccountUsageProduct[]) {
+  return products.some((product) => product.series.some((point) => point.kind === "baseline"));
 }
 
 export function UsagePanel() {
@@ -227,6 +235,11 @@ export function UsagePanel() {
               </Button>
             </CardHeader>
             <CardContent>
+              {hasBaselineSeries(usage.data.products) ? (
+                <p className="mb-4 text-xs text-muted-foreground">
+                  Some usage predates detailed chart buckets, so it is shown as a baseline total.
+                </p>
+              ) : null}
               <UsageChart products={usage.data.products} />
             </CardContent>
           </Card>

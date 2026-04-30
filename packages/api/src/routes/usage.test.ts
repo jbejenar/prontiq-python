@@ -27,7 +27,13 @@ const usageResponse: AccountUsageResponse = {
       overageCredits: 0,
       enforcementMode: "hard_cap",
       rateLimitPerSecond: 10,
-      series: [{ bucket: "2026-04-30", label: "30 Apr", credits: 10 }],
+      series: [{
+        bucket: "2026-04-30",
+        label: "30 Apr",
+        credits: 10,
+        kind: "projected",
+        sortKey: "2026-04-30#1000",
+      }],
     },
   ],
 };

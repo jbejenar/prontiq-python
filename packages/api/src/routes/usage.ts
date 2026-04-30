@@ -27,6 +27,8 @@ const usageSeriesPointSchema = z.object({
   bucket: z.string(),
   label: z.string(),
   credits: z.number().int().nonnegative(),
+  kind: z.enum(["baseline", "projected", "total"]),
+  sortKey: z.string(),
 });
 
 const usageProductSchema = z.object({

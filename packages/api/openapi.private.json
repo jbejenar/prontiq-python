@@ -1897,12 +1897,25 @@
                                                                 "credits": {
                                                                     "type": "integer",
                                                                     "minimum": 0
+                                                                },
+                                                                "kind": {
+                                                                    "type": "string",
+                                                                    "enum": [
+                                                                        "baseline",
+                                                                        "projected",
+                                                                        "total"
+                                                                    ]
+                                                                },
+                                                                "sortKey": {
+                                                                    "type": "string"
                                                                 }
                                                             },
                                                             "required": [
                                                                 "bucket",
                                                                 "label",
-                                                                "credits"
+                                                                "credits",
+                                                                "kind",
+                                                                "sortKey"
                                                             ]
                                                         }
                                                     }

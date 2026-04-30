@@ -28,7 +28,13 @@ interface UsageProduct {
   overageCredits: number | null;
   enforcementMode: "hard_cap" | "soft_overage" | "uncapped_tracked";
   rateLimitPerSecond: number | null;
-  series: Array<{ bucket: string; label: string; credits: number }>;
+  series: Array<{
+    bucket: string;
+    label: string;
+    credits: number;
+    kind: "baseline" | "projected" | "total";
+    sortKey: string;
+  }>;
 }
 
 interface UsageResponse {
@@ -144,6 +150,12 @@ function assertUsageShape(value: unknown, granularity: UsageGranularity): assert
       }
       if (typeof point.bucket !== "string" || typeof point.label !== "string") {
         throw new SmokeAssertionError("usage series point missing bucket/label string fields");
+      }
+      if (typeof point.sortKey !== "string") {
+        throw new SmokeAssertionError("usage series point missing sortKey string field");
+      }
+      if (!["baseline", "projected", "total"].includes(String(point.kind))) {
+        throw new SmokeAssertionError(`usage series point kind invalid: ${String(point.kind)}`);
       }
       if (typeof point.credits !== "number" || point.credits < 0) {
         throw new SmokeAssertionError("usage series point credits must be a non-negative number");

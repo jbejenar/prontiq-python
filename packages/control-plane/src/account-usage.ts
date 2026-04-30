@@ -20,11 +20,14 @@ const BATCH_GET_LIMIT = 100;
 const BATCH_GET_MAX_ATTEMPTS = 4;
 
 export type UsageGranularity = "daily" | "weekly" | "monthly";
+export type UsageSeriesPointKind = "baseline" | "projected" | "total";
 
 export interface UsageSeriesPoint {
   bucket: string;
   label: string;
   credits: number;
+  kind: UsageSeriesPointKind;
+  sortKey: string;
 }
 
 export interface AccountUsageProduct {
@@ -134,6 +137,35 @@ function addDays(value: Date, days: number): Date {
   return out;
 }
 
+function currentPeriodBucket(input: {
+  periodEndingAt: string | null;
+  periodStartedAt: string | null;
+}): string {
+  return input.periodStartedAt && input.periodEndingAt
+    ? `${input.periodStartedAt.slice(0, 10)}_${input.periodEndingAt.slice(0, 10)}`
+    : "current_period";
+}
+
+function currentPeriodSortKey(periodStartedAt: string | null): string {
+  return periodStartedAt ? `${periodStartedAt.slice(0, 10)}#0000` : "0000-00-00#0000";
+}
+
+function aggregatePoint(input: {
+  credits: number;
+  kind: "baseline" | "total";
+  periodEndingAt: string | null;
+  periodStartedAt: string | null;
+}): UsageSeriesPoint {
+  const bucket = currentPeriodBucket(input);
+  return {
+    bucket: input.kind === "baseline" ? `baseline#${bucket}` : bucket,
+    label: input.kind === "baseline" ? "Before chart tracking" : "Current period",
+    credits: input.credits,
+    kind: input.kind,
+    sortKey: currentPeriodSortKey(input.periodStartedAt),
+  };
+}
+
 function groupSeries(input: {
   dailyRows: UsageDailyRecord[];
   granularity: UsageGranularity;
@@ -146,33 +178,45 @@ function groupSeries(input: {
     .filter((row) => row.product === input.product)
     .sort((a, b) => a.bucketDate.localeCompare(b.bucketDate));
   const projectedCredits = rows.reduce((sum, row) => sum + row.credits, 0);
-  if (projectedCredits !== input.usedCredits) {
-    if (input.usedCredits === 0) return [];
-    return [{
-      bucket: input.periodStartedAt && input.periodEndingAt
-        ? `${input.periodStartedAt.slice(0, 10)}_${input.periodEndingAt.slice(0, 10)}`
-        : "current_period",
-      label: "Current period",
+  if (input.usedCredits === 0) return [];
+  if (input.granularity === "monthly" || projectedCredits > input.usedCredits) {
+    return [aggregatePoint({
       credits: input.usedCredits,
-    }];
+      kind: "total",
+      periodEndingAt: input.periodEndingAt,
+      periodStartedAt: input.periodStartedAt,
+    })];
   }
+  const baselineCredits = input.usedCredits - projectedCredits;
+  const baseline = baselineCredits > 0
+    ? [aggregatePoint({
+      credits: baselineCredits,
+      kind: "baseline",
+      periodEndingAt: input.periodEndingAt,
+      periodStartedAt: input.periodStartedAt,
+    })]
+    : [];
   if (input.granularity === "daily") {
-    return rows.map((row) => ({ bucket: row.bucketDate, label: dateLabel(row.bucketDate), credits: row.credits }));
-  }
-  if (input.granularity === "monthly") {
-    return [{
-      bucket: input.periodStartedAt && input.periodEndingAt
-        ? `${input.periodStartedAt.slice(0, 10)}_${input.periodEndingAt.slice(0, 10)}`
-        : "current_period",
-      label: "Current period",
-      credits: projectedCredits,
-    }];
+    return [
+      ...baseline,
+      ...rows.map((row) => ({
+        bucket: row.bucketDate,
+        label: dateLabel(row.bucketDate),
+        credits: row.credits,
+        kind: "projected" as const,
+        sortKey: `${row.bucketDate}#1000`,
+      })),
+    ];
   }
 
   const start = input.periodStartedAt ? new Date(input.periodStartedAt) : null;
   if (!start || Number.isNaN(start.getTime())) {
-    const credits = rows.reduce((sum, row) => sum + row.credits, 0);
-    return credits > 0 ? [{ bucket: "current_week", label: "Current period", credits }] : [];
+    return [aggregatePoint({
+      credits: input.usedCredits,
+      kind: "total",
+      periodEndingAt: input.periodEndingAt,
+      periodStartedAt: input.periodStartedAt,
+    })];
   }
   const buckets = new Map<string, number>();
   for (const row of rows) {
@@ -181,9 +225,18 @@ function groupSeries(input: {
     const weekStart = addDays(start, Math.floor(offsetDays / 7) * 7).toISOString().slice(0, 10);
     buckets.set(weekStart, (buckets.get(weekStart) ?? 0) + row.credits);
   }
-  return [...buckets.entries()]
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([bucket, credits]) => ({ bucket, label: `Week of ${dateLabel(bucket)}`, credits }));
+  return [
+    ...baseline,
+    ...[...buckets.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([bucket, credits]) => ({
+        bucket,
+        label: `Week of ${dateLabel(bucket)}`,
+        credits,
+        kind: "projected" as const,
+        sortKey: `${bucket}#1000`,
+      })),
+  ];
 }
 
 async function loadEnvelope(

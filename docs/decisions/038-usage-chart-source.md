@@ -29,11 +29,13 @@ The console usage API uses:
 - Lago-projected org envelope fields for entitlements and billing-period
   labels.
 
-When `prontiq-usage-daily` has no rows for a product, or its projected total
-does not yet match current-period `prontiq-usage` counters, the API returns a
-single aggregate `Current period` chart point from the authoritative counter
-total. This is a presentation fallback only; it does not backfill daily buckets
-or change the async projection contract.
+When `prontiq-usage-daily` has no rows for a product, or its projected total is
+behind current-period `prontiq-usage` counters, the API prepends a `Before chart
+tracking` baseline point for the missing delta and still returns the projected
+daily/weekly buckets that do exist. If projected buckets exceed authoritative
+counters, the API returns one authoritative `Current period` total point instead
+of over-reporting. This is a presentation fallback only; it does not backfill
+daily buckets or change the async projection contract.
 
 Only active `BillingUsageEventV2` events are projected into
 `prontiq-usage-daily`. Legacy `BillingUsageEventV1` messages are still accepted
@@ -52,8 +54,8 @@ dashboard buckets.
 ## Consequences
 
 - Usage cards can show counter totals while charts lag the SQS worker; in that
-  case the chart shows one aggregate current-period point until projected
-  bucket totals match authoritative counters.
+  case the chart shows a baseline delta plus any projected buckets until
+  projected bucket totals match authoritative counters.
 - The chart starts from post-deploy projected events; no historical backfill is
   part of v1.
 - Duplicate SQS deliveries must not double-count chart buckets; the projection

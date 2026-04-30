@@ -76,7 +76,13 @@ function makeUsage() {
         overageCredits: 0,
         enforcementMode: "hard_cap" as const,
         rateLimitPerSecond: 10,
-        series: [{ bucket: "2026-04-30", label: "30 Apr", credits: 42 }],
+        series: [{
+          bucket: "2026-04-30",
+          label: "30 Apr",
+          credits: 42,
+          kind: "projected" as const,
+          sortKey: "2026-04-30#1000",
+        }],
       },
     ],
   };
@@ -161,7 +167,39 @@ test("exports CSV with date product and credits", async () => {
   await userEvent.click(screen.getByRole("button", { name: /export csv/i }));
 
   const csv = String(capturedBlobParts?.[0]);
-  expect(csv).toContain("date,product,credits\n2026-04-30,address,42");
+  expect(csv).toContain("bucket,product,credits,kind\n2026-04-30,address,42,projected");
+});
+
+test("explains baseline usage when projection is behind counters", async () => {
+  apiMocks.getUsage.mockResolvedValueOnce({
+    ...makeUsage(),
+    products: [
+      {
+        ...makeUsage().products[0],
+        series: [
+          {
+            bucket: "baseline#2026-04-25_2026-05-25",
+            label: "Before chart tracking",
+            credits: 30,
+            kind: "baseline" as const,
+            sortKey: "2026-04-25#0000",
+          },
+          {
+            bucket: "2026-04-30",
+            label: "30 Apr",
+            credits: 12,
+            kind: "projected" as const,
+            sortKey: "2026-04-30#1000",
+          },
+        ],
+      },
+    ],
+  });
+
+  renderWithQueryClient(<UsagePanel />);
+
+  expect(await screen.findByText("Address API")).toBeInTheDocument();
+  expect(screen.getByText(/Some usage predates detailed chart buckets/i)).toBeInTheDocument();
 });
 
 test("surfaces private API errors with retry", async () => {

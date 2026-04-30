@@ -295,7 +295,7 @@ test("getUsage excludes stale key-period counters from current-period card total
 });
 
 for (const granularity of ["daily", "weekly", "monthly"] as const) {
-  test(`getUsage falls back to an aggregate ${granularity} chart point when projection is missing`, async () => {
+  test(`getUsage returns a baseline/total ${granularity} chart point when projection is missing`, async () => {
     const ddb = new FakeDdb({
       envelope: makeEnvelope({ quotaPerProduct: 100 }),
       keys: [makeKey()],
@@ -328,16 +328,20 @@ for (const granularity of ["daily", "weekly", "monthly"] as const) {
     if (result.status !== "ok") return;
     assert.deepEqual(result.usage.products[0]?.series, [
       {
-        bucket: "2026-04-25_2026-05-25",
-        label: "Current period",
+        bucket: granularity === "monthly"
+          ? "2026-04-25_2026-05-25"
+          : "baseline#2026-04-25_2026-05-25",
+        label: granularity === "monthly" ? "Current period" : "Before chart tracking",
         credits: 20,
+        kind: granularity === "monthly" ? "total" : "baseline",
+        sortKey: "2026-04-25#0000",
       },
     ]);
   });
 }
 
 for (const granularity of ["daily", "weekly", "monthly"] as const) {
-  test(`getUsage falls back to an authoritative aggregate ${granularity} point during partial projection lag`, async () => {
+  test(`getUsage preserves projected ${granularity} buckets with a baseline during partial projection lag`, async () => {
     const ddb = new FakeDdb({
       envelope: makeEnvelope({ quotaPerProduct: 100 }),
       keys: [makeKey()],
@@ -380,11 +384,155 @@ for (const granularity of ["daily", "weekly", "monthly"] as const) {
 
     assert.equal(result.status, "ok");
     if (result.status !== "ok") return;
+    if (granularity === "daily") {
+      assert.deepEqual(result.usage.products[0]?.series, [
+        {
+          bucket: "baseline#2026-04-25_2026-05-25",
+          label: "Before chart tracking",
+          credits: 13,
+          kind: "baseline",
+          sortKey: "2026-04-25#0000",
+        },
+        {
+          bucket: "2026-04-30",
+          label: "30 Apr",
+          credits: 7,
+          kind: "projected",
+          sortKey: "2026-04-30#1000",
+        },
+      ]);
+    } else if (granularity === "weekly") {
+      assert.deepEqual(result.usage.products[0]?.series, [
+        {
+          bucket: "baseline#2026-04-25_2026-05-25",
+          label: "Before chart tracking",
+          credits: 13,
+          kind: "baseline",
+          sortKey: "2026-04-25#0000",
+        },
+        {
+          bucket: "2026-04-25",
+          label: "Week of 25 Apr",
+          credits: 7,
+          kind: "projected",
+          sortKey: "2026-04-25#1000",
+        },
+      ]);
+    } else {
+      assert.deepEqual(result.usage.products[0]?.series, [
+        {
+          bucket: "2026-04-25_2026-05-25",
+          label: "Current period",
+          credits: 20,
+          kind: "total",
+          sortKey: "2026-04-25#0000",
+        },
+      ]);
+    }
+  });
+}
+
+for (const granularity of ["daily", "weekly"] as const) {
+  test(`getUsage returns projected ${granularity} buckets only when projection matches counters`, async () => {
+    const ddb = new FakeDdb({
+      envelope: makeEnvelope({ quotaPerProduct: 100 }),
+      keys: [makeKey()],
+      usageRows: [
+        {
+          apiKeyHash: "h".repeat(64),
+          scope: "address#period#2026-04-25_2026-05-25",
+          requestCount: 12,
+          lastPushedCumulativeCount: 0,
+          ttl: 1,
+        },
+      ],
+      dailyRows: [
+        {
+          orgId: "org_test",
+          bucketKey: "period#2026-04-25_2026-05-25#day#2026-04-30#product#address",
+          product: "address",
+          periodKey: "2026-04-25_2026-05-25",
+          bucketDate: "2026-04-30",
+          credits: 12,
+          eventCount: 12,
+          updatedAt: "2026-04-30T00:00:00.000Z",
+          ttl: 1,
+        },
+      ],
+    });
+    const service = createAccountUsageService({
+      ddb: ddb as never,
+      keysTableName: "keys",
+      usageTableName: "usage",
+      usageDailyTableName: "daily",
+      counterPeriodSource: () => "lago",
+    });
+
+    const result = await service.getUsage({
+      orgId: "org_test",
+      granularity,
+      now: new Date("2026-04-30T00:00:00.000Z"),
+    });
+
+    assert.equal(result.status, "ok");
+    if (result.status !== "ok") return;
+    assert.equal(result.usage.products[0]?.series.length, 1);
+    assert.equal(result.usage.products[0]?.series[0]?.kind, "projected");
+    assert.equal(result.usage.products[0]?.series[0]?.credits, 12);
+  });
+}
+
+for (const granularity of ["daily", "weekly", "monthly"] as const) {
+  test(`getUsage returns authoritative ${granularity} total when projection exceeds counters`, async () => {
+    const ddb = new FakeDdb({
+      envelope: makeEnvelope({ quotaPerProduct: 100 }),
+      keys: [makeKey()],
+      usageRows: [
+        {
+          apiKeyHash: "h".repeat(64),
+          scope: "address#period#2026-04-25_2026-05-25",
+          requestCount: 9,
+          lastPushedCumulativeCount: 0,
+          ttl: 1,
+        },
+      ],
+      dailyRows: [
+        {
+          orgId: "org_test",
+          bucketKey: "period#2026-04-25_2026-05-25#day#2026-04-30#product#address",
+          product: "address",
+          periodKey: "2026-04-25_2026-05-25",
+          bucketDate: "2026-04-30",
+          credits: 12,
+          eventCount: 12,
+          updatedAt: "2026-04-30T00:00:00.000Z",
+          ttl: 1,
+        },
+      ],
+    });
+    const service = createAccountUsageService({
+      ddb: ddb as never,
+      keysTableName: "keys",
+      usageTableName: "usage",
+      usageDailyTableName: "daily",
+      counterPeriodSource: () => "lago",
+    });
+
+    const result = await service.getUsage({
+      orgId: "org_test",
+      granularity,
+      now: new Date("2026-04-30T00:00:00.000Z"),
+    });
+
+    assert.equal(result.status, "ok");
+    if (result.status !== "ok") return;
     assert.deepEqual(result.usage.products[0]?.series, [
       {
         bucket: "2026-04-25_2026-05-25",
         label: "Current period",
-        credits: 20,
+        credits: 9,
+        kind: "total",
+        sortKey: "2026-04-25#0000",
       },
     ]);
   });

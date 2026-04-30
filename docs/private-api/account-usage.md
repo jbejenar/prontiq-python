@@ -25,8 +25,15 @@ that key is also excluded from the current-period cards and drift is surfaced.
 Chart series primarily come from `prontiq-usage-daily`, which is projected
 asynchronously from billing events. The cards are authoritative for the active
 period. If projected rows are missing or only partially caught up, the API
-returns a single `Current period` aggregate point from the authoritative counter
-total instead of an empty or under-reporting chart.
+prepends a `Before chart tracking` baseline point for the delta between
+authoritative counters and projected buckets. If projected buckets exceed
+authoritative counters, the API returns one authoritative `Current period`
+total point instead of over-reporting.
+
+Each series point includes:
+
+- `kind`: `baseline`, `projected`, or `total`
+- `sortKey`: stable chart ordering key
 
 PAYG / uncapped plans return `null` for `quotaCredits`, `remainingCredits`, and
 `overageCredits`.

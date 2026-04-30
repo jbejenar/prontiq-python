@@ -68,6 +68,7 @@ export interface AccountSetupResult {
 }
 
 export type UsageGranularity = "daily" | "weekly" | "monthly";
+export type UsageSeriesPointKind = "baseline" | "projected" | "total";
 
 export interface AccountUsageProduct {
   product: string;
@@ -79,7 +80,13 @@ export interface AccountUsageProduct {
   overageCredits: number | null;
   enforcementMode: "hard_cap" | "soft_overage" | "uncapped_tracked";
   rateLimitPerSecond: number | null;
-  series: Array<{ bucket: string; label: string; credits: number }>;
+  series: Array<{
+    bucket: string;
+    label: string;
+    credits: number;
+    kind: UsageSeriesPointKind;
+    sortKey: string;
+  }>;
 }
 
 export interface AccountUsage {

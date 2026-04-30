@@ -1178,9 +1178,10 @@ Org-level daily usage projection for dashboard charts. This is not the
 request-time enforcement table; it is updated asynchronously by
 `PqLagoEventForwarder` from validated billing events before those events are
 sent to Lago. If projected rows are missing or only partially caught up for a
-product, `/v1/account/usage` returns a single aggregate `Current period` point
-from the authoritative counter total so the chart remains visible and does not
-under-report while the async projection catches up.
+product, `/v1/account/usage` prepends a `Before chart tracking` baseline point
+for the delta between authoritative counters and projected buckets. If
+projection exceeds authoritative counters, the API returns one authoritative
+`Current period` total point instead of over-reporting.
 
 ```
 PK:   orgId                string    Clerk organisation id
@@ -1200,9 +1201,9 @@ Projection idempotency is anchored on `prontiq-billing-event-deliveries` via
 `prontiq-usage` counters for the active org billing period; stale key-period
 counters and keys missing a Lago-period projection are excluded from current
 cards and surfaced as `scopeConsistency = mixed_key_periods`. Charts use
-projected buckets only when the projected total matches authoritative counters;
-otherwise they use the aggregate counter fallback until SQS projection catches
-up.
+projected buckets plus a baseline delta when SQS projection is behind
+authoritative counters; projected buckets are not allowed to over-report the
+authoritative counter total.
 
 ##### Table: `prontiq-lago-webhook-events`
 
@@ -2251,7 +2252,7 @@ Initial console pages:
 | --------------- | -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Overview**    | `/v1/account/status` + `/v1/account/keys`    | Read-only Lago-derived enforcement projection, masked key posture, explicit status/key-list drift state, and safe quickstart. Existing raw keys are never recoverable. |
 | **Keys**        | `/v1/account/keys*`                          | First-key flow, create, rotate, revoke, audit                                                                                                                          |
-| **Usage**       | `/v1/account/usage`                          | Member-readable usage cards from `prontiq-usage`; charts and CSV export from the async `prontiq-usage-daily` projection, with an aggregate counter fallback while missing or partial projection catches up. |
+| **Usage**       | `/v1/account/usage`                          | Member-readable usage cards from `prontiq-usage`; charts and CSV export from the async `prontiq-usage-daily` projection, with a baseline delta while missing or partial projection catches up. |
 | **Billing**     | Planned P1C.05 Vercel BFF backed by Lago     | Browser never receives Lago/Stripe credentials                                                                                                                         |
 | **Playground**  | `@prontiq/sdk` + public API                  | Pre-authenticated exploration                                                                                                                                          |
 | **Danger Zone** | dedicated account-management flow            | Self-service org deletion                                                                                                                                              |
@@ -2607,7 +2608,7 @@ Endpoint URLs reflect live prod (query-param form). Path-param migration is a v2
 | POST   | `/v1/account/keys/create` | `Authorization` | `Bearer <clerk_jwt>` | Yes (admin)           | 401 / 403 / 404 `ORG_NOT_PROVISIONED` (call `/setup` first). **Returns raw key once in response body** (only place in the system where a raw key crosses the network outbound). |
 | POST   | `/v1/account/keys/rotate` | `Authorization` | `Bearer <clerk_jwt>` | Yes (admin + step-up) | 401 / 403 `reverification-error` / 500 `STEP_UP_MISCONFIGURED`. Returns the new raw key once. Writes REDIRECT record per §5.5.1 / §12.3.                                        |
 | POST   | `/v1/account/keys/revoke` | `Authorization` | `Bearer <clerk_jwt>` | Yes (admin + step-up) | 401 / 403 `reverification-error` / 409 `KEY_ALREADY_REVOKED` / 500 `STEP_UP_MISCONFIGURED`.                                                                                     |
-| GET    | `/v1/account/usage?granularity=daily\|weekly\|monthly` | `Authorization` | `Bearer <clerk_jwt>` | Yes | 401 / 404 `ORG_NOT_PROVISIONED`. Member-allowed. Current totals come from `prontiq-usage`; chart buckets come from `prontiq-usage-daily`, falling back to one current-period aggregate point when projection rows are absent or partial. |
+| GET    | `/v1/account/usage?granularity=daily\|weekly\|monthly` | `Authorization` | `Bearer <clerk_jwt>` | Yes | 401 / 404 `ORG_NOT_PROVISIONED`. Member-allowed. Current totals come from `prontiq-usage`; chart buckets come from `prontiq-usage-daily`, with a `Before chart tracking` baseline delta when projection rows are absent or partial. |
 
 #### Webhook Endpoints
 
