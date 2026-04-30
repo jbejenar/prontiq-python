@@ -1430,6 +1430,7 @@ export default $config({
       ],
       environment: {
         ...controlPlaneEnv(),
+        COUNTER_PERIOD_SOURCE: readGithubVar("COUNTER_PERIOD_SOURCE") || "calendar",
         USAGE_DAILY_TABLE_NAME: usageDailyTable.name,
       },
     });
