@@ -176,6 +176,18 @@ export interface UsageCounterRecord {
   version?: number;
 }
 
+export interface UsageDailyRecord {
+  orgId: string;
+  bucketKey: string;
+  product: string;
+  periodKey: string;
+  bucketDate: string;
+  credits: number;
+  eventCount: number;
+  updatedAt: string;
+  ttl: number;
+}
+
 export interface SesSuppressionRecord {
   email: string;
   reason: "hard_bounce" | "soft_bounce" | "complaint";

@@ -8,6 +8,7 @@ export type {
   ApiKeySubscriptionItems,
   ApiKeyRecord,
   UsageCounterRecord,
+  UsageDailyRecord,
   SesSuppressionRecord,
   QuotaEmailTask,
   RedirectRecord,
@@ -73,6 +74,15 @@ export type {
   CommercialProjectionInput,
   EffectiveCommercialProjection,
 } from "./commercial-projection.js";
+
+export {
+  buildUsageResetAt,
+  buildUsageScope,
+  getCalendarResetAt,
+  getMonthKey,
+  parseUsageScope,
+} from "./usage-scope.js";
+export type { CounterPeriodSource, ParsedUsageScope } from "./usage-scope.js";
 
 export {
   LAGO_WEBHOOK_EVENT_TYPES,

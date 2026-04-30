@@ -1084,6 +1084,7 @@ the request hot path.
 | ----------------------------- | ----------------------------------------------------------------------------------------------------- |
 | `prontiq-keys`                | API key metadata + org-envelope records; historical billing registry rows may remain for cleanup only |
 | `prontiq-usage`               | Local enforcement counters + email flags + billing push state + REDIRECT records                      |
+| `prontiq-usage-daily`         | Async org-level usage projection for console charts, fed from billing-event SQS messages              |
 | `prontiq-customers`           | Legacy P1B.14-P1B.21 customer mapping evidence; not active runtime identity                           |
 | `prontiq-lago-webhook-events` | Lago webhook idempotency ledger keyed by `X-Lago-Unique-Key`                                          |
 | `prontiq-audit`               | Append-only lifecycle audit log                                                                       |
@@ -1170,6 +1171,33 @@ SK:   scope                string    "{product}#{yearMonth}" e.g. "address#2026-
       closed               boolean?  Historical month-close marker.
       ttl                  number    Unix timestamp — auto-expire after 90 days
 ```
+
+##### Table: `prontiq-usage-daily`
+
+Org-level daily usage projection for dashboard charts. This is not the
+request-time enforcement table; it is updated asynchronously by
+`PqLagoEventForwarder` from validated billing events before those events are
+sent to Lago.
+
+```
+PK:   orgId                string    Clerk organisation id
+SK:   bucketKey            string    "period#{periodKey}#day#{YYYY-MM-DD}#product#{product}"
+
+      product              string
+      periodKey            string    Billing period key or calendar month fallback
+      bucketDate           string    UTC date
+      credits              number    ADD-only projected credit total
+      eventCount           number    ADD-only projected event count
+      updatedAt            string    ISO 8601
+      ttl                  number    Unix timestamp — auto-expire after 400 days
+```
+
+Projection idempotency is anchored on `prontiq-billing-event-deliveries` via
+`usageAnalyticsAppliedAt`. Console usage cards use authoritative
+`prontiq-usage` counters for the active org billing period; stale key-period
+counters and keys missing a Lago-period projection are excluded from current
+cards and surfaced as `scopeConsistency = mixed_key_periods`. Charts may lag
+until SQS projection completes.
 
 ##### Table: `prontiq-lago-webhook-events`
 
@@ -1580,7 +1608,8 @@ The Lago event forwarder consumes active `BillingUsageEventV2` messages from
 SQS, validates the schema, recomputes the deterministic `eventId`, writes a
 delivery-attempt ledger row for schema-valid events, and forwards a minimal
 usage event to Lago. `BillingUsageEventV1` remains accepted only for safe legacy
-drain/replay compatibility.
+drain/replay compatibility; V1 events are forwarded to Lago but skipped by the
+org-scoped `prontiq-usage-daily` projection.
 
 Lago payload contract:
 
@@ -2217,7 +2246,7 @@ Initial console pages:
 | --------------- | -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Overview**    | `/v1/account/status` + `/v1/account/keys`    | Read-only Lago-derived enforcement projection, masked key posture, explicit status/key-list drift state, and safe quickstart. Existing raw keys are never recoverable. |
 | **Keys**        | `/v1/account/keys*`                          | First-key flow, create, rotate, revoke, audit                                                                                                                          |
-| **Usage**       | Planned P1C.04 usage summary/charts endpoint | Not live in P1C.02. Charts, quota visibility, export                                                                                                                   |
+| **Usage**       | `/v1/account/usage`                          | Member-readable usage cards from `prontiq-usage`; charts and CSV export from the async `prontiq-usage-daily` projection.                                               |
 | **Billing**     | Planned P1C.05 Vercel BFF backed by Lago     | Browser never receives Lago/Stripe credentials                                                                                                                         |
 | **Playground**  | `@prontiq/sdk` + public API                  | Pre-authenticated exploration                                                                                                                                          |
 | **Danger Zone** | dedicated account-management flow            | Self-service org deletion                                                                                                                                              |
@@ -2258,7 +2287,7 @@ SameSite=Lax cookies. All state-mutating requests require Clerk session token in
 | `POST /v1/account/keys/*`       | 5 req  | 1 minute | Per org  |
 | `POST /v1/account/keys/rotate`  | 3 req  | 1 minute | Per org  |
 | `POST /v1/account/keys/revoke`  | 3 req  | 1 minute | Per org  |
-| Planned `GET /v1/account/usage` | 30 req | 1 minute | Per user |
+| `GET /v1/account/usage`         | 30 req | 1 minute | Per user |
 | `GET /v1/account/keys`          | 30 req | 1 minute | Per user |
 
 ##### Audit Trail Visibility
@@ -2573,12 +2602,7 @@ Endpoint URLs reflect live prod (query-param form). Path-param migration is a v2
 | POST   | `/v1/account/keys/create` | `Authorization` | `Bearer <clerk_jwt>` | Yes (admin)           | 401 / 403 / 404 `ORG_NOT_PROVISIONED` (call `/setup` first). **Returns raw key once in response body** (only place in the system where a raw key crosses the network outbound). |
 | POST   | `/v1/account/keys/rotate` | `Authorization` | `Bearer <clerk_jwt>` | Yes (admin + step-up) | 401 / 403 `reverification-error` / 500 `STEP_UP_MISCONFIGURED`. Returns the new raw key once. Writes REDIRECT record per §5.5.1 / §12.3.                                        |
 | POST   | `/v1/account/keys/revoke` | `Authorization` | `Bearer <clerk_jwt>` | Yes (admin + step-up) | 401 / 403 `reverification-error` / 409 `KEY_ALREADY_REVOKED` / 500 `STEP_UP_MISCONFIGURED`.                                                                                     |
-
-**Planned console endpoints (P1C)**
-
-| Method | Endpoint                    | Auth Header     | Token Format         | Org Required | On Missing/Invalid                      |
-| ------ | --------------------------- | --------------- | -------------------- | ------------ | --------------------------------------- |
-| GET    | `/v1/account/usage?period=` | `Authorization` | `Bearer <clerk_jwt>` | Yes          | 401 `UNAUTHORIZED` / 403 `ORG_REQUIRED` |
+| GET    | `/v1/account/usage?granularity=daily\|weekly\|monthly` | `Authorization` | `Bearer <clerk_jwt>` | Yes | 401 / 404 `ORG_NOT_PROVISIONED`. Member-allowed. Current totals come from `prontiq-usage`; chart buckets come from `prontiq-usage-daily`. |
 
 #### Webhook Endpoints
 

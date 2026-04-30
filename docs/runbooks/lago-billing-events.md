@@ -18,6 +18,14 @@ Active event shape:
 The worker may not forward API-key hashes, prefixes, request URLs, headers,
 IP addresses, user agents, query strings, or response payloads to Lago.
 
+Before sending to Lago, the worker updates Prontiq's local
+`prontiq-usage-daily` projection. The projection is idempotent via
+`usageAnalyticsAppliedAt` on the billing-event delivery ledger. It powers the
+console usage charts; Lago delivery state is not the usage chart source.
+Only active `BillingUsageEventV2` messages are projected. Legacy
+`BillingUsageEventV1` messages may still drain or replay to Lago, but are
+skipped by the org-scoped dashboard projection.
+
 ## Operational Checks
 
 1. Confirm `BILLING_EVENTS_ENABLED=true`.
@@ -25,7 +33,8 @@ IP addresses, user agents, query strings, or response payloads to Lago.
 3. Generate traffic through the normal address API or the live smoke helper.
 4. Confirm the source SQS queue drains.
 5. Confirm `prontiq-billing-event-deliveries` records accepted delivery.
-6. Confirm Lago shows the usage event on `lago_sub_${orgId}`.
+6. Confirm the ledger row has `usageAnalyticsAppliedAt`.
+7. Confirm Lago shows the usage event on `lago_sub_${orgId}`.
 
 ## Replay
 

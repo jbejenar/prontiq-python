@@ -8,6 +8,7 @@ import { requestId } from "./middleware/request-id.js";
 import { clerkJwt } from "./middleware/clerk-jwt.js";
 import { accountRoutes } from "./routes/account.js";
 import { keysRoutes } from "./routes/keys.js";
+import { usageRoutes } from "./routes/usage.js";
 
 /**
  * `PqAccount` Lambda entry point — serves Clerk-JWT-authenticated
@@ -101,13 +102,15 @@ app.onError((err, c) => {
 // Lambda-wide `clerkAdminOnly()` was removed and pushed into the
 // factories.
 //
-// Contract for any new route added under this prefix: the factory
-// declares its own `accountOrKeysRoutes.use("/<path>", clerkAdminOnly())`
-// inside the factory (not bolted on outside) so the default-instance
-// export at the factory bottom stays default-secure for that route.
+// Contract for any new route added under this prefix: the route factory
+// declares its own member/admin posture internally. Admin-only routes
+// apply `clerkAdminOnly()` inside the factory (not bolted on outside)
+// so the default-instance export at the factory bottom stays
+// default-secure for that route.
 app.use("/v1/account/*", clerkJwt());
 app.route("/v1/account", accountRoutes);
 app.route("/v1/account", keysRoutes);
+app.route("/v1/account", usageRoutes);
 
 app.notFound((c) => {
   return c.json(

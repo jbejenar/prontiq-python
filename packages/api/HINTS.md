@@ -8,6 +8,9 @@
   `tier === "free"` quota branching; use plan enforcement mode.
 - Billing event emission is allowed only through `BillingUsageEventV2` after
   DynamoDB usage enforcement succeeds.
+- Usage scope construction is shared with the account usage API. Do not create
+  a second scope format in route code; use the shared helpers so the dashboard
+  and hot path read/write the same `prontiq-usage` rows.
 - Enable `BILLING_EVENTS_ENABLED` only for deployed stages that have completed
   P1B.18a Lago metric/subscription/replay smoke checks with the repo-owned
   smoke helper and alert health verified. P1B.21 retired the retained prod
@@ -23,3 +26,5 @@
   server-held Lago API key.
 - Never include raw API keys, query strings, headers, IP addresses, user agents,
   or response payloads in billing events.
+- `/v1/account/usage` is a private account route only. It must appear in
+  `packages/api/openapi.private.json`, never in the public docs OpenAPI.

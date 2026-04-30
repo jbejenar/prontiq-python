@@ -169,6 +169,42 @@ test("account API reads recent audit events from the private account API", async
   );
 });
 
+test("account API reads usage at the requested granularity", async () => {
+  const getToken = vi.fn().mockResolvedValue("default-session-jwt");
+  const fetchMock = vi.fn().mockResolvedValue(
+    new Response(
+      JSON.stringify({
+        generatedAt: "2026-04-30T00:00:00.000Z",
+        granularity: "weekly",
+        period: {
+          key: "2026-04-25_2026-05-25",
+          startedAt: "2026-04-25T00:00:00.000Z",
+          endingAt: "2026-05-25T00:00:00.000Z",
+          source: "lago",
+          entitlementsSyncedAt: "2026-04-25T00:00:00.000Z",
+          scopeConsistency: "single_period",
+        },
+        products: [],
+      }),
+      { status: 200 },
+    ),
+  );
+  vi.stubGlobal("fetch", fetchMock);
+
+  await expect(accountApi.getUsage(getToken, "weekly")).resolves.toMatchObject({
+    granularity: "weekly",
+    period: { source: "lago" },
+  });
+  expect(fetchMock).toHaveBeenCalledWith(
+    "https://api.test.prontiq.dev/v1/account/usage?granularity=weekly",
+    expect.objectContaining({
+      headers: expect.objectContaining({
+        Authorization: "Bearer default-session-jwt",
+      }),
+    }),
+  );
+});
+
 test("account API returns Clerk reverification bodies so useReverification can inspect them", async () => {
   const getToken = vi.fn().mockResolvedValue("default-session-jwt");
   const clerkError = {

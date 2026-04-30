@@ -74,6 +74,9 @@ export default $config({
     const billingEventDeliveriesTableName = isProd
       ? "prontiq-billing-event-deliveries"
       : `prontiq-billing-event-deliveries-${$app.stage}`;
+    const usageDailyTableName = isProd
+      ? "prontiq-usage-daily"
+      : `prontiq-usage-daily-${$app.stage}`;
     const billingActionsTableName = isProd
       ? "prontiq-billing-actions"
       : `prontiq-billing-actions-${$app.stage}`;
@@ -149,6 +152,16 @@ export default $config({
       },
       ttl: "ttl",
       transform: { table: { name: billingEventDeliveriesTableName } },
+    });
+
+    const usageDailyTable = new sst.aws.Dynamo("PqUsageDaily", {
+      fields: {
+        orgId: "string",
+        bucketKey: "string",
+      },
+      primaryIndex: { hashKey: "orgId", rangeKey: "bucketKey" },
+      ttl: "ttl",
+      transform: { table: { name: usageDailyTableName } },
     });
 
     // Legacy P1B.18 account-billing action ledger. The AWS account billing
@@ -553,10 +566,11 @@ export default $config({
         runtime: "nodejs24.x",
         memory: "512 MB",
         timeout: "45 seconds",
-        link: [billingEventDeliveriesTable],
+        link: [billingEventDeliveriesTable, usageDailyTable],
         environment: {
           ...observabilityEnv(),
           BILLING_EVENT_DELIVERIES_TABLE_NAME: billingEventDeliveriesTable.name,
+          USAGE_DAILY_TABLE_NAME: usageDailyTable.name,
           LAGO_API_KEY: $util.secret(readGithubSecret("LAGO_API_KEY")),
           LAGO_API_URL: readGithubVar("LAGO_API_URL"),
         },
@@ -1404,6 +1418,7 @@ export default $config({
       link: [
         authKeysTable,
         authUsageTable,
+        usageDailyTable,
         auditTable,
         suppressionsTable,
       ],
@@ -1415,6 +1430,7 @@ export default $config({
       ],
       environment: {
         ...controlPlaneEnv(),
+        USAGE_DAILY_TABLE_NAME: usageDailyTable.name,
       },
     });
 

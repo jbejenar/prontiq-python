@@ -13,6 +13,9 @@
 - Lago event forwarding must remain replay-safe: use `eventId` as Lago
   `transaction_id`, derive `external_subscription_id` as `lago_sub_${orgId}`,
   and write delivery evidence before/after send attempts.
+- Usage chart projection is local Prontiq state, not Lago delivery state. The
+  Lago event forwarder must project to `prontiq-usage-daily` idempotently using
+  `usageAnalyticsAppliedAt` before sending to Lago.
 - For P1B.18a live smoke, use
   `pnpm --filter @prontiq/control-plane lago:smoke:event` so
   `BillingUsageEventV2.eventId` is derived through the production contract. The

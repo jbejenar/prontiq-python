@@ -10,9 +10,11 @@ import {
   deriveLagoExternalSubscriptionIdForOrg,
   deriveLagoExternalSubscriptionId,
   deriveLegacyBillingUsageEventId,
+  parseUsageScope,
   type BillingUsageEventV1,
   type BillingUsageEventV2,
 } from "@prontiq/shared";
+import { DynamoUsageAnalyticsProjector, type UsageAnalyticsProjector } from "./usage-analytics.js";
 import type { SQSEvent, SQSRecord, SQSBatchResponse } from "aws-lambda";
 
 type Logger = Pick<Console, "error" | "warn" | "info">;
@@ -38,9 +40,11 @@ export interface BillingEventDeliveryRecord {
   keyPrefix?: string;
   lastAttemptAt?: string;
   lastError?: string;
+  occurredAt?: string;
   orgId?: string;
   status?: BillingEventDeliveryStatus;
   ttl?: number;
+  usageAnalyticsAppliedAt?: string;
   usageScope?: string;
 }
 
@@ -99,6 +103,7 @@ export interface LagoEventForwarderDependencies {
   ledger: BillingEventDeliveryLedger;
   logger: Logger;
   now: () => Date;
+  usageAnalyticsProjector?: UsageAnalyticsProjector;
 }
 
 class RecordProcessingError extends Error {
@@ -507,6 +512,7 @@ export class DynamoBillingEventDeliveryLedger implements BillingEventDeliveryLed
             "#keyPrefix",
             "#lastAttemptAt",
             "#lastError",
+            "#occurredAt",
             "#orgId",
             "#status",
             "#ttl",
@@ -533,6 +539,7 @@ export class DynamoBillingEventDeliveryLedger implements BillingEventDeliveryLed
               "#code = :code",
               "#creditDelta = :creditDelta",
               "#usageScope = :usageScope",
+              "#occurredAt = :occurredAt",
               "#firstAttemptAt = if_not_exists(#firstAttemptAt, :now)",
               "#lastAttemptAt = :now",
               "#ttl = if_not_exists(#ttl, :ttl)",
@@ -578,6 +585,7 @@ export class DynamoBillingEventDeliveryLedger implements BillingEventDeliveryLed
             "#keyPrefix",
             "#lastAttemptAt",
             "#lastError",
+            "#occurredAt",
             "#orgId",
             "#status",
             "#ttl",
@@ -603,6 +611,7 @@ export class DynamoBillingEventDeliveryLedger implements BillingEventDeliveryLed
               "#code = :code",
               "#creditDelta = :creditDelta",
               "#usageScope = :usageScope",
+              "#occurredAt = :occurredAt",
               "#lastAttemptAt = :now",
               "#acceptedAt = :now",
               "#ttl = if_not_exists(#ttl, :ttl)",
@@ -648,6 +657,7 @@ export class DynamoBillingEventDeliveryLedger implements BillingEventDeliveryLed
             "#keyPrefix",
             "#lastAttemptAt",
             "#lastError",
+            "#occurredAt",
             "#orgId",
             "#status",
             "#ttl",
@@ -676,6 +686,7 @@ export class DynamoBillingEventDeliveryLedger implements BillingEventDeliveryLed
               "#code = :code",
               "#creditDelta = :creditDelta",
               "#usageScope = :usageScope",
+              "#occurredAt = :occurredAt",
               "#firstAttemptAt = if_not_exists(#firstAttemptAt, :now)",
               "#lastAttemptAt = :now",
               "#lastError = :error",
@@ -709,6 +720,7 @@ const DELIVERY_EXPRESSION_NAMES = {
   "#keyPrefix": "keyPrefix",
   "#lastAttemptAt": "lastAttemptAt",
   "#lastError": "lastError",
+  "#occurredAt": "occurredAt",
   "#orgId": "orgId",
   "#status": "status",
   "#ttl": "ttl",
@@ -730,6 +742,7 @@ function eventExpressionValues(input: DeliveryRecordInput): Record<string, strin
     ":hash": input.eventPayloadHash,
     ":keyPrefix": input.event.keyPrefix,
     ":now": input.now.toISOString(),
+    ":occurredAt": input.event.occurredAt,
     ":orgId": input.event.orgId,
     ":ttl": getDeliveryTtl(input.now),
     ":usageScope": input.event.usageScope,
@@ -805,6 +818,10 @@ async function processRecord(
 
   try {
     verifyBillingEventId(event);
+    const parsedScope = parseUsageScope(event.usageScope);
+    if (!parsedScope || parsedScope.product !== event.product) {
+      throw new RecordProcessingError("billing event usage scope is invalid");
+    }
   } catch (error) {
     await dependencies.ledger.markFailure({
       ...input,
@@ -812,7 +829,9 @@ async function processRecord(
       error: error instanceof Error ? error.message : String(error),
       status: "invalid",
     });
-    throw error;
+    throw new NonRetryableRecordProcessingError(
+      error instanceof Error ? error.message : String(error),
+    );
   }
 
   const existing = await dependencies.ledger.get(event.eventId);
@@ -847,6 +866,10 @@ async function processRecord(
   }
   if (attemptResult === "permanent_failure_same_hash") {
     throw new RecordProcessingError("billing event has a prior permanent Lago delivery failure");
+  }
+
+  if (dependencies.usageAnalyticsProjector && event.version === 2) {
+    await dependencies.usageAnalyticsProjector.project(input);
   }
 
   try {
@@ -894,6 +917,13 @@ export function createLagoEventForwarderService(
         }),
       logger: overrides.logger ?? defaultLogger,
       now: overrides.now ?? (() => new Date()),
+      usageAnalyticsProjector:
+        overrides.usageAnalyticsProjector ??
+        new DynamoUsageAnalyticsProjector({
+          ddb: getDefaultDdb(),
+          deliveryLedgerTableName: getRequiredEnv("BILLING_EVENT_DELIVERIES_TABLE_NAME"),
+          usageDailyTableName: getRequiredEnv("USAGE_DAILY_TABLE_NAME"),
+        }),
     };
   }
 

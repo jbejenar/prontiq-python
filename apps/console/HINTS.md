@@ -16,9 +16,9 @@
 - P1C.02 overview UI is read-only. It may call `GET /v1/account/status` and
   `GET /v1/account/keys`, but setup recovery and key create/rotate/revoke
   actions must stay on `/keys`.
-- Overview must not show usage numbers until P1C.04 exposes a real usage
-  summary. If `activeKeyCount` and `/keys` disagree, render an explicit retry /
-  drift state instead of pretending there are no keys.
+- Usage UI must call the private `GET /v1/account/usage` API. Do not call Lago
+  or Stripe from the browser. Cards use authoritative platform counters; charts
+  may lag the SQS projection and should label that clearly.
 - Key-management queries must be scoped by active Clerk `orgId`; if no
   organization is active, show an organization-selection state instead of
   calling the account API.

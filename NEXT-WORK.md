@@ -1,16 +1,13 @@
 # NEXT-WORK.md — Active Sprint
 
-> Last updated: 2026-04-29 for P1C.02 implementation. P1C.03 is merged and
-> deployed to dev/prod through PR #186 and production deploy run `25094034637`.
+> Last updated: 2026-04-30 for P1C.04 usage charts implementation.
 
 ## Current Phase
 
-P1C.02: Console Overview Page. Implementation is on the active branch for
-review: overview now reads live account status/key metadata, remains read-only,
-uses placeholder quickstarts, renders status/key-list drift explicitly, and
-routes setup/key mutations to `/keys`. Dev smoke found `api.dev.prontiq.dev`
-has a TLS issue from local tooling; use the direct dev API Gateway host for
-smoke until the vanity domain is fixed.
+P1C.04: Usage Charts Page. Active branch implements platform-owned usage chart
+projection, private `GET /v1/account/usage`, and console `/usage` charts/CSV.
+Lago remains plan/billing truth; Prontiq remains usage enforcement and chart
+truth.
 
 ## Active Commercial Contract
 
@@ -49,6 +46,7 @@ GET  /v1/account/status           (member-allowed; P1C.03 PR 2.5)
 POST /v1/account/keys/create      (admin-gated; P1C.03 PR 1)
 GET  /v1/account/keys             (member-allowed; P1C.03 PR 1)
 GET  /v1/account/audit            (member-allowed; P1C.03 PR 5)
+GET  /v1/account/usage            (member-allowed; P1C.04)
 POST /v1/account/keys/rotate      (admin + reverification; P1C.03 PR 2)
 POST /v1/account/keys/revoke      (admin + reverification; P1C.03 PR 2)
 ```
@@ -66,11 +64,10 @@ POST /v1/account/billing/portal-session
 - **P1C.03** — complete. Keys page covers missing-org recovery, first-key
   creation, key listing, create/rotate/revoke, Clerk step-up, reveal-once raw
   handling, audit trail, and key-limit indicator.
-- **P1C.02** (active) — overview page. Branch implementation replaces static
-  placeholders with live account status, masked key metadata, safe quickstart
-  snippets, explicit status/key-list drift handling, and real-data-only
-  usage/billing handoffs. Do not mark complete until review, merge, preview
-  smoke, and deploy verification are done.
+- **P1C.02** — overview page complete after merge/deploy verification.
+- **P1C.04** (active) — usage charts page. Implementing `prontiq-usage-daily`
+  projection from billing events, authoritative counter-backed usage cards,
+  Recharts trend views, and CSV export.
 - P1B.23 (pre-go-live cleanup) is gated on P1C.03 + P1C.05.
 - All console billing surfaces remain out of scope for the platform
   backend; future Vercel BFF reads Lago directly.

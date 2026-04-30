@@ -67,6 +67,35 @@ export interface AccountSetupResult {
   emailSent?: boolean;
 }
 
+export type UsageGranularity = "daily" | "weekly" | "monthly";
+
+export interface AccountUsageProduct {
+  product: string;
+  displayName: string;
+  includedInCurrentPlan: boolean;
+  usedCredits: number;
+  quotaCredits: number | null;
+  remainingCredits: number | null;
+  overageCredits: number | null;
+  enforcementMode: "hard_cap" | "soft_overage" | "uncapped_tracked";
+  rateLimitPerSecond: number | null;
+  series: Array<{ bucket: string; label: string; credits: number }>;
+}
+
+export interface AccountUsage {
+  generatedAt: string;
+  granularity: UsageGranularity;
+  period: {
+    key: string;
+    startedAt: string | null;
+    endingAt: string | null;
+    source: "calendar" | "lago";
+    entitlementsSyncedAt: string | null;
+    scopeConsistency: "single_period" | "mixed_key_periods";
+  };
+  products: AccountUsageProduct[];
+}
+
 type GetToken = (options?: { template?: string }) => Promise<string | null>;
 
 export class AccountApiError extends Error {
@@ -149,6 +178,11 @@ export const accountApi = {
     authedFetch<{ keys: ListedKey[] }>(getToken, "/v1/account/keys"),
   listAudit: (getToken: GetToken) =>
     authedFetch<{ events: AccountAuditEvent[] }>(getToken, "/v1/account/audit"),
+  getUsage: (getToken: GetToken, granularity: UsageGranularity) =>
+    authedFetch<AccountUsage>(
+      getToken,
+      `/v1/account/usage?granularity=${encodeURIComponent(granularity)}`,
+    ),
   createKey: (getToken: GetToken, input: { label?: string }) =>
     authedFetch<CreatedKey>(getToken, "/v1/account/keys/create", {
       method: "POST",

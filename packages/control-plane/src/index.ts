@@ -66,3 +66,23 @@ export type {
   LagoSubscriptionEntitlement,
   LagoSubscriptionProjectionSnapshot,
 } from "./lago-entitlements.js";
+
+export {
+  DynamoUsageAnalyticsProjector,
+  buildUsageDailyBucketKey,
+} from "./usage-analytics.js";
+export type {
+  UsageAnalyticsProjectInput,
+  UsageAnalyticsProjectionResult,
+  UsageAnalyticsProjector,
+} from "./usage-analytics.js";
+
+export { createAccountUsageService } from "./account-usage.js";
+export type {
+  AccountUsageDependencies,
+  AccountUsageProduct,
+  AccountUsageResponse,
+  AccountUsageService,
+  UsageGranularity,
+  UsageSeriesPoint,
+} from "./account-usage.js";

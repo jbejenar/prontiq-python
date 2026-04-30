@@ -16,6 +16,7 @@ import {
   type LagoUsageClient,
   type LagoUsageEventPayload,
 } from "./lago-event-forwarder.js";
+import type { UsageAnalyticsProjector } from "./usage-analytics.js";
 import {
   deriveBillingUsageEventId,
   type BillingUsageEventV1,
@@ -189,16 +190,29 @@ class FakeLagoClient implements LagoUsageClient {
   }
 }
 
+class FakeUsageAnalyticsProjector implements UsageAnalyticsProjector {
+  calls = 0;
+  error?: Error;
+
+  async project(): Promise<"applied"> {
+    this.calls += 1;
+    if (this.error) throw this.error;
+    return "applied";
+  }
+}
+
 function makeService(input: { ledger?: FakeLedger; lago?: FakeLagoClient } = {}) {
   const ledger = input.ledger ?? new FakeLedger();
   const lago = input.lago ?? new FakeLagoClient();
+  const usageAnalyticsProjector = new FakeUsageAnalyticsProjector();
   const service = createLagoEventForwarderService({
     lagoClient: lago,
     ledger,
     logger: console,
     now: () => new Date("2026-04-25T01:00:00.000Z"),
+    usageAnalyticsProjector,
   });
-  return { lago, ledger, service };
+  return { lago, ledger, service, usageAnalyticsProjector };
 }
 
 test("builds minimal Lago usage payload with weighted credits", () => {
@@ -412,12 +426,13 @@ test("keeps genuine Lago validation 422 failures permanent", async () => {
 });
 
 test("forwards valid SQS billing event and marks ledger accepted", async () => {
-  const { lago, ledger, service } = makeService();
+  const { lago, ledger, service, usageAnalyticsProjector } = makeService();
   const event = makeEvent();
 
   const result = await service.handleSqsEvent(makeSqsEvent(event));
 
   assert.deepEqual(result.batchItemFailures, []);
+  assert.equal(usageAnalyticsProjector.calls, 0);
   assert.equal(lago.payloads.length, 1);
   assert.equal(lago.payloads[0]?.event.transaction_id, event.eventId);
   assert.equal(
@@ -430,18 +445,31 @@ test("forwards valid SQS billing event and marks ledger accepted", async () => {
 });
 
 test("forwards active V2 event and records matching Lago subscription evidence", async () => {
-  const { lago, ledger, service } = makeService();
+  const { lago, ledger, service, usageAnalyticsProjector } = makeService();
   const event = makeV2Event();
 
   const result = await service.handleSqsEvent(makeSqsEvent(event));
 
   assert.deepEqual(result.batchItemFailures, []);
+  assert.equal(usageAnalyticsProjector.calls, 1);
   assert.equal(lago.payloads.length, 1);
   assert.equal(lago.payloads[0]?.event.transaction_id, event.eventId);
   assert.equal(lago.payloads[0]?.event.external_subscription_id, "lago_sub_org_ActiveV2");
   const row = ledger.records.get(event.eventId);
   assert.equal(row?.status, "accepted");
   assert.equal(row?.externalSubscriptionId, lago.payloads[0]?.event.external_subscription_id);
+});
+
+test("V2 usage analytics projection failures fail closed before Lago forwarding", async () => {
+  const { lago, service, usageAnalyticsProjector } = makeService();
+  usageAnalyticsProjector.error = new Error("missing org-scoped analytics key");
+  const event = makeV2Event();
+
+  const result = await service.handleSqsEvent(makeSqsEvent(event));
+
+  assert.deepEqual(result.batchItemFailures, [{ itemIdentifier: "msg_1" }]);
+  assert.equal(usageAnalyticsProjector.calls, 1);
+  assert.equal(lago.payloads.length, 0);
 });
 
 test("skips duplicate accepted event without resending to Lago", async () => {
@@ -483,10 +511,26 @@ test("rejects tampered event id before sending to Lago", async () => {
 
   const result = await service.handleSqsEvent(makeSqsEvent(event));
 
-  assert.deepEqual(result.batchItemFailures, [{ itemIdentifier: "msg_1" }]);
+  assert.deepEqual(result.batchItemFailures, []);
   assert.equal(lago.payloads.length, 0);
   assert.equal(ledger.records.get(event.eventId)?.status, "invalid");
   assert.equal(ledger.records.get(event.eventId)?.attempts, 0);
+});
+
+test("rejects invalid usage scope before projection or Lago send", async () => {
+  const { lago, ledger, service, usageAnalyticsProjector } = makeService();
+  const usageScope = "address#period#not-a-period";
+  const event = makeEvent({
+    usageScope,
+    eventId: deriveBillingUsageEventId({ ...baseIdInput, usageScope }),
+  });
+
+  const result = await service.handleSqsEvent(makeSqsEvent(event));
+
+  assert.deepEqual(result.batchItemFailures, []);
+  assert.equal(lago.payloads.length, 0);
+  assert.equal(usageAnalyticsProjector.calls, 0);
+  assert.equal(ledger.records.get(event.eventId)?.status, "invalid");
 });
 
 test("fails invalid JSON without writing a ledger row", async () => {
@@ -584,6 +628,7 @@ test("marks ledger accepted when replay receives Lago duplicate transaction resp
     ledger,
     logger: console,
     now: () => new Date("2026-04-25T01:00:00.000Z"),
+    usageAnalyticsProjector: new FakeUsageAnalyticsProjector(),
   });
 
   const result = await service.handleSqsEvent(makeSqsEvent(event));
@@ -625,6 +670,7 @@ test("marks ledger accepted when replay confirms an ambiguous Lago 422 was alrea
     ledger,
     logger: console,
     now: () => new Date("2026-04-25T01:00:00.000Z"),
+    usageAnalyticsProjector: new FakeUsageAnalyticsProjector(),
   });
 
   const result = await service.handleSqsEvent(makeSqsEvent(event));

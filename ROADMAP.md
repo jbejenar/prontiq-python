@@ -3524,7 +3524,7 @@ Key rotation must be atomic (TransactWrite swap) with a REDIRECT record per §5.
 ```yaml
 id: P1C.04
 title: Usage Charts Page
-status: pending
+status: in_progress
 priority: p1-high
 epic: P1C
 persona: [api-consumer]
@@ -3533,7 +3533,7 @@ completed: null
 tech_stack:
   ui: Next.js 15 + shadcn/ui
   charts: Recharts
-  data: DynamoDB usage counters
+  data: DynamoDB usage counters + usage-daily projection
 ```
 
 #### User Story
@@ -3542,33 +3542,35 @@ As a developer, I see per-product usage over time so that I can understand my co
 
 #### Problem Statement
 
-Usage data lives in DynamoDB as atomic counters (per-key, per-product, per-month). The dashboard needs to query these counters, aggregate across keys (for org-level view), and render time-series charts. Daily granularity requires either storing daily snapshots in Prontiq-controlled counters or deriving chart data from the billing-event analytics stream that feeds Lago. The forward path is not Stripe-derived usage.
+Usage data lives in DynamoDB as atomic counters (per-key, per-product, per-period). The dashboard queries active-org-period counters for authoritative current totals and reads `prontiq-usage-daily`, an idempotent projection from active V2 billing-event SQS messages, for charts. Stale key-period counters and missing key period projections are excluded from current cards and surfaced as `mixed_key_periods`. Legacy V1 events can still drain to Lago but do not feed org-scoped dashboard buckets. Lago remains plan/billing truth; Prontiq remains usage enforcement truth. The forward path is not Stripe-derived usage.
 
 #### Definition of Done
 
 ##### Functional
 
-- [ ] Per-product usage charts with daily/weekly/monthly granularity toggle
+- [x] Per-product usage charts with daily/weekly/monthly granularity toggle
   - `Verify:` Select "Daily" → chart shows per-day bars for current month
-  - `Evidence:` Chart renders with real data, responsive to granularity change
-- [ ] Data sourced from DynamoDB usage counters
+  - `Evidence:` `apps/console/app/(dashboard)/usage/usage-panel.tsx`, `apps/console/app/(dashboard)/usage/usage-panel.test.tsx`
+- [x] Cards sourced from DynamoDB usage counters; charts sourced from `prontiq-usage-daily`
   - `Verify:` Make 10 API calls, refresh usage page, count increases by 10
-  - `Evidence:` Real-time data reflection (within 1 minute)
-- [ ] Export CSV functionality
+  - `Evidence:` `packages/control-plane/src/account-usage.ts`, `packages/control-plane/src/usage-analytics.ts`, `packages/api/src/routes/usage.ts`
+- [x] Export CSV functionality
   - `Verify:` Click "Export CSV" → file downloads with usage data
-  - `Evidence:` CSV contains columns: date, product, count
-- [ ] Recharts (or equivalent) charting library integrated
+  - `Evidence:` `apps/console/app/(dashboard)/usage/usage-panel.tsx`, `apps/console/app/(dashboard)/usage/usage-panel.test.tsx`
+- [x] Recharts (or equivalent) charting library integrated
   - `Verify:` Charts render as interactive SVG with tooltips
-  - `Evidence:` Hover shows exact count per bar/point
+  - `Evidence:` `apps/console/package.json`, `apps/console/app/(dashboard)/usage/usage-panel.tsx`
 
 #### Scope
 
-**In:** Usage visualization, granularity toggle, CSV export, Recharts
+**In:** Usage visualization, org-level aggregation for the active Clerk
+organization, granularity toggle, CSV export, Recharts
 
 **Out — Do Not Implement:**
 
 - Real-time streaming usage (WebSocket) → future
-- Org-level aggregation across multiple keys → P3.03 (team management)
+- Cross-organization/team-rollup analytics beyond the active Clerk organization
+  → P3.03 (team management)
 - Cost projections → future
 
 ---

@@ -28,8 +28,10 @@ API path to render account/key posture, masked key metadata, and safe quickstart
 snippets. It never performs setup or key mutations and never renders existing
 raw API keys; all mutation and reveal-once flows remain on `/keys`.
 
-Usage and billing cards are handoffs only until P1C.04/P1C.05; do not add fake
-usage numbers or browser-side Lago calls to the overview.
+P1C.04 usage UI calls `GET /v1/account/usage`. Cards show authoritative
+Prontiq counter totals; charts use the async `prontiq-usage-daily` projection
+fed by billing events. CSV export is client-side from the returned series. Do
+not call Lago or Stripe from browser code.
 
 Billing surfaces for this app are Lago-backed and should use a Vercel
 server-side BFF, not browser calls to Lago/Stripe and not `/v1/account/billing*`.

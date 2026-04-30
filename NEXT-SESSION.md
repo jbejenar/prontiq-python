@@ -4,6 +4,24 @@
 > the time they were written, not the current source of truth. Use
 > `ROADMAP.md`, `NEXT-WORK.md`, and `README.md` for current execution status.
 
+## Session 45 — 2026-04-30
+
+**Focus:** P1C.04 usage charts implementation.
+
+- Added the plan direction that Lago is commercial truth while Prontiq is
+  usage/chart truth.
+- Implementation branch adds `prontiq-usage-daily`, idempotent projection from
+  billing events, private `GET /v1/account/usage`, and console `/usage`.
+- Cards read authoritative usage counters; chart buckets may lag the SQS worker
+  and are not backfilled for pre-deploy traffic.
+
+### Next session should start with
+
+1. Review P1C.04 CI/test status.
+2. Deploy to dev.
+3. Smoke: make address API calls, verify cards update, wait for chart bucket,
+   export CSV, and confirm Lago delivery still accepts usage events.
+
 ## Session 44 — 2026-04-29
 
 **Focus:** P1C.03 closeout and P1C.02 overview implementation.

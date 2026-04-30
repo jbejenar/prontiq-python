@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **P1C.04 usage charts implemented.** Added platform-owned
+  `prontiq-usage-daily` projection from billing events, private
+  `GET /v1/account/usage`, and console `/usage` charts with CSV export. Lago
+  remains plan/billing truth; Prontiq remains enforced usage and chart truth.
+
 - **P1B.22 Clerk-org commercial identity pivot implemented.** Clerk `orgId` is
   now the active commercial identity across Prontiq and Lago. Lago customer
   `external_id = orgId`, subscriptions use `lago_sub_${orgId}`, active billing

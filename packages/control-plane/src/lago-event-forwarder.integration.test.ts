@@ -146,6 +146,7 @@ test("delivery ledger records attempt and accepted state idempotently", async ()
   const row = await ledger.get(event.eventId);
   assert.equal(row?.status, "accepted");
   assert.equal(row?.creditDelta, 2);
+  assert.equal(row?.occurredAt, event.occurredAt);
   assert.equal(row?.externalSubscriptionId, "pq_sub_01HYZ6Q4X6DJP2X9Q9FQKX4T7A");
 });
 
@@ -165,6 +166,7 @@ test("delivery ledger accepts V2 events without writing legacy customerId GSI ke
   const row = await ledger.get(event.eventId);
   assert.equal(row?.status, "accepted");
   assert.equal(row?.orgId, event.orgId);
+  assert.equal(row?.occurredAt, event.occurredAt);
   assert.equal(row?.customerId, undefined);
   assert.equal(row?.externalSubscriptionId, "lago_sub_org_LagoForwarderV2Integration");
 });
@@ -218,6 +220,7 @@ test("delivery ledger does not reopen permanent failures or double-count failed 
 
   const row = await ledger.get(event.eventId);
   assert.equal(row?.status, "failed_permanent");
+  assert.equal(row?.occurredAt, event.occurredAt);
   assert.equal(row?.attempts, 1);
 });
 

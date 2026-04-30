@@ -19,6 +19,7 @@ test("public OpenAPI spec excludes private account routes", () => {
 test("private OpenAPI spec contains account routes", () => {
   const paths = Object.keys(privateSpec.paths ?? {});
   assert.ok(paths.includes("/v1/account/setup"));
+  assert.ok(paths.includes("/v1/account/usage"));
   assert.equal(paths.includes("/v1/account/billing"), false);
   assert.equal(paths.includes("/v1/account/billing/plan-change"), false);
   assert.equal(paths.includes("/v1/account/billing/portal-session"), false);

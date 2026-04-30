@@ -11,6 +11,8 @@ import {
   QUOTA_EMAIL_PENDING_LEASE_MINUTES,
   QUOTA_WARNING_THRESHOLD_FRACTION,
   billingUsageEventV2Schema,
+  buildUsageResetAt,
+  buildUsageScope,
   createLogger,
   deriveBillingUsageEventId,
   getBillingEndpointsForProduct,
@@ -109,30 +111,21 @@ function counterPeriodSource(): "calendar" | "lago" {
   return process.env.COUNTER_PERIOD_SOURCE === "lago" ? "lago" : "calendar";
 }
 
-function getMonthKey(now: Date): string {
-  return now.toISOString().slice(0, 7);
-}
-
-function getResetAt(now: Date): string {
-  const nextMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
-  return nextMonth.toISOString();
-}
-
 function getUsageScope(record: ApiKeyRecord, product: string, now: Date): string {
-  if (counterPeriodSource() === "lago" && record.billingPeriodKey) {
-    return `${product}#period#${record.billingPeriodKey}`;
-  }
-  return `${product}#${getMonthKey(now)}`;
+  return buildUsageScope({
+    counterPeriodSource: counterPeriodSource(),
+    now,
+    product,
+    record,
+  });
 }
 
 function getUsageResetAt(record: ApiKeyRecord, now: Date): string {
-  if (counterPeriodSource() === "lago" && record.billingPeriodEndingAt) {
-    const parsed = new Date(record.billingPeriodEndingAt);
-    if (!Number.isNaN(parsed.getTime())) {
-      return parsed.toISOString();
-    }
-  }
-  return getResetAt(now);
+  return buildUsageResetAt({
+    counterPeriodSource: counterPeriodSource(),
+    now,
+    record,
+  });
 }
 
 function getPlanEnforcementMode(

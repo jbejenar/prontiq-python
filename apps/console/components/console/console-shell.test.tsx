@@ -31,13 +31,13 @@ test("console shell renders the prototype-derived structure", () => {
   expect(screen.getByRole("link", { name: /keys/i })).toHaveAttribute("href", "/keys");
 });
 
-test("dashboard anchors route back to the dashboard when rendered from keys page", () => {
+test("dashboard anchors route back to the dashboard and route pages stay direct", () => {
   routeState.pathname = "/keys";
 
   render(<ConsoleShell clerkEnabled={false}>Keys content</ConsoleShell>);
 
   expect(screen.getAllByRole("link", { name: /overview/i })[0]).toHaveAttribute("href", "/#overview");
-  expect(screen.getAllByRole("link", { name: /usage/i })[0]).toHaveAttribute("href", "/#usage");
+  expect(screen.getAllByRole("link", { name: /usage/i })[0]).toHaveAttribute("href", "/usage");
   expect(screen.getAllByRole("link", { name: /billing/i })[0]).toHaveAttribute("href", "/#billing");
   expect(screen.getAllByRole("link", { name: /playground/i })[0]).toHaveAttribute("href", "/#playground");
   expect(screen.getAllByRole("link", { name: /danger zone/i })[0]).toHaveAttribute("href", "/#danger-zone");

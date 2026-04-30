@@ -420,3 +420,5 @@ jobs:
         run: pnpm --filter @prontiq/api smoke:keys-stepup
       - name: Smoke — keys audit
         run: pnpm --filter @prontiq/api smoke:keys-audit
+      - name: Smoke — account usage
+        run: pnpm --filter @prontiq/api smoke:account-usage

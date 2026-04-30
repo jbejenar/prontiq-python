@@ -1734,6 +1734,332 @@
                     }
                 }
             }
+        },
+        "/v1/account/usage": {
+            "get": {
+                "summary": "Read current-period usage for the active Clerk organization",
+                "description": "Member-readable private console endpoint. Current totals come from Prontiq usage counters; chart buckets come from the async Prontiq usage projection fed by billing events.",
+                "security": [
+                    {
+                        "ClerkJwt": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "schema": {
+                            "type": "string",
+                            "enum": [
+                                "daily",
+                                "weekly",
+                                "monthly"
+                            ],
+                            "default": "daily",
+                            "description": "Chart granularity. Monthly is the current billing period in v1."
+                        },
+                        "required": false,
+                        "description": "Chart granularity. Monthly is the current billing period in v1.",
+                        "name": "granularity",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Current-period org usage",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "generatedAt": {
+                                            "type": "string"
+                                        },
+                                        "granularity": {
+                                            "type": "string",
+                                            "enum": [
+                                                "daily",
+                                                "weekly",
+                                                "monthly"
+                                            ]
+                                        },
+                                        "period": {
+                                            "type": "object",
+                                            "properties": {
+                                                "key": {
+                                                    "type": "string"
+                                                },
+                                                "startedAt": {
+                                                    "type": [
+                                                        "string",
+                                                        "null"
+                                                    ]
+                                                },
+                                                "endingAt": {
+                                                    "type": [
+                                                        "string",
+                                                        "null"
+                                                    ]
+                                                },
+                                                "source": {
+                                                    "type": "string",
+                                                    "enum": [
+                                                        "calendar",
+                                                        "lago"
+                                                    ]
+                                                },
+                                                "entitlementsSyncedAt": {
+                                                    "type": [
+                                                        "string",
+                                                        "null"
+                                                    ]
+                                                },
+                                                "scopeConsistency": {
+                                                    "type": "string",
+                                                    "enum": [
+                                                        "single_period",
+                                                        "mixed_key_periods"
+                                                    ]
+                                                }
+                                            },
+                                            "required": [
+                                                "key",
+                                                "startedAt",
+                                                "endingAt",
+                                                "source",
+                                                "entitlementsSyncedAt",
+                                                "scopeConsistency"
+                                            ]
+                                        },
+                                        "products": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "product": {
+                                                        "type": "string"
+                                                    },
+                                                    "displayName": {
+                                                        "type": "string"
+                                                    },
+                                                    "includedInCurrentPlan": {
+                                                        "type": "boolean"
+                                                    },
+                                                    "usedCredits": {
+                                                        "type": "integer",
+                                                        "minimum": 0
+                                                    },
+                                                    "quotaCredits": {
+                                                        "type": [
+                                                            "integer",
+                                                            "null"
+                                                        ],
+                                                        "minimum": 0
+                                                    },
+                                                    "remainingCredits": {
+                                                        "type": [
+                                                            "integer",
+                                                            "null"
+                                                        ],
+                                                        "minimum": 0
+                                                    },
+                                                    "overageCredits": {
+                                                        "type": [
+                                                            "integer",
+                                                            "null"
+                                                        ],
+                                                        "minimum": 0
+                                                    },
+                                                    "enforcementMode": {
+                                                        "type": "string",
+                                                        "enum": [
+                                                            "hard_cap",
+                                                            "soft_overage",
+                                                            "uncapped_tracked"
+                                                        ]
+                                                    },
+                                                    "rateLimitPerSecond": {
+                                                        "type": [
+                                                            "integer",
+                                                            "null"
+                                                        ],
+                                                        "minimum": 0
+                                                    },
+                                                    "series": {
+                                                        "type": "array",
+                                                        "items": {
+                                                            "type": "object",
+                                                            "properties": {
+                                                                "bucket": {
+                                                                    "type": "string"
+                                                                },
+                                                                "label": {
+                                                                    "type": "string"
+                                                                },
+                                                                "credits": {
+                                                                    "type": "integer",
+                                                                    "minimum": 0
+                                                                }
+                                                            },
+                                                            "required": [
+                                                                "bucket",
+                                                                "label",
+                                                                "credits"
+                                                            ]
+                                                        }
+                                                    }
+                                                },
+                                                "required": [
+                                                    "product",
+                                                    "displayName",
+                                                    "includedInCurrentPlan",
+                                                    "usedCredits",
+                                                    "quotaCredits",
+                                                    "remainingCredits",
+                                                    "overageCredits",
+                                                    "enforcementMode",
+                                                    "rateLimitPerSecond",
+                                                    "series"
+                                                ]
+                                            }
+                                        }
+                                    },
+                                    "required": [
+                                        "generatedAt",
+                                        "granularity",
+                                        "period",
+                                        "products"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Missing/invalid JWT",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "type": "object",
+                                            "properties": {
+                                                "code": {
+                                                    "type": "string"
+                                                },
+                                                "message": {
+                                                    "type": "string"
+                                                },
+                                                "status": {
+                                                    "type": "integer"
+                                                },
+                                                "request_id": {
+                                                    "type": "string"
+                                                },
+                                                "details": {
+                                                    "type": "object",
+                                                    "additionalProperties": {}
+                                                }
+                                            },
+                                            "required": [
+                                                "code",
+                                                "message",
+                                                "status",
+                                                "request_id"
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "error"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "ORG_NOT_PROVISIONED — call /v1/account/setup",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "type": "object",
+                                            "properties": {
+                                                "code": {
+                                                    "type": "string"
+                                                },
+                                                "message": {
+                                                    "type": "string"
+                                                },
+                                                "status": {
+                                                    "type": "integer"
+                                                },
+                                                "request_id": {
+                                                    "type": "string"
+                                                },
+                                                "details": {
+                                                    "type": "object",
+                                                    "additionalProperties": {}
+                                                }
+                                            },
+                                            "required": [
+                                                "code",
+                                                "message",
+                                                "status",
+                                                "request_id"
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "error"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Server error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "type": "object",
+                                            "properties": {
+                                                "code": {
+                                                    "type": "string"
+                                                },
+                                                "message": {
+                                                    "type": "string"
+                                                },
+                                                "status": {
+                                                    "type": "integer"
+                                                },
+                                                "request_id": {
+                                                    "type": "string"
+                                                },
+                                                "details": {
+                                                    "type": "object",
+                                                    "additionalProperties": {}
+                                                }
+                                            },
+                                            "required": [
+                                                "code",
+                                                "message",
+                                                "status",
+                                                "request_id"
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "error"
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     },
     "webhooks": {}
