@@ -442,7 +442,7 @@ export default $config({
         // declared) or ignored by the auth middleware (which keys
         // off X-Api-Key only). No existing-flow rejection.
         allowMethods: ["GET", "POST", "OPTIONS"],
-        allowHeaders: ["X-Api-Key", "Authorization", "Content-Type"],
+        allowHeaders: ["X-Api-Key", "Authorization", "Content-Type", "Idempotency-Key"],
       },
       transform: {
         // Enable per-route CloudWatch metrics so the
