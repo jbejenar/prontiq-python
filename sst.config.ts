@@ -164,9 +164,9 @@ export default $config({
       transform: { table: { name: usageDailyTableName } },
     });
 
-    // Legacy P1B.18 account-billing action ledger. The AWS account billing
-    // routes are retired by P1B.22; retain the table to preserve historical
-    // idempotency/audit evidence and avoid deploy-time data loss.
+    // Billing plan-change action ledger. The console calls the private
+    // account API for replay-safe Lago subscription mutations; this table
+    // preserves idempotency evidence and the per-org in-flight lock.
     const billingActionsTable = new sst.aws.Dynamo("PqBillingActions", {
       fields: {
         actionId: "string",
@@ -1418,6 +1418,7 @@ export default $config({
       link: [
         authKeysTable,
         authUsageTable,
+        billingActionsTable,
         usageDailyTable,
         auditTable,
         suppressionsTable,
@@ -1430,7 +1431,14 @@ export default $config({
       ],
       environment: {
         ...controlPlaneEnv(),
+        BILLING_ACTIONS_TABLE_NAME: billingActionsTable.name,
         COUNTER_PERIOD_SOURCE: readGithubVar("COUNTER_PERIOD_SOURCE") || "calendar",
+        PRONTIQ_BILLING_CATALOG_ENV:
+          readGithubVar("PRONTIQ_BILLING_CATALOG_ENV") || (isProd ? "prod" : "dev"),
+        PRONTIQ_BILLING_PLAN_CHANGE_ALLOWED_ORG_IDS:
+          readGithubVar("PRONTIQ_BILLING_PLAN_CHANGE_ALLOWED_ORG_IDS") || "",
+        PRONTIQ_BILLING_PLAN_CHANGES_ENABLED:
+          readGithubVar("PRONTIQ_BILLING_PLAN_CHANGES_ENABLED") || "false",
         USAGE_DAILY_TABLE_NAME: usageDailyTable.name,
       },
     });
@@ -1881,7 +1889,7 @@ export default $config({
       billingEventsQueueUrl: billingEventsQueue.url,
       stateMachine: stateMachine.arn,
       ingestAlerts: ingestAlerts.arn,
-      legacyBillingActionsTableName: billingActionsTable.name,
+      billingActionsTableName: billingActionsTable.name,
       legacyCustomersTableName: legacyCustomersTable.name,
     };
   },

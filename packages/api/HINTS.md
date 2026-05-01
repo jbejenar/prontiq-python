@@ -21,9 +21,11 @@
   API hot path.
 - Account setup responses expose Clerk `orgId`, which is also the active Lago
   customer external id.
-- AWS account billing routes are retired. Future console billing should use a
-  Vercel server-side BFF that verifies Clerk auth and calls Lago with a
-  server-held Lago API key.
+- AWS account billing reads and portal-session routes are retired.
+  `POST /v1/account/billing/plan-change` is the only active billing mutation:
+  it must verify Clerk JWT/admin, require first-factor step-up and
+  `Idempotency-Key`, write `prontiq-billing-actions*` replay evidence, and let
+  Lago webhook/reconcile projection update local enforcement.
 - Never include raw API keys, query strings, headers, IP addresses, user agents,
   or response payloads in billing events.
 - `/v1/account/usage` is a private account route only. It must appear in

@@ -1764,18 +1764,26 @@ The active AWS private account routes are split by responsibility:
   manage keys, and the key-count/first-key state when provisioned.
 - `/v1/account/keys*` is the private key-management surface. It is documented
   in §7.3 and `docs/private-api/account-keys.md`.
+- `GET /v1/account/usage` is the member-allowed platform usage surface.
+- `POST /v1/account/billing/plan-change` is the only active private billing
+  mutation. It is org-admin-only, requires Clerk first-factor reverification,
+  requires `Idempotency-Key`, records replay evidence in
+  `prontiq-billing-actions*`, and calls Lago to change
+  `external_id = lago_sub_${orgId}`. Lago remains the billing source of truth;
+  local API enforcement updates only through Lago webhook/reconcile projection.
 
-The former AWS account billing routes are retired:
+The remaining former AWS account billing routes are retired:
 
 - `GET /v1/account/billing`
-- `POST /v1/account/billing/plan-change`
 - `POST /v1/account/billing/portal-session`
 
 Console billing uses a Vercel server-side BFF in `apps/console`. The BFF reads
 Clerk session/org claims, keeps Lago API keys in Vercel server environment, and
-calls Lago directly for billing reads and payment-link actions. The platform
-backend remains responsible for account setup recovery, API key lifecycle,
-request-time enforcement, queued usage events, and webhook reconciliation.
+calls Lago directly for billing reads and payment-link actions. Plan changes
+use the private account API so replay locks and idempotency evidence stay in
+the AWS control plane. The platform backend remains responsible for account
+setup recovery, API key lifecycle, request-time enforcement, queued usage
+events, webhook reconciliation, and the plan-change mutation ledger.
 
 Active console billing BFF routes:
 
@@ -1787,15 +1795,6 @@ Active console billing BFF routes:
   subscription plan. If Lago reports `no_linked_payment_provider`, the customer
   must be repaired/replayed through the Lago customer sync path so Lago creates
   or links the Stripe customer before checkout can be generated.
-- `POST /api/billing/plan-change` is org-admin-only, same-origin, and Clerk
-  step-up protected. It writes replay evidence and an org-level mutation lock
-  to `prontiq-billing-actions*`, fences the provider boundary as
-  `provider_in_flight`, then calls Lago's subscription upgrade/downgrade flow
-  for `external_id = lago_sub_${orgId}`. Expired pre-provider `processing`
-  rows may be reclaimed, but `provider_in_flight` rows are manual-reconcile
-  evidence and are never auto-replayed into another Lago mutation. The route
-  returns accepted/pending/noop state only; local request-time enforcement is
-  updated later by Lago webhook reconciliation.
 - `POST /api/billing/invoices/payment-url` is org-admin-only and returns a
   Lago-generated invoice payment URL after verifying the invoice belongs to the
   active org.

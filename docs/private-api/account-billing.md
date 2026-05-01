@@ -1,34 +1,95 @@
 # Account Billing API
 
-Superseded by ADR-035 on 2026-04-27.
+Private account billing is deliberately narrow. Lago is the billing source of
+truth; the platform only owns replay-safe mutation ingress and local API
+enforcement projection.
 
-The former AWS private account billing routes are retired:
+## Active Route
 
-- `GET /v1/account/billing`
-- `POST /v1/account/billing/plan-change`
-- `POST /v1/account/billing/portal-session`
+```text
+POST /v1/account/billing/plan-change
+```
 
-Active AWS private account routes are setup recovery and key management:
-`POST /v1/account/setup`, `GET /v1/account/status`, and
-`/v1/account/keys*`. They return or operate on the active Clerk `orgId`
-commercial identity. They are documented separately in
-`docs/private-api/account-keys.md`.
+Purpose: change the active Lago subscription plan for the current Clerk
+organization.
 
-Console billing is implemented as a Vercel server-side BFF:
+Authentication and authorization:
 
-- verify Clerk auth server-side
-- read the active Clerk `org_id`
-- call Lago with a server-held Lago API key
-- never expose Lago or Stripe credentials to the browser
+- Requires a valid Clerk session JWT.
+- Requires active Clerk organization context.
+- Requires org admin role.
+- Requires fresh first-factor Clerk reverification.
+- Requires `Idempotency-Key` header.
 
-Current BFF routes live inside `apps/console`, not the AWS private API:
+Request body:
 
-- `GET /api/billing/summary`
-- `POST /api/billing/checkout`
-- `POST /api/billing/plan-change`
-- `POST /api/billing/invoices/payment-url`
+```json
+{
+  "targetPlanCode": "starter"
+}
+```
 
-These routes are intentionally not part of `packages/api/openapi.private.json`.
-`POST /api/billing/plan-change` uses the retained
-`prontiq-billing-actions*` DynamoDB ledger from the Vercel BFF; it does not
-revive the retired AWS account billing API.
+Success response:
+
+```json
+{
+  "currentPlanCode": "starter",
+  "downgradePlanDate": null,
+  "nextPlanCode": null,
+  "reconciliationState": "pending_lago_webhook",
+  "status": "accepted",
+  "targetPlanCode": "starter"
+}
+```
+
+Replay and safety contract:
+
+- The route records action evidence in `prontiq-billing-actions*` before
+  calling Lago.
+- Same `Idempotency-Key` plus same request replays the stored terminal result.
+- Same `Idempotency-Key` plus different body returns `IDEMPOTENCY_CONFLICT`.
+- Concurrent different plan changes for the same org return
+  `ACTION_IN_PROGRESS`.
+- Once the provider boundary is crossed, ambiguous outcomes are operator
+  reconcile events. They return `LAGO_PLAN_CHANGE_OUTCOME_UNKNOWN`, keep the
+  per-org lock as a manual-reconcile fence, and are not automatically replayed
+  into another Lago mutation. This response is returned on the original
+  ambiguous request and on same-key retries.
+- The route never updates local request-time enforcement directly. Lago webhook
+  reconciliation or the Lago reconcile job projects accepted plan state into
+  DynamoDB bouncer fields.
+
+Common errors:
+
+- `MISSING_IDEMPOTENCY_KEY`
+- `INVALID_IDEMPOTENCY_KEY`
+- `FEATURE_DISABLED`
+- `ORG_NOT_ALLOWLISTED`
+- `TARGET_PLAN_NOT_AVAILABLE`
+- `PAYMENT_PROVIDER_NOT_LINKED`
+- `PAYMENT_METHOD_REQUIRED`
+- `PLAN_CHANGE_ALREADY_PENDING`
+- `BILLING_ACTION_LEDGER_UNAVAILABLE`
+- `LAGO_PLAN_CHANGE_OUTCOME_UNKNOWN`
+
+## Retired Routes
+
+These remain retired and must not be reintroduced without a new decision record:
+
+```text
+GET  /v1/account/billing
+POST /v1/account/billing/portal-session
+```
+
+## Vercel Billing BFF
+
+Billing reads and payment-link actions still live in `apps/console`:
+
+```text
+GET  /api/billing/summary
+POST /api/billing/checkout
+POST /api/billing/invoices/payment-url
+```
+
+Those routes call Lago from Vercel server-side code with server-held Lago
+credentials. They do not mutate subscriptions.

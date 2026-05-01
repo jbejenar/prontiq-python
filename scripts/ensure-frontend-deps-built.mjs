@@ -28,6 +28,10 @@ export const dependencyMap = {
   ],
   console: [
     {
+      packageName: "@prontiq/shared",
+      artifacts: ["packages/shared/dist/index.js"],
+    },
+    {
       packageName: "@prontiq/sdk",
       artifacts: ["sdks/typescript/esm/index.js"],
     },

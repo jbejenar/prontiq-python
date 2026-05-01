@@ -73,9 +73,10 @@ configured with the matching subscription and metric.
 
 ## Console billing surfaces
 
-Signed-in console billing screens should use a Vercel server-side BFF rather
-than direct Lago or Stripe browser integration. The BFF verifies Clerk auth,
-reads the active `org_id`, and calls Lago with server-held credentials.
+Signed-in console billing screens must not call Lago or Stripe directly from
+the browser. Billing reads and payment-link actions use a Vercel server-side
+BFF. Replay-safe plan changes use the private account API with Clerk JWT auth
+and a per-request idempotency key.
 
 API-key users should continue to integrate through the public data API and use
 the console UI for account billing actions.

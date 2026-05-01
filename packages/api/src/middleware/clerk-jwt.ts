@@ -552,6 +552,11 @@ export interface RequireReverificationOptions {
   maxSecondFactorAgeMinutes?: number;
 }
 
+export interface RequireFirstFactorReverificationOptions {
+  /** Maximum age of the first-factor verification, in MINUTES. Default 10. */
+  maxFirstFactorAgeMinutes?: number;
+}
+
 /**
  * OpenAPI/Zod schema for the 403 body that `requireReverification`
  * emits on stale `fva`. This is Clerk's wire format — `useReverification()`
@@ -644,6 +649,78 @@ export function requireReverification(options: RequireReverificationOptions = {}
             metadata: {
               reverification: {
                 level: "second_factor",
+                afterMinutes: max,
+              },
+            },
+          },
+        },
+        403,
+      );
+    }
+
+    await next();
+  });
+}
+
+export function requireFirstFactorReverification(
+  options: RequireFirstFactorReverificationOptions = {},
+) {
+  const max = options.maxFirstFactorAgeMinutes ?? 10;
+  if (!Number.isInteger(max) || max < 1) {
+    throw new Error("requireFirstFactorReverification maxFirstFactorAgeMinutes must be a positive integer");
+  }
+
+  return createMiddleware(async (c, next) => {
+    if (STEP_UP_BYPASS_ENABLED) {
+      logger.warn("requireFirstFactorReverification: STEP_UP_BYPASS=1 honored — dev only", {
+        request_id: c.get("requestId"),
+        path: c.req.path,
+      });
+      await next();
+      return;
+    }
+
+    const principal = c.get("clerkPrincipal");
+    if (!principal) {
+      logger.error("requireFirstFactorReverification mounted without upstream clerkJwt — principal missing", {
+        request_id: c.get("requestId"),
+        path: c.req.path,
+      });
+      return errorEnvelope(c, 500, "INTERNAL_ERROR", "Internal server error");
+    }
+
+    if (!principal.fva || !Array.isArray(principal.fva)) {
+      logger.error(
+        "requireFirstFactorReverification: JWT lacks fva claim — operator must update Clerk JWT template / reverification config",
+        {
+          request_id: c.get("requestId"),
+          path: c.req.path,
+          userId: principal.userId,
+          orgId: principal.orgId,
+        },
+      );
+      return errorEnvelope(
+        c,
+        500,
+        "STEP_UP_MISCONFIGURED",
+        "Step-up enforcement is not configured. Contact support.",
+      );
+    }
+
+    const firstFactorAgeMinutes = principal.fva[0];
+    if (
+      typeof firstFactorAgeMinutes !== "number" ||
+      firstFactorAgeMinutes < 0 ||
+      firstFactorAgeMinutes > max
+    ) {
+      return c.json(
+        {
+          clerk_error: {
+            type: "forbidden",
+            reason: "reverification-error",
+            metadata: {
+              reverification: {
+                level: "first_factor",
                 afterMinutes: max,
               },
             },

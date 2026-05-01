@@ -7,6 +7,7 @@ import { createLogger, DEFAULT_ACCOUNT_URL } from "@prontiq/shared";
 import { requestId } from "./middleware/request-id.js";
 import { clerkJwt } from "./middleware/clerk-jwt.js";
 import { accountRoutes } from "./routes/account.js";
+import { billingRoutes } from "./routes/billing.js";
 import { keysRoutes } from "./routes/keys.js";
 import { usageRoutes } from "./routes/usage.js";
 
@@ -69,7 +70,7 @@ app.use(
   cors({
     origin: getAccountCorsOrigin,
     allowMethods: ["GET", "OPTIONS", "POST"],
-    allowHeaders: ["Authorization", "Content-Type"],
+    allowHeaders: ["Authorization", "Content-Type", "Idempotency-Key"],
   }),
 );
 
@@ -109,6 +110,7 @@ app.onError((err, c) => {
 // default-secure for that route.
 app.use("/v1/account/*", clerkJwt());
 app.route("/v1/account", accountRoutes);
+app.route("/v1/account", billingRoutes);
 app.route("/v1/account", keysRoutes);
 app.route("/v1/account", usageRoutes);
 

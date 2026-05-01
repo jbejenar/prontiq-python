@@ -96,6 +96,9 @@ export type {
   LagoWebhookProcessingStatus,
 } from "./lago-webhooks.js";
 
+export { extractLagoPlanMetadata, isLagoPlanVisible } from "./lago-plans.js";
+export type { LagoCatalogEnvironment } from "./lago-plans.js";
+
 export {
   manifestV1Schema,
   manifestV2Schema,

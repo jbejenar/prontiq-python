@@ -31,8 +31,10 @@
 - Pending Lago plan transitions must not change local request-time entitlements.
   Record pending metadata and wait for the active replacement snapshot before
   changing `tier`, products, quota, rate limit, or billing-period fields.
-- AWS account billing mutations are retired. Future console billing belongs in a
-  Vercel server-side BFF that verifies Clerk auth and calls Lago server-side.
+- Billing plan changes use the AWS private account API plus
+  `prontiq-billing-actions*` replay evidence. Billing reads and payment links
+  stay in the Vercel BFF. Do not let Vercel write local enforcement projection;
+  Lago webhook/reconcile remains the only plan-state projector.
 - Do not mutate Stripe registries from Lago webhook reconciliation.
 - Do not mutate existing non-canonical Lago organizations during platform
   tests. P1B.18a live smoke work may create repo-owned test

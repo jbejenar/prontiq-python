@@ -1,3 +1,9 @@
+import {
+  extractLagoPlanMetadata,
+  isLagoPlanVisible,
+  type LagoCatalogEnvironment,
+} from "@prontiq/shared";
+
 export interface BillingPlan {
   code: string;
   name: string;
@@ -131,11 +137,6 @@ function getObject(value: unknown, paths: string[][]): Record<string, unknown> |
   return null;
 }
 
-function getBoolean(metadata: Record<string, unknown>, key: string): boolean {
-  const value = metadata[key];
-  return value === true || (typeof value === "string" && value.toLowerCase() === "true");
-}
-
 function getArray(value: unknown, paths: string[][]): unknown[] {
   for (const path of paths) {
     let cursor = value;
@@ -145,6 +146,27 @@ function getArray(value: unknown, paths: string[][]): unknown[] {
     if (Array.isArray(cursor)) return cursor;
   }
   return [];
+}
+
+function getNextPage(payload: unknown): number | null {
+  const meta = getObject(payload, [["meta"], ["pagination"]]);
+  const nextPage = getNumber(meta, [["next_page"], ["nextPage"]]);
+  if (nextPage !== null && nextPage > 0) return nextPage;
+
+  const currentPage = getNumber(meta, [["current_page"], ["currentPage"], ["page"]]);
+  const totalPages = getNumber(meta, [["total_pages"], ["totalPages"]]);
+  if (currentPage !== null && totalPages !== null && currentPage < totalPages) {
+    return currentPage + 1;
+  }
+  return null;
+}
+
+function withPagination(path: string, page: number, perPage = 100) {
+  const [pathname, query = ""] = path.split("?", 2);
+  const params = new URLSearchParams(query);
+  params.set("page", String(page));
+  params.set("per_page", String(perPage));
+  return `${pathname}?${params.toString()}`;
 }
 
 function normalizeDecimalString(value: unknown): string | null {
@@ -289,20 +311,6 @@ function parsePlan(value: unknown): BillingPlan | null {
   };
 }
 
-function planMetadata(value: unknown): Record<string, unknown> {
-  return getObject(value, [["metadata"]]) ?? {};
-}
-
-function isVisiblePlan(value: unknown, catalogEnv: "dev" | "prod" | "all") {
-  const metadata = planMetadata(value);
-  if (!getBoolean(metadata, "prontiq_console_visible")) return false;
-  if (getBoolean(metadata, "prontiq_test") || getBoolean(metadata, "prontiq_internal")) return false;
-
-  const metadataEnv = metadata.prontiq_environment;
-  if (typeof metadataEnv !== "string" || metadataEnv.length === 0) return true;
-  return metadataEnv === "all" || metadataEnv === catalogEnv || catalogEnv === "all";
-}
-
 function parseSubscription(payload: unknown): BillingSubscription | null {
   const subscription = isRecord(payload) && isRecord(payload.subscription) ? payload.subscription : payload;
   const externalId = getString(subscription, [["external_id"], ["external_subscription_id"]]);
@@ -375,13 +383,13 @@ function parseInvoice(value: unknown): BillingInvoice | null {
 export class LagoBillingClient {
   private readonly apiKey: string;
   private readonly baseUrl: string;
-  private readonly catalogEnv: "dev" | "prod" | "all";
+  private readonly catalogEnv: LagoCatalogEnvironment;
   private readonly fetchImpl: typeof fetch;
 
   constructor(input: {
     apiKey: string;
     baseUrl: string;
-    catalogEnv: "dev" | "prod" | "all";
+    catalogEnv: LagoCatalogEnvironment;
     fetchImpl?: typeof fetch;
   }) {
     this.apiKey = input.apiKey;
@@ -410,9 +418,19 @@ export class LagoBillingClient {
   }
 
   async listVisiblePlans(): Promise<BillingPlan[]> {
-    const payload = await this.request("/plans");
-    const rawPlans = isRecord(payload) ? asArray(payload.plans) : [];
-    return rawPlans.filter((plan) => isVisiblePlan(plan, this.catalogEnv)).flatMap((plan) => {
+    const rawPlans: unknown[] = [];
+    let page: number | null = 1;
+    while (page !== null) {
+      const payload = await this.request(withPagination("/plans", page));
+      rawPlans.push(...(isRecord(payload) ? asArray(payload.plans) : []));
+      page = getNextPage(payload);
+    }
+    return rawPlans.filter((plan) =>
+      isLagoPlanVisible({
+        catalogEnv: this.catalogEnv,
+        metadata: extractLagoPlanMetadata(plan),
+      }),
+    ).flatMap((plan) => {
       const parsed = parsePlan(plan);
       return parsed ? [parsed] : [];
     });
@@ -421,26 +439,6 @@ export class LagoBillingClient {
   async getSubscription(externalSubscriptionId: string): Promise<BillingSubscription | null> {
     const payload = await this.request(`/subscriptions/${encodeURIComponent(externalSubscriptionId)}`);
     return payload ? parseSubscription(payload) : null;
-  }
-
-  async changeSubscriptionPlan(input: {
-    externalCustomerId: string;
-    externalSubscriptionId: string;
-    targetPlanCode: string;
-  }): Promise<BillingSubscription> {
-    const payload = await this.request("/subscriptions", {
-      method: "POST",
-      body: JSON.stringify({
-        subscription: {
-          external_customer_id: input.externalCustomerId,
-          external_id: input.externalSubscriptionId,
-          plan_code: input.targetPlanCode,
-        },
-      }),
-    });
-    const subscription = parseSubscription(payload);
-    if (!subscription) throw new Error("Lago subscription change response was missing subscription.");
-    return subscription;
   }
 
   async getCurrentUsage(input: {

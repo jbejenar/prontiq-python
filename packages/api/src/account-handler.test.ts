@@ -49,6 +49,7 @@ test("dev account routes answer browser CORS preflight before Clerk auth with wi
   assert.match(res.headers.get("access-control-allow-methods") ?? "", /GET/);
   assert.match(res.headers.get("access-control-allow-methods") ?? "", /OPTIONS/);
   assert.match(res.headers.get("access-control-allow-headers") ?? "", /authorization/i);
+  assert.match(res.headers.get("access-control-allow-headers") ?? "", /idempotency-key/i);
 });
 
 test("prod account-route CORS uses the configured console origin", async () => {

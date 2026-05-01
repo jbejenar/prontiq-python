@@ -2,7 +2,8 @@
 
 ## Status
 
-Accepted
+Accepted. Amended by DEC-041: billing reads and payment-link routes remain in
+the Vercel BFF, while replay-safe plan changes moved to the private account API.
 
 ## Context
 

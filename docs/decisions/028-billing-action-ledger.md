@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted. Reused by DEC-040 for Vercel console billing mutations.
+Accepted. Reused by DEC-041 for private account API Lago plan changes.
 
 ## Question
 
@@ -53,7 +53,7 @@ not misreported as an unchanged current-plan no-op.
 ## Consequences
 
 - `prontiq-billing-actions` is retained and reused as audit/replay evidence for
-  Vercel console billing mutations.
+  private account API Lago plan changes.
 - Same idempotency key plus same request returns stored terminal evidence.
 - Same idempotency key plus same request can retry only after explicitly
   retryable local failures or stale pre-provider `processing` leases.

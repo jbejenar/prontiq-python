@@ -20,8 +20,8 @@ test("private OpenAPI spec contains account routes", () => {
   const paths = Object.keys(privateSpec.paths ?? {});
   assert.ok(paths.includes("/v1/account/setup"));
   assert.ok(paths.includes("/v1/account/usage"));
+  assert.ok(paths.includes("/v1/account/billing/plan-change"));
   assert.equal(paths.includes("/v1/account/billing"), false);
-  assert.equal(paths.includes("/v1/account/billing/plan-change"), false);
   assert.equal(paths.includes("/v1/account/billing/portal-session"), false);
   assert.deepEqual(Object.keys(privateSpec.components?.securitySchemes ?? {}), ["ClerkJwt"]);
 });
@@ -101,4 +101,8 @@ test("private OpenAPI: /v1/account/keys/rotate 403 documents both INSUFFICIENT_R
 
 test("private OpenAPI: /v1/account/keys/revoke 403 documents both INSUFFICIENT_ROLE and Clerk-native reverification body", () => {
   assertStepUp403Union("/v1/account/keys/revoke");
+});
+
+test("private OpenAPI: /v1/account/billing/plan-change 403 documents both INSUFFICIENT_ROLE and Clerk-native reverification body", () => {
+  assertStepUp403Union("/v1/account/billing/plan-change");
 });

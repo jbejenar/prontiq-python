@@ -89,3 +89,21 @@ export type {
   UsageGranularity,
   UsageSeriesPoint,
 } from "./account-usage.js";
+
+export {
+  DynamoBillingActionStore,
+  HttpLagoPlanChangeClient,
+  buildBillingActionId,
+  buildBillingActionRequestHash,
+  createBillingPlanChangeService,
+  createDefaultBillingPlanChangeService,
+} from "./billing-plan-change.js";
+export type {
+  BillingActionRecord,
+  BillingActionStatus,
+  BillingActionStore,
+  BillingPlanChangeResult,
+  BillingPlanChangeService,
+  BillingPlanChangeServiceResult,
+  LagoPlanChangeClient,
+} from "./billing-plan-change.js";

@@ -5,19 +5,21 @@ import userEvent from "@testing-library/user-event";
 import { vi } from "vitest";
 
 const apiMocks = vi.hoisted(() => ({
-  changePlan: vi.fn(),
+  changeBillingPlan: vi.fn(),
   createCheckout: vi.fn(),
   createInvoicePaymentUrl: vi.fn(),
   getSummary: vi.fn(),
 }));
 
 const clerkState = vi.hoisted(() => ({
+  getToken: vi.fn(),
   isLoaded: true,
   orgId: "org_123" as string | null,
 }));
 
 vi.mock("@clerk/nextjs", () => ({
   useAuth: () => ({
+    getToken: clerkState.getToken,
     isLoaded: clerkState.isLoaded,
     orgId: clerkState.orgId,
   }),
@@ -31,6 +33,28 @@ vi.mock("@clerk/nextjs", () => ({
       return result;
     },
 }));
+
+vi.mock("../../../lib/account-api.js", () => {
+  class AccountApiError extends Error {
+    readonly code: string;
+    readonly status: number;
+
+    constructor(message: string, code: string, status: number) {
+      super(message);
+      this.name = "AccountApiError";
+      this.code = code;
+      this.status = status;
+    }
+  }
+
+  return {
+    AccountApiError,
+    accountApi: {
+      changeBillingPlan: apiMocks.changeBillingPlan,
+      getStatus: vi.fn(),
+    },
+  };
+});
 
 vi.mock("../../../lib/billing-api.js", () => {
   class BillingApiError extends Error {
@@ -148,12 +172,13 @@ beforeEach(() => {
   vi.clearAllMocks();
   clerkState.isLoaded = true;
   clerkState.orgId = "org_123";
+  clerkState.getToken.mockResolvedValue("session.jwt");
   apiMocks.getSummary.mockResolvedValue(makeSummary());
   apiMocks.createCheckout.mockResolvedValue({
     checkoutUrl: "https://checkout.example",
     intendedPlanCode: "payg_aud",
   });
-  apiMocks.changePlan.mockResolvedValue({
+  apiMocks.changeBillingPlan.mockResolvedValue({
     currentPlanCode: "payg_aud",
     downgradePlanDate: null,
     nextPlanCode: null,
@@ -208,7 +233,7 @@ test("admin plan change sends the selected Lago plan code", async () => {
   await userEvent.click(await screen.findByRole("button", { name: /change to pay as you go aud/i }));
 
   await waitFor(() =>
-    expect(apiMocks.changePlan).toHaveBeenCalledWith({
+    expect(apiMocks.changeBillingPlan).toHaveBeenCalledWith(clerkState.getToken, {
       idempotencyKey: expect.any(String),
       targetPlanCode: "payg_aud",
     }),

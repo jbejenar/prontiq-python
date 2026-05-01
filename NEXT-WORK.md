@@ -5,7 +5,7 @@
 ## Current Phase
 
 P1C.05a: Replay-safe Lago Plan Changes. Active branch adds
-`POST /api/billing/plan-change` to the console Vercel BFF with Clerk step-up,
+`POST /v1/account/billing/plan-change` to the private account API with Clerk step-up,
 per-click idempotency, the `prontiq-billing-actions*` action/lock ledger, and
 Lago webhook reconciliation as the enforcement convergence path.
 
@@ -19,9 +19,8 @@ Lago webhook reconciliation as the enforcement convergence path.
   platform stores only a DynamoDB enforcement projection.
 - The platform keeps hot-path API key auth, credit enforcement, usage counters,
   SQS event production, and webhook reconciliation.
-- The platform does not provide active account billing read/mutation APIs.
-- Future console billing reads/actions should use a Vercel server-side BFF that
-  calls Lago with server-held Lago credentials and Clerk session/org context.
+- The platform provides one active account billing mutation API for replay-safe
+  plan changes. Billing reads and payment-link actions stay in the Vercel BFF.
 
 ## Live Endpoints
 
@@ -49,6 +48,7 @@ GET  /v1/account/audit            (member-allowed; P1C.03 PR 5)
 GET  /v1/account/usage            (member-allowed; P1C.04)
 POST /v1/account/keys/rotate      (admin + reverification; P1C.03 PR 2)
 POST /v1/account/keys/revoke      (admin + reverification; P1C.03 PR 2)
+POST /v1/account/billing/plan-change (admin + first-factor reverification; P1C.05a)
 ```
 
 Console Vercel BFF:
@@ -56,7 +56,6 @@ Console Vercel BFF:
 ```text
 GET  /api/billing/summary
 POST /api/billing/checkout
-POST /api/billing/plan-change
 POST /api/billing/invoices/payment-url
 ```
 
@@ -64,7 +63,6 @@ Retired AWS routes:
 
 ```text
 GET  /v1/account/billing
-POST /v1/account/billing/plan-change
 POST /v1/account/billing/portal-session
 ```
 

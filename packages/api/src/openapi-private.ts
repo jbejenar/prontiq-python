@@ -1,5 +1,6 @@
 import { OpenAPIHono } from "@hono/zod-openapi";
 import { accountRoutes } from "./routes/account.js";
+import { billingRoutes } from "./routes/billing.js";
 import { keysRoutes } from "./routes/keys.js";
 import { usageRoutes } from "./routes/usage.js";
 
@@ -22,6 +23,7 @@ app.doc31("/openapi.json", {
 });
 
 app.route("/v1/account", accountRoutes);
+app.route("/v1/account", billingRoutes);
 app.route("/v1/account", keysRoutes);
 app.route("/v1/account", usageRoutes);
 

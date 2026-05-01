@@ -25,8 +25,8 @@ Active identity rules:
 
 ## After Console Plan Changes
 
-`POST /api/billing/plan-change` records replay evidence and asks Lago to switch
-the subscription. The route does not update request-time enforcement directly.
+`POST /v1/account/billing/plan-change` records replay evidence and asks Lago to
+switch the subscription. The route does not update request-time enforcement directly.
 After Lago emits the subscription webhook, this reconciler must project the
 active or pending Lago state onto the org envelope and API-key rows.
 

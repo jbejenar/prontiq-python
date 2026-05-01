@@ -7,10 +7,9 @@
 - P1B.22 makes Clerk `orgId` the active Prontiq/Lago customer identity and
   keeps Stripe as Lago's payment rail only. Do not render Stripe or Lago
   provider IDs as canonical account state.
-- Billing UI work must not call Lago or Stripe from the browser. Billing
-  surfaces use the Vercel server-side BFF under `app/api/billing/*`, verify
-  Clerk auth, read the active `org_id`, and call Lago with a server-held Lago
-  API key.
+- Billing UI work must not call Lago or Stripe from the browser. Billing reads
+  and payment links use the Vercel server-side BFF under `app/api/billing/*`;
+  plan changes use the private account API with Clerk JWT auth.
 - Billing plans must be rendered from Lago responses. Do not hard-code Free,
   PAYG, packs, prices, quotas, or local `PLANS` values in the console.
 - Billing plan visibility is controlled by Lago metadata:
@@ -18,11 +17,11 @@
   `prontiq_test=true` and `prontiq_internal=true` exclude a plan;
   `prontiq_environment=dev|prod|all` scopes a plan to an environment.
 - P1C.05 payment setup and invoice payment links do not mutate subscriptions.
-- P1C.05a plan changes use the Vercel billing BFF, Clerk step-up, per-click
-  `Idempotency-Key`, and `prontiq-billing-actions*` action/lock rows. Do not
-  call Lago from the browser, do not reintroduce AWS `/v1/account/billing*`,
-  and do not optimistic-write local enforcement state from Vercel. Terminal
-  billing-action rows are immutable; `provider_in_flight` and
+- P1C.05a plan changes use `POST /v1/account/billing/plan-change`, Clerk
+  first-factor step-up, per-click `Idempotency-Key`, and
+  `prontiq-billing-actions*` action/lock rows. Do not call Lago from the
+  browser and do not optimistic-write local enforcement state from Vercel.
+  Terminal billing-action rows are immutable; `provider_in_flight` and
   `outcome_unknown` rows require operator Lago inspection and must not be
   auto-replayed into another provider mutation.
 - Billing plan-change step-up requires fresh first-factor verification.

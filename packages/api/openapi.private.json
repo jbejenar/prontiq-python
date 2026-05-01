@@ -261,6 +261,494 @@
                 }
             }
         },
+        "/v1/account/billing/plan-change": {
+            "post": {
+                "summary": "Change Lago subscription plan (admin only)",
+                "description": "Replay-safe Lago plan-change adapter. Clerk org admins submit a target Lago plan code with an Idempotency-Key; Lago remains the billing source of truth and webhook reconciliation updates local enforcement.",
+                "security": [
+                    {
+                        "ClerkJwt": []
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "targetPlanCode": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 128
+                                    }
+                                },
+                                "required": [
+                                    "targetPlanCode"
+                                ]
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Plan change accepted, pending, or no-op.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "currentPlanCode": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ]
+                                        },
+                                        "downgradePlanDate": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ]
+                                        },
+                                        "nextPlanCode": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ]
+                                        },
+                                        "reconciliationState": {
+                                            "type": "string",
+                                            "enum": [
+                                                "not_required",
+                                                "pending_lago_webhook"
+                                            ]
+                                        },
+                                        "status": {
+                                            "type": "string",
+                                            "enum": [
+                                                "accepted",
+                                                "noop",
+                                                "pending"
+                                            ]
+                                        },
+                                        "targetPlanCode": {
+                                            "type": "string"
+                                        }
+                                    },
+                                    "required": [
+                                        "currentPlanCode",
+                                        "downgradePlanDate",
+                                        "nextPlanCode",
+                                        "reconciliationState",
+                                        "status",
+                                        "targetPlanCode"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid body, idempotency key, or target plan",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "type": "object",
+                                            "properties": {
+                                                "code": {
+                                                    "type": "string"
+                                                },
+                                                "message": {
+                                                    "type": "string"
+                                                },
+                                                "status": {
+                                                    "type": "integer"
+                                                },
+                                                "request_id": {
+                                                    "type": "string"
+                                                },
+                                                "details": {
+                                                    "type": "object",
+                                                    "additionalProperties": {}
+                                                }
+                                            },
+                                            "required": [
+                                                "code",
+                                                "message",
+                                                "status",
+                                                "request_id"
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "error"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Missing/invalid JWT",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "type": "object",
+                                            "properties": {
+                                                "code": {
+                                                    "type": "string"
+                                                },
+                                                "message": {
+                                                    "type": "string"
+                                                },
+                                                "status": {
+                                                    "type": "integer"
+                                                },
+                                                "request_id": {
+                                                    "type": "string"
+                                                },
+                                                "details": {
+                                                    "type": "object",
+                                                    "additionalProperties": {}
+                                                }
+                                            },
+                                            "required": [
+                                                "code",
+                                                "message",
+                                                "status",
+                                                "request_id"
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "error"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "INSUFFICIENT_ROLE, feature disabled, or step-up required",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "anyOf": [
+                                        {
+                                            "type": "object",
+                                            "properties": {
+                                                "error": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "code": {
+                                                            "type": "string"
+                                                        },
+                                                        "message": {
+                                                            "type": "string"
+                                                        },
+                                                        "status": {
+                                                            "type": "integer"
+                                                        },
+                                                        "request_id": {
+                                                            "type": "string"
+                                                        },
+                                                        "details": {
+                                                            "type": "object",
+                                                            "additionalProperties": {}
+                                                        }
+                                                    },
+                                                    "required": [
+                                                        "code",
+                                                        "message",
+                                                        "status",
+                                                        "request_id"
+                                                    ]
+                                                }
+                                            },
+                                            "required": [
+                                                "error"
+                                            ]
+                                        },
+                                        {
+                                            "type": "object",
+                                            "properties": {
+                                                "clerk_error": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "type": {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "forbidden"
+                                                            ]
+                                                        },
+                                                        "reason": {
+                                                            "type": "string",
+                                                            "enum": [
+                                                                "reverification-error"
+                                                            ]
+                                                        },
+                                                        "metadata": {
+                                                            "type": "object",
+                                                            "properties": {
+                                                                "reverification": {
+                                                                    "type": "object",
+                                                                    "properties": {
+                                                                        "level": {
+                                                                            "type": "string",
+                                                                            "enum": [
+                                                                                "first_factor",
+                                                                                "second_factor",
+                                                                                "multi_factor"
+                                                                            ]
+                                                                        },
+                                                                        "afterMinutes": {
+                                                                            "type": "integer",
+                                                                            "minimum": 1
+                                                                        }
+                                                                    },
+                                                                    "required": [
+                                                                        "level",
+                                                                        "afterMinutes"
+                                                                    ]
+                                                                }
+                                                            },
+                                                            "required": [
+                                                                "reverification"
+                                                            ]
+                                                        }
+                                                    },
+                                                    "required": [
+                                                        "type",
+                                                        "reason",
+                                                        "metadata"
+                                                    ]
+                                                }
+                                            },
+                                            "required": [
+                                                "clerk_error"
+                                            ]
+                                        }
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Lago subscription not found",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "type": "object",
+                                            "properties": {
+                                                "code": {
+                                                    "type": "string"
+                                                },
+                                                "message": {
+                                                    "type": "string"
+                                                },
+                                                "status": {
+                                                    "type": "integer"
+                                                },
+                                                "request_id": {
+                                                    "type": "string"
+                                                },
+                                                "details": {
+                                                    "type": "object",
+                                                    "additionalProperties": {}
+                                                }
+                                            },
+                                            "required": [
+                                                "code",
+                                                "message",
+                                                "status",
+                                                "request_id"
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "error"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "Idempotency conflict, action in progress, or pending transition",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "type": "object",
+                                            "properties": {
+                                                "code": {
+                                                    "type": "string"
+                                                },
+                                                "message": {
+                                                    "type": "string"
+                                                },
+                                                "status": {
+                                                    "type": "integer"
+                                                },
+                                                "request_id": {
+                                                    "type": "string"
+                                                },
+                                                "details": {
+                                                    "type": "object",
+                                                    "additionalProperties": {}
+                                                }
+                                            },
+                                            "required": [
+                                                "code",
+                                                "message",
+                                                "status",
+                                                "request_id"
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "error"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Server error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "type": "object",
+                                            "properties": {
+                                                "code": {
+                                                    "type": "string"
+                                                },
+                                                "message": {
+                                                    "type": "string"
+                                                },
+                                                "status": {
+                                                    "type": "integer"
+                                                },
+                                                "request_id": {
+                                                    "type": "string"
+                                                },
+                                                "details": {
+                                                    "type": "object",
+                                                    "additionalProperties": {}
+                                                }
+                                            },
+                                            "required": [
+                                                "code",
+                                                "message",
+                                                "status",
+                                                "request_id"
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "error"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "502": {
+                        "description": "Lago plan change failed",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "type": "object",
+                                            "properties": {
+                                                "code": {
+                                                    "type": "string"
+                                                },
+                                                "message": {
+                                                    "type": "string"
+                                                },
+                                                "status": {
+                                                    "type": "integer"
+                                                },
+                                                "request_id": {
+                                                    "type": "string"
+                                                },
+                                                "details": {
+                                                    "type": "object",
+                                                    "additionalProperties": {}
+                                                }
+                                            },
+                                            "required": [
+                                                "code",
+                                                "message",
+                                                "status",
+                                                "request_id"
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "error"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "Ledger unavailable",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "error": {
+                                            "type": "object",
+                                            "properties": {
+                                                "code": {
+                                                    "type": "string"
+                                                },
+                                                "message": {
+                                                    "type": "string"
+                                                },
+                                                "status": {
+                                                    "type": "integer"
+                                                },
+                                                "request_id": {
+                                                    "type": "string"
+                                                },
+                                                "details": {
+                                                    "type": "object",
+                                                    "additionalProperties": {}
+                                                }
+                                            },
+                                            "required": [
+                                                "code",
+                                                "message",
+                                                "status",
+                                                "request_id"
+                                            ]
+                                        }
+                                    },
+                                    "required": [
+                                        "error"
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/v1/account/status": {
             "get": {
                 "summary": "Read account key-management status (member-allowed)",

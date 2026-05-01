@@ -8,7 +8,8 @@
 
 **Focus:** P1C.05a replay-safe Lago plan changes.
 
-- Added the implementation plan for console plan changes through the Vercel BFF.
+- Implemented the plan direction for console plan changes through the private
+  account API instead of a Vercel-owned DynamoDB client.
 - The target contract is Lago as billing truth, `prontiq-billing-actions*` as
   action/lock replay evidence, and Lago webhook reconciliation as the only local
   bouncer projection writer after a plan change.
@@ -18,7 +19,7 @@
 ### Next session should start with
 
 1. Run console typecheck/tests for P1C.05a.
-2. Deploy Preview with billing-action Vercel env configured.
+2. Deploy the account API with billing plan-change env configured.
 3. Smoke plan change on an allowlisted dev org and verify Lago plus local
    enforcement reconciliation.
 

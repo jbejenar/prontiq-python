@@ -103,6 +103,15 @@ export interface AccountUsage {
   products: AccountUsageProduct[];
 }
 
+export interface BillingPlanChangeResult {
+  currentPlanCode: string | null;
+  downgradePlanDate: string | null;
+  nextPlanCode: string | null;
+  reconciliationState: "not_required" | "pending_lago_webhook";
+  status: "accepted" | "noop" | "pending";
+  targetPlanCode: string;
+}
+
 type GetToken = (options?: { template?: string }) => Promise<string | null>;
 
 export class AccountApiError extends Error {
@@ -204,5 +213,14 @@ export const accountApi = {
     authedFetch<RevokedKey>(getToken, "/v1/account/keys/revoke", {
       method: "POST",
       body: JSON.stringify({ keyId: input.keyId }),
+    }),
+  changeBillingPlan: (
+    getToken: GetToken,
+    input: { idempotencyKey: string; targetPlanCode: string },
+  ) =>
+    authedFetch<BillingPlanChangeResult>(getToken, "/v1/account/billing/plan-change", {
+      method: "POST",
+      headers: { "Idempotency-Key": input.idempotencyKey },
+      body: JSON.stringify({ targetPlanCode: input.targetPlanCode }),
     }),
 };

@@ -9,6 +9,7 @@ import {
 import {
   clerkAdminOnly,
   clerkJwt,
+  requireFirstFactorReverification,
   requireReverification,
   type ClerkVerifier,
 } from "./clerk-jwt.js";
@@ -680,4 +681,74 @@ test("requireReverification: principal missing (mounted without clerkJwt) → 50
   assert.equal(res.status, 500);
   const body = (await res.json()) as { error: { code: string } };
   assert.equal(body.error.code, "INTERNAL_ERROR");
+});
+
+function makeAppWithFirstFactorStepUp(
+  verifier: ClerkVerifier,
+  options: { maxFirstFactorAgeMinutes?: number } = {},
+) {
+  const app = new Hono();
+  app.use("*", requestId());
+  app.use("/v1/account/*", clerkJwt({ verifier }));
+  app.use("/v1/account/*", requireFirstFactorReverification(options));
+  app.post("/v1/account/billing/plan-change", (c) => c.json({ ok: true }));
+  return app;
+}
+
+test("requireFirstFactorReverification: fva[0] within max → next() runs", async () => {
+  const verifier: ClerkVerifier = async () => ({
+    sub: "user_a",
+    org_id: "org_x",
+    org_role: "org:admin",
+    fva: [3, -1],
+  });
+  const app = makeAppWithFirstFactorStepUp(verifier);
+  const res = await app.request("/v1/account/billing/plan-change", {
+    method: "POST",
+    headers: { Authorization: "Bearer x" },
+  });
+  assert.equal(res.status, 200);
+});
+
+test("requireFirstFactorReverification: stale fva[0] → 403 Clerk-native first_factor body", async () => {
+  const verifier: ClerkVerifier = async () => ({
+    sub: "user_a",
+    org_id: "org_x",
+    org_role: "org:admin",
+    fva: [11, -1],
+  });
+  const app = makeAppWithFirstFactorStepUp(verifier);
+  const res = await app.request("/v1/account/billing/plan-change", {
+    method: "POST",
+    headers: { Authorization: "Bearer x" },
+  });
+  assert.equal(res.status, 403);
+  const body = (await res.json()) as {
+    clerk_error?: {
+      metadata: { reverification: { afterMinutes: number; level: string } };
+      reason: string;
+      type: string;
+    };
+  };
+  assert.equal(body.clerk_error?.type, "forbidden");
+  assert.equal(body.clerk_error?.reason, "reverification-error");
+  assert.equal(body.clerk_error?.metadata.reverification.level, "first_factor");
+  assert.equal(body.clerk_error?.metadata.reverification.afterMinutes, 10);
+});
+
+test("requireFirstFactorReverification: missing fva claim → 500 STEP_UP_MISCONFIGURED", async () => {
+  const verifier: ClerkVerifier = async () => ({
+    sub: "user_a",
+    org_id: "org_x",
+    org_role: "org:admin",
+  });
+  const app = makeAppWithFirstFactorStepUp(verifier);
+  const res = await app.request("/v1/account/billing/plan-change", {
+    method: "POST",
+    headers: { Authorization: "Bearer x" },
+  });
+  assert.equal(res.status, 500);
+  const body = (await res.json()) as { error: { code: string }; clerk_error?: unknown };
+  assert.equal(body.error.code, "STEP_UP_MISCONFIGURED");
+  assert.equal(body.clerk_error, undefined);
 });

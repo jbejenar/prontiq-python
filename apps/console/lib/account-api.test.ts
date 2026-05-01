@@ -205,6 +205,41 @@ test("account API reads usage at the requested granularity", async () => {
   );
 });
 
+test("account API posts billing plan changes with Idempotency-Key", async () => {
+  const getToken = vi.fn().mockResolvedValue("default-session-jwt");
+  const fetchMock = vi.fn().mockResolvedValue(
+    new Response(
+      JSON.stringify({
+        currentPlanCode: "starter",
+        downgradePlanDate: null,
+        nextPlanCode: null,
+        reconciliationState: "pending_lago_webhook",
+        status: "accepted",
+        targetPlanCode: "starter",
+      }),
+      { status: 200 },
+    ),
+  );
+  vi.stubGlobal("fetch", fetchMock);
+
+  await accountApi.changeBillingPlan(getToken, {
+    idempotencyKey: "plan-change-1",
+    targetPlanCode: "starter",
+  });
+
+  expect(fetchMock).toHaveBeenCalledWith(
+    "https://api.test.prontiq.dev/v1/account/billing/plan-change",
+    expect.objectContaining({
+      body: JSON.stringify({ targetPlanCode: "starter" }),
+      headers: expect.objectContaining({
+        Authorization: "Bearer default-session-jwt",
+        "Idempotency-Key": "plan-change-1",
+      }),
+      method: "POST",
+    }),
+  );
+});
+
 test("account API returns Clerk reverification bodies so useReverification can inspect them", async () => {
   const getToken = vi.fn().mockResolvedValue("default-session-jwt");
   const clerkError = {

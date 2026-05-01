@@ -17,6 +17,7 @@ async function makeRepoFixture() {
   await mkdir(join(repoDir, "sdks", "typescript", "esm"), { recursive: true });
 
   await writeFile(join(repoDir, "packages", "shared", "dist", "content.js"), "export {};\n", "utf8");
+  await writeFile(join(repoDir, "packages", "shared", "dist", "index.js"), "export {};\n", "utf8");
   await writeFile(join(repoDir, "packages", "plugins", "web-component", "dist", "index.js"), "export {};\n", "utf8");
   await writeFile(join(repoDir, "packages", "tokens", "dist", "tokens.css"), ":root {}\n", "utf8");
   await writeFile(join(repoDir, "sdks", "typescript", "esm", "index.js"), "export {};\n", "utf8");
@@ -174,7 +175,7 @@ test("console typecheck task rebuilds declared workspace deps and generates Next
     }
   }
 
-  assert.deepEqual(builds, ["@prontiq/sdk", "@prontiq/tokens"]);
+  assert.deepEqual(builds, ["@prontiq/shared", "@prontiq/sdk", "@prontiq/tokens"]);
   assert.equal(tasks.length, 2);
   assert.deepEqual(tasks[0].args, ["exec", "next", "typegen"]);
   assert.deepEqual(tasks[1].args, ["exec", "tsc", "-p", "tsconfig.typecheck.json", "--noEmit"]);

@@ -6,6 +6,7 @@ import { CreditCard, ExternalLink, Loader2, ReceiptText, RefreshCcw } from "luci
 import { toast } from "sonner";
 
 import { accountBillingQueryKey } from "../../../lib/account-query-keys.js";
+import { accountApi, AccountApiError } from "../../../lib/account-api.js";
 import { billingApi, BillingApiError, type BillingSummary } from "../../../lib/billing-api.js";
 import type { BillingInvoice, BillingPlan, BillingPlanCharge } from "../../../lib/billing-lago.js";
 import { Badge } from "../../../components/ui/badge.js";
@@ -63,6 +64,7 @@ function formatDate(value: string | null) {
 }
 
 function getErrorMessage(error: unknown) {
+  if (error instanceof AccountApiError) return error.message;
   if (error instanceof BillingApiError) return error.message;
   if (error instanceof Error) return error.message;
   return "Something went wrong. Please try again.";
@@ -257,13 +259,23 @@ function InvoiceTable({
   );
 }
 
-function BillingLoaded({ summary, onRetry }: { summary: BillingSummary; onRetry: () => void }) {
+type ClerkTokenGetter = Parameters<typeof accountApi.getStatus>[0];
+
+function BillingLoaded({
+  onRetry,
+  summary,
+  tokenGetter,
+}: {
+  onRetry: () => void;
+  summary: BillingSummary;
+  tokenGetter: ClerkTokenGetter;
+}) {
   const queryClient = useQueryClient();
   const changePlanWithReverification = useReverification((input: {
     idempotencyKey: string;
     plan: BillingPlan;
   }) =>
-    billingApi.changePlan({
+    accountApi.changeBillingPlan(tokenGetter, {
       idempotencyKey: input.idempotencyKey,
       targetPlanCode: input.plan.code,
     }),
@@ -410,7 +422,7 @@ function BillingLoaded({ summary, onRetry }: { summary: BillingSummary; onRetry:
 }
 
 export function BillingPanel() {
-  const { isLoaded, orgId } = useAuth();
+  const { getToken, isLoaded, orgId } = useAuth();
   const hasActiveOrg = isLoaded && typeof orgId === "string" && orgId.length > 0;
   const billing = useQuery({
     enabled: hasActiveOrg,
@@ -426,8 +438,9 @@ export function BillingPanel() {
         <div>
           <h1 className="text-5xl font-semibold tracking-tight sm:text-6xl">Billing</h1>
           <p className="mt-4 max-w-3xl text-sm leading-6 text-muted-foreground">
-            Lago is the billing source of truth. The console calls a Vercel server-side BFF so Lago
-            and Stripe credentials never reach the browser.
+            Lago is the billing source of truth. Plan changes go through the authenticated account
+            API; Lago reads and payment links stay server-side so Lago and Stripe credentials never
+            reach the browser.
           </p>
         </div>
       </div>
@@ -467,7 +480,11 @@ export function BillingPanel() {
           </CardContent>
         </Card>
       ) : (
-        <BillingLoaded summary={billing.data} onRetry={() => void billing.refetch()} />
+        <BillingLoaded
+          summary={billing.data}
+          tokenGetter={getToken}
+          onRetry={() => void billing.refetch()}
+        />
       )}
     </section>
   );

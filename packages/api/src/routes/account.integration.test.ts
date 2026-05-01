@@ -592,7 +592,7 @@ test("admin-gate: bare 'admin' role (legacy default) → 200 (matches webhook's 
   assert.equal(body.status, "created");
 });
 
-test("retired billing routes are not exposed by the account API", async () => {
+test("retired billing portal routes are not exposed by the account API", async () => {
   const orgId = `org_AcctBillingRetired${SUFFIX}`;
   const { lagoClient } = makeLagoStub();
   const app = buildApp({
@@ -606,13 +606,6 @@ test("retired billing routes are not exposed by the account API", async () => {
     headers: { Authorization: "Bearer good_token" },
   });
   assert.equal(billing.status, 404);
-
-  const planChange = await app.request("/v1/account/billing/plan-change", {
-    method: "POST",
-    headers: { Authorization: "Bearer good_token", "Content-Type": "application/json" },
-    body: JSON.stringify({ targetPlanCode: "payg" }),
-  });
-  assert.equal(planChange.status, 404);
 
   const portal = await app.request("/v1/account/billing/portal-session", {
     method: "POST",

@@ -47,6 +47,56 @@ test("Lago billing client filters plans by Prontiq visibility metadata", async (
   ]);
 });
 
+test("Lago billing client reads all Lago plan pages before filtering", async () => {
+  const fetchMock = vi
+    .fn()
+    .mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          plans: [
+            {
+              code: "free",
+              name: "Free",
+              metadata: { prontiq_console_visible: true, prontiq_environment: "dev" },
+            },
+          ],
+          meta: { current_page: 1, total_pages: 2 },
+        }),
+        { status: 200 },
+      ),
+    )
+    .mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          plans: [
+            {
+              code: "starter",
+              name: "Starter",
+              metadata: { prontiq_console_visible: true, prontiq_environment: "dev" },
+            },
+          ],
+          meta: { current_page: 2, total_pages: 2 },
+        }),
+        { status: 200 },
+      ),
+    ) as unknown as typeof fetch;
+
+  await expect(makeClient(fetchMock).listVisiblePlans()).resolves.toEqual([
+    expect.objectContaining({ code: "free" }),
+    expect.objectContaining({ code: "starter" }),
+  ]);
+  expect(fetchMock).toHaveBeenNthCalledWith(
+    1,
+    "https://billing-dev.prontiq.dev/api/v1/plans?page=1&per_page=100",
+    expect.any(Object),
+  );
+  expect(fetchMock).toHaveBeenNthCalledWith(
+    2,
+    "https://billing-dev.prontiq.dev/api/v1/plans?page=2&per_page=100",
+    expect.any(Object),
+  );
+});
+
 test("Lago billing client maps Lago plan pricing fields without hard-coded assumptions", async () => {
   const fetchMock = vi.fn().mockResolvedValue(
     new Response(
@@ -253,45 +303,4 @@ test("Lago billing client preserves validation error details for safe route mapp
     details: { base: ["no_linked_payment_provider"] },
     status: 422,
   } satisfies Partial<LagoBillingError>);
-});
-
-test("Lago billing client changes plans through the replay-safe subscription creation endpoint", async () => {
-  const fetchMock = vi.fn().mockResolvedValue(
-    new Response(
-      JSON.stringify({
-        subscription: {
-          external_customer_id: "org_123",
-          external_id: "lago_sub_org_123",
-          plan: { code: "starter", name: "Starter" },
-          status: "active",
-        },
-      }),
-      { status: 200 },
-    ),
-  ) as unknown as typeof fetch;
-
-  await expect(
-    makeClient(fetchMock).changeSubscriptionPlan({
-      externalCustomerId: "org_123",
-      externalSubscriptionId: "lago_sub_org_123",
-      targetPlanCode: "starter",
-    }),
-  ).resolves.toMatchObject({
-    externalCustomerId: "org_123",
-    externalId: "lago_sub_org_123",
-    planCode: "starter",
-  });
-  expect(fetchMock).toHaveBeenCalledWith(
-    "https://billing-dev.prontiq.dev/api/v1/subscriptions",
-    expect.objectContaining({
-      body: JSON.stringify({
-        subscription: {
-          external_customer_id: "org_123",
-          external_id: "lago_sub_org_123",
-          plan_code: "starter",
-        },
-      }),
-      method: "POST",
-    }),
-  );
 });

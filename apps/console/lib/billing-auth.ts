@@ -86,50 +86,6 @@ export function requireBillingAdmin(principal: BillingPrincipal): Response | nul
   );
 }
 
-export function requireBillingReverification(
-  principal: BillingPrincipal,
-  input: { maxFirstFactorAgeMinutes?: number } = {},
-): Response | null {
-  const max = input.maxFirstFactorAgeMinutes ?? 10;
-  if (!principal.fva || !Array.isArray(principal.fva)) {
-    return Response.json(
-      {
-        error: {
-          code: "STEP_UP_MISCONFIGURED",
-          message: "Step-up enforcement is not configured. Contact support.",
-          status: 500,
-        },
-      },
-      { status: 500 },
-    );
-  }
-
-  const firstFactorAgeMinutes = principal.fva[0];
-  if (
-    typeof firstFactorAgeMinutes !== "number" ||
-    firstFactorAgeMinutes < 0 ||
-    firstFactorAgeMinutes > max
-  ) {
-    return Response.json(
-      {
-        clerk_error: {
-          type: "forbidden",
-          reason: "reverification-error",
-          metadata: {
-            reverification: {
-              level: "first_factor",
-              afterMinutes: max,
-            },
-          },
-        },
-      },
-      { status: 403 },
-    );
-  }
-
-  return null;
-}
-
 export function requireSameOrigin(request: Request): Response | null {
   const origin = request.headers.get("origin");
   if (!origin) return null;

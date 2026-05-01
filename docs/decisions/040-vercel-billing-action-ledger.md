@@ -2,19 +2,24 @@
 
 ## Status
 
-Accepted.
+Superseded by DEC-041 for active plan-change mutations. Historical context
+only.
 
 ## Question
 
 Where should replay evidence for console-initiated Lago plan changes live now
 that account billing routes are a Vercel BFF instead of AWS `/v1/account/*`?
 
-## Decision
+## Historical Decision
 
 `apps/console` writes replay-safe billing action evidence directly to the
 existing `prontiq-billing-actions*` DynamoDB table from Vercel server-side route
 handlers. The Vercel credential is dedicated to this table and may only read,
 write, query, transact, and delete rows in the billing action ledger.
+
+This was replaced by DEC-041 before go-live. The active implementation moved
+the same ledger semantics into `POST /v1/account/billing/plan-change`, so
+Vercel no longer needs DynamoDB credentials for plan changes.
 
 Each plan-change request uses a browser-generated `Idempotency-Key`. The BFF
 stores one action row keyed by `orgId + route + Idempotency-Key` and one
@@ -39,11 +44,12 @@ failures that are caught by the route are finalized as terminal
 `outcome_unknown` rows. An operator must inspect Lago and reconcile state before
 a new billing action is attempted.
 
-## Considered And Rejected
+## Historical Options Considered
 
-- Reintroduce AWS `/v1/account/billing/plan-change`: rejected because the
-  current architecture retired AWS account billing routes in favor of the
-  console BFF.
+- Reintroduce AWS `/v1/account/billing/plan-change`: originally rejected while
+  account billing routes were retired in favor of the console BFF; accepted
+  later by DEC-041 after the architecture was corrected so browser plan
+  changes use the same Clerk-JWT account API pattern as key management.
 - Use Lago-only idempotency: rejected because Prontiq needs request-hash
   conflict detection and durable customer-action evidence.
 - Let Vercel update local bouncer projection directly: rejected because that
@@ -53,11 +59,14 @@ a new billing action is attempted.
 - Reclaim expired provider-in-flight rows automatically: rejected because the
   Lago mutation is not provider-idempotent under a stable Prontiq key.
 
-## Consequences
+## Historical Consequences
 
-- Vercel Preview and Production need dedicated billing-action AWS credentials.
-- `prontiq-billing-actions*` is no longer legacy-only; it is active replay
-  evidence for Vercel billing mutations.
+- At the time, Vercel Preview and Production needed dedicated billing-action
+  AWS credentials. DEC-041 removes that requirement; Vercel no longer needs
+  DynamoDB credentials for plan changes.
+- `prontiq-billing-actions*` became active replay evidence for billing
+  mutations. DEC-041 keeps the table active but moves all writes behind the
+  private account API.
 - Plan changes are safe to replay with the same `Idempotency-Key`; terminal
   outcomes do not trigger another Lago mutation.
 - Unknown Lago outcomes are terminal `outcome_unknown` rows, not retryable
