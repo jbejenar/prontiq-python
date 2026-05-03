@@ -30,17 +30,17 @@
 | Phase     | Epic                       | Tickets | Done      | Target      |
 | --------- | -------------------------- | ------- | --------- | ----------- |
 | **P0**    | Infrastructure Foundation  | 6       | 6/6 ✅    | Week 1      |
-| **P1A**   | API Core (Address)         | 13      | 11/13     | Weeks 2-3   |
-| **P1B**   | Auth & Billing             | 25      | 20/25     | Weeks 3-4   |
-| **P1C**   | Frontend Surfaces          | 9       | 3/9       | Weeks 4-6   |
+| **P1A**   | API Core (Address)         | 13      | 12/13     | Weeks 2-3   |
+| **P1B**   | Auth & Billing             | 25      | 23/25     | Weeks 3-4   |
+| **P1C**   | Frontend Surfaces          | 11      | 9/11      | Weeks 4-6   |
 | **P1D**   | Docs & SDK                 | 5       | 2/5       | Week 5      |
 | **P1E**   | Ingestion (Phase 1)        | 6       | 4/6       | Week 6      |
-| **P1F**   | Distribution               | 3       | 3/3 ✅    | Week 6      |
+| **P1F**   | Distribution               | 4       | 3/4       | Week 6      |
 | **P2**    | ABN/ASIC Verification      | 9       | 0/9       | Weeks 7-10  |
 | **P3**    | GLEIF/LEI + Full Dashboard | 7       | 0/7       | Weeks 11-13 |
 | **P4**    | Shopify + WooCommerce      | 5       | 0/5       | Weeks 14-17 |
 | **P5**    | CVE/NVD + Patents          | 4       | 0/4       | Weeks 18-21 |
-| **Total** |                            | **92**  | **49/92** |             |
+| **Total** |                            | **95**  | **59/95** |             |
 
 ---
 
@@ -1107,19 +1107,19 @@ Acceptance criteria:
 - [x] `/v1/account/setup` returns `orgId`.
 - [x] `/v1/account/billing*` is removed from the private OpenAPI surface.
 - [x] A repair command exists for pre-pivot org envelopes/API keys.
-- [x] ADR-035 documents the identity decision and the future Vercel Lago BFF direction.
+- [x] ADR-035 documents the identity decision and the console Vercel Lago BFF direction.
 
 ### P1B.23 — Pre-Go-Live Lago Test Fixture + Pricing Cleanup
 
 ```yaml
 id: P1B.23
 title: Pre-Go-Live Lago Test Fixture + Pricing Cleanup
-status: in_progress
+status: complete
 priority: p1-high
 epic: P1B
 persona: [ops]
 depends_on: [P1B.22, P1C.03, P1C.05]
-completed: null
+completed: 2026-05-03
 tech_stack:
   billing: Lago + DynamoDB + SQS + CloudWatch
   auth: Clerk
@@ -1140,53 +1140,58 @@ readback in dev and prod. That validation intentionally created or retained
 test API keys, test Clerk orgs, Lago test customers/subscriptions, usage
 counters, and billing-event ledger rows. Dev also exposed a Lago catalog
 immutability edge: the original dev `payg` plan was created with the wrong
-currency, then soft-deleted, so dev currently uses the temporary `payg_aud`
-test plan. Prod `payg` is correctly AUD, but its current charge amount is `0`
-until product pricing is configured in Lago. These are acceptable before
-customers, but they must be made explicit before go-live.
+currency, then soft-deleted, so dev uses the temporary `payg_aud` test plan
+until the next environment reset. Prod `payg` is AUD and was configured during
+P1B.23 with the intended `prontiq_address_requests` charge amount before
+go-live.
 
 #### Definition of Done
 
 ##### Functional
 
-- [ ] Test API keys are inventoried and disabled or intentionally retained
+- [x] Test API keys are inventoried and disabled or intentionally retained
   - `Verify:` dev and prod `prontiq-keys*` contain no active repo-created test
     keys except named operational probes
   - `Evidence:` inventory records safe identifiers only: environment, org id,
-    key prefix, active flag, purpose, and disposition; no raw API keys or full
-    hashes are recorded
-- [ ] Lago test customers/subscriptions are inventoried
+    key prefix, active flag, purpose, and disposition in
+    `docs/operations/p1b23-pre-go-live-cleanup-evidence.md`; no raw API keys or
+    full hashes are recorded
+- [x] Lago test customers/subscriptions are inventoried
   - `Verify:` repo-owned test Clerk orgs and synthetic legacy
     `org_prontiq_platform_*` customers are either retained as labelled evidence,
     renamed/labelled as probes, or deleted where safe
-  - `Evidence:` retained rows have a named reason and owner; destructive cleanup
-    explicitly excludes real Clerk orgs, real customer data, and audit evidence
-- [ ] Prod Lago pricing is configured intentionally
+  - `Evidence:` retained rows have a named reason and owner in
+    `docs/operations/p1b23-pre-go-live-cleanup-evidence.md`; destructive cleanup
+    explicitly excluded real Clerk orgs, real customer data, and audit evidence
+- [x] Prod Lago pricing is configured intentionally
   - `Verify:` prod `payg` remains AUD and has the intended
     `prontiq_address_requests` charge amount before real customers are assigned
   - `Evidence:` Lago plan summary records code, currency, billable metric code,
-    and charge amount without secrets
-- [ ] Dev Lago plan hygiene is resolved
+    and charge amount without secrets in
+    `docs/operations/p1b23-pre-go-live-cleanup-evidence.md`
+- [x] Dev Lago plan hygiene is resolved
   - `Verify:` either dev is reset/rebuilt with canonical `payg` AUD, or
     `payg_aud` is documented as a temporary dev-only smoke plan until the next
     environment reset
-  - `Evidence:` roadmap/runbook notes state which path was chosen and why
-- [ ] Post-cleanup smoke still passes
+  - `Evidence:` `payg_aud` is recorded as a temporary dev-only smoke plan in
+    `docs/operations/p1b23-pre-go-live-cleanup-evidence.md` and
+    `docs/runbooks/prod-go-live-cleanup.md`
+- [x] Post-cleanup smoke still passes
   - `Verify:` one dev and one prod smoke use explicitly retained probe keys or
     freshly created short-lived keys, produce accepted Lago events, and leave
     source queues and DLQs empty
   - `Evidence:` safe event IDs, queue counts, and CloudWatch alarm state are
-    recorded
+    recorded in `docs/operations/p1b23-pre-go-live-cleanup-evidence.md`
 
 ##### Operational
 
-- [ ] Go-live cleanup runbook is updated
+- [x] Go-live cleanup runbook is updated
   - `Verify:` `docs/runbooks/prod-go-live-cleanup.md` includes the P1B.22/P1B.23
     fixture classes, Lago pricing check, dev `payg_aud` caveat, and rollback
     posture
   - `Evidence:` runbook explains what can be deleted, what must be retained, and
     what requires manual Lago UI/API confirmation
-- [ ] Architecture notes remain aligned
+- [x] Architecture notes remain aligned
   - `Verify:` `ARCHITECTURE.MD`, `NEXT-WORK.md`, and relevant operations docs
     continue to state that Clerk `orgId` is the commercial identity, Lago is the
     billing system of record, Stripe is the payment rail, and platform DynamoDB
@@ -1204,15 +1209,15 @@ disposition, queue/DLQ/alarm checks, runbook and evidence updates.
 
 - deleting real customer/org rows or real audit evidence
 - changing the Clerk-org commercial identity model
-- adding platform account billing APIs; console billing reads should use the
-  future Vercel Lago BFF direction
+- adding platform account billing read APIs; console billing reads use the
+  Vercel Lago BFF
 - changing Stripe integration outside Lago payment-provider configuration
 
 > **Lago migration progress.** `10/10` implemented for `P1B.14`–`P1B.22` plus `P1B.18a`. The `P1B` epic rollup includes completed historical Stripe-path work, so treat the Lago migration sequence as complete.
 >
 > **Scope boundary.** The hot-path middleware rewrite (hash-based lookup, REDIRECT fallback, new usage-table writes) ships in **P1B.04b** (cutover), NOT in P1B.02. P1B.02 is pure crypto primitives only — no DDB dependency — which is why it remains parallel-safe. P1B.04b flips schema + code atomically once P1B.02 and P1B.04 are both done.
 >
-> **Dependency graph:** P1B.01/.02/.03/.04 can run in parallel. P1B.04b depends on .02 + .04 (needs the crypto module + the tables to write the code cutover). P1B.05 depends on .01/.02/.03/.04. P1B.06 depends on .03/.04. P1B.07/.08 depend on .04. P1B.08a depends on .08. **P1B.09 depends on .02 + .04b** (the burst limiter middleware reads `record.rateLimit` from context — that context is established by the post-cutover auth middleware in .04b, not by the pure crypto module). P1B.10 depends on .03/.04/.06. P1B.11 depends on .10. P1B.12 depends on .05/.09/.04b (tests the cutover end-to-end). The Lago migration sequence is intentionally linear enough to pin the commercial contract before the console UI builds on it: `P1B.14` → `P1B.15/.16` → `P1B.17` → `P1B.18a` → `P1B.18` → `P1B.19` → `P1B.20` → `P1B.21` → `P1B.22`, with future console billing consuming the P1B.22 Clerk-org identity and Vercel Lago BFF direction. `P1B.23` is a pre-go-live cleanup gate after console key management and billing surfaces no longer need the retained smoke fixtures.
+> **Dependency graph:** P1B.01/.02/.03/.04 can run in parallel. P1B.04b depends on .02 + .04 (needs the crypto module + the tables to write the code cutover). P1B.05 depends on .01/.02/.03/.04. P1B.06 depends on .03/.04. P1B.07/.08 depend on .04. P1B.08a depends on .08. **P1B.09 depends on .02 + .04b** (the burst limiter middleware reads `record.rateLimit` from context — that context is established by the post-cutover auth middleware in .04b, not by the pure crypto module). P1B.10 depends on .03/.04/.06. P1B.11 depends on .10. P1B.12 depends on .05/.09/.04b (tests the cutover end-to-end). The Lago migration sequence is intentionally linear enough to pin the commercial contract before the console UI builds on it: `P1B.14` → `P1B.15/.16` → `P1B.17` → `P1B.18a` → `P1B.18` → `P1B.19` → `P1B.20` → `P1B.21` → `P1B.22`, with console billing consuming the P1B.22 Clerk-org identity and Vercel Lago BFF direction. `P1B.23` is a pre-go-live cleanup gate after console key management and billing surfaces no longer need the retained smoke fixtures.
 >
 > **Repo-wide Unkey removal** completed in PR #68 (`chore(webhooks): remove Unkey code`) — `packages/webhooks/src/unkey.ts`, `unkeyWebhook` export, `lastSyncedFromUnkey` field, and `UNKEY_*` env vars all gone from main. **No P1B ticket owns this cleanup.** Going forward, P1B tickets only need to guarantee no NEW Unkey references are introduced.
 >
@@ -3579,12 +3584,12 @@ organization, granularity toggle, CSV export, Recharts
 ```yaml
 id: P1C.05
 title: Billing Page
-status: in-progress
+status: complete
 priority: p1-high
 epic: P1C
 persona: [api-consumer]
 depends_on: [P1C.00, P1B.18, P1C.07]
-completed: null
+completed: 2026-05-03
 tech_stack:
   billing: Lago-backed console billing surface
 ```
@@ -3595,12 +3600,12 @@ tech_stack:
 
 #### Implementation Status
 
-Implemented on the current P1C.05 branch for review: the console Billing page
+P1C.05 shipped the console Billing page: it
 uses a Vercel server-side BFF, reads Lago subscription state, visible Lago plan
 catalog, current billing usage estimate, and recent invoices, and exposes
 admin-only payment-method and invoice-payment links. It does not call Lago or
 Stripe from browser code, does not reintroduce AWS `/v1/account/billing*`, and
-does not mutate subscriptions. Replay-safe subscription changes are split to
+does not mutate subscriptions. Replay-safe subscription changes shipped in
 P1C.05a.
 
 #### User Story
@@ -3656,12 +3661,12 @@ legacy-link labeling where needed
 ```yaml
 id: P1C.05a
 title: Replay-safe Lago Plan Changes
-status: in_progress
+status: complete
 priority: p1-high
 epic: P1C
 persona: [api-consumer]
 depends_on: [P1C.05]
-completed: null
+completed: 2026-05-03
 tech_stack:
   billing: Lago subscription mutation + idempotency store
 ```
@@ -3684,15 +3689,15 @@ click cannot be replayed into multiple conflicting plan changes.
 
 ##### Functional
 
-- [ ] Choose and document the idempotency store for Vercel-initiated billing
+- [x] Choose and document the idempotency store for Vercel-initiated billing
       mutations
   - `Verify:` duplicate request with the same action key returns the same result
   - `Evidence:` `docs/decisions/040-vercel-billing-action-ledger.md`,
     `apps/console/lib/billing-actions.ts`, and billing action tests
-- [ ] Implement admin-only plan change against Lago
+- [x] Implement admin-only plan change against Lago
   - `Verify:` selected plan updates the active Lago subscription exactly once
   - `Evidence:` integration test or controlled dev smoke against a test org
-- [ ] Reconcile updated subscription back into local enforcement projection
+- [x] Reconcile updated subscription back into local enforcement projection
   - `Verify:` API key records receive the new Lago-derived bouncer fields
   - `Evidence:` reconciliation logs and DDB diff for a test org
 
@@ -6057,4 +6062,4 @@ At completion of Phase 5:
 - **Zero-downtime** data updates via manifest-driven ingestion
 - **Full dashboard** with key management, usage, billing, team, playground
 - **Comprehensive docs** auto-generated from OpenAPI spec
-- **92 tickets completed**
+- **95-ticket roadmap tracked through P5**

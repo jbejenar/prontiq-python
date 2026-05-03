@@ -1558,9 +1558,11 @@ runtime:
   pricing-table surfaces are no longer active code/deploy paths after P1B.20.
 - **Current Lago rollout state:** platform-side Lago forwarding, webhook
   reconciliation, live smoke certification, and account setup are deployed in
-  dev and prod. P1B.22 pivots active identity to Clerk `orgId`, retires the AWS
-  account billing API routes, and moves future console billing reads/actions to
-  a Vercel BFF that calls Lago with server-held credentials.
+  dev and prod. P1B.22 pivots active identity to Clerk `orgId` and retires the
+  legacy AWS account billing read routes. Console billing reads/payment links
+  use the Vercel BFF with server-held Lago credentials; replay-safe plan
+  changes use the private account API and reconcile Lago state back into local
+  enforcement.
 
 The subsections below describe the current Lago contract. Legacy P1B.14-P1B.21
 `customerId` / `pq_cust_*` / `pq_sub_*` evidence is retained only where needed
@@ -2315,7 +2317,7 @@ Initial console pages:
 | **Overview**    | `/v1/account/status` + `/v1/account/keys`    | Read-only Lago-derived enforcement projection, masked key posture, explicit status/key-list drift state, and safe quickstart. Existing raw keys are never recoverable. |
 | **Keys**        | `/v1/account/keys*`                          | First-key flow, create, rotate, revoke, audit                                                                                                                          |
 | **Usage**       | `/v1/account/usage`                          | Member-readable usage cards from `prontiq-usage`; charts and CSV export from the async `prontiq-usage-daily` projection, with a baseline delta while missing or partial projection catches up. |
-| **Billing**     | P1C.05 Vercel BFF backed by Lago             | Browser never receives Lago/Stripe credentials. P1C.05 supports reads, payment-method setup, and invoice payment links; replay-safe plan mutation is deferred to P1C.05a. |
+| **Billing**     | P1C.05/P1C.05a Lago-backed billing           | Browser never receives Lago/Stripe credentials. The Vercel BFF supports billing reads, payment-method setup, and invoice payment links; replay-safe plan mutation goes through the private account API and reconciles Lago state back into local enforcement. |
 | **Playground**  | `@prontiq/sdk` + public API                  | Pre-authenticated exploration                                                                                                                                          |
 | **Danger Zone** | dedicated account-management flow            | Self-service org deletion                                                                                                                                              |
 

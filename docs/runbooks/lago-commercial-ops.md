@@ -63,7 +63,8 @@ In the target architecture:
   keys; active API key rows are repaired separately because request-time auth
   reads the key row projection and does not call Lago
 - enable scheduled reconciliation only after dry-run and webhook evidence are
-  clean; `LAGO_RECONCILIATION_ENABLED=false` is the safe default
+  clean; for new stages, `LAGO_RECONCILIATION_ENABLED=false` is the safe
+  pre-verification default, while dev/prod are now verified with it enabled
 - confirm Prontiq endpoint credit weights match the published Credits guide
 - confirm docs, roadmap, and console messaging stay aligned
 
@@ -74,7 +75,13 @@ retained production smoke key with prefix `pq_live_4a85` is disabled and must
 not be reused. The related customer/subscription and ledger rows are retained as
 audit evidence only.
 
+P1B.23 completed the pre-go-live Lago fixture and pricing cleanup on
+2026-05-03. Production `payg` is AUD with
+`prontiq_address_requests = A$0.0015`, scheduled reconciliation is enabled, and
+the one-off P1B.23 smoke key with prefix `pq_live_0300` is disabled.
+
 For the completed evidence, read
-`docs/operations/p1b21-prod-go-live-cleanup-evidence.md`. For future production
+`docs/operations/p1b21-prod-go-live-cleanup-evidence.md` and
+`docs/operations/p1b23-pre-go-live-cleanup-evidence.md`. For future production
 probe creation or cleanup, use `docs/runbooks/prod-go-live-cleanup.md` and
 create a new labelled probe under a new ticket.

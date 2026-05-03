@@ -1,13 +1,15 @@
 # NEXT-WORK.md — Active Sprint
 
-> Last updated: 2026-04-30 for P1C.05a replay-safe Lago plan changes.
+> Last updated: 2026-05-03 for P1B.23 pre-go-live cleanup closeout.
 
 ## Current Phase
 
-P1C.05a: Replay-safe Lago Plan Changes. Active branch adds
-`POST /v1/account/billing/plan-change` to the private account API with Clerk step-up,
-per-click idempotency, the `prontiq-billing-actions*` action/lock ledger, and
-Lago webhook reconciliation as the enforcement convergence path.
+P1B.23 is complete. Console key management, usage, and billing are shipped to
+dev/prod; replay-safe plan changes are live; prod Lago catalog/reconciliation is
+clean; retained migration evidence is intentionally preserved.
+
+Next recommended ticket: P1F.04 — Post-Deploy Smoke Coverage Extension. After
+that, return to P1C.06 — Playground Page.
 
 ## Active Commercial Contract
 
@@ -78,9 +80,14 @@ POST /v1/account/billing/portal-session
 - **P1C.05** — complete. Billing page. Console BFF reads Lago directly from
   Vercel server-side code. It does not reintroduce AWS billing routes and does
   not mutate subscriptions.
-- **P1C.05a** (active) — replay-safe subscription plan changes from the console
-  Billing page.
-- P1B.23 (pre-go-live cleanup) is gated on P1C.03 + P1C.05.
+- **P1C.05a** — complete. Replay-safe subscription plan changes from the console
+  Billing page use the private account API, first-factor reverification,
+  idempotency, and Lago reconciliation.
+- **P1B.23** — complete. Pre-go-live Lago test fixture and pricing cleanup
+  retained audit evidence, disabled stale test keys, set prod PAYG to A$0.0015
+  per address request, and verified dev/prod reconciliation.
+- **P1F.04** — next. Extend post-deploy smoke coverage and classify CI-vs-runbook
+  smokes before adding more product UI.
 
 ## Operator Commands
 

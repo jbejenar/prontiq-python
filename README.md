@@ -116,8 +116,8 @@ apps/
 | Search         | OpenSearch 2.19 (managed)                                                                                                                                                                                                                                                                                   |
 | API Keys       | DynamoDB-native (`pq_live_` + SHA-256 hash-based lookup; live in prod)                                                                                                                                                                                                                                      |
 | Auth (portal)  | Clerk — webhook live in prod (`POST /webhooks/clerk`) AND JWT-authenticated `POST /v1/account/setup` recovery endpoint live in prod (P1B.05 complete)                                                                                                                                                       |
-| Billing        | Lago as commercial system of record with Stripe reduced to payment processing inside Lago; Clerk `orgId` is the active commercial identity; SQS billing-event buffer, Lago forwarder, and Lago webhook reconciliation are implemented. AWS private account billing routes are retired; future console billing should use a Vercel BFF calling Lago server-side |
-| Frontend       | `apps/landing` live with proxy-backed demo + config-owned free tier + Clerk modal; `apps/console` has the env-gated Clerk shell base and is the future human billing surface                                                                                                                                |
+| Billing        | Lago as commercial system of record with Stripe reduced to payment processing inside Lago; Clerk `orgId` is the active commercial identity; SQS billing-event buffer, Lago forwarder, Lago webhook reconciliation, console billing BFF reads/payment links, and replay-safe private account API plan changes are implemented. |
+| Frontend       | `apps/landing` live with proxy-backed demo + config-owned free tier + Clerk modal; `apps/console` has the env-gated Clerk shell with shipped overview, keys, usage, and billing surfaces.                                                                                                                   |
 | Docs           | Mintlify at `docs.prontiq.dev` (live)                                                                                                                                                                                                                                                                       |
 | SDKs           | Speakeasy generates `@prontiq/sdk` (TypeScript) — npm publish pending NPM_TOKEN                                                                                                                                                                                                                             |
 | Observability  | CloudWatch + SNS email + Honeycomb backend traces (`HONEYCOMB_API_KEY` gated) + retained API X-Ray                                                                                                                                                                                                          |
@@ -130,27 +130,35 @@ See [`ROADMAP.md`](ROADMAP.md) for the current execution plan.
 | Phase   | Epic                      | Tickets | Done      |
 | ------- | ------------------------- | ------- | --------- |
 | **P0**  | Infrastructure Foundation | 6       | 6/6       |
-| **P1A** | API Core (Address)        | 13      | 11/13     |
-| **P1B** | Auth & Billing            | 24      | 20/24     |
-| **P1C** | Frontend Surfaces         | 9       | 3/9       |
+| **P1A** | API Core (Address)        | 13      | 12/13     |
+| **P1B** | Auth & Billing            | 25      | 23/25     |
+| **P1C** | Frontend Surfaces         | 11      | 9/11      |
 | **P1D** | Docs & SDK                | 5       | 2/5       |
 | **P1E** | Ingestion                 | 6       | 4/6       |
-| **P1F** | Distribution              | 3       | 3/3       |
-| **P2**  | ABN/ASIC Verification     | 8       | 0/8       |
+| **P1F** | Distribution              | 4       | 3/4       |
+| **P2**  | ABN/ASIC Verification     | 9       | 0/9       |
 | **P3**  | LEI + Full Dashboard      | 7       | 0/7       |
 | **P4**  | Shopify + WooCommerce     | 5       | 0/5       |
 | **P5**  | CVE/NVD + Patents         | 4       | 0/4       |
-|         |                           | **90**  | **49/90** |
+|         |                           | **95**  | **59/95** |
 
-`P1B` includes completed legacy Stripe-path work. The Lago migration sequence is
-`P1B.14`–`P1B.22` plus `P1B.18a`, now complete through the Clerk-org
-commercial identity pivot, and is called out separately in the Phase 1B section
-of [`ROADMAP.md`](ROADMAP.md).
+`P1B` includes completed legacy Stripe-path work. The counts treat `complete`,
+`completed`, `done`, and `implemented` statuses as shipped; superseded planning
+tickets remain counted in total tickets but not in the done column. The Lago
+migration sequence is `P1B.14`–`P1B.23` plus `P1B.18a`, now complete through
+pre-go-live fixture/pricing cleanup, and is called out separately in the Phase
+1B section of [`ROADMAP.md`](ROADMAP.md).
 
 P1B.21 closed the Lago migration go-live gate on 2026-04-27. The retained prod
 smoke key with prefix `pq_live_4a85` produced final accepted event
 `bevt_f7833d581725b732d04d3eed3fd7c484`, then was disabled. The related
 customer/subscription and ledger rows are retained as audit evidence only.
+
+P1B.23 closed the pre-go-live fixture and pricing cleanup on 2026-05-03. Prod
+PAYG is AUD with `prontiq_address_requests = A$0.0015`, dev/prod Lago
+reconciliation is clean, stale smoke keys are disabled, and the one-off prod
+smoke key `pq_live_0300` is disabled after accepted event
+`bevt_2814283dfdf6821005f0d1c8ade4cdd3`.
 
 P1B.18a closed on 2026-04-26: dev/prod usage-forwarding smoke has accepted
 delivery-ledger evidence, valid HMAC Lago webhook smoke has completed
@@ -160,10 +168,10 @@ the P1B.19 cutover.
 
 P1B.18 added Prontiq-owned account billing APIs under `/v1/account/billing`
 during the migration, but P1B.22 retired those AWS routes from the active
-runtime. `POST /v1/account/setup` is now the only active AWS private account
-route. Future console billing should use a Vercel server-side BFF that calls
-Lago with server-held credentials; public Mintlify/Speakeasy specs remain data
-API only.
+runtime. Console billing reads and payment-link actions now use the Vercel
+server-side BFF with server-held Lago credentials; replay-safe subscription
+plan changes use the Clerk-authenticated private account API. Public
+Mintlify/Speakeasy specs remain data API only.
 
 P1B.19 retired the legacy Stripe-centric runtime, P1B.20 removed its active
 deploy/config/frontend surfaces, and P1B.22 moved the active commercial

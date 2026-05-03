@@ -1,8 +1,11 @@
 # Final Prod Go-Live Cleanup Runbook
 
-Operator checklist for `P1B.21`. P1B.21 was completed on 2026-04-27; the safe
-evidence is recorded in
+Operator checklist for `P1B.21` and `P1B.23`. P1B.21 was completed on
+2026-04-27 and P1B.23 was completed on 2026-05-03. The safe evidence is
+recorded in
 [`docs/operations/p1b21-prod-go-live-cleanup-evidence.md`](../operations/p1b21-prod-go-live-cleanup-evidence.md)
+and
+[`docs/operations/p1b23-pre-go-live-cleanup-evidence.md`](../operations/p1b23-pre-go-live-cleanup-evidence.md)
 and the disposition decision is recorded in
 [`docs/decisions/034-prod-smoke-fixture-disposition.md`](../decisions/034-prod-smoke-fixture-disposition.md).
 
@@ -41,6 +44,8 @@ It does not cover:
 - Do not delete billing delivery-ledger or webhook-ledger rows unless a ticket
   explicitly decides that retained audit evidence is no longer required.
 - The P1B.21-retired prod smoke key prefix `pq_live_4a85` must stay disabled.
+- The P1B.21 post-fix prod smoke key prefix `pq_live_03f7` must stay disabled.
+- The P1B.23 one-off prod smoke key prefix `pq_live_0300` must stay disabled.
 - Prefer revoking or disabling smoke API keys at final go-live over
   hard-deleting evidence needed for replay/drift analysis.
 - Keep `COUNTER_PERIOD_SOURCE=lago` after P1B.19 unless an explicit rollback
@@ -126,6 +131,8 @@ Expected final go-live posture:
 - `COUNTER_PERIOD_SOURCE=lago`
 - `LAGO_WEBHOOK_RECONCILIATION_ENABLED=true` unless an active incident or
   explicit rollback has disabled Lago reconciliation
+- `LAGO_RECONCILIATION_ENABLED=true` unless scheduled reconciliation is being
+  intentionally paused during an incident
 
 Record final flag values without secrets.
 
@@ -139,10 +146,21 @@ Verify in the canonical production Lago org:
 - plan codes: production-relevant codes such as `free` and `payg`
 - customer external IDs: Clerk `org_...`
 - subscription external IDs: `lago_sub_${orgId}`
+- PAYG plan code: `payg`
+- PAYG currency: `AUD`
+- PAYG address charge: `A$0.0015` per `prontiq_address_requests` unit
 
 Production catalog items must not use test-only names or descriptions unless
 they are explicitly retained smoke fixtures. Test fixtures must be clearly
 labelled as non-customer data.
+
+Development plan caveat:
+
+- dev uses `payg_aud` as the temporary PAYG smoke plan because the original dev
+  `payg` plan was created with the wrong currency and then retired
+- do not copy `payg_aud` into prod
+- keep tests that use `payg_aud` scoped to dev/test behavior unless a future
+  environment reset recreates canonical dev `payg`
 
 ## Queue And Alarm Check
 
@@ -213,7 +231,8 @@ After cleanup/disposition decisions are applied and prechecks are green:
 2. Redeploy prod and verify the live API Lambda environment shows
    `BILLING_EVENTS_ENABLED=true`.
 3. Use a fresh go-live probe. Do not reuse the P1B.21-retired `pq_live_4a85`
-   key.
+   key, the P1B.21 post-fix `pq_live_03f7` key, or the P1B.23 one-off
+   `pq_live_0300` key.
 4. Confirm the matching customer row is active and mapped to the intended Lago
    customer/subscription.
 5. Send exactly one low-risk address API request.

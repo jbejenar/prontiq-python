@@ -4,6 +4,28 @@
 > the time they were written, not the current source of truth. Use
 > `ROADMAP.md`, `NEXT-WORK.md`, and `README.md` for current execution status.
 
+## Session 47 — 2026-05-03
+
+**Focus:** P1B.23 pre-go-live Lago fixture and pricing cleanup.
+
+- Closed the P1C.05/P1C.05a/P1B.23 documentation state after dev/prod billing
+  implementation, deployment, and testing.
+- Set prod Lago `payg` to AUD `prontiq_address_requests = A$0.0015`, preserved
+  historical smoke evidence, and disabled stale repo-created test keys.
+- Ran one-off dev/prod smokes, verified API `200`, accepted billing events
+  `bevt_c9ec5eb7579aaae3757bbe9c39b637aa` and
+  `bevt_2814283dfdf6821005f0d1c8ade4cdd3`, and revoked both smoke keys
+  immediately.
+- Final reconciliation: dev
+  `{"scanned":4,"projected":4,"changed":0,"drift":0,"errors":0}`; prod
+  `{"scanned":2,"projected":2,"changed":0,"drift":0,"errors":0}`.
+
+### Next session should start with
+
+1. Review and merge the P1B.23 cleanup PR.
+2. If merged, deploy docs/backend only if required by the changed files.
+3. Start P1F.04 — Post-Deploy Smoke Coverage Extension.
+
 ## Session 46 — 2026-04-30
 
 **Focus:** P1C.05a replay-safe Lago plan changes.
