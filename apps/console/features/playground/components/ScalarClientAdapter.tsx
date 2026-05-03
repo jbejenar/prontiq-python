@@ -2,6 +2,7 @@
 
 import { useApiClient } from "@scalar/api-client-react";
 import "@scalar/api-client-react/style.css";
+import "./scalar-client-overrides.css";
 
 import type { PlaygroundOperation } from "../types.js";
 import { Button } from "../../../components/ui/button.js";
