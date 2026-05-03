@@ -1,8 +1,8 @@
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { expect, test, vi } from "vitest";
+import { beforeEach, expect, test, vi } from "vitest";
 
-import type { PlaygroundOperation, PlaygroundResponse } from "../types.js";
+import type { PlaygroundDemoStatus, PlaygroundMode, PlaygroundOperation, PlaygroundResponse } from "../types.js";
 import type * as RequestModule from "../lib/request.js";
 
 const requestMocks = vi.hoisted(() => ({
@@ -32,6 +32,10 @@ vi.mock("./ScalarAdvancedModal.js", () => ({
 }));
 
 import { PlaygroundExecutionPanel } from "./PlaygroundExecutionPanel.js";
+
+beforeEach(() => {
+  vi.clearAllMocks();
+});
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -91,16 +95,99 @@ test("ignores stale responses after the selected operation changes", async () =>
   );
 });
 
+test("disables demo execution while demo availability is loading", () => {
+  render(
+    <PlaygroundExecutionPanelHost
+      demoStatus={null}
+      isDemoStatusLoading={true}
+      operation={operation("autocomplete", "Autocomplete")}
+    />,
+  );
+
+  expect(screen.getByRole("button", { name: /checking demo availability/i })).toBeDisabled();
+});
+
+test("makes demo mode reference-only when demo execution is unavailable", async () => {
+  render(
+    <PlaygroundExecutionPanelHost
+      demoStatus={{
+        execution: "reference_only",
+        reasonCode: "DEMO_KEY_NOT_CONFIGURED",
+        message: "Demo execution is unavailable on this deployment because the demo key is not configured.",
+      }}
+      operation={operation("autocomplete", "Autocomplete")}
+    />,
+  );
+
+  expect(screen.getByText(/Demo execution is unavailable on this deployment/i)).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /send demo request/i })).toBeDisabled();
+
+  await userEvent.click(screen.getByRole("button", { name: /send demo request/i }));
+
+  expect(requestMocks.executeDemoRequest).not.toHaveBeenCalled();
+});
+
+test("fails closed when demo status is unavailable after loading", () => {
+  render(
+    <PlaygroundExecutionPanelHost
+      demoStatus={null}
+      isDemoStatusLoading={false}
+      operation={operation("autocomplete", "Autocomplete")}
+    />,
+  );
+
+  expect(screen.getByText(/Demo execution availability could not be confirmed/i)).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /send demo request/i })).toBeDisabled();
+});
+
+test("keeps account execution independent of demo reference-only status", async () => {
+  requestMocks.executeAccountRequest.mockResolvedValueOnce({
+    bodyText: JSON.stringify({ ok: true }),
+    durationMs: 20,
+    headers: {},
+    ok: true,
+    status: 200,
+    statusText: "OK",
+  });
+
+  render(
+    <PlaygroundExecutionPanelHost
+      apiKey="pq_live_test"
+      demoStatus={{
+        execution: "reference_only",
+        reasonCode: "DEMO_KEY_NOT_CONFIGURED",
+        message: "Demo execution is unavailable on this deployment because the demo key is not configured.",
+      }}
+      mode="account"
+      operation={operation("autocomplete", "Autocomplete")}
+    />,
+  );
+
+  await userEvent.click(screen.getByRole("button", { name: /send account request/i }));
+
+  expect(requestMocks.executeAccountRequest).toHaveBeenCalledTimes(1);
+});
+
 function PlaygroundExecutionPanelHost({
+  apiKey = "",
+  demoStatus = { execution: "enabled" },
+  isDemoStatusLoading = false,
+  mode = "demo",
   operation: selectedOperation,
 }: {
+  apiKey?: string;
+  demoStatus?: PlaygroundDemoStatus | null;
+  isDemoStatusLoading?: boolean;
+  mode?: PlaygroundMode;
   operation: PlaygroundOperation;
 }) {
   return (
     <PlaygroundExecutionPanel
-      apiKey=""
+      apiKey={apiKey}
       baseUrl="https://api.prontiq.dev"
-      mode="demo"
+      demoStatus={demoStatus}
+      isDemoStatusLoading={isDemoStatusLoading}
+      mode={mode}
       operation={selectedOperation}
     />
   );

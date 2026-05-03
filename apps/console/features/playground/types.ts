@@ -37,6 +37,14 @@ export interface PlaygroundResponse {
   statusText: string;
 }
 
+export type PlaygroundDemoStatus =
+  | { execution: "enabled" }
+  | {
+      execution: "reference_only";
+      reasonCode: "DEMO_KEY_NOT_CONFIGURED" | "DEMO_BACKEND_POLICY_NOT_CONFIRMED";
+      message: string;
+    };
+
 export interface PlaygroundTelemetryEvent {
   errorCategory?: string;
   latencyMs?: number;

@@ -47,3 +47,41 @@ export function getPlaygroundServerEnv() {
       serverEnv.PRONTIQ_CONSOLE_PLAYGROUND_DEMO_BACKEND_POLICY_CONFIRMED === "1",
   };
 }
+
+export type PlaygroundDemoStatus =
+  | { execution: "enabled" }
+  | {
+      execution: "reference_only";
+      reasonCode: "DEMO_KEY_NOT_CONFIGURED" | "DEMO_BACKEND_POLICY_NOT_CONFIRMED";
+      message: string;
+    };
+
+export function getPlaygroundDemoStatusFromConfig(input: {
+  demoApiKey?: string;
+  demoBackendPolicyConfirmed?: "1";
+}): PlaygroundDemoStatus {
+  if (!input.demoApiKey) {
+    return {
+      execution: "reference_only",
+      reasonCode: "DEMO_KEY_NOT_CONFIGURED",
+      message: "Demo execution is unavailable on this deployment because the demo key is not configured.",
+    };
+  }
+  if (input.demoBackendPolicyConfirmed !== "1") {
+    return {
+      execution: "reference_only",
+      reasonCode: "DEMO_BACKEND_POLICY_NOT_CONFIRMED",
+      message:
+        "Demo execution is unavailable until backend quota and rate controls are confirmed for the demo key.",
+    };
+  }
+  return { execution: "enabled" };
+}
+
+export function getPlaygroundDemoStatus(): PlaygroundDemoStatus {
+  return getPlaygroundDemoStatusFromConfig({
+    demoApiKey: serverEnv.PRONTIQ_CONSOLE_PLAYGROUND_DEMO_API_KEY,
+    demoBackendPolicyConfirmed:
+      serverEnv.PRONTIQ_CONSOLE_PLAYGROUND_DEMO_BACKEND_POLICY_CONFIRMED,
+  });
+}

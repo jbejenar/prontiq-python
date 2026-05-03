@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Loader2, RefreshCcw, ShieldCheck } from "lucide-react";
 
 import type { PlaygroundMode, PlaygroundOperation } from "../types.js";
+import { usePlaygroundDemoStatus } from "../hooks/usePlaygroundDemoStatus.js";
 import { usePlaygroundOpenApi } from "../hooks/usePlaygroundOpenApi.js";
 import { Badge } from "../../../components/ui/badge.js";
 import { Button } from "../../../components/ui/button.js";
@@ -20,6 +21,7 @@ export function PlaygroundPanel({ apiBaseUrl }: { apiBaseUrl: string }) {
   const [manualKey, setManualKey] = useState("");
   const [selectedOperationId, setSelectedOperationId] = useState<string | null>(null);
   const lastScopeVersion = useRef(scopeVersion);
+  const demoStatusQuery = usePlaygroundDemoStatus();
   const openApiQuery = usePlaygroundOpenApi();
   const apiKey = heldKey?.raw ?? manualKey;
 
@@ -132,6 +134,8 @@ export function PlaygroundPanel({ apiBaseUrl }: { apiBaseUrl: string }) {
             <PlaygroundExecutionPanel
               apiKey={apiKey}
               baseUrl={apiBaseUrl}
+              demoStatus={demoStatusQuery.data ?? null}
+              isDemoStatusLoading={demoStatusQuery.isPending}
               mode={mode}
               operation={selectedOperation}
             />
