@@ -67,6 +67,35 @@ export {
 export type { BillingEventIdInput, BillingUsageEventV1, BillingUsageEventV2 } from "./billing-events.js";
 
 export {
+  classifyTransition,
+  classifyTransitionFromUnknown,
+  generatePreviewMessage,
+  isTransitionError,
+} from "./billing-transition-engine.js";
+export type {
+  BillingIntent,
+  CappedPlan,
+  Cents,
+  Credits,
+  CurrentState,
+  EffectiveAt,
+  FreePlan,
+  LagoAction,
+  LagoActionSequence,
+  PaygPlan,
+  Plan,
+  PlanArchetype,
+  PreviewMessageContext,
+  TableRow,
+  Timing,
+  TransitionDirection,
+  TransitionError,
+  TransitionErrorCode,
+  TransitionOutcome,
+  TransitionResult,
+} from "./billing-transition-engine.js";
+
+export {
   isLegacyTier,
   resolveEffectiveCommercialProjection,
 } from "./commercial-projection.js";

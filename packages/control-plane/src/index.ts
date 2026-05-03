@@ -91,6 +91,7 @@ export type {
 } from "./account-usage.js";
 
 export {
+  BILLING_PLAN_CHANGE_PRODUCT_POOL,
   DynamoBillingActionStore,
   HttpLagoPlanChangeClient,
   buildBillingActionId,
@@ -102,6 +103,7 @@ export type {
   BillingActionRecord,
   BillingActionStatus,
   BillingActionStore,
+  BillingProductPool,
   BillingPlanChangeResult,
   BillingPlanChangeService,
   BillingPlanChangeServiceResult,

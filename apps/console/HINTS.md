@@ -23,7 +23,9 @@
   browser and do not optimistic-write local enforcement state from Vercel.
   Terminal billing-action rows are immutable; `provider_in_flight` and
   `outcome_unknown` rows require operator Lago inspection and must not be
-  auto-replayed into another provider mutation.
+  auto-replayed into another provider mutation. If the account API returns
+  `BILLING_TRANSITION_IN_PROGRESS`, the UI must surface the existing transition
+  state and must not retry with a fresh idempotency key.
 - Billing plan-change step-up requires fresh first-factor verification.
   Password-only admins must be able to complete plan changes; do not require
   second-factor freshness here unless product policy changes to mandatory MFA.

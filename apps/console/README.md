@@ -50,7 +50,10 @@ the Vercel BFF. The browser calls
 first-factor step-up, the DynamoDB billing-action ledger, and the Lago
 subscription mutation. Vercel does not hold DynamoDB credentials for plan
 changes. Lago webhook reconciliation remains the only path that updates local
-API enforcement after Lago accepts a subscription change.
+API enforcement after Lago accepts a subscription change. While a provider,
+payment, or outcome fence is active, different idempotency keys are rejected as
+`BILLING_TRANSITION_IN_PROGRESS`; the UI must not attempt a second plan change
+until the existing transition is reconciled or repaired.
 
 Billing route handlers require these server env vars:
 

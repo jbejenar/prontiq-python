@@ -1,7 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { OpenAPIHono } from "@hono/zod-openapi";
-import type { BillingActionRecord, BillingPlanChangeService } from "@prontiq/control-plane";
+import {
+  BILLING_PLAN_CHANGE_PRODUCT_POOL,
+  type BillingActionRecord,
+  type BillingPlanChangeService,
+} from "@prontiq/control-plane";
 import { clerkJwt, type ClerkVerifier } from "../middleware/clerk-jwt.js";
 import { requestId } from "../middleware/request-id.js";
 import { createBillingRoutes } from "./billing.js";
@@ -116,6 +120,27 @@ test("POST /v1/account/billing/plan-change accepts admin first-factor step-up an
   }]);
 });
 
+test("POST /v1/account/billing/plan-change reports reused idempotency keys with different requests distinctly", async () => {
+  const app = buildApp({
+    service: makeService(async () => ({ kind: "conflict" })),
+  });
+
+  const response = await app.request("/v1/account/billing/plan-change", {
+    body: JSON.stringify({ targetPlanCode: "starter" }),
+    headers: {
+      Authorization: "Bearer good_token",
+      "Content-Type": "application/json",
+      "Idempotency-Key": "plan-change-test-conflict",
+    },
+    method: "POST",
+  });
+  const body = (await response.json()) as { error: { code: string; status: number } };
+
+  assert.equal(response.status, 409);
+  assert.equal(body.error.code, "IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_REQUEST");
+  assert.equal(body.error.status, 409);
+});
+
 test("POST /v1/account/billing/plan-change remains admin-only", async () => {
   const app = buildApp({
     orgRole: "org:member",
@@ -207,6 +232,7 @@ test("POST /v1/account/billing/plan-change replays outcome_unknown as manual rec
     idempotencyKeyHash: "hash",
     leaseExpiresAt: Date.now() + 365 * 24 * 60 * 60 * 1000,
     orgId: "org_test",
+    productPool: BILLING_PLAN_CHANGE_PRODUCT_POOL,
     requestHash: "request_hash",
     route: "billing.plan-change",
     status: "outcome_unknown",
@@ -231,5 +257,26 @@ test("POST /v1/account/billing/plan-change replays outcome_unknown as manual rec
 
   assert.equal(response.status, 409);
   assert.equal(body.error.code, "LAGO_PLAN_CHANGE_OUTCOME_UNKNOWN");
+  assert.equal(body.error.status, 409);
+});
+
+test("POST /v1/account/billing/plan-change reports fenced transitions distinctly", async () => {
+  const app = buildApp({
+    service: makeService(async () => ({ kind: "transition_in_progress" })),
+  });
+
+  const response = await app.request("/v1/account/billing/plan-change", {
+    body: JSON.stringify({ targetPlanCode: "starter" }),
+    headers: {
+      Authorization: "Bearer good_token",
+      "Content-Type": "application/json",
+      "Idempotency-Key": "plan-change-test-fenced",
+    },
+    method: "POST",
+  });
+  const body = (await response.json()) as { error: { code: string; status: number } };
+
+  assert.equal(response.status, 409);
+  assert.equal(body.error.code, "BILLING_TRANSITION_IN_PROGRESS");
   assert.equal(body.error.status, 409);
 });

@@ -46,9 +46,16 @@ Replay and safety contract:
 
 - The route records action evidence in `prontiq-billing-actions*` before
   calling Lago.
+- Billing plan changes are currently scoped to `productPool = "ADDRESS"`. The
+  product pool is included in the action id, request hash, lock record, and
+  action record so future product pools cannot collide with Address billing
+  transitions.
 - Same `Idempotency-Key` plus same request replays the stored terminal result.
-- Same `Idempotency-Key` plus different body returns `IDEMPOTENCY_CONFLICT`.
+- Same `Idempotency-Key` plus different body returns
+  `IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_REQUEST`.
 - Concurrent different plan changes for the same org return
+  `BILLING_TRANSITION_IN_PROGRESS` when an existing provider/payment/outcome
+  fence is active. Short pre-provider lock contention may still return
   `ACTION_IN_PROGRESS`.
 - Once the provider boundary is crossed, ambiguous outcomes are operator
   reconcile events. They return `LAGO_PLAN_CHANGE_OUTCOME_UNKNOWN`, keep the
@@ -69,6 +76,8 @@ Common errors:
 - `PAYMENT_PROVIDER_NOT_LINKED`
 - `PAYMENT_METHOD_REQUIRED`
 - `PLAN_CHANGE_ALREADY_PENDING`
+- `IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_REQUEST`
+- `BILLING_TRANSITION_IN_PROGRESS`
 - `BILLING_ACTION_LEDGER_UNAVAILABLE`
 - `LAGO_PLAN_CHANGE_OUTCOME_UNKNOWN`
 

@@ -15,10 +15,13 @@ import {
 const ROUTE_NAME = "billing.plan-change";
 const ROUTE_PATH = "/v1/account/billing/plan-change";
 const LOCK_PREFIX = "LOCK#billing.plan-change#";
+export const BILLING_PLAN_CHANGE_PRODUCT_POOL = "ADDRESS";
 const PROCESSING_LEASE_MS = 2 * 60 * 1000;
 const PROVIDER_IN_FLIGHT_LOCK_MS = 365 * 24 * 60 * 60 * 1000;
 const TTL_SECONDS = 365 * 24 * 60 * 60;
 const DEFAULT_TIMEOUT_MS = 10_000;
+
+export type BillingProductPool = typeof BILLING_PLAN_CHANGE_PRODUCT_POOL;
 
 export type BillingActionStatus =
   | "failed_permanent"
@@ -49,6 +52,7 @@ export interface BillingActionRecord {
   idempotencyKeyHash: string;
   leaseExpiresAt: number;
   orgId: string;
+  productPool: BillingProductPool;
   requestHash: string;
   responseBody?: BillingPlanChangeResult;
   route: typeof ROUTE_NAME;
@@ -58,13 +62,14 @@ export interface BillingActionRecord {
   updatedAt: string;
 }
 
-interface BillingActionLockRecord {
+export interface BillingActionLockRecord {
   actionId: string;
   createdAt: string;
   leaseExpiresAt: number;
   lockOwnerActionId: string;
   lockOwnerAttemptToken: string;
   orgId: string;
+  productPool: BillingProductPool;
   route: typeof ROUTE_NAME;
   targetPlanCode: string;
   ttl: number;
@@ -76,6 +81,7 @@ export interface BillingActionInput {
   externalSubscriptionId: string;
   idempotencyKey: string;
   orgId: string;
+  productPool: BillingProductPool;
   targetPlanCode: string;
 }
 
@@ -91,6 +97,10 @@ export type BillingActionClaim =
   | { kind: "conflict" }
   | { kind: "in_progress" };
 
+export type BillingActionLockInspection =
+  | { kind: "active"; lock: BillingActionLockRecord }
+  | { kind: "none" };
+
 export interface BillingActionStore {
   claim(input: BillingActionInput): Promise<BillingActionClaim>;
   finalizeFailure(input: {
@@ -104,6 +114,7 @@ export interface BillingActionStore {
     action: BillingActionRecord;
     responseBody: BillingPlanChangeResult;
   }): Promise<void>;
+  inspectOrgLock(input: { orgId: string; productPool: BillingProductPool }): Promise<BillingActionLockInspection>;
   inspect(input: BillingActionInput): Promise<BillingActionInspection>;
   markProviderMutationStarted(input: { action: BillingActionRecord }): Promise<BillingActionRecord>;
 }
@@ -158,6 +169,7 @@ export type BillingPlanChangeServiceResult =
   | { kind: "conflict" }
   | { kind: "in_progress" }
   | { kind: "ledger_unavailable" }
+  | { kind: "transition_in_progress" }
   | {
       code: string;
       kind: "provider_error" | "finalize_error";
@@ -176,11 +188,32 @@ function sha256(value: string): string {
   return createHash("sha256").update(value).digest("hex");
 }
 
-export function buildBillingActionId(input: Pick<BillingActionInput, "idempotencyKey" | "orgId">) {
+function buildLegacyBillingActionId(input: Pick<BillingActionInput, "idempotencyKey" | "orgId">) {
   return sha256([input.orgId, ROUTE_NAME, input.idempotencyKey].join("\n"));
 }
 
+export function buildBillingActionId(
+  input: Pick<BillingActionInput, "idempotencyKey" | "orgId" | "productPool">,
+) {
+  return sha256([input.orgId, input.productPool, ROUTE_NAME, input.idempotencyKey].join("\n"));
+}
+
 export function buildBillingActionRequestHash(
+  input: Pick<BillingActionInput, "externalSubscriptionId" | "orgId" | "productPool" | "targetPlanCode">,
+) {
+  return sha256(
+    [
+      "POST",
+      ROUTE_PATH,
+      input.orgId,
+      input.productPool,
+      input.externalSubscriptionId,
+      input.targetPlanCode,
+    ].join("\n"),
+  );
+}
+
+function buildLegacyBillingActionRequestHash(
   input: Pick<BillingActionInput, "externalSubscriptionId" | "orgId" | "targetPlanCode">,
 ) {
   return sha256(
@@ -194,8 +227,16 @@ export function buildBillingActionRequestHash(
   );
 }
 
-function buildLockId(orgId: string): string {
+function buildLegacyLockId(orgId: string): string {
   return `${LOCK_PREFIX}${orgId}`;
+}
+
+function buildLockId(input: { orgId: string; productPool: BillingProductPool }): string {
+  return `${LOCK_PREFIX}${input.productPool}#${input.orgId}`;
+}
+
+function isLegacyBillingActionId(action: BillingActionRecord, input: BillingActionInput): boolean {
+  return action.actionId === buildLegacyBillingActionId(input);
 }
 
 function nowIso(now: Date): string {
@@ -293,6 +334,7 @@ function toBillingActionRecord(value: unknown): BillingActionRecord | null {
     typeof value.idempotencyKeyHash !== "string" ||
     typeof value.leaseExpiresAt !== "number" ||
     typeof value.orgId !== "string" ||
+    (value.productPool !== undefined && value.productPool !== BILLING_PLAN_CHANGE_PRODUCT_POOL) ||
     typeof value.requestHash !== "string" ||
     value.route !== ROUTE_NAME ||
     typeof value.targetPlanCode !== "string" ||
@@ -321,10 +363,43 @@ function toBillingActionRecord(value: unknown): BillingActionRecord | null {
     idempotencyKeyHash: value.idempotencyKeyHash,
     leaseExpiresAt: value.leaseExpiresAt,
     orgId: value.orgId,
+    productPool: BILLING_PLAN_CHANGE_PRODUCT_POOL,
     requestHash: value.requestHash,
     ...responseBody,
     route: ROUTE_NAME,
     status: value.status as BillingActionStatus,
+    targetPlanCode: value.targetPlanCode,
+    ttl: value.ttl,
+    updatedAt: value.updatedAt,
+  };
+}
+
+function toBillingActionLockRecord(value: unknown): BillingActionLockRecord | null {
+  if (!isRecord(value)) return null;
+  if (
+    typeof value.actionId !== "string" ||
+    typeof value.createdAt !== "string" ||
+    typeof value.leaseExpiresAt !== "number" ||
+    typeof value.lockOwnerActionId !== "string" ||
+    typeof value.lockOwnerAttemptToken !== "string" ||
+    typeof value.orgId !== "string" ||
+    (value.productPool !== undefined && value.productPool !== BILLING_PLAN_CHANGE_PRODUCT_POOL) ||
+    value.route !== ROUTE_NAME ||
+    typeof value.targetPlanCode !== "string" ||
+    typeof value.ttl !== "number" ||
+    typeof value.updatedAt !== "string"
+  ) {
+    return null;
+  }
+  return {
+    actionId: value.actionId,
+    createdAt: value.createdAt,
+    leaseExpiresAt: value.leaseExpiresAt,
+    lockOwnerActionId: value.lockOwnerActionId,
+    lockOwnerAttemptToken: value.lockOwnerAttemptToken,
+    orgId: value.orgId,
+    productPool: BILLING_PLAN_CHANGE_PRODUCT_POOL,
+    route: ROUTE_NAME,
     targetPlanCode: value.targetPlanCode,
     ttl: value.ttl,
     updatedAt: value.updatedAt,
@@ -427,9 +502,24 @@ export class DynamoBillingActionStore implements BillingActionStore {
         TableName: this.tableName,
       }),
     );
-    const action = toBillingActionRecord(result.Item);
+    let action = toBillingActionRecord(result.Item);
+    if (!action) {
+      const legacyResult = await this.ddb.send(
+        new GetCommand({
+          ConsistentRead: true,
+          Key: { actionId: buildLegacyBillingActionId(input) },
+          TableName: this.tableName,
+        }),
+      );
+      action = toBillingActionRecord(legacyResult.Item);
+    }
     if (!action) return { kind: "none" };
-    if (action.requestHash !== buildBillingActionRequestHash(input)) return { kind: "conflict" };
+    if (
+      action.requestHash !== buildBillingActionRequestHash(input) &&
+      action.requestHash !== buildLegacyBillingActionRequestHash(input)
+    ) {
+      return { kind: "conflict" };
+    }
     if (
       action.status === "failed_permanent" ||
       action.status === "outcome_unknown" ||
@@ -441,13 +531,43 @@ export class DynamoBillingActionStore implements BillingActionStore {
     return { action, kind: "retryable" };
   }
 
+  async inspectOrgLock(input: { orgId: string; productPool: BillingProductPool }): Promise<BillingActionLockInspection> {
+    const nowMs = this.now().getTime();
+    const result = await this.ddb.send(
+      new GetCommand({
+        ConsistentRead: true,
+        Key: { actionId: buildLockId(input) },
+        TableName: this.tableName,
+      }),
+    );
+    const scopedLock = toBillingActionLockRecord(result.Item);
+    if (scopedLock && scopedLock.leaseExpiresAt >= nowMs) {
+      return { kind: "active", lock: scopedLock };
+    }
+
+    const legacyResult = await this.ddb.send(
+      new GetCommand({
+        ConsistentRead: true,
+        Key: { actionId: buildLegacyLockId(input.orgId) },
+        TableName: this.tableName,
+      }),
+    );
+    const legacyLock = toBillingActionLockRecord(legacyResult.Item);
+    if (legacyLock && legacyLock.leaseExpiresAt >= nowMs) {
+      return { kind: "active", lock: legacyLock };
+    }
+
+    return { kind: "none" };
+  }
+
   async claim(input: BillingActionInput): Promise<BillingActionClaim> {
     const inspected = await this.inspect(input);
     if (inspected.kind === "conflict" || inspected.kind === "replay") return inspected;
 
     const now = this.now();
     const action = inspected.kind === "retryable" ? inspected.action : this.buildProcessingAction(input, now);
-    const lockId = buildLockId(input.orgId);
+    const lockId = buildLockId(input);
+    const legacyLockId = buildLegacyLockId(input.orgId);
     const leaseExpiresAt = now.getTime() + PROCESSING_LEASE_MS;
     const attemptToken = randomUUID();
     const ttl = ttlFrom(now);
@@ -499,6 +619,7 @@ export class DynamoBillingActionStore implements BillingActionStore {
                     lockOwnerActionId: action.actionId,
                     lockOwnerAttemptToken: attemptToken,
                     orgId: input.orgId,
+                    productPool: input.productPool,
                     route: ROUTE_NAME,
                     targetPlanCode: input.targetPlanCode,
                     ttl,
@@ -507,6 +628,22 @@ export class DynamoBillingActionStore implements BillingActionStore {
                   TableName: this.tableName,
                 },
               },
+              ...(isLegacyBillingActionId(action, input)
+                ? [
+                    {
+                      Delete: {
+                        ConditionExpression:
+                          "attribute_not_exists(actionId) OR lockOwnerActionId = :ownerActionId OR leaseExpiresAt < :nowMs",
+                        ExpressionAttributeValues: {
+                          ":nowMs": now.getTime(),
+                          ":ownerActionId": action.actionId,
+                        },
+                        Key: { actionId: legacyLockId },
+                        TableName: this.tableName,
+                      },
+                    },
+                  ]
+                : []),
             ],
           }),
         );
@@ -532,6 +669,7 @@ export class DynamoBillingActionStore implements BillingActionStore {
                     lockOwnerActionId: action.actionId,
                     lockOwnerAttemptToken: action.attemptToken,
                     orgId: input.orgId,
+                    productPool: input.productPool,
                     route: ROUTE_NAME,
                     targetPlanCode: input.targetPlanCode,
                     ttl,
@@ -609,7 +747,7 @@ export class DynamoBillingActionStore implements BillingActionStore {
                 ":ownerActionId": input.action.actionId,
                 ":updatedAt": nowIso(now),
               },
-              Key: { actionId: buildLockId(input.action.orgId) },
+              Key: { actionId: buildLockId(input.action) },
               TableName: this.tableName,
               UpdateExpression: "SET #leaseExpiresAt = :leaseExpiresAt, #updatedAt = :updatedAt",
             },
@@ -665,7 +803,7 @@ export class DynamoBillingActionStore implements BillingActionStore {
                 ":attemptToken": input.action.attemptToken,
                 ":ownerActionId": input.action.actionId,
               },
-              Key: { actionId: buildLockId(input.action.orgId) },
+              Key: { actionId: buildLockId(input.action) },
               TableName: this.tableName,
             },
           },
@@ -731,7 +869,7 @@ export class DynamoBillingActionStore implements BillingActionStore {
                     ":ownerActionId": input.action.actionId,
                     ":updatedAt": nowIso(now),
                   },
-                  Key: { actionId: buildLockId(input.action.orgId) },
+                  Key: { actionId: buildLockId(input.action) },
                   TableName: this.tableName,
                   UpdateExpression: "SET #leaseExpiresAt = :leaseExpiresAt, #updatedAt = :updatedAt",
                 },
@@ -744,7 +882,7 @@ export class DynamoBillingActionStore implements BillingActionStore {
                     ":attemptToken": input.action.attemptToken,
                     ":ownerActionId": input.action.actionId,
                   },
-                  Key: { actionId: buildLockId(input.action.orgId) },
+                  Key: { actionId: buildLockId(input.action) },
                   TableName: this.tableName,
                 },
               },
@@ -763,6 +901,7 @@ export class DynamoBillingActionStore implements BillingActionStore {
       idempotencyKeyHash: sha256(input.idempotencyKey),
       leaseExpiresAt: now.getTime() + PROCESSING_LEASE_MS,
       orgId: input.orgId,
+      productPool: input.productPool,
       requestHash: buildBillingActionRequestHash(input),
       route: ROUTE_NAME,
       status: "processing",
@@ -1014,8 +1153,9 @@ export function createBillingPlanChangeService(dependencies: BillingPlanChangeDe
         externalSubscriptionId: deriveLagoExternalSubscriptionIdForOrg(input.orgId),
         idempotencyKey: input.idempotencyKey,
         orgId: input.orgId,
+        productPool: BILLING_PLAN_CHANGE_PRODUCT_POOL,
         targetPlanCode: input.targetPlanCode,
-      };
+      } satisfies BillingActionInput;
 
       let inspected: BillingActionInspection;
       try {
@@ -1025,6 +1165,25 @@ export function createBillingPlanChangeService(dependencies: BillingPlanChangeDe
       }
       if (inspected.kind === "conflict") return { kind: "conflict" };
       if (inspected.kind === "replay") return { action: inspected.action, kind: "replay" };
+
+      try {
+        const activeLock = await dependencies.store.inspectOrgLock({
+          orgId: input.orgId,
+          productPool: BILLING_PLAN_CHANGE_PRODUCT_POOL,
+        });
+        const requestedActionIds = new Set([
+          buildBillingActionId(actionInput),
+          buildLegacyBillingActionId(actionInput),
+        ]);
+        if (
+          activeLock.kind === "active" &&
+          !requestedActionIds.has(activeLock.lock.lockOwnerActionId)
+        ) {
+          return { kind: "transition_in_progress" };
+        }
+      } catch {
+        return { kind: "ledger_unavailable" };
+      }
 
       let claim: BillingActionClaim;
       try {

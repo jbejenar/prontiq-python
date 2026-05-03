@@ -252,7 +252,7 @@ export function createBillingRoutes(overrides: BillingRouteOverrides = {}) {
     if (result.kind === "conflict") {
       return c.json(
         errorBody(c, {
-          code: "IDEMPOTENCY_CONFLICT",
+          code: "IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_REQUEST",
           message: "Idempotency-Key was already used for a different request.",
           status: 409,
         }),
@@ -264,6 +264,16 @@ export function createBillingRoutes(overrides: BillingRouteOverrides = {}) {
         errorBody(c, {
           code: "ACTION_IN_PROGRESS",
           message: "A billing plan change is already in progress.",
+          status: 409,
+        }),
+        409,
+      );
+    }
+    if (result.kind === "transition_in_progress") {
+      return c.json(
+        errorBody(c, {
+          code: "BILLING_TRANSITION_IN_PROGRESS",
+          message: "A billing transition is already fenced for this organization.",
           status: 409,
         }),
         409,

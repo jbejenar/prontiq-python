@@ -48,6 +48,9 @@ browser sends a per-click `Idempotency-Key`; the AWS account API writes a
 Lago's subscription upgrade/downgrade flow. The route does not update local API
 enforcement directly. Lago webhook reconciliation updates the DynamoDB bouncer
 projection after Lago accepts or applies the transition.
+The current adapter is scoped to the Address product pool. Action ids, request
+hashes, action rows, and lock rows carry `productPool = "ADDRESS"`; legacy
+unscoped rows remain readable for replay/reconciliation only.
 If the ledger cannot be inspected or claimed, the route returns
 `BILLING_ACTION_LEDGER_UNAVAILABLE` and does not call Lago.
 Immediately before calling Lago, the route transitions the action to
@@ -60,7 +63,8 @@ evidence, keeps the org-level mutation lock as a manual-reconcile fence, and
 returns `LAGO_PLAN_CHANGE_OUTCOME_UNKNOWN` on the original request and on
 same-key retries. Different idempotency keys for the same org are blocked until
 the lock is explicitly reconciled/cleared by an operator after Lago state is
-known.
+known. Those different-key attempts return `BILLING_TRANSITION_IN_PROGRESS`, not
+another Lago mutation.
 
 `POST /api/billing/invoices/payment-url` is admin-only. It verifies the invoice
 belongs to the active org before asking Lago for a payment URL.
