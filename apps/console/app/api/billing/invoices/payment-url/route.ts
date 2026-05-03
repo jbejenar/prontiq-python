@@ -5,6 +5,7 @@ import {
   requireBillingAdmin,
   requireSameOrigin,
 } from "../../../../../lib/billing-auth.js";
+import { LagoBillingError } from "../../../../../lib/billing-lago.js";
 import { createInvoicePaymentUrl } from "../../../../../lib/billing-service.js";
 
 const paymentUrlRequestSchema = z.object({
@@ -54,6 +55,23 @@ export async function POST(request: Request) {
     }
     return Response.json({ paymentUrl });
   } catch (error) {
+    if (
+      error instanceof LagoBillingError &&
+      (error.hasDetail("missing_payment_provider_customer") ||
+        error.hasDetail("no_linked_payment_provider"))
+    ) {
+      return Response.json(
+        {
+          error: {
+            code: "PAYMENT_PROVIDER_NOT_LINKED",
+            message:
+              "Billing is not ready for invoice payment links yet. Set up a payment method first.",
+            status: 409,
+          },
+        },
+        { status: 409 },
+      );
+    }
     const message = error instanceof Error ? error.message : "Could not create invoice payment URL.";
     return Response.json(
       { error: { code: "INVOICE_PAYMENT_URL_FAILED", message, status: 502 } },
