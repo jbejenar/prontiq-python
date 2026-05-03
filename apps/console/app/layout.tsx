@@ -31,7 +31,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           publishableKey={clerkRuntime.publishableKey}
         >
           <ThemeProvider>
-            <Providers>{children}</Providers>
+            <Providers clerkEnabled={clerkRuntime.clerkEnabled}>{children}</Providers>
           </ThemeProvider>
         </ConditionalClerkProvider>
       </body>

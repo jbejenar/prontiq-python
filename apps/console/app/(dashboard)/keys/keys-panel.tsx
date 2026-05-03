@@ -2,8 +2,9 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useAuth, useReverification } from "@clerk/nextjs";
+import { useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Copy, History, KeyRound, Loader2, RefreshCcw, RotateCcw, ShieldX } from "lucide-react";
+import { Copy, History, KeyRound, Loader2, PlaySquare, RefreshCcw, RotateCcw, ShieldX } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -45,6 +46,7 @@ import {
   TableHeader,
   TableRow,
 } from "../../../components/ui/table.js";
+import { usePlaygroundKey } from "../../../features/playground/components/playground-key-provider.js";
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat("en-AU", {
@@ -240,7 +242,9 @@ function AuditPanel({
 
 export function KeysPanel() {
   const { getToken, isLoaded, orgId } = useAuth();
+  const router = useRouter();
   const queryClient = useQueryClient();
+  const { setHeldKey } = usePlaygroundKey();
   const [label, setLabel] = useState("");
   const [revealedKey, setRevealedKey] = useState<
     (CreatedKey & { reason: "created" }) | (RotatedKey & { reason: "rotated" }) | null
@@ -402,6 +406,13 @@ export function KeysPanel() {
     if (!revealedKey) return;
     await navigator.clipboard.writeText(revealedKey.raw);
     toast.success("Copied API key");
+  }
+
+  function openInPlayground() {
+    if (!revealedKey) return;
+    setHeldKey(revealedKey.raw);
+    setIsRevealOpen(false);
+    router.push("/playground");
   }
 
   const status = statusQuery.data;
@@ -607,6 +618,10 @@ export function KeysPanel() {
             <Button type="button" variant="outline" onClick={() => void copyRawKey()}>
               <Copy className="h-4 w-4" />
               Copy key
+            </Button>
+            <Button type="button" onClick={openInPlayground}>
+              <PlaySquare className="h-4 w-4" />
+              Open in Playground
             </Button>
           </DialogFooter>
         </DialogContent>

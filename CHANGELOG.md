@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **P1C.06 console API playground implemented.** Added native
+  OpenAPI-driven `/playground` endpoint discovery, demo/account execution
+  modes, memory-only API-key handoff from `/keys`, production-shaped curl
+  generation, safe response display, Scalar isolated as an advanced workbench,
+  and a Clerk/same-origin/OpenAPI-validated demo proxy that forwards through a
+  server-held demo key governed by backend API-key quota/rate controls.
+
 - **P1F.04 post-deploy smoke coverage implemented.** Dev and prod deploy
   workflows now run the public Address API smoke with stage-owned
   `PRONTIQ_KEY` fixtures, prod smoke failures block the workflow from going

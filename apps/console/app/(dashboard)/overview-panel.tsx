@@ -361,29 +361,34 @@ export function OverviewPanel({ apiUrl }: { apiUrl: string }) {
             console.
           </CardDescription>
         </CardHeader>
-        <CardContent className="grid gap-4 xl:grid-cols-3">
-          {snippets.map((snippet) => (
-            <div
-              className="space-y-3 rounded-lg border border-border bg-background/70 p-4"
-              key={snippet.label}
-            >
-              <div className="flex items-center justify-between gap-3">
-                <Badge variant="secondary">{snippet.label}</Badge>
-                <Button
-                  size="sm"
-                  type="button"
-                  variant="outline"
-                  onClick={() => void copySnippet(snippet.code)}
-                >
-                  <Copy className="h-3.5 w-3.5" />
-                  Copy
-                </Button>
+        <CardContent className="space-y-4">
+          <Button asChild variant="outline">
+            <Link href="/playground">Open API Playground</Link>
+          </Button>
+          <div className="grid gap-4 xl:grid-cols-3">
+            {snippets.map((snippet) => (
+              <div
+                className="space-y-3 rounded-lg border border-border bg-background/70 p-4"
+                key={snippet.label}
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <Badge variant="secondary">{snippet.label}</Badge>
+                  <Button
+                    size="sm"
+                    type="button"
+                    variant="outline"
+                    onClick={() => void copySnippet(snippet.code)}
+                  >
+                    <Copy className="h-3.5 w-3.5" />
+                    Copy
+                  </Button>
+                </div>
+                <pre className="overflow-x-auto whitespace-pre-wrap break-words font-mono text-xs leading-5 text-muted-foreground">
+                  {snippet.code}
+                </pre>
               </div>
-              <pre className="overflow-x-auto whitespace-pre-wrap break-words font-mono text-xs leading-5 text-muted-foreground">
-                {snippet.code}
-              </pre>
-            </div>
-          ))}
+            ))}
+          </div>
         </CardContent>
       </Card>
     </>

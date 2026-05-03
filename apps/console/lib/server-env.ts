@@ -7,6 +7,8 @@ const serverEnvSchema = z.object({
   LAGO_API_URL: z.string().min(1).optional(),
   PRONTIQ_ALLOW_KEYLESS_CLERK: z.enum(["1"]).optional(),
   PRONTIQ_BILLING_CATALOG_ENV: z.enum(["dev", "prod", "all"]).optional(),
+  PRONTIQ_CONSOLE_PLAYGROUND_DEMO_API_KEY: z.string().min(1).optional(),
+  PRONTIQ_CONSOLE_PLAYGROUND_DEMO_BACKEND_POLICY_CONFIRMED: z.enum(["1"]).optional(),
 });
 
 export const serverEnv = serverEnvSchema.parse({
@@ -16,6 +18,10 @@ export const serverEnv = serverEnvSchema.parse({
   LAGO_API_URL: process.env.LAGO_API_URL,
   PRONTIQ_ALLOW_KEYLESS_CLERK: process.env.PRONTIQ_ALLOW_KEYLESS_CLERK,
   PRONTIQ_BILLING_CATALOG_ENV: process.env.PRONTIQ_BILLING_CATALOG_ENV,
+  PRONTIQ_CONSOLE_PLAYGROUND_DEMO_API_KEY:
+    process.env.PRONTIQ_CONSOLE_PLAYGROUND_DEMO_API_KEY,
+  PRONTIQ_CONSOLE_PLAYGROUND_DEMO_BACKEND_POLICY_CONFIRMED:
+    process.env.PRONTIQ_CONSOLE_PLAYGROUND_DEMO_BACKEND_POLICY_CONFIRMED,
 });
 
 export function getBillingServerEnv() {
@@ -28,5 +34,16 @@ export function getBillingServerEnv() {
     lagoApiKey: serverEnv.LAGO_API_KEY,
     lagoApiUrl: serverEnv.LAGO_API_URL,
     billingCatalogEnv: serverEnv.PRONTIQ_BILLING_CATALOG_ENV ?? inferredCatalogEnv,
+  };
+}
+
+export function getPlaygroundServerEnv() {
+  if (!serverEnv.PRONTIQ_CONSOLE_PLAYGROUND_DEMO_API_KEY) {
+    throw new Error("Console playground requires PRONTIQ_CONSOLE_PLAYGROUND_DEMO_API_KEY.");
+  }
+  return {
+    demoApiKey: serverEnv.PRONTIQ_CONSOLE_PLAYGROUND_DEMO_API_KEY,
+    demoBackendPolicyConfirmed:
+      serverEnv.PRONTIQ_CONSOLE_PLAYGROUND_DEMO_BACKEND_POLICY_CONFIRMED === "1",
   };
 }

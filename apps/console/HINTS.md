@@ -32,6 +32,21 @@
 - P1C.03 key-management UI starts from `GET /v1/account/status` to choose
   missing-org recovery, first-key CTA, or key-list state. Do not infer that by
   probing mutation endpoints.
+- P1C.06 playground UI is native-first and spec-driven. Keep visible UI in
+  Prontiq components; Scalar imports must remain confined to
+  `ScalarAdvancedModal` / `ScalarClientAdapter`.
+- Playground demo mode must use the console server proxy with Clerk session,
+  same-origin, public OpenAPI path/method validation, and a server-held demo
+  key. Demo usage, quota, rate limiting, billing events, and abuse controls
+  belong to the backend API-key policy attached to the demo key/org.
+- Do not add Redis, Upstash, Vercel KV, or other new infrastructure for
+  playground v1. Console-side throttling may only be UX-level debounce,
+  cancellation, timeout, or in-flight duplicate-submit protection.
+- Playground account mode may hold a raw key only in memory. Do not persist raw
+  keys or request payloads to URLs, browser storage, cookies, analytics, logs,
+  React Query persisted cache, or Scalar state.
+- Playground curl copy is Prontiq-owned. Demo curl must be production-shaped
+  with `{{YOUR_API_KEY}}`, never the console proxy URL.
 - P1C.02 overview UI is read-only. It may call `GET /v1/account/status` and
   `GET /v1/account/keys`, but setup recovery and key create/rotate/revoke
   actions must stay on `/keys`.

@@ -55,6 +55,19 @@ payment, or outcome fence is active, different idempotency keys are rejected as
 `BILLING_TRANSITION_IN_PROGRESS`; the UI must not attempt a second plan change
 until the existing transition is reconciled or repaired.
 
+P1C.06 adds `/playground` as a Prontiq-owned, OpenAPI-driven console page.
+Native console components own endpoint discovery, request inputs, demo/account
+mode, memory-only raw-key handling, curl generation, response display, and
+telemetry boundaries. Scalar is installed only as an isolated advanced workbench
+behind `ScalarAdvancedModal` / `ScalarClientAdapter`; raw account keys are not
+prefilled into Scalar. Demo mode executes through
+`app/api/playground/demo`, which verifies a Clerk session, same-origin request,
+public OpenAPI path/method, and server-held demo API key. Demo usage, quota,
+rate limiting, billing events, and abuse controls are enforced by the backend
+API-key policy attached to the demo key/org, not by the console. Account mode
+calls `NEXT_PUBLIC_API_URL` directly from the browser with the memory-held
+`X-Api-Key`.
+
 Billing route handlers require these server env vars:
 
 - `LAGO_API_URL`
@@ -63,6 +76,16 @@ Billing route handlers require these server env vars:
 Optional billing env:
 
 - `PRONTIQ_BILLING_CATALOG_ENV=dev|prod|all`
+
+Playground demo env:
+
+- `PRONTIQ_CONSOLE_PLAYGROUND_DEMO_API_KEY`
+- `PRONTIQ_CONSOLE_PLAYGROUND_DEMO_BACKEND_POLICY_CONFIRMED=1`
+
+Demo execution fails closed unless the demo key is configured and the backend
+quota/rate policy has been explicitly confirmed. Console-side request timeout
+and in-flight duplicate-submit protection are UX controls only, not quota,
+billing, or abuse-control boundaries.
 
 Plan cards are rendered only from Lago plans with
 `prontiq_console_visible=true`. Plans with `prontiq_test=true` or

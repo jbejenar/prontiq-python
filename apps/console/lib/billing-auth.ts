@@ -60,7 +60,7 @@ export async function getBillingPrincipal(): Promise<BillingPrincipal | Response
       {
         error: {
           code: "NO_ACTIVE_ORG",
-          message: "Select an organization before using billing.",
+          message: "Select an organization before using the console.",
           status: 403,
         },
       },
@@ -90,14 +90,13 @@ export function requireSameOrigin(request: Request): Response | null {
   const origin = request.headers.get("origin");
   if (!origin) return null;
 
-  const host = request.headers.get("x-forwarded-host") ?? request.headers.get("host");
-  const forwardedProto = request.headers.get("x-forwarded-proto") ?? "https";
+  const host = request.headers.get("host") ?? request.headers.get("x-forwarded-host");
   if (!host) {
     return Response.json(
       {
         error: {
           code: "BILLING_ORIGIN_CHECK_FAILED",
-          message: "Billing request origin could not be verified.",
+          message: "Console request origin could not be verified.",
           status: 403,
         },
       },
@@ -105,13 +104,30 @@ export function requireSameOrigin(request: Request): Response | null {
     );
   }
 
-  const expectedOrigin = `${forwardedProto}://${host}`;
-  if (origin !== expectedOrigin) {
+  let originUrl: URL;
+  try {
+    originUrl = new URL(origin);
+  } catch {
     return Response.json(
       {
         error: {
           code: "BILLING_ORIGIN_CHECK_FAILED",
-          message: "Billing request origin is not allowed.",
+          message: "Console request origin is not allowed.",
+          status: 403,
+        },
+      },
+      { status: 403 },
+    );
+  }
+
+  const forwardedProto = request.headers.get("x-forwarded-proto");
+  const expectedProtocol = forwardedProto ? `${forwardedProto}:` : null;
+  if (originUrl.host !== host || (expectedProtocol !== null && originUrl.protocol !== expectedProtocol)) {
+    return Response.json(
+      {
+        error: {
+          code: "BILLING_ORIGIN_CHECK_FAILED",
+          message: "Console request origin is not allowed.",
           status: 403,
         },
       },

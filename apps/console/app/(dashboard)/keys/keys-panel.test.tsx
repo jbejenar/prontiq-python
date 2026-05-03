@@ -23,6 +23,14 @@ const toastMocks = vi.hoisted(() => ({
   success: vi.fn(),
 }));
 
+const navigationMocks = vi.hoisted(() => ({
+  push: vi.fn(),
+}));
+
+const playgroundKeyMocks = vi.hoisted(() => ({
+  setHeldKey: vi.fn(),
+}));
+
 vi.mock("@clerk/nextjs", () => ({
   useAuth: () => ({
     getToken: vi.fn().mockResolvedValue("clerk_jwt"),
@@ -42,6 +50,18 @@ vi.mock("@clerk/nextjs", () => ({
 
 vi.mock("sonner", () => ({
   toast: toastMocks,
+}));
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => navigationMocks,
+}));
+
+vi.mock("../../../features/playground/components/playground-key-provider.js", () => ({
+  usePlaygroundKey: () => ({
+    clearHeldKey: vi.fn(),
+    heldKey: null,
+    setHeldKey: playgroundKeyMocks.setHeldKey,
+  }),
 }));
 
 vi.mock("../../../lib/account-api.js", () => {
@@ -193,6 +213,38 @@ test("create key reveals raw key once and does not persist it to browser storage
   await userEvent.click(screen.getByRole("button", { name: /close/i }));
 
   await waitFor(() => expect(screen.queryByText(raw)).not.toBeInTheDocument());
+});
+
+test("reveal-once key can be handed to the playground through memory state", async () => {
+  const raw = `pq_live_${"p".repeat(48)}`;
+  apiMocks.getStatus.mockResolvedValue({
+    orgId: "org_123",
+    orgRole: "org:admin",
+    canManageKeys: true,
+    provisioned: true,
+    hasFirstKey: false,
+    activeKeyCount: 0,
+    tier: "free",
+    maxKeys: 2,
+  });
+  apiMocks.createKey.mockResolvedValue({
+    keyId: "key_01HX0000000000000000000000",
+    keyPrefix: "pq_live_pppp",
+    raw,
+    createdAt: "2026-04-29T00:00:00.000Z",
+  });
+
+  renderWithQueryClient(<KeysPanel />);
+
+  await userEvent.click(await screen.findByRole("button", { name: /create first key/i }));
+  expect(await screen.findByText(raw)).toBeInTheDocument();
+
+  await userEvent.click(screen.getByRole("button", { name: /open in playground/i }));
+
+  expect(playgroundKeyMocks.setHeldKey).toHaveBeenCalledWith(raw);
+  expect(navigationMocks.push).toHaveBeenCalledWith("/playground");
+  expect(JSON.stringify(window.localStorage)).not.toContain(raw);
+  expect(JSON.stringify(window.sessionStorage)).not.toContain(raw);
 });
 
 test("switching active org clears reveal-once raw key state", async () => {

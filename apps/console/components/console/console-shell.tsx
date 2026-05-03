@@ -18,7 +18,7 @@ const navGroups = [
       { href: "/keys", icon: KeyRound, label: "Keys" },
       { href: "/usage", icon: Activity, label: "Usage" },
       { href: "/billing", icon: ReceiptText, label: "Billing" },
-      { href: "#playground", icon: PlaySquare, label: "Playground" },
+      { href: "/playground", icon: PlaySquare, label: "Playground" },
       { href: "#danger-zone", icon: ShieldAlert, label: "Danger Zone" },
     ],
   },
