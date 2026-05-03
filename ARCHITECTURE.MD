@@ -3089,13 +3089,19 @@ steps:
       aws-region: ap-southeast-2
 ```
 
-| Trigger             | Action                                            |
-| ------------------- | ------------------------------------------------- |
-| Push to `main`      | Lint, typecheck, build, `sst deploy --stage dev`  |
-| Manual dispatch     | `sst deploy --stage prod`                         |
-| OpenAPI spec change | Speakeasy regenerates SDKs, publishes to npm/PyPI |
-| Docs change         | Mintlify rebuilds docs site                       |
-| S3 manifest lands   | EventBridge → Step Functions → index + swap       |
+| Trigger             | Action                                                                  |
+| ------------------- | ----------------------------------------------------------------------- |
+| Push to `main`      | Lint, typecheck, build, `sst deploy --stage dev`, post-deploy dev smoke |
+| Manual dispatch     | `sst deploy --stage prod`, post-deploy prod Address API smoke           |
+| OpenAPI spec change | Speakeasy regenerates SDKs, publishes to npm/PyPI                       |
+| Docs change         | Mintlify rebuilds docs site                                             |
+| S3 manifest lands   | EventBridge → Step Functions → index + swap                             |
+
+P1F.04 post-deploy smoke verifies the public Address API hot path with a
+dedicated stage-owned API key stored as GitHub Environment secret
+`PRONTIQ_KEY`. Dev also runs Clerk-authenticated private account smokes. Prod
+private account flows remain manual because prod Clerk session minting is not a
+durable CI contract.
 
 ---
 

@@ -15,7 +15,12 @@
   P1B.18a Lago metric/subscription/replay smoke checks with the repo-owned
   smoke helper and alert health verified. P1B.21 retired the retained prod
   smoke key with prefix `pq_live_4a85`; do not reactivate or reuse it. Future
-  prod smoke needs a new labelled probe under a new ticket.
+  prod smoke needs the P1F.04 labelled deploy-smoke probe; do not reuse
+  retired prefixes `pq_live_4a85`, `pq_live_03f7`, or `pq_live_0300`.
+- P1F.04 deploy smoke uses `packages/api/src/scripts/smoke-test.ts` through
+  `pnpm --filter @prontiq/api smoke`. It must use only stage-scoped
+  `PRONTIQ_API` and GitHub Environment secret `PRONTIQ_KEY`, must not call
+  Clerk/Lago directly, and must never log raw keys or hashes.
 - P1B.18a is closed. Future billing API work may rely on dev/prod Lago
   forwarding and webhook smoke evidence, but must keep Lago and Stripe off the
   API hot path.

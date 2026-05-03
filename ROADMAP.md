@@ -4681,7 +4681,7 @@ As a platform operator, I need backend traces in Honeycomb for deployed Lambdas 
 ```yaml
 id: P1F.04
 title: Post-Deploy Smoke Coverage Extension
-status: pending
+status: in_progress
 priority: p1-high
 epic: P1F
 persona: [ops, builder]
@@ -4756,12 +4756,16 @@ gaps:
     required checks
   - `Evidence:` screenshot (or `gh api repos/.../branches/main/protection`
     output) showing the rule
+  - `Current blocker:` as of 2026-05-03, GitHub branch protection returns
+    HTTP 403 for this private repo unless GitHub Pro is enabled or the repo
+    becomes public. Do not mark this checkbox complete until the external gate
+    is resolved.
 - [ ] `smoke-prod` failure blocks the prod deploy workflow run from
       reporting green
-  - `Verify:` an intentionally bad fixture (e.g. a wrong
-    `CLERK_TEST_USER_ID` in the prod environment) produces a red ✗ on
-    the workflow
-  - `Evidence:` test run id; immediately revert the bad fixture
+  - `Verify:` dispatch `Deploy to Production` with
+    `force_smoke_failure=true`; the job uses an invalid API key for that run
+    only and produces a red ✗ on `smoke-prod`
+  - `Evidence:` test run id; no prod secret mutation required
 
 ##### Operational
 

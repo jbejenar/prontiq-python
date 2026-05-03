@@ -36,6 +36,7 @@ Tick each item or write `N/A — <reason>`. Do NOT leave boxes unchecked without
 
 - [ ] Search/query code (`packages/api/src/search/**`, `routes/**`, `shared/src/validation.ts`): `pnpm --filter @prontiq/api test:integration` passes against real OpenSearch — or `N/A — not a search/query change`
 - [ ] Infra changes (`sst.config.ts`, `.github/workflows/`): `sst diff --stage prod` reviewed and matches intent — or `N/A — no infra change`
+- [ ] Smoke scripts/workflows: `docs/runbooks/smoke-classification.md` updated or confirmed unchanged — or `N/A — no smoke change`
 
 ## Overrides (if any)
 

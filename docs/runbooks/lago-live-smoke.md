@@ -13,6 +13,10 @@ P1B.22 changed the live smoke helper to the active commercial identity model:
 Legacy `BillingUsageEventV1`, `pq_cust_*`, `pq_sub_*`, and
 `CUSTOMERS_TABLE_NAME` references are historical P1B.14-P1B.21 evidence only.
 
+This helper is `runbook-on-demand`, not `ci-every-deploy`. P1F.04 deploy smoke
+uses the public Address API smoke instead. Do not wire `lago:smoke:event` into
+every deploy because it intentionally creates billing delivery evidence.
+
 ## Preconditions
 
 - A labelled test org exists in Clerk and Lago.

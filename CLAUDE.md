@@ -80,11 +80,12 @@ pnpm --filter @prontiq/api test:integration   # Real OpenSearch integration test
 CLAUDE.md describes defaults. Enforcement lives in:
 
 - `.github/pull_request_template.md` — every PR fills the checklist.
-- `.github/workflows/ci.yml` — required checks (lint, typecheck, build, test, integration-test, spec-drift).
-- GitHub branch protection — **not yet configured** (see follow-up below).
+- `.github/workflows/ci.yml` — required checks (lint, typecheck, build, test, integration-test, spec-drift, and post-deploy `smoke-dev` once branch protection is available).
+- GitHub branch protection — **not yet configured** (see follow-up below). As of 2026-05-03, the GitHub API returns HTTP 403 for branch protection on this private repo unless GitHub Pro is enabled or the repo becomes public.
 
 **Follow-up required (post-merge):** configure branch protection on `main` via repo Settings → Branches:
+
 - Require PR review before merge
-- Require status checks: `check`, `integration-test`
+- Require status checks: `check`, `integration-test`, `smoke-dev`
 - Require branches up to date
 - Include administrators

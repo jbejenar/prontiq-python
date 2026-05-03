@@ -32,6 +32,8 @@ unset. Override it explicitly only when pointing `apps/landing` or
 
 **P1B.19/P1B.20/P1B.21 status:** P1B.19 cutover is complete. P1B.20 removed the legacy Stripe webhook, billing cron, month-close, pricing table, Stripe envs, and Stripe package dependencies from active deploys. P1B.21 left `BILLING_EVENTS_ENABLED=true`, `COUNTER_PERIOD_SOURCE=lago`, and `LAGO_WEBHOOK_RECONCILIATION_ENABLED=true` for prod go-live.
 
+**Post-deploy smoke posture:** P1F.04 wires the public Address API smoke into dev/prod deploy workflows. The smoke uses a stage-owned labelled API key stored only as the GitHub Environment secret `PRONTIQ_KEY`; never print raw keys or hashes in logs/docs. Prod private account/Clerk smokes remain manual because prod Clerk session minting is not durable. Do not reuse retired prod smoke key prefixes `pq_live_4a85`, `pq_live_03f7`, or `pq_live_0300`.
+
 **Observability (current state):** CloudWatch alarms/dashboard + SNS email remain the AWS-native operations plane. Honeycomb backend tracing is now live and verified for deployed Lambdas behind `HONEYCOMB_API_KEY`, and `PqApi` X-Ray remains in place as a retained secondary trace path. Browser/frontend telemetry is not part of this ticket.
 
 **SES deliverability (current state):** suppression handling and simulator-verified SES flows are live. Custom MAIL FROM on `bounce.prontiq.dev` and DMARC relaxed SPF alignment are configured. Normal-recipient production readiness remains owned by `P1B.08a`; SES production-access approval and a normal-recipient test send are still required.

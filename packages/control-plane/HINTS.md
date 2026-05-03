@@ -43,6 +43,7 @@
 - The P1B.21-retired prod smoke key with prefix `pq_live_4a85` must not be
   reused or reactivated. The linked prod smoke customer/subscription, usage row,
   delivery rows, and webhook rows are retained as audit evidence only. Future
-  prod smoke requires a new labelled probe and a new ticket. Do not delete
+  prod smoke uses the P1F.04 labelled deploy-smoke probe. Do not reuse retired
+  prefixes `pq_live_4a85`, `pq_live_03f7`, or `pq_live_0300`. Do not delete
   delivery/webhook ledger evidence or real customer rows during cleanup without
   a dedicated decision.

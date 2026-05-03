@@ -77,6 +77,11 @@ remain keyless and run with telemetry disabled. To disable Honeycomb export in
 `dev` or `prod` without breaking deploy validation, set GitHub Environment
 variable `HONEYCOMB_ENABLED=false` and redeploy the stage.
 
+Post-deploy Address API smoke expects `PRONTIQ_KEY` in both `dev` and `prod`
+GitHub Environment secrets. The key must belong to a dedicated labelled smoke
+org for that stage. The smoke runs with `pnpm --filter @prontiq/api smoke` and
+must never log raw keys.
+
 ## Architecture
 
 ```

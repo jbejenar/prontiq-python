@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+import { pathToFileURL } from "node:url";
+
 /**
  * Smoke test for the deployed Address API.
  *
@@ -16,25 +18,72 @@
  * integration, this is the canonical real-engine verification step.
  */
 
-const API = process.env.PRONTIQ_API ?? "https://api.prontiq.dev";
+const DEFAULT_API_URL = "https://api.prontiq.dev";
 
-function requireEnv(name: string): string {
+function readRequiredEnv(name: string): string {
   const value = process.env[name];
-  if (!value) {
-    console.error(`${name} env var required`);
-    process.exit(1);
+  if (!value || value.trim().length === 0) {
+    throw new Error(`${name} env var required`);
   }
-  return value;
+  return value.trim();
 }
 
-const KEY = requireEnv("PRONTIQ_KEY");
+type JsonObject = Record<string, unknown>;
+
+interface FetchResponse {
+  ok: boolean;
+  status: number;
+  json: () => Promise<unknown>;
+  text: () => Promise<string>;
+}
+
+export type SmokeFetch = (
+  url: string,
+  init: { headers: Record<string, string> },
+) => Promise<FetchResponse>;
 
 interface SmokeCase {
   name: string;
   path: string;
   /** Returns null if pass, or string explaining failure */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  check: (response: any) => string | null;
+  check: (response: unknown) => string | null;
+}
+
+interface RunAddressSmokeOptions {
+  apiUrl: string;
+  apiKey: string;
+  fetchImpl?: SmokeFetch;
+  log?: (message: string) => void;
+  now?: () => number;
+}
+
+export interface RunAddressSmokeResult {
+  passed: number;
+  failed: number;
+  total: number;
+}
+
+function isObject(value: unknown): value is JsonObject {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function stringField(value: unknown, key: string): string | undefined {
+  if (!isObject(value)) return undefined;
+  const field = value[key];
+  return typeof field === "string" ? field : undefined;
+}
+
+function objectArrayField(value: unknown, key: string): JsonObject[] {
+  if (!isObject(value)) return [];
+  const field = value[key];
+  if (!Array.isArray(field)) return [];
+  return field.filter(isObject);
+}
+
+function arrayField(value: unknown, key: string): unknown[] {
+  if (!isObject(value)) return [];
+  const field = value[key];
+  return Array.isArray(field) ? field : [];
 }
 
 const cases: SmokeCase[] = [
@@ -42,7 +91,9 @@ const cases: SmokeCase[] = [
     name: "autocomplete: valid prefix ranks COURT first",
     path: "/v1/address/autocomplete?q=9+endeavour+cou&limit=5",
     check: (r) => {
-      const labels = r.suggestions?.map((s: { addressLabel: string }) => s.addressLabel) ?? [];
+      const labels = objectArrayField(r, "suggestions")
+        .map((suggestion) => stringField(suggestion, "addressLabel"))
+        .filter((label): label is string => label !== undefined);
       if (labels.length === 0) return "0 results";
       const allCourt = labels.every((l: string) => l.includes("COURT"));
       return allCourt ? null : `expected all COURT, got ${JSON.stringify(labels)}`;
@@ -52,7 +103,7 @@ const cases: SmokeCase[] = [
     name: "autocomplete: typo'd prefix falls back (returns SOMETHING)",
     path: "/v1/address/autocomplete?q=9+endeavour+cuo&limit=5",
     check: (r) => {
-      const count = r.suggestions?.length ?? 0;
+      const count = objectArrayField(r, "suggestions").length;
       return count > 0 ? null : "0 results — phase-2 fallback didn't trigger";
     },
   },
@@ -60,56 +111,73 @@ const cases: SmokeCase[] = [
     name: "autocomplete: typo in completed word still finds ENDEAVOUR (fuzzy)",
     path: "/v1/address/autocomplete?q=9+endevour+court&limit=3",
     check: (r) => {
-      const labels = r.suggestions?.map((s: { addressLabel: string }) => s.addressLabel) ?? [];
+      const labels = objectArrayField(r, "suggestions")
+        .map((suggestion) => stringField(suggestion, "addressLabel"))
+        .filter((label): label is string => label !== undefined);
       const hasEndeavour = labels.some((l: string) => l.includes("ENDEAVOUR COURT"));
-      return hasEndeavour ? null : `expected ENDEAVOUR COURT in results, got ${JSON.stringify(labels)}`;
+      return hasEndeavour
+        ? null
+        : `expected ENDEAVOUR COURT in results, got ${JSON.stringify(labels)}`;
     },
   },
   {
     name: "validate: known address returns high confidence",
     path: "/v1/address/validate?q=9+endeavour+court+coffin+bay+sa+5607",
-    check: (r) => (r.confidence === "high" ? null : `expected confidence "high", got "${r.confidence}"`),
+    check: (r) =>
+      stringField(r, "confidence") === "high"
+        ? null
+        : `expected confidence "high", got "${stringField(r, "confidence")}"`,
   },
   {
     name: "validate: nonsense returns none/low (token coverage gate)",
     path: "/v1/address/validate?q=zzz1234+nonexistent+nowhere",
-    check: (r) =>
-      r.confidence === "none" || r.confidence === "low"
+    check: (r) => {
+      const confidence = stringField(r, "confidence");
+      return confidence === "none" || confidence === "low"
         ? null
-        : `nonsense should score "none" or "low", got "${r.confidence}"`,
+        : `nonsense should score "none" or "low", got "${confidence}"`;
+    },
   },
   {
     name: "validate: wrong postcode caps at low (critical-component gate)",
     path: "/v1/address/validate?q=9+endeavour+court+coffin+bay+sa+9999",
-    check: (r) =>
-      r.confidence !== "high" && r.confidence !== "medium"
+    check: (r) => {
+      const confidence = stringField(r, "confidence");
+      return confidence !== "high" && confidence !== "medium"
         ? null
-        : `wrong postcode should not score medium/high, got "${r.confidence}"`,
+        : `wrong postcode should not score medium/high, got "${confidence}"`;
+    },
   },
   {
     name: "validate: wrong locality caps at low (alien-token gate)",
     // RICHMOND with SA 5607 — matched doc will be COFFIN BAY SA 5607.
     // Alien-token detection should catch RICHMOND as a wrong component.
     path: "/v1/address/validate?q=9+endeavour+court+richmond+sa+5607",
-    check: (r) =>
-      r.confidence !== "high" && r.confidence !== "medium"
+    check: (r) => {
+      const confidence = stringField(r, "confidence");
+      return confidence !== "high" && confidence !== "medium"
         ? null
-        : `wrong locality should not score medium/high, got "${r.confidence}"`,
+        : `wrong locality should not score medium/high, got "${confidence}"`;
+    },
   },
   {
     name: "lookupSuburb: bondi+beech (typo) → matched as BONDI BEACH",
     path: "/v1/address/lookup/suburb?suburb=bondi+beech",
     check: (r) =>
-      r.suburb === "BONDI BEACH" ? null : `expected suburb "BONDI BEACH", got "${r.suburb}"`,
+      stringField(r, "suburb") === "BONDI BEACH"
+        ? null
+        : `expected suburb "BONDI BEACH", got "${stringField(r, "suburb")}"`,
   },
   {
     name: "lookupSuburb: richmond (no state) → aggregates across multiple states",
     path: "/v1/address/lookup/suburb?suburb=richmond",
     check: (r) => {
-      const count = r.postcodes?.length ?? 0;
-      const stateUndefined = r.state === undefined || r.state === null;
+      const count = arrayField(r, "postcodes").length;
+      const state = isObject(r) ? r.state : undefined;
+      const stateUndefined = state === undefined || state === null;
       if (count < 3) return `expected 3+ postcodes from multi-state RICHMOND, got ${count}`;
-      if (!stateUndefined) return `expected state field undefined when caller omitted state, got "${r.state}"`;
+      if (!stateUndefined)
+        return `expected state field undefined when caller omitted state, got "${String(state)}"`;
       return null;
     },
   },
@@ -117,41 +185,67 @@ const cases: SmokeCase[] = [
     name: "lookupPostcode: limit=3 returns exactly 3 localities",
     path: "/v1/address/lookup/postcode?postcode=2000&limit=3",
     check: (r) => {
-      const count = r.localities?.length ?? 0;
+      const count = arrayField(r, "localities").length;
       return count === 3 ? null : `expected 3 localities, got ${count}`;
     },
   },
 ];
 
-async function main(): Promise<void> {
-  console.log(`Running ${cases.length} smoke tests against ${API}\n`);
+export async function runAddressSmoke({
+  apiUrl,
+  apiKey,
+  fetchImpl = fetch as SmokeFetch,
+  log = console.log,
+  now = Date.now,
+}: RunAddressSmokeOptions): Promise<RunAddressSmokeResult> {
+  const normalizedApiUrl = apiUrl.replace(/\/+$/, "");
+  log(`Running ${cases.length} smoke tests against ${normalizedApiUrl}\n`);
   let failed = 0;
 
   for (const c of cases) {
-    const url = `${API}${c.path}`;
+    const url = `${normalizedApiUrl}${c.path}`;
+    const startedAt = now();
     try {
-      const res = await fetch(url, { headers: { "X-Api-Key": KEY } });
+      const res = await fetchImpl(url, { headers: { "X-Api-Key": apiKey } });
+      const elapsedMs = Math.max(0, Math.round(now() - startedAt));
       if (!res.ok) {
-        console.log(`✗ ${c.name}\n  HTTP ${res.status}: ${await res.text()}`);
+        log(`✗ ${c.name} — HTTP ${res.status} — ${elapsedMs}ms\n  ${await res.text()}`);
         failed++;
         continue;
       }
       const body = await res.json();
       const failure = c.check(body);
       if (failure) {
-        console.log(`✗ ${c.name}\n  ${failure}`);
+        log(`✗ ${c.name} — HTTP ${res.status} — ${elapsedMs}ms\n  ${failure}`);
         failed++;
       } else {
-        console.log(`✓ ${c.name}`);
+        log(`✓ ${c.name} — HTTP ${res.status} — ${elapsedMs}ms`);
       }
     } catch (err) {
-      console.log(`✗ ${c.name}\n  ${err instanceof Error ? err.message : String(err)}`);
+      const elapsedMs = Math.max(0, Math.round(now() - startedAt));
+      log(`✗ ${c.name} — ${elapsedMs}ms\n  ${err instanceof Error ? err.message : String(err)}`);
       failed++;
     }
   }
 
-  console.log(`\n${cases.length - failed}/${cases.length} passed`);
-  if (failed > 0) process.exit(1);
+  const passed = cases.length - failed;
+  log(`\n${passed}/${cases.length} passed`);
+  return { passed, failed, total: cases.length };
 }
 
-void main();
+async function main(): Promise<void> {
+  try {
+    const result = await runAddressSmoke({
+      apiUrl: process.env.PRONTIQ_API ?? DEFAULT_API_URL,
+      apiKey: readRequiredEnv("PRONTIQ_KEY"),
+    });
+    if (result.failed > 0) process.exit(1);
+  } catch (err) {
+    console.error(err instanceof Error ? err.message : String(err));
+    process.exit(1);
+  }
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  void main();
+}

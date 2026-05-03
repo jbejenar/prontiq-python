@@ -9,8 +9,10 @@ and
 and the disposition decision is recorded in
 [`docs/decisions/034-prod-smoke-fixture-disposition.md`](../decisions/034-prod-smoke-fixture-disposition.md).
 
-Use this runbook for future audits or for creating a new labelled production
-probe. Do not reactivate the retired `pq_live_4a85` smoke key.
+Use this runbook for future audits. Permanent post-deploy production smoke is
+owned by P1F.04 and must use its dedicated labelled deploy-smoke probe. Do not
+reactivate the retired `pq_live_4a85`, `pq_live_03f7`, or `pq_live_0300` smoke
+keys.
 
 ## Scope
 
@@ -86,7 +88,8 @@ Final accepted event:
 
 - `bevt_f7833d581725b732d04d3eed3fd7c484`
 
-Future production smoke requires a new labelled probe under a new ticket.
+Permanent production post-deploy smoke is owned by P1F.04 and requires a new
+labelled probe stored as the prod GitHub Environment secret `PRONTIQ_KEY`.
 
 ## Artifact Inventory
 
@@ -230,9 +233,9 @@ After cleanup/disposition decisions are applied and prechecks are green:
    already true.
 2. Redeploy prod and verify the live API Lambda environment shows
    `BILLING_EVENTS_ENABLED=true`.
-3. Use a fresh go-live probe. Do not reuse the P1B.21-retired `pq_live_4a85`
-   key, the P1B.21 post-fix `pq_live_03f7` key, or the P1B.23 one-off
-   `pq_live_0300` key.
+3. Use the P1F.04 deploy-smoke probe or a fresh go-live probe. Do not reuse the
+   P1B.21-retired `pq_live_4a85` key, the P1B.21 post-fix `pq_live_03f7` key,
+   or the P1B.23 one-off `pq_live_0300` key.
 4. Confirm the matching customer row is active and mapped to the intended Lago
    customer/subscription.
 5. Send exactly one low-risk address API request.

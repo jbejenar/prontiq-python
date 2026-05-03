@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **P1F.04 post-deploy smoke coverage implemented.** Dev and prod deploy
+  workflows now run the public Address API smoke with stage-owned
+  `PRONTIQ_KEY` fixtures, prod smoke failures block the workflow from going
+  green, and smoke classification docs define CI-every-deploy vs runbook-only
+  vs manual UI boundaries.
+
 - **P1C.04 usage charts implemented.** Added platform-owned
   `prontiq-usage-daily` projection from billing events, private
   `GET /v1/account/usage`, and console `/usage` charts with CSV export. Lago

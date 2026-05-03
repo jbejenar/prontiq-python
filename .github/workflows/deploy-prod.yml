@@ -2,6 +2,12 @@ name: Deploy to Production
 
 on:
   workflow_dispatch:
+    inputs:
+      force_smoke_failure:
+        description: "P1F.04 validation only: run smoke-prod with an invalid API key after deploy."
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -12,6 +18,8 @@ jobs:
     environment: prod
     env:
       NEXT_PUBLIC_API_URL: https://api.prontiq.dev
+    outputs:
+      api_url: ${{ steps.api-url.outputs.api_url }}
     permissions:
       id-token: write
       contents: read
@@ -145,21 +153,62 @@ jobs:
           echo "deploy exited with code: ${EXIT:-0}"
           exit "${EXIT:-0}"
 
-  # NOTE: prod no longer runs a post-deploy smoke job. The previous
-  # `smoke-prod` invoked smoke:account-setup / smoke:keys /
-  # smoke:keys-stepup, all of which mint a Clerk JWT for the prod test
-  # user. Prod Clerk hardens against `clerk.sessions.createSession`
-  # (the smoke's fallback when no active session exists), so the
-  # smoke could not authenticate without an operator-run impersonation
-  # flow refreshed every ~7 days as Clerk sessions expire.
-  #
-  # The address-API health smoke (smoke-test.ts) is the durable
-  # replacement — uses an `X-Api-Key` header instead of a Clerk JWT,
-  # so prod-tenant hardening doesn't apply. Wiring it in is tracked
-  # by P1F.04 in ROADMAP.md and depends on provisioning a labelled
-  # `pq_live_*` smoke key in prod (the prior labelled keys pq_live_4a85
-  # and pq_live_03f7 were retired during P1B.21 cleanup).
-  #
-  # Until then, prod /v1/account/* verification stays manual: log into
-  # the console with a real Clerk session and exercise create / list /
-  # rotate / revoke per the P1C.03 plan's PR 4 dev/prod rollout steps.
+      - name: Extract deployed API URL
+        id: api-url
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! -f .sst/outputs.json ]]; then
+            echo "::error::.sst/outputs.json missing after deploy — cannot pass api URL to smoke."
+            exit 1
+          fi
+          API_URL=$(jq -r '.api // empty' .sst/outputs.json)
+          if [[ -z "$API_URL" ]]; then
+            echo "::error::SST output 'api' is missing or empty in .sst/outputs.json."
+            cat .sst/outputs.json
+            exit 1
+          fi
+          API_URL="${API_URL%/}"
+          echo "api_url=$API_URL" >> "$GITHUB_OUTPUT"
+
+  # Prod post-deploy smoke intentionally covers only the public Address API.
+  # Clerk-authenticated prod account smokes remain manual because prod Clerk
+  # hardening prevents durable Backend SDK session minting.
+  smoke-prod:
+    needs: deploy
+    runs-on: ubuntu-latest
+    environment: prod
+    env:
+      PRONTIQ_API: ${{ needs.deploy.outputs.api_url }}
+      PRONTIQ_KEY: ${{ inputs.force_smoke_failure && 'pq_live_invalid_p1f04_forced_failure' || secrets.PRONTIQ_KEY }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: ".nvmrc"
+          cache: "pnpm"
+      - name: Validate resolved prod smoke config
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${PRONTIQ_API:-}" ]]; then
+            echo "::error::PRONTIQ_API was not propagated from deploy. Check the deploy outputs.api_url step."
+            exit 1
+          fi
+          if [[ -z "${PRONTIQ_KEY:-}" ]]; then
+            echo "::error::PRONTIQ_KEY is missing from the prod GitHub Environment secrets."
+            exit 1
+          fi
+          if [[ "$PRONTIQ_API" != https://* ]]; then
+            echo "::error::Prod smoke requires an HTTPS API URL. Resolved PRONTIQ_API=$PRONTIQ_API"
+            exit 1
+          fi
+          echo "Smoking prod address API against: $PRONTIQ_API"
+          if [[ "${{ inputs.force_smoke_failure }}" == "true" ]]; then
+            echo "::warning::force_smoke_failure=true; smoke-prod is expected to fail with an invalid API key."
+          fi
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - name: Smoke — address API
+        run: pnpm --filter @prontiq/api smoke

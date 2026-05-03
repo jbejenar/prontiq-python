@@ -1,15 +1,15 @@
 # NEXT-WORK.md — Active Sprint
 
-> Last updated: 2026-05-03 for P1B.23 pre-go-live cleanup closeout.
+> Last updated: 2026-05-03 for P1F.04 post-deploy smoke implementation.
 
 ## Current Phase
 
-P1B.23 is complete. Console key management, usage, and billing are shipped to
-dev/prod; replay-safe plan changes are live; prod Lago catalog/reconciliation is
-clean; retained migration evidence is intentionally preserved.
+P1F.04 is in implementation. Console key management, usage, and billing are
+shipped to dev/prod; replay-safe plan changes are live; prod Lago
+catalog/reconciliation is clean; retained migration evidence is intentionally
+preserved.
 
-Next recommended ticket: P1F.04 — Post-Deploy Smoke Coverage Extension. After
-that, return to P1C.06 — Playground Page.
+After P1F.04 review/deploy/smoke closeout, return to P1C.06 — Playground Page.
 
 ## Active Commercial Contract
 
@@ -86,8 +86,9 @@ POST /v1/account/billing/portal-session
 - **P1B.23** — complete. Pre-go-live Lago test fixture and pricing cleanup
   retained audit evidence, disabled stale test keys, set prod PAYG to A$0.0015
   per address request, and verified dev/prod reconciliation.
-- **P1F.04** — next. Extend post-deploy smoke coverage and classify CI-vs-runbook
-  smokes before adding more product UI.
+- **P1F.04** — in progress. Extend post-deploy smoke coverage, add dev/prod
+  Address API smoke gates, provision dedicated `PRONTIQ_KEY` fixtures, and
+  classify CI-vs-runbook smokes before adding more product UI.
 
 ## Operator Commands
 

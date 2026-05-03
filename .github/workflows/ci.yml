@@ -380,10 +380,10 @@ jobs:
   # gets a custom domain (or the API Gateway is recreated), smoke
   # follows automatically without workflow edits.
   #
-  # CLERK_TEST_USER_ID lives in the dev GitHub Environment as a
-  # Variable. Selecting `environment: dev` here resolves it to the
-  # dev tenant's test user; the prod equivalent (smoke-prod in
-  # deploy-prod.yml) resolves to the prod tenant's user.
+  # PRONTIQ_KEY lives in the dev GitHub Environment as a Secret and
+  # belongs to a dedicated labelled smoke org/key. It is used only
+  # by the public Address API smoke; Clerk-authenticated account
+  # smokes keep their existing dev-only session flow.
   smoke-dev:
     needs: deploy-dev
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
@@ -391,6 +391,7 @@ jobs:
     environment: dev
     env:
       PRONTIQ_API: ${{ needs.deploy-dev.outputs.api_url }}
+      PRONTIQ_KEY: ${{ secrets.PRONTIQ_KEY }}
       CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
       CLERK_TEST_USER_ID: ${{ vars.CLERK_TEST_USER_ID }}
     steps:
@@ -408,6 +409,10 @@ jobs:
             echo "::error::PRONTIQ_API was not propagated from deploy-dev. Check the deploy-dev outputs.api_url step."
             exit 1
           fi
+          if [[ -z "${PRONTIQ_KEY:-}" ]]; then
+            echo "::error::PRONTIQ_KEY is missing from the dev GitHub Environment secrets."
+            exit 1
+          fi
           # Sanity: dev URL must NOT be the prod custom domain.
           if [[ "$PRONTIQ_API" == "https://api.prontiq.dev" ]]; then
             echo "::error::Refusing to run dev smoke against prod URL. Resolved PRONTIQ_API=$PRONTIQ_API"
@@ -416,6 +421,8 @@ jobs:
           echo "Smoking against: $PRONTIQ_API"
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
+      - name: Smoke — address API
+        run: pnpm --filter @prontiq/api smoke
       - name: Smoke — account setup
         run: pnpm --filter @prontiq/api smoke:account-setup
       - name: Smoke — keys list/create

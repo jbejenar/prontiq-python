@@ -4,6 +4,26 @@
 > the time they were written, not the current source of truth. Use
 > `ROADMAP.md`, `NEXT-WORK.md`, and `README.md` for current execution status.
 
+## Session 48 — 2026-05-03
+
+**Focus:** P1F.04 post-deploy smoke coverage.
+
+- Implemented the audited P1F.04 plan: Address API deploy smoke is wired into
+  dev and prod workflows, with prod `smoke-prod` replacing the removed
+  Clerk-authenticated prod smoke path.
+- Hardened the Address API smoke runner so it is import-safe, node:test covered,
+  logs HTTP status/duration, and does not print raw API keys.
+- Added smoke classification docs, DEC-042, evidence placeholders, workflow
+  contract tests, and updated branch-protection guidance to record the current
+  GitHub Pro/public-repo blocker.
+
+### Next session should start with
+
+1. Review CI for the P1F.04 PR.
+2. Provision dedicated dev/prod `PRONTIQ_KEY` GitHub Environment secrets.
+3. After merge, verify dev `smoke-dev`, prod `smoke-prod`, and one
+   `force_smoke_failure=true` prod run for red-path evidence.
+
 ## Session 47 — 2026-05-03
 
 **Focus:** P1B.23 pre-go-live Lago fixture and pricing cleanup.
