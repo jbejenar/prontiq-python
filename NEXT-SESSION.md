@@ -16,13 +16,23 @@
 - Added smoke classification docs, DEC-042, evidence placeholders, workflow
   contract tests, and updated branch-protection guidance to record the current
   GitHub Pro/public-repo blocker.
+- PR #221 merged. Dev deploy smoke passed in run `25275099592`; prod deploy
+  smoke passed in run `25275577644`; forced prod smoke failure returned the
+  expected red workflow in run `25275789480`.
+- Dedicated deploy-smoke API keys are active under real Clerk org ids:
+  dev prefix `pq_live_e63a`, prod prefix `pq_live_79a3`. Earlier synthetic-org
+  fixture attempts were revoked because prod billing event validation requires
+  Clerk-shaped `org_*` ids.
+- P1F.04 is complete except for the external GitHub branch-protection gate:
+  `gh api repos/jbejenar/prontiq-platform/branches/main/protection` still
+  returns the GitHub Pro/public-repo 403 for this private repository.
 
 ### Next session should start with
 
-1. Review CI for the P1F.04 PR.
-2. Provision dedicated dev/prod `PRONTIQ_KEY` GitHub Environment secrets.
-3. After merge, verify dev `smoke-dev`, prod `smoke-prod`, and one
-   `force_smoke_failure=true` prod run for red-path evidence.
+1. Start P1C.06 — Playground Page.
+2. Do not record raw deploy-smoke API keys; use only prefixes/key ids in docs.
+3. Revisit branch-protection enforcement only after GitHub Pro is enabled or
+   the repo becomes public.
 
 ## Session 47 — 2026-05-03
 

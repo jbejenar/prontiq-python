@@ -1,15 +1,15 @@
 # NEXT-WORK.md — Active Sprint
 
-> Last updated: 2026-05-03 for P1F.04 post-deploy smoke implementation.
+> Last updated: 2026-05-03 after P1F.04 post-deploy smoke closeout.
 
 ## Current Phase
 
-P1F.04 is in implementation. Console key management, usage, and billing are
-shipped to dev/prod; replay-safe plan changes are live; prod Lago
-catalog/reconciliation is clean; retained migration evidence is intentionally
-preserved.
+P1F.04 is complete at workflow, dev/prod smoke, forced-failure, and evidence
+levels. The only remaining smoke-enforcement item is external: GitHub branch
+protection cannot be enabled on this private repo while GitHub returns the
+current Pro/public-repo 403.
 
-After P1F.04 review/deploy/smoke closeout, return to P1C.06 — Playground Page.
+Next product ticket: P1C.06 — Playground Page.
 
 ## Active Commercial Contract
 
@@ -86,9 +86,10 @@ POST /v1/account/billing/portal-session
 - **P1B.23** — complete. Pre-go-live Lago test fixture and pricing cleanup
   retained audit evidence, disabled stale test keys, set prod PAYG to A$0.0015
   per address request, and verified dev/prod reconciliation.
-- **P1F.04** — in progress. Extend post-deploy smoke coverage, add dev/prod
-  Address API smoke gates, provision dedicated `PRONTIQ_KEY` fixtures, and
-  classify CI-vs-runbook smokes before adding more product UI.
+- **P1F.04** — complete. Dev/prod Address API deploy smoke gates are wired,
+  dedicated `PRONTIQ_KEY` fixtures are provisioned, forced prod smoke failure
+  was verified, and CI-vs-runbook smoke boundaries are documented. Branch
+  protection remains an external GitHub plan/public-repo blocker.
 
 ## Operator Commands
 

@@ -1,7 +1,7 @@
 # Prontiq Platform — Roadmap
 
 > A unified data API platform for Australian and global open data.
-> Last updated: 2026-04-27 · v1.8
+> Last updated: 2026-05-03 · v1.9
 >
 > **Reference:** `ARCHITECTURE.MD` is the authoritative design doc. This roadmap is the execution plan.
 
@@ -35,12 +35,12 @@
 | **P1C**   | Frontend Surfaces          | 11      | 9/11      | Weeks 4-6   |
 | **P1D**   | Docs & SDK                 | 5       | 2/5       | Week 5      |
 | **P1E**   | Ingestion (Phase 1)        | 6       | 4/6       | Week 6      |
-| **P1F**   | Distribution               | 4       | 3/4       | Week 6      |
+| **P1F**   | Distribution               | 4       | 4/4 ✅    | Week 6      |
 | **P2**    | ABN/ASIC Verification      | 9       | 0/9       | Weeks 7-10  |
 | **P3**    | GLEIF/LEI + Full Dashboard | 7       | 0/7       | Weeks 11-13 |
 | **P4**    | Shopify + WooCommerce      | 5       | 0/5       | Weeks 14-17 |
 | **P5**    | CVE/NVD + Patents          | 4       | 0/4       | Weeks 18-21 |
-| **Total** |                            | **95**  | **59/95** |             |
+| **Total** |                            | **95**  | **60/95** |             |
 
 ---
 
@@ -4681,12 +4681,12 @@ As a platform operator, I need backend traces in Honeycomb for deployed Lambdas 
 ```yaml
 id: P1F.04
 title: Post-Deploy Smoke Coverage Extension
-status: in_progress
+status: complete
 priority: p1-high
 epic: P1F
 persona: [ops, builder]
 depends_on: [P1C.03]
-completed: null
+completed: 2026-05-03
 tech_stack:
   ci: GitHub Actions
   smoke_runtime: Node.js + Hono Backend SDK
@@ -4734,23 +4734,27 @@ gaps:
 
 ##### Functional
 
-- [ ] Address-API smoke runs on every dev deploy
+- [x] Address-API smoke runs on every dev deploy
   - `Verify:` `gh run view <run> --log` for a post-merge dev deploy shows
     `smoke-dev` invoking `pnpm --filter @prontiq/api smoke` and asserting
     a 200 from `/v1/address/autocomplete`
   - `Evidence:` workflow run id with smoke step duration and HTTP
-    status logged
-- [ ] Labelled prod smoke `pq_live_*` API key is provisioned and stored
+    status logged. Dev deploy run `25275099592` passed `smoke-dev` after
+    provisioning the real-Clerk-org fixture key prefix `pq_live_e63a`.
+- [x] Labelled prod smoke `pq_live_*` API key is provisioned and stored
       as a prod GitHub Environment secret (`PRONTIQ_KEY`)
   - `Verify:` `pq_live_<prefix>` exists in `prontiq-keys` with a labelled
     test org owner; `secrets.PRONTIQ_KEY` is set on the prod environment
-  - `Evidence:` key prefix recorded in roadmap; raw key never recorded
-- [ ] Address-API smoke runs on every prod deploy
+  - `Evidence:` prod smoke key prefix `pq_live_79a3` is stored as
+    `prod.PRONTIQ_KEY` and belongs to real Clerk org
+    `org_3CtJcr0fzTs6pitpdATB9rBp0vz`; raw key is not recorded.
+- [x] Address-API smoke runs on every prod deploy
   - `Verify:` `gh run view <run>` for a `Deploy to Production` dispatch
     shows `smoke-prod` invoking `pnpm --filter @prontiq/api smoke` and
     asserting 200 from `/v1/address/autocomplete`
   - `Evidence:` workflow run id with smoke step duration and HTTP
-    status logged
+    status logged. Prod deploy run `25275577644` completed successfully with
+    `smoke-prod` green after the fixture was moved to a real Clerk org.
 - [ ] `smoke-dev` is a required status check on `main`
   - `Verify:` GitHub Settings → Branches → `main` lists `smoke-dev` in
     required checks
@@ -4760,16 +4764,18 @@ gaps:
     HTTP 403 for this private repo unless GitHub Pro is enabled or the repo
     becomes public. Do not mark this checkbox complete until the external gate
     is resolved.
-- [ ] `smoke-prod` failure blocks the prod deploy workflow run from
+- [x] `smoke-prod` failure blocks the prod deploy workflow run from
       reporting green
   - `Verify:` dispatch `Deploy to Production` with
     `force_smoke_failure=true`; the job uses an invalid API key for that run
     only and produces a red ✗ on `smoke-prod`
-  - `Evidence:` test run id; no prod secret mutation required
+  - `Evidence:` run `25275789480` failed as expected with invalid
+    `PRONTIQ_KEY`, returning `401 INVALID_API_KEY` in `smoke-prod` and keeping
+    the workflow red; no prod secret mutation was required.
 
 ##### Operational
 
-- [ ] CI-smoke vs runbook-smoke boundary is documented
+- [x] CI-smoke vs runbook-smoke boundary is documented
   - `Verify:` `docs/runbooks/lago-live-smoke.md` (or a new
     `docs/runbooks/smoke-classification.md`) lists every smoke script
     with category: `ci-every-deploy`, `runbook-on-demand`, or
@@ -4777,11 +4783,11 @@ gaps:
   - `Evidence:` doc names: `smoke-test`, `smoke-account-setup`,
     `smoke-keys`, `smoke-keys-stepup`, `lago:smoke:event`, manual
     rotate/revoke UI; explains why each lives where it does
-- [ ] PR template references the smoke classification
+- [x] PR template references the smoke classification
   - `Verify:` `.github/pull_request_template.md` has a line under "Test
     plan" reminding the author to classify any new smoke they add
   - `Evidence:` template diff
-- [ ] Branch-protection follow-up in `CLAUDE.md` is updated
+- [x] Branch-protection follow-up in `CLAUDE.md` is updated
   - `Verify:` the existing post-merge follow-up at `CLAUDE.md`'s
     "Enforcement" section adds `smoke-dev` to its required-checks list
   - `Evidence:` doc diff
