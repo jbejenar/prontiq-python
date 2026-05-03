@@ -235,13 +235,12 @@ test("reconcileLagoEntitlements treats missing Lago rate limit as drift and pres
   assert.match(String(input.ExpressionAttributeValues[":error"]), /rate_limit_per_second/);
 });
 
-test("reconcileLagoEntitlements isolates invalid legacy org ids to one envelope error", async () => {
-  const invalidEnvelope = {
+test("reconcileLagoEntitlements skips retained non-Clerk org evidence in full scans", async () => {
+  const retainedEnvelope = {
     ...makeEnvelope(),
-    apiKeyHash: "ORG#org_invalid_legacy_fixture",
-    orgId: "org_invalid_legacy_fixture",
+    apiKeyHash: "ORG#org_prontiq_platform_lago_smoke_prod",
   };
-  delete invalidEnvelope.lagoSubscriptionExternalId;
+  delete retainedEnvelope.orgId;
   const validEnvelope = makeEnvelope();
   const validKey = makeStaleKey();
   const log: CommandLog[] = [];
@@ -249,7 +248,7 @@ test("reconcileLagoEntitlements isolates invalid legacy org ids to one envelope 
     async send(command: unknown) {
       if (command instanceof ScanCommand) {
         log.push({ type: "Scan", args: command.input });
-        return { Items: [invalidEnvelope, validEnvelope] };
+        return { Items: [retainedEnvelope, validEnvelope] };
       }
       if (command instanceof QueryCommand) {
         log.push({ type: "Query", args: command.input });
@@ -274,7 +273,7 @@ test("reconcileLagoEntitlements isolates invalid legacy org ids to one envelope 
     now: () => new Date("2026-04-29T00:00:00.000Z"),
   });
 
-  assert.deepEqual(stats, { changed: 1, drift: 0, errors: 1, projected: 0, scanned: 2 });
+  assert.deepEqual(stats, { changed: 1, drift: 0, errors: 0, projected: 0, scanned: 1 });
   assert.equal(log.filter((entry) => entry.type === "Query").length, 1);
   assert.equal(log.filter((entry) => entry.type === "Update").length, 2);
 });

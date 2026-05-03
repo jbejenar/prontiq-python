@@ -98,6 +98,10 @@ function isApiKeyRecord(value: unknown): value is ApiKeyRecord {
   );
 }
 
+function isCurrentClerkOrgEnvelope(value: OrgEnvelopeRecord): boolean {
+  return typeof value.orgId === "string" && value.orgId.length > 0;
+}
+
 async function loadEnvelope(
   ddb: DynamoDBDocumentClient,
   tableName: string,
@@ -160,7 +164,7 @@ async function listEnvelopes(
       }),
     );
     for (const item of result.Items ?? []) {
-      if (isOrgEnvelope(item)) envelopes.push(item);
+      if (isOrgEnvelope(item) && isCurrentClerkOrgEnvelope(item)) envelopes.push(item);
     }
     ExclusiveStartKey = result.LastEvaluatedKey;
   } while (ExclusiveStartKey);
