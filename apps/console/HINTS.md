@@ -38,6 +38,9 @@
 - P1C.06a playground command palette work must stay route-local. Do not create
   a global command system, global shortcut manager, or shared `Command`
   primitive unless another feature independently needs it.
+- P1C.06b curl-preview craft must keep `buildCurlCommand` as the only source
+  of truth for generated curl. Do not add duplicate curl builders, diff
+  libraries, or shortcut listeners.
 - Playground keyboard shortcuts are documented centrally in `README.md`. Keep
   new shortcuts there instead of scattering them through feature notes.
 - Playground command-palette telemetry is allowlisted only: event name, mode,

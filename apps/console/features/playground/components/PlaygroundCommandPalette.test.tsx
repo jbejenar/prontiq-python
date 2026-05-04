@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { expect, test, vi } from "vitest";
 
 import type { PlaygroundCommandActionId, PlaygroundOperation } from "../types.js";
+import { playgroundShortcutLabels } from "../lib/shortcut-labels.js";
 import { PlaygroundCommandPalette } from "./PlaygroundCommandPalette.js";
 
 const operations: PlaygroundOperation[] = [
@@ -44,6 +45,8 @@ test("searches OpenAPI operations and selects one", async () => {
 test("runs allowlisted command actions", async () => {
   const onActionSelected = vi.fn();
   render(<PaletteHost onActionSelected={onActionSelected} />);
+
+  expect(screen.getByText(playgroundShortcutLabels.runChip)).toBeInTheDocument();
 
   await userEvent.click(screen.getByText("Run request"));
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { Check, Clock3, Loader2, Play } from "lucide-react";
-import { type RefObject, useState } from "react";
+import { memo, type RefObject, useEffect, useMemo, useRef, useState } from "react";
 import Prism from "prismjs";
 import "prismjs/components/prism-bash.js";
 import "prismjs/components/prism-json.js";
@@ -12,11 +12,14 @@ import "prismjs/components/prism-ruby.js";
 import { toast } from "sonner";
 
 import type { PlaygroundMode, PlaygroundResponse } from "../types.js";
+import { playgroundShortcutLabels } from "../lib/shortcut-labels.js";
 import { cn } from "../../../lib/utils.js";
 
 type PanelState = "empty" | "loading" | "success" | "error" | "demo-unavailable";
 
 const languageTabs = ["curl", "node.js", "python", "go", "ruby"] as const;
+
+type ChangedRange = Readonly<{ end: number; start: number }>;
 
 function getPanelState(options: {
   demoUnavailable: boolean;
@@ -45,6 +48,30 @@ function highlight(code: string, language: string) {
   const grammar = Prism.languages[language];
   if (!grammar) return escapeHtml(code);
   return Prism.highlight(code, grammar, language);
+}
+
+function getChangedRange(previous: string, next: string): ChangedRange | null {
+  if (previous === next) return null;
+
+  let start = 0;
+  const maxPrefix = Math.min(previous.length, next.length);
+  while (start < maxPrefix && previous[start] === next[start]) {
+    start += 1;
+  }
+
+  let previousEnd = previous.length;
+  let nextEnd = next.length;
+  while (
+    previousEnd > start &&
+    nextEnd > start &&
+    previous[previousEnd - 1] === next[nextEnd - 1]
+  ) {
+    previousEnd -= 1;
+    nextEnd -= 1;
+  }
+
+  if (start === nextEnd) return null;
+  return { start, end: nextEnd };
 }
 
 function escapeHtml(value: string) {
@@ -108,6 +135,8 @@ export function PlaygroundDarkPanel({
   response: PlaygroundResponse | null;
 }) {
   const [activeLanguage, setActiveLanguage] = usePlaygroundLanguage();
+  const previousCommandRef = useRef(command);
+  const [curlChangedRange, setCurlChangedRange] = useState<ChangedRange | null>(null);
   const panelState = getPanelState({
     demoUnavailable: Boolean(demoUnavailableMessage),
     error,
@@ -120,6 +149,17 @@ export function PlaygroundDarkPanel({
   const bodyText = formatBody(response, error);
   const status = response?.status ?? (error ? "ERR" : null);
   const runDisabled = isSending || Boolean(demoUnavailableMessage);
+
+  useEffect(() => {
+    const changedRange = getChangedRange(previousCommandRef.current, command);
+    previousCommandRef.current = command;
+    setCurlChangedRange(changedRange);
+
+    if (!changedRange) return undefined;
+
+    const timeout = window.setTimeout(() => setCurlChangedRange(null), 400);
+    return () => window.clearTimeout(timeout);
+  }, [command]);
 
   async function copyResponse() {
     await navigator.clipboard.writeText(bodyText || "");
@@ -152,6 +192,18 @@ export function PlaygroundDarkPanel({
         .playground-code .token.parameter {
           color: #888780;
         }
+        .playground-code-change {
+          animation: playground-code-change 400ms cubic-bezier(0.4, 0, 0.2, 1);
+          border-radius: 3px;
+        }
+        @keyframes playground-code-change {
+          0% {
+            background-color: rgba(250, 199, 117, 0.28);
+          }
+          100% {
+            background-color: transparent;
+          }
+        }
       `}</style>
       <div className="flex h-10 shrink-0 items-center justify-between border-b border-playground-panel-border px-3">
         <div className="flex items-center gap-1">
@@ -172,7 +224,6 @@ export function PlaygroundDarkPanel({
           ))}
         </div>
         <div className="flex items-center gap-2">
-          <span className="font-mono text-[10px] text-playground-panel-muted">⌘ ⏎</span>
           <button
             aria-label={runAriaLabel}
             className="inline-flex h-6 items-center gap-1 rounded bg-playground-panel-accent px-3 text-[11px] font-medium text-white transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
@@ -181,13 +232,20 @@ export function PlaygroundDarkPanel({
             onClick={onRun}
           >
             {isSending ? <Loader2 className="h-[9px] w-[9px] animate-spin" /> : <Play className="h-[9px] w-[9px] fill-current" />}
-            Run
+            <span>Run</span>
+            <span className="ml-2 rounded border border-playground-panel-border bg-playground-panel-bg-footer px-1 py-px font-mono text-[10px] leading-none text-playground-panel-accent-light">
+              {playgroundShortcutLabels.runChip}
+            </span>
           </button>
         </div>
       </div>
 
       <div className="border-b border-playground-panel-border px-3.5 py-3 font-mono text-[11px] leading-[1.75]">
-        <CodeBlock code={activeCode} language={codeLanguage} />
+        <CodeBlock
+          changedRange={activeLanguage === "curl" ? curlChangedRange : null}
+          code={activeCode}
+          language={codeLanguage}
+        />
       </div>
 
       <div className="flex min-h-8 shrink-0 items-center justify-between border-b border-playground-panel-border px-3.5 py-2">
@@ -243,12 +301,12 @@ export function PlaygroundDarkPanel({
       >
         {panelState === "empty" || panelState === "demo-unavailable" ? (
           <div className="flex h-full min-h-[160px] items-center justify-center text-center text-playground-panel-muted/70">
-            Press Run or ⌘⏎ to send the request.
+            Press Run or {playgroundShortcutLabels.run} to send the request.
           </div>
         ) : panelState === "loading" ? (
           <div className="h-full min-h-[160px]" />
         ) : (
-          <CodeBlock code={bodyText} language={response ? "json" : "json"} />
+          <CodeBlock code={bodyText} language="json" />
         )}
       </div>
 
@@ -270,16 +328,38 @@ export function PlaygroundDarkPanel({
   );
 }
 
-function CodeBlock({ code, language }: { code: string; language: string }) {
+const CodeBlock = memo(function CodeBlock({
+  changedRange = null,
+  code,
+  language,
+}: {
+  changedRange?: ChangedRange | null;
+  code: string;
+  language: string;
+}) {
+  const html = useMemo(() => {
+    if (!changedRange) return highlight(code, language);
+
+    const before = code.slice(0, changedRange.start);
+    const changed = code.slice(changedRange.start, changedRange.end);
+    const after = code.slice(changedRange.end);
+
+    return [
+      highlight(before, language),
+      `<span class="playground-code-change">${highlight(changed, language)}</span>`,
+      highlight(after, language),
+    ].join("");
+  }, [changedRange, code, language]);
+
   return (
     <pre className="whitespace-pre-wrap break-words">
       <code
         className="playground-code"
-        dangerouslySetInnerHTML={{ __html: highlight(code, language) }}
+        dangerouslySetInnerHTML={{ __html: html }}
       />
     </pre>
   );
-}
+});
 
 function usePlaygroundLanguage() {
   return useState<(typeof languageTabs)[number]>("curl");

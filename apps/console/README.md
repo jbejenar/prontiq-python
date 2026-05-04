@@ -74,6 +74,11 @@ public OpenAPI operation list, and triggers the same native Prontiq actions as
 the visible UI. Palette telemetry is allowlisted to event name, mode, source,
 operation id, and action id only.
 
+P1C.06b refines the Prontiq-owned curl preview without changing request
+execution semantics. The dark panel keeps `buildCurlCommand` as the source of
+truth, memoizes Prism rendering, briefly highlights changed curl bytes, and
+shows the run shortcut as an inline chip inside the Run button.
+
 Playground keyboard shortcuts:
 
 - `Cmd/Ctrl+K`: open the playground command palette from playground chrome.

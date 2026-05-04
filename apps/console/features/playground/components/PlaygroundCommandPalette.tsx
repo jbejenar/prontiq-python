@@ -19,6 +19,7 @@ import type {
   PlaygroundMode,
   PlaygroundOperation,
 } from "../types.js";
+import { playgroundShortcutLabels } from "../lib/shortcut-labels.js";
 import { cn } from "../../../lib/utils.js";
 
 type PaletteAction = {
@@ -83,7 +84,7 @@ export function PlaygroundCommandPalette({
       icon: Play,
       id: "run_request",
       label: "Run request",
-      shortcut: "⌘⏎",
+      shortcut: playgroundShortcutLabels.runChip,
       subtitle: "Send the selected operation with current inputs",
       onSelect: () => onActionSelected("run_request"),
     },
@@ -120,7 +121,7 @@ export function PlaygroundCommandPalette({
       icon: Search,
       id: "focus_filter",
       label: "Focus operation filter",
-      shortcut: "/",
+      shortcut: playgroundShortcutLabels.focusFilter,
       subtitle: "Jump to the operation rail filter",
       onSelect: () => onActionSelected("focus_filter"),
     },
