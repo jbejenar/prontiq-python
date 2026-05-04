@@ -1,211 +1,380 @@
-# Prontiq Platform
+# Prontiq Python API library
 
-> Australian address validation powered by G-NAF.
+<!-- prettier-ignore -->
+[![PyPI version](https://img.shields.io/pypi/v/prontiq.svg?label=pypi%20(stable))](https://pypi.org/project/prontiq/)
 
-Prontiq is starting with developer-friendly Australian address validation. The broader open data platform roadmap is tracked in [`ROADMAP.md`](ROADMAP.md).
+The Prontiq Python library provides convenient access to the Prontiq REST API from any Python 3.9+
+application. The library includes type definitions for all request params and response fields,
+and offers both synchronous and asynchronous clients powered by [httpx](https://github.com/encode/httpx).
 
-## Current Product
+It is generated with [Stainless](https://www.stainless.com/).
 
-| Product                        | Endpoint        | Data Source | Status                       |
-| ------------------------------ | --------------- | ----------- | ---------------------------- |
-| **Address Validation** (G-NAF) | `/v1/address/*` | data.gov.au | Live — 15M docs, 6 endpoints |
+## Documentation
 
-Live at `https://api.prontiq.dev`. Docs at `https://docs.prontiq.dev`. TypeScript SDK auto-generated to `sdks/typescript/` (npm publish pending). The ratified frontend architecture is a two-app model. `prontiq.dev` now has a live landing page with a proxy-backed autocomplete demo, config-owned Free/PAYG pricing cards, and a Clerk sign-up modal; `console.prontiq.dev` carries the env-gated authenticated app shell. Runtime billing is Lago-centered; Stripe remains only the payment rail configured inside Lago. See `ARCHITECTURE.MD` for the canonical target state.
+The REST API documentation can be found on [docs.prontiq.dev](https://docs.prontiq.dev). The full API of this library can be found in [api.md](api.md).
 
-SES suppression handling is live, but full transactional-email production
-readiness is tracked by `P1B.08a`: custom MAIL FROM on `bounce.prontiq.dev` and
-DMARC relaxed SPF alignment are configured; SES production-access approval and
-one normal-recipient send verification remain.
+## Installation
 
-### Server-to-server surface
-
-| Endpoint                 | Purpose                                                                                                                                                                                                                           | Auth                                                |
-| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
-| `POST /webhooks/clerk`   | Clerk `organizationMembership.created` → ORG envelope provisioning. Bootstraps the Lago Free subscription with the Clerk org id as the commercial identity. See `docs/runbooks/clerk-webhook.md`.                                    | Svix signature (no API key)                         |
-| `POST /webhooks/lago`    | Lago subscription/invoice events → local enforcement-state reconciliation for the active commercial runtime. See `docs/runbooks/lago-webhook-reconciliation.md`.                                                                  | Lago HMAC signature (no API key)                    |
-| `POST /v1/account/setup` | Dashboard recovery for org provisioning when the Clerk webhook missed delivery. Idempotent — runs the same `provisionOrg` code path as the webhook. Private console contract documented in `docs/private-api/account-billing.md`. | Clerk session token (`Authorization: Bearer <jwt>`) |
-
-Future products are roadmap items, not active docs/API surfaces yet.
-
-## Quick Start
-
-```bash
-git clone --recurse-submodules https://github.com/jbejenar/prontiq-platform.git
-cd prontiq-platform
-pnpm install
-pnpm build
+```sh
+# install from PyPI
+pip install prontiq
 ```
 
-The frontend apps default `NEXT_PUBLIC_API_URL` to `https://api.prontiq.dev`
-for local build, typecheck, dev, and test, so the root commands above work from
-a fresh checkout without extra shell setup. `apps/console` enables real Clerk
-auth only when both `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` and `CLERK_SECRET_KEY`
-are present. Keyless fallback is allowed only through the repo’s local/CI
-frontend helper path; missing Clerk keys in any other runtime are treated as a
-configuration error and fail closed.
+## Usage
 
-`apps/landing` follows the same helper-managed keyless pattern for local/CI, but
-its real runtime needs only `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` for the modal
-sign-up path. `NEXT_PUBLIC_ACCOUNT_URL` is an optional public override for the
-console/account origin used by landing redirects and the footer Console link;
-when unset, production keeps `https://console.prontiq.dev`, Vercel previews map
-the landing preview host to the corresponding console preview host, and
-localhost maps `:3000` to `:3001`. The landing demo proxy additionally expects
-server-only `PRONTIQ_LANDING_DEMO_API_KEY`. Stripe pricing-table envs are
-removed; landing pricing is first-party copy and account billing is Lago-backed.
+The full API of this library can be found in [api.md](api.md).
 
-### Local Development
+```python
+import os
+from prontiq import Prontiq
 
-```bash
-# Start SST dev mode (live Lambda)
-pnpm dev
+client = Prontiq(
+    api_key=os.environ.get("PRONTIQ_API_KEY"),  # This is the default and can be omitted
+)
 
-# Or work on individual packages
-pnpm --filter @prontiq/api typecheck
+response = client.address.autocomplete(
+    q="200 George Street Sydney",
+)
+print(response.suggestions)
 ```
 
-### Deploy
+While you can provide an `api_key` keyword argument,
+we recommend using [python-dotenv](https://pypi.org/project/python-dotenv/)
+to add `PRONTIQ_API_KEY="My API Key"` to your `.env` file
+so that your API Key is not stored in source control.
 
-```bash
-pnpm deploy:dev     # sst deploy --stage dev (automatic from main in CI)
-pnpm deploy:prod    # sst deploy --stage prod (manual dispatch in CI)
+## Async usage
+
+Simply import `AsyncProntiq` instead of `Prontiq` and use `await` with each API call:
+
+```python
+import os
+import asyncio
+from prontiq import AsyncProntiq
+
+client = AsyncProntiq(
+    api_key=os.environ.get("PRONTIQ_API_KEY"),  # This is the default and can be omitted
+)
+
+
+async def main() -> None:
+    response = await client.address.autocomplete(
+        q="200 George Street Sydney",
+    )
+    print(response.suggestions)
+
+
+asyncio.run(main())
 ```
 
-Deployed-stage observability now also expects `HONEYCOMB_API_KEY` in the GitHub
-Environment secrets for `dev` and `prod`. CI `check` and `integration-test`
-remain keyless and run with telemetry disabled. To disable Honeycomb export in
-`dev` or `prod` without breaking deploy validation, set GitHub Environment
-variable `HONEYCOMB_ENABLED=false` and redeploy the stage.
+Functionality between the synchronous and asynchronous clients is otherwise identical.
 
-Post-deploy Address API smoke expects `PRONTIQ_KEY` in both `dev` and `prod`
-GitHub Environment secrets. The key must belong to a dedicated labelled smoke
-org for that stage. The smoke runs with `pnpm --filter @prontiq/api smoke` and
-must never log raw keys.
+### With aiohttp
 
-## Architecture
+By default, the async client uses `httpx` for HTTP requests. However, for improved concurrency performance you may also use `aiohttp` as the HTTP backend.
 
-```
-Free open dataset → independent pipeline → S3 (NDJSON + manifest.json)
-    → event-driven indexing → OpenSearch → commercial API
-    → auth / billing / docs / frontend apps
+You can enable this by installing `aiohttp`:
+
+```sh
+# install from PyPI
+pip install prontiq[aiohttp]
 ```
 
-See [`ARCHITECTURE.MD`](ARCHITECTURE.MD) for the full design.
+Then you can enable it by instantiating the client with `http_client=DefaultAioHttpClient()`:
 
-## Monorepo Structure
+```python
+import os
+import asyncio
+from prontiq import DefaultAioHttpClient
+from prontiq import AsyncProntiq
 
-```
-packages/
-  shared/          @prontiq/shared          Types, constants, Zod schemas (dep-light)
-  control-plane/   @prontiq/control-plane   provisionOrg service + writeAudit helpers (consumed by webhooks + api)
-  api/             @prontiq/api             Hono API on Lambda (ARM64)
-  ingestion/       @prontiq/ingestion       Step Functions + Lambda indexing
-  webhooks/        @prontiq/webhooks        Clerk webhook + Lago webhook
-  docs/            @prontiq/docs            Mintlify documentation
-  tokens/          @prontiq/tokens          Semantic design-token contract package
-  plugins/
-    shopify/                                Checkout UI Extension
-    woocommerce/                            WP plugin
-    web-component/                          <prontiq-address> widget
-apps/
-  landing/                                  Next.js app for prontiq.dev with Tailwind/shadcn shell base
-  console/                                  Next.js app for console.prontiq.dev with env-gated Clerk shell base
-```
 
-## Stack
+async def main() -> None:
+    async with AsyncProntiq(
+        api_key=os.environ.get("PRONTIQ_API_KEY"),  # This is the default and can be omitted
+        http_client=DefaultAioHttpClient(),
+    ) as client:
+        response = await client.address.autocomplete(
+            q="200 George Street Sydney",
+        )
+        print(response.suggestions)
 
-| Layer          | Tool                                                                                                                                                                                                                                                                                                        |
-| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Infrastructure | SST v4 + Pulumi                                                                                                                                                                                                                                                                                             |
-| API            | Hono + @hono/zod-openapi on Lambda (ARM64, Node.js 24)                                                                                                                                                                                                                                                      |
-| Search         | OpenSearch 2.19 (managed)                                                                                                                                                                                                                                                                                   |
-| API Keys       | DynamoDB-native (`pq_live_` + SHA-256 hash-based lookup; live in prod)                                                                                                                                                                                                                                      |
-| Auth (portal)  | Clerk — webhook live in prod (`POST /webhooks/clerk`) AND JWT-authenticated `POST /v1/account/setup` recovery endpoint live in prod (P1B.05 complete)                                                                                                                                                       |
-| Billing        | Lago as commercial system of record with Stripe reduced to payment processing inside Lago; Clerk `orgId` is the active commercial identity; SQS billing-event buffer, Lago forwarder, Lago webhook reconciliation, console billing BFF reads/payment links, and replay-safe private account API plan changes are implemented. |
-| Frontend       | `apps/landing` live with proxy-backed demo + config-owned free tier + Clerk modal; `apps/console` has the env-gated Clerk shell with shipped overview, keys, usage, and billing surfaces.                                                                                                                   |
-| Docs           | Mintlify at `docs.prontiq.dev` (live)                                                                                                                                                                                                                                                                       |
-| SDKs           | Speakeasy generates `@prontiq/sdk` (TypeScript) — npm publish pending NPM_TOKEN                                                                                                                                                                                                                             |
-| Observability  | CloudWatch + SNS email + Honeycomb backend traces (`HONEYCOMB_API_KEY` gated) + retained API X-Ray                                                                                                                                                                                                          |
-| CI/CD          | GitHub Actions + OIDC (no stored credentials)                                                                                                                                                                                                                                                               |
 
-## Roadmap Progress
-
-See [`ROADMAP.md`](ROADMAP.md) for the current execution plan.
-
-| Phase   | Epic                      | Tickets | Done      |
-| ------- | ------------------------- | ------- | --------- |
-| **P0**  | Infrastructure Foundation | 6       | 6/6       |
-| **P1A** | API Core (Address)        | 13      | 12/13     |
-| **P1B** | Auth & Billing            | 25      | 23/25     |
-| **P1C** | Frontend Surfaces         | 11      | 9/11      |
-| **P1D** | Docs & SDK                | 5       | 2/5       |
-| **P1E** | Ingestion                 | 6       | 4/6       |
-| **P1F** | Distribution              | 4       | 3/4       |
-| **P2**  | ABN/ASIC Verification     | 9       | 0/9       |
-| **P3**  | LEI + Full Dashboard      | 7       | 0/7       |
-| **P4**  | Shopify + WooCommerce     | 5       | 0/5       |
-| **P5**  | CVE/NVD + Patents         | 4       | 0/4       |
-|         |                           | **95**  | **59/95** |
-
-`P1B` includes completed legacy Stripe-path work. The counts treat `complete`,
-`completed`, `done`, and `implemented` statuses as shipped; superseded planning
-tickets remain counted in total tickets but not in the done column. The Lago
-migration sequence is `P1B.14`–`P1B.23` plus `P1B.18a`, now complete through
-pre-go-live fixture/pricing cleanup, and is called out separately in the Phase
-1B section of [`ROADMAP.md`](ROADMAP.md).
-
-P1B.21 closed the Lago migration go-live gate on 2026-04-27. The retained prod
-smoke key with prefix `pq_live_4a85` produced final accepted event
-`bevt_f7833d581725b732d04d3eed3fd7c484`, then was disabled. The related
-customer/subscription and ledger rows are retained as audit evidence only.
-
-P1B.23 closed the pre-go-live fixture and pricing cleanup on 2026-05-03. Prod
-PAYG is AUD with `prontiq_address_requests = A$0.0015`, dev/prod Lago
-reconciliation is clean, stale smoke keys are disabled, and the one-off prod
-smoke key `pq_live_0300` is disabled after accepted event
-`bevt_2814283dfdf6821005f0d1c8ade4cdd3`.
-
-P1B.18a closed on 2026-04-26: dev/prod usage-forwarding smoke has accepted
-delivery-ledger evidence, valid HMAC Lago webhook smoke has completed
-webhook-ledger rows in both stages, replaying the same webhook unique keys
-returns `200 duplicate`, and calendar counter scope remained in place until
-the P1B.19 cutover.
-
-P1B.18 added Prontiq-owned account billing APIs under `/v1/account/billing`
-during the migration, but P1B.22 retired those AWS routes from the active
-runtime. Console billing reads and payment-link actions now use the Vercel
-server-side BFF with server-held Lago credentials; replay-safe subscription
-plan changes use the Clerk-authenticated private account API. Public
-Mintlify/Speakeasy specs remain data API only.
-
-P1B.19 retired the legacy Stripe-centric runtime, P1B.20 removed its active
-deploy/config/frontend surfaces, and P1B.22 moved the active commercial
-identity to Clerk `orgId`. New org provisioning bootstraps Lago Free
-subscriptions directly with Lago customer `external_id = orgId`, and Stripe
-exists only as Lago's payment rail.
-
-## Commands
-
-```bash
-pnpm build            # Build all packages (Turborepo)
-pnpm typecheck        # Type-check all packages
-pnpm lint             # ESLint across all packages
-pnpm test             # Run all tests
-pnpm dev              # SST dev mode
-pnpm format           # Prettier format all files
+asyncio.run(main())
 ```
 
-## Related Repos
+## Using types
 
-| Repo                                                             | Purpose                                                  |
-| ---------------------------------------------------------------- | -------------------------------------------------------- |
-| [`flat-white`](https://github.com/jbejenar/flat-white)           | G-NAF address pipeline (data source for address product) |
-| [`prontiq-ariscan`](https://github.com/jbejenar/prontiq-ariscan) | AI readiness scanner (open-source companion project)     |
+Nested request parameters are [TypedDicts](https://docs.python.org/3/library/typing.html#typing.TypedDict). Responses are [Pydantic models](https://docs.pydantic.dev) which also provide helper methods for things like:
 
-## Brand
+- Serializing back into JSON, `model.to_json()`
+- Converting to a dictionary, `model.to_dict()`
 
-Use **Prontiq** in prose and **prontiq** for the logo wordmark, domains, packages, and code identifiers. See [`docs/FRONTEND-STRATEGY.md`](docs/FRONTEND-STRATEGY.md) for the canonical frontend/brand direction and [`docs/BRAND.md`](docs/BRAND.md) for archived historical guidance only.
+Typed requests and responses provide autocomplete and documentation within your editor. If you would like to see type errors in VS Code to help catch bugs earlier, set `python.analysis.typeCheckingMode` to `basic`.
 
-## Licence
+## Handling errors
 
-Proprietary — Prontiq Pty Ltd. All rights reserved.
+When the library is unable to connect to the API (for example, due to network connection problems or a timeout), a subclass of `prontiq.APIConnectionError` is raised.
+
+When the API returns a non-success status code (that is, 4xx or 5xx
+response), a subclass of `prontiq.APIStatusError` is raised, containing `status_code` and `response` properties.
+
+All errors inherit from `prontiq.APIError`.
+
+```python
+import prontiq
+from prontiq import Prontiq
+
+client = Prontiq()
+
+try:
+    client.address.autocomplete(
+        q="200 George Street Sydney",
+    )
+except prontiq.APIConnectionError as e:
+    print("The server could not be reached")
+    print(e.__cause__)  # an underlying Exception, likely raised within httpx.
+except prontiq.RateLimitError as e:
+    print("A 429 status code was received; we should back off a bit.")
+except prontiq.APIStatusError as e:
+    print("Another non-200-range status code was received")
+    print(e.status_code)
+    print(e.response)
+```
+
+Error codes are as follows:
+
+| Status Code | Error Type                 |
+| ----------- | -------------------------- |
+| 400         | `BadRequestError`          |
+| 401         | `AuthenticationError`      |
+| 403         | `PermissionDeniedError`    |
+| 404         | `NotFoundError`            |
+| 422         | `UnprocessableEntityError` |
+| 429         | `RateLimitError`           |
+| >=500       | `InternalServerError`      |
+| N/A         | `APIConnectionError`       |
+
+### Retries
+
+Certain errors are automatically retried 2 times by default, with a short exponential backoff.
+Connection errors (for example, due to a network connectivity problem), 408 Request Timeout, 409 Conflict,
+429 Rate Limit, and >=500 Internal errors are all retried by default.
+
+You can use the `max_retries` option to configure or disable retry settings:
+
+```python
+from prontiq import Prontiq
+
+# Configure the default for all requests:
+client = Prontiq(
+    # default is 2
+    max_retries=0,
+)
+
+# Or, configure per-request:
+client.with_options(max_retries=5).address.autocomplete(
+    q="200 George Street Sydney",
+)
+```
+
+### Timeouts
+
+By default requests time out after 1 minute. You can configure this with a `timeout` option,
+which accepts a float or an [`httpx.Timeout`](https://www.python-httpx.org/advanced/timeouts/#fine-tuning-the-configuration) object:
+
+```python
+from prontiq import Prontiq
+
+# Configure the default for all requests:
+client = Prontiq(
+    # 20 seconds (default is 1 minute)
+    timeout=20.0,
+)
+
+# More granular control:
+client = Prontiq(
+    timeout=httpx.Timeout(60.0, read=5.0, write=10.0, connect=2.0),
+)
+
+# Override per-request:
+client.with_options(timeout=5.0).address.autocomplete(
+    q="200 George Street Sydney",
+)
+```
+
+On timeout, an `APITimeoutError` is thrown.
+
+Note that requests that time out are [retried twice by default](#retries).
+
+## Advanced
+
+### Logging
+
+We use the standard library [`logging`](https://docs.python.org/3/library/logging.html) module.
+
+You can enable logging by setting the environment variable `PRONTIQ_LOG` to `info`.
+
+```shell
+$ export PRONTIQ_LOG=info
+```
+
+Or to `debug` for more verbose logging.
+
+### How to tell whether `None` means `null` or missing
+
+In an API response, a field may be explicitly `null`, or missing entirely; in either case, its value is `None` in this library. You can differentiate the two cases with `.model_fields_set`:
+
+```py
+if response.my_field is None:
+  if 'my_field' not in response.model_fields_set:
+    print('Got json like {}, without a "my_field" key present at all.')
+  else:
+    print('Got json like {"my_field": null}.')
+```
+
+### Accessing raw response data (e.g. headers)
+
+The "raw" Response object can be accessed by prefixing `.with_raw_response.` to any HTTP method call, e.g.,
+
+```py
+from prontiq import Prontiq
+
+client = Prontiq()
+response = client.address.with_raw_response.autocomplete(
+    q="200 George Street Sydney",
+)
+print(response.headers.get('X-My-Header'))
+
+address = response.parse()  # get the object that `address.autocomplete()` would have returned
+print(address.suggestions)
+```
+
+These methods return an [`APIResponse`](https://github.com/jbejenar/prontiq-python/tree/main/src/prontiq/_response.py) object.
+
+The async client returns an [`AsyncAPIResponse`](https://github.com/jbejenar/prontiq-python/tree/main/src/prontiq/_response.py) with the same structure, the only difference being `await`able methods for reading the response content.
+
+#### `.with_streaming_response`
+
+The above interface eagerly reads the full response body when you make the request, which may not always be what you want.
+
+To stream the response body, use `.with_streaming_response` instead, which requires a context manager and only reads the response body once you call `.read()`, `.text()`, `.json()`, `.iter_bytes()`, `.iter_text()`, `.iter_lines()` or `.parse()`. In the async client, these are async methods.
+
+```python
+with client.address.with_streaming_response.autocomplete(
+    q="200 George Street Sydney",
+) as response:
+    print(response.headers.get("X-My-Header"))
+
+    for line in response.iter_lines():
+        print(line)
+```
+
+The context manager is required so that the response will reliably be closed.
+
+### Making custom/undocumented requests
+
+This library is typed for convenient access to the documented API.
+
+If you need to access undocumented endpoints, params, or response properties, the library can still be used.
+
+#### Undocumented endpoints
+
+To make requests to undocumented endpoints, you can make requests using `client.get`, `client.post`, and other
+http verbs. Options on the client will be respected (such as retries) when making this request.
+
+```py
+import httpx
+
+response = client.post(
+    "/foo",
+    cast_to=httpx.Response,
+    body={"my_param": True},
+)
+
+print(response.headers.get("x-foo"))
+```
+
+#### Undocumented request params
+
+If you want to explicitly send an extra param, you can do so with the `extra_query`, `extra_body`, and `extra_headers` request
+options.
+
+#### Undocumented response properties
+
+To access undocumented response properties, you can access the extra fields like `response.unknown_prop`. You
+can also get all the extra fields on the Pydantic model as a dict with
+[`response.model_extra`](https://docs.pydantic.dev/latest/api/base_model/#pydantic.BaseModel.model_extra).
+
+### Configuring the HTTP client
+
+You can directly override the [httpx client](https://www.python-httpx.org/api/#client) to customize it for your use case, including:
+
+- Support for [proxies](https://www.python-httpx.org/advanced/proxies/)
+- Custom [transports](https://www.python-httpx.org/advanced/transports/)
+- Additional [advanced](https://www.python-httpx.org/advanced/clients/) functionality
+
+```python
+import httpx
+from prontiq import Prontiq, DefaultHttpxClient
+
+client = Prontiq(
+    # Or use the `PRONTIQ_BASE_URL` env var
+    base_url="http://my.test.server.example.com:8083",
+    http_client=DefaultHttpxClient(
+        proxy="http://my.test.proxy.example.com",
+        transport=httpx.HTTPTransport(local_address="0.0.0.0"),
+    ),
+)
+```
+
+You can also customize the client on a per-request basis by using `with_options()`:
+
+```python
+client.with_options(http_client=DefaultHttpxClient(...))
+```
+
+### Managing HTTP resources
+
+By default the library closes underlying HTTP connections whenever the client is [garbage collected](https://docs.python.org/3/reference/datamodel.html#object.__del__). You can manually close the client using the `.close()` method if desired, or with a context manager that closes when exiting.
+
+```py
+from prontiq import Prontiq
+
+with Prontiq() as client:
+  # make requests here
+  ...
+
+# HTTP client is now closed
+```
+
+## Versioning
+
+This package generally follows [SemVer](https://semver.org/spec/v2.0.0.html) conventions, though certain backwards-incompatible changes may be released as minor versions:
+
+1. Changes that only affect static types, without breaking runtime behavior.
+2. Changes to library internals which are technically public but not intended or documented for external use. _(Please open a GitHub issue to let us know if you are relying on such internals.)_
+3. Changes that we do not expect to impact the vast majority of users in practice.
+
+We take backwards-compatibility seriously and work hard to ensure you can rely on a smooth upgrade experience.
+
+We are keen for your feedback; please open an [issue](https://www.github.com/jbejenar/prontiq-python/issues) with questions, bugs, or suggestions.
+
+### Determining the installed version
+
+If you've upgraded to the latest version but aren't seeing any new features you were expecting then your python environment is likely still using an older version.
+
+You can determine the version that is being used at runtime with:
+
+```py
+import prontiq
+print(prontiq.__version__)
+```
+
+## Requirements
+
+Python 3.9 or higher.
+
+## Contributing
+
+See [the contributing documentation](./CONTRIBUTING.md).

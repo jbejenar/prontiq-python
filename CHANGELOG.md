@@ -1,221 +1,208 @@
 # Changelog
 
-All notable changes to this project will be documented in this file.
+## 0.1.0 (2026-05-04)
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+Full Changelog: [v0.0.1...v0.1.0](https://github.com/jbejenar/prontiq-python/compare/v0.0.1...v0.1.0)
 
-## [Unreleased]
+### Features
 
-### Added
+* add account key status endpoint ([#179](https://github.com/jbejenar/prontiq-python/issues/179)) ([f0f4e5d](https://github.com/jbejenar/prontiq-python/commit/f0f4e5d4d5588a8e8060522d9bcd5485ef37ad14))
+* add billing transition engine fencing ([#216](https://github.com/jbejenar/prontiq-python/issues/216)) ([ef4cd0a](https://github.com/jbejenar/prontiq-python/commit/ef4cd0afe70d106c83751e4d0b0e8c925d31093e))
+* add console API playground ([#223](https://github.com/jbejenar/prontiq-python/issues/223)) ([8babd1f](https://github.com/jbejenar/prontiq-python/commit/8babd1fbbad2b69feaac4531ca69d495fb1044a8))
+* add playground command palette ([#229](https://github.com/jbejenar/prontiq-python/issues/229)) ([a87fbd0](https://github.com/jbejenar/prontiq-python/commit/a87fbd0c706ecfb4992a3debf508f11a5d9fea77))
+* add playground inline schema docs ([#234](https://github.com/jbejenar/prontiq-python/issues/234)) ([f31e304](https://github.com/jbejenar/prontiq-python/commit/f31e30468a8795045e74af1857774f8327a09224))
+* add playground language snippets ([#233](https://github.com/jbejenar/prontiq-python/issues/233)) ([1c34b0a](https://github.com/jbejenar/prontiq-python/commit/1c34b0acfc902d4ea7d85fe4d9b490476932ec16))
+* add post-deploy address smoke coverage ([#221](https://github.com/jbejenar/prontiq-python/issues/221)) ([737769a](https://github.com/jbejenar/prontiq-python/commit/737769a5d98c1a24b6c6bb159599cf9636cd33ac))
+* adhoc-task ([#77](https://github.com/jbejenar/prontiq-python/issues/77)) ([625a8bf](https://github.com/jbejenar/prontiq-python/commit/625a8bf57d62f4a21feab83f70dfa64e65cca253))
+* adhoc-task ([#78](https://github.com/jbejenar/prontiq-python/issues/78)) ([1892a0b](https://github.com/jbejenar/prontiq-python/commit/1892a0b4276ef1b35a707d2d56621d46b10fac41))
+* api.prontiq.dev custom domain + docs URL migration ([#36](https://github.com/jbejenar/prontiq-python/issues/36)) ([ddf836b](https://github.com/jbejenar/prontiq-python/commit/ddf836b5fcb2e7ee2d063aac093fd0e8688959f7))
+* **api:** extract burst rate limiter ([#110](https://github.com/jbejenar/prontiq-python/issues/110)) ([8ba0a84](https://github.com/jbejenar/prontiq-python/commit/8ba0a84d01fc48c6ba19ecc4d2582a9eb434f9d1))
+* beautiful Mintlify docs — guides, API reference, dark-mode Luma ([#32](https://github.com/jbejenar/prontiq-python/issues/32)) ([71f8fef](https://github.com/jbejenar/prontiq-python/commit/71f8fef0d6c5700724777355d649600be33acac8))
+* **billing:** add month-close finalization ([#109](https://github.com/jbejenar/prontiq-python/issues/109)) ([93d4312](https://github.com/jbejenar/prontiq-python/commit/93d4312c66fefebf8d5ba961587bd783b72c050b))
+* **billing:** align Stripe and credits model ([f94d4bf](https://github.com/jbejenar/prontiq-python/commit/f94d4bf241bcc222066cddb87044a7c867991876))
+* **billing:** align Stripe and credits model ([#106](https://github.com/jbejenar/prontiq-python/issues/106)) ([b271d42](https://github.com/jbejenar/prontiq-python/commit/b271d42c215ee836dd5cb5141407bbe0fe8e2f3b))
+* **billing:** reconcile Lago entitlements into enforcement ([#189](https://github.com/jbejenar/prontiq-python/issues/189)) ([fc44a56](https://github.com/jbejenar/prontiq-python/commit/fc44a56c31880df815ea4314760c7a2ca80c851b))
+* **console:** add account keys page ([#180](https://github.com/jbejenar/prontiq-python/issues/180)) ([fa650a3](https://github.com/jbejenar/prontiq-python/commit/fa650a38897d82d710b03225f7486c6ea5ea8966))
+* **console:** add key audit panel ([#186](https://github.com/jbejenar/prontiq-python/issues/186)) ([56ebdec](https://github.com/jbejenar/prontiq-python/commit/56ebdeca3733e3c4288da825c77ffe6f78749d2c))
+* **console:** add key rotate and revoke actions ([#184](https://github.com/jbejenar/prontiq-python/issues/184)) ([759b2c3](https://github.com/jbejenar/prontiq-python/commit/759b2c38b9c3ec198e19f357fa3cbcddcaff5849))
+* **console:** implement P1C.02 overview ([#188](https://github.com/jbejenar/prontiq-python/issues/188)) ([c3b1155](https://github.com/jbejenar/prontiq-python/commit/c3b1155bac74466df57099ce0f8ca5774d843d26))
+* enforceable PR discipline — template + pared CLAUDE.md ([#46](https://github.com/jbejenar/prontiq-python/issues/46)) ([f7b7137](https://github.com/jbejenar/prontiq-python/commit/f7b7137db2b19c3ed08f33da609c675115e063ea))
+* **frontend:** scaffold P1C.00 foundations ([#118](https://github.com/jbejenar/prontiq-python/issues/118)) ([0d6a95a](https://github.com/jbejenar/prontiq-python/commit/0d6a95ad90b446582367c98c6a2cfcce6c9d83b7))
+* **landing:** add soft launch gate ([#127](https://github.com/jbejenar/prontiq-python/issues/127)) ([3cc4488](https://github.com/jbejenar/prontiq-python/commit/3cc44888582b5aa2cd776027a2bd06f1489e9f3c))
+* **observability:** add honeycomb backend telemetry ([#121](https://github.com/jbejenar/prontiq-python/issues/121)) ([2d45039](https://github.com/jbejenar/prontiq-python/commit/2d45039795437d52490dc9e8b87b8a6225a88c02))
+* P0.06 OpenSearch connectivity + P0.03 CI lint step ([#8](https://github.com/jbejenar/prontiq-python/issues/8)) ([1ddf3e5](https://github.com/jbejenar/prontiq-python/commit/1ddf3e5dc86be62a7d1241c98f6ea897261f58f3))
+* **p1b05:** add smoke:account-setup operator tool ([#103](https://github.com/jbejenar/prontiq-python/issues/103)) ([09cde17](https://github.com/jbejenar/prontiq-python/commit/09cde171fa232a985b223f981ea2fda8b21dd7d9))
+* **p1b05:** POST /v1/account/setup recovery endpoint (closes P1B.05) ([#101](https://github.com/jbejenar/prontiq-python/issues/101)) ([1a888d3](https://github.com/jbejenar/prontiq-python/commit/1a888d31363b87bf3f7fa99eb1467051f68fe813))
+* **P1C.03 PR 1:** /keys/create + /keys list with per-route admin gate ([#172](https://github.com/jbejenar/prontiq-python/issues/172)) ([34b7f61](https://github.com/jbejenar/prontiq-python/commit/34b7f61dae1526d27590548163e3bca428e97c4b))
+* **P1C.03 PR 2:** /keys/rotate + /keys/revoke with step-up reverification ([#175](https://github.com/jbejenar/prontiq-python/issues/175)) ([105559a](https://github.com/jbejenar/prontiq-python/commit/105559acbc4d4b51cae03b8e4e07b0727629a22b))
+* **platform:** add phase 1 observability baseline ([#113](https://github.com/jbejenar/prontiq-python/issues/113)) ([43f89d8](https://github.com/jbejenar/prontiq-python/commit/43f89d870a3cfcfc6ba78cf1a2b95bedeef6746f))
+* redesign console playground workspace ([#227](https://github.com/jbejenar/prontiq-python/issues/227)) ([4bae0c4](https://github.com/jbejenar/prontiq-python/commit/4bae0c45f145af4e788cae7fb3fe0b5b7754c075))
+* refine playground curl preview ([#230](https://github.com/jbejenar/prontiq-python/issues/230)) ([536373a](https://github.com/jbejenar/prontiq-python/commit/536373ae25ad79f8e388ef42fa0ee1f8a0ce9061))
+* search relevance + fuzzy matching + comprehensive doc audit ([#38](https://github.com/jbejenar/prontiq-python/issues/38)) ([746da65](https://github.com/jbejenar/prontiq-python/commit/746da655c0e34947caa35d12854a2abe264c4b35))
+* **search:** refine validate + lookupSuburb confidence semantics ([#49](https://github.com/jbejenar/prontiq-python/issues/49)) ([a74817b](https://github.com/jbejenar/prontiq-python/commit/a74817b3ea08720825236a7683f88e41b9d85b2c))
+* Speakeasy TypeScript SDK generation (P1D.04) ([#33](https://github.com/jbejenar/prontiq-python/issues/33)) ([ce995ca](https://github.com/jbejenar/prontiq-python/commit/ce995ca1ae8ba147a782b094ec5c6ca9b2240650))
+* v2 manifest support + automated ingestion pipeline ([#16](https://github.com/jbejenar/prontiq-python/issues/16)) ([4bd56c0](https://github.com/jbejenar/prontiq-python/commit/4bd56c0da62735815e4a1cb80244beb450b6ddf2))
 
-- **P1C.06 console API playground implemented.** Added native
-  OpenAPI-driven `/playground` endpoint discovery, demo/account execution
-  modes, memory-only API-key handoff from `/keys`, production-shaped curl
-  generation, safe response display, Scalar isolated as an advanced workbench,
-  and a Clerk/same-origin/OpenAPI-validated demo proxy that forwards through a
-  server-held demo key governed by backend API-key quota/rate controls.
 
-- **P1F.04 post-deploy smoke coverage implemented.** Dev and prod deploy
-  workflows now run the public Address API smoke with stage-owned
-  `PRONTIQ_KEY` fixtures, prod smoke failures block the workflow from going
-  green, and smoke classification docs define CI-every-deploy vs runbook-only
-  vs manual UI boundaries.
+### Bug Fixes
 
-- **P1C.04 usage charts implemented.** Added platform-owned
-  `prontiq-usage-daily` projection from billing events, private
-  `GET /v1/account/usage`, and console `/usage` charts with CSV export. Lago
-  remains plan/billing truth; Prontiq remains enforced usage and chart truth.
+* adaptive batch sizing — TCP slow-start for bulk ingest ([#25](https://github.com/jbejenar/prontiq-python/issues/25)) ([3c05208](https://github.com/jbejenar/prontiq-python/commit/3c05208e1f2154f86fd2769296b2ccf11bec6f92))
+* add --legacy flag to pnpm deploy in Dockerfile ([54e3434](https://github.com/jbejenar/prontiq-python/commit/54e3434e11fb1956cd01156f20eaaa787efba812))
+* allow account idempotency preflight ([#215](https://github.com/jbejenar/prontiq-python/issues/215)) ([59d7d12](https://github.com/jbejenar/prontiq-python/commit/59d7d12f47c1224426876c0700325e1e00af1cdd))
+* **api:** allow account cors preflight ([#181](https://github.com/jbejenar/prontiq-python/issues/181)) ([cd41dd9](https://github.com/jbejenar/prontiq-python/commit/cd41dd9abf0cc1dee89687d40c6672ac1e0ea1d5))
+* **api:** restrict prod account cors origin ([#182](https://github.com/jbejenar/prontiq-python/issues/182)) ([5f145fe](https://github.com/jbejenar/prontiq-python/commit/5f145febd2df4c6b6bba961f737d7912c6e385bf))
+* autocomplete returns 0 for typo'd prefix — add lenient fallback ([#40](https://github.com/jbejenar/prontiq-python/issues/40)) ([25863a0](https://github.com/jbejenar/prontiq-python/commit/25863a0e81562306454bd02a9ff3a537da3b562d))
+* **billing:** drain retired hashes before final removal ([1b7f2e8](https://github.com/jbejenar/prontiq-python/commit/1b7f2e87ae61e85a1865f094132e77f35d626a46))
+* **billing:** drain retired revoked keys ([959d184](https://github.com/jbejenar/prontiq-python/commit/959d1841376c5dc3cbb1f9c9959f22ae88e8ebcc))
+* **billing:** flush removed product deltas ([fab60ee](https://github.com/jbejenar/prontiq-python/commit/fab60ee9e69e298058e88ea997ea19ae69a835b8))
+* **billing:** harden stripe webhook review findings ([11e0d4b](https://github.com/jbejenar/prontiq-python/commit/11e0d4bf771c7bf883b04372b9199321cb4498f7))
+* **billing:** keep retired hashes for prior-month debt ([0e89e7e](https://github.com/jbejenar/prontiq-python/commit/0e89e7ecb3bcb00e9f2ed4aea1d9bebd8ad16633))
+* **billing:** normalize legacy stripe envelope state ([e51d610](https://github.com/jbejenar/prontiq-python/commit/e51d610902e5aa03b56e87ccf4b11e541f4424c7))
+* **billing:** preserve retired drain state ([46edc8a](https://github.com/jbejenar/prontiq-python/commit/46edc8a6f479b854329ddf7beb500ef46d549903))
+* **billing:** reconcile same-tier stripe updates ([7611470](https://github.com/jbejenar/prontiq-python/commit/7611470485fa83395072bedacc3b4059e78b438b))
+* **billing:** retain retired hashes for chain-only debt ([6a64c1d](https://github.com/jbejenar/prontiq-python/commit/6a64c1d870006b8435e1099a5f4cc97106b28650))
+* build Docker image for linux/amd64 platform ([560d733](https://github.com/jbejenar/prontiq-python/commit/560d7333929fb35d66cd75d40ff33c994666c39e))
+* bulk ingest one-shot — timeout, health check reorder, batch size ([#21](https://github.com/jbejenar/prontiq-python/issues/21)) ([8f730ca](https://github.com/jbejenar/prontiq-python/commit/8f730ca4121042a48c1c11be8381c0cd0bc73a8b))
+* bulk ingest throttling, per-item 429 retry, error diagnostics ([#19](https://github.com/jbejenar/prontiq-python/issues/19)) ([04100bb](https://github.com/jbejenar/prontiq-python/commit/04100bb492a797a2497bd0cc22914cc055741a0b))
+* **ci:** add missing pnpm build to deploy-dev job ([#67](https://github.com/jbejenar/prontiq-python/issues/67)) ([1883e31](https://github.com/jbejenar/prontiq-python/commit/1883e3192f7f14d24c7004e35e201976f3859fe0))
+* **ci:** age-based dev unlock + fail-fast prod + manual recovery workflow ([#66](https://github.com/jbejenar/prontiq-python/issues/66)) ([566d962](https://github.com/jbejenar/prontiq-python/commit/566d9624bf86aee1a13a2233d8cc223f5141fb23))
+* **ci:** allow smoke user lookup by email ([2a4924b](https://github.com/jbejenar/prontiq-python/commit/2a4924b032c2f89e05d4aec0ba4e19f0b9df16ff))
+* **ci:** clear stale SST lock before deploy ([#64](https://github.com/jbejenar/prontiq-python/issues/64)) ([9969179](https://github.com/jbejenar/prontiq-python/commit/9969179f0fbaf48c98effba6776c6dc278aee404))
+* **ci:** include observability in ingestion image build ([#122](https://github.com/jbejenar/prontiq-python/issues/122)) ([e92d583](https://github.com/jbejenar/prontiq-python/commit/e92d583df6d67700c8971f99daf9474f7aa01f18))
+* **ci:** remove pre-installed pulumi-language-nodejs (sst[#6314](https://github.com/jbejenar/prontiq-python/issues/6314)) ([#62](https://github.com/jbejenar/prontiq-python/issues/62)) ([9d0cf24](https://github.com/jbejenar/prontiq-python/commit/9d0cf244db673944ce6a162a9ce665e06752432d))
+* **ci:** restore deployed smoke coverage ([6fffe17](https://github.com/jbejenar/prontiq-python/commit/6fffe17610b64fc656a6c5e9afb868a0df60ecc8))
+* **ci:** satisfy type-only import lint ([a810df5](https://github.com/jbejenar/prontiq-python/commit/a810df5788cdb457cc580e258e459ea2ab4393ab))
+* codify deploy-time infra fixes in sst.config.ts ([#17](https://github.com/jbejenar/prontiq-python/issues/17)) ([d6465f0](https://github.com/jbejenar/prontiq-python/commit/d6465f060196559fa9b50b7b406c29ae28cae32c))
+* **console:** allow password step-up for billing plan changes ([#213](https://github.com/jbejenar/prontiq-python/issues/213)) ([ed7ca66](https://github.com/jbejenar/prontiq-python/commit/ed7ca6690f88c9f9e3ebdfff4be02fe8c69691db))
+* **console:** handle key counter drift ([#183](https://github.com/jbejenar/prontiq-python/issues/183)) ([4312194](https://github.com/jbejenar/prontiq-python/commit/431219498a1f36040b70aa614d4927804b18f7c5))
+* **console:** preserve Clerk reverification hints ([#185](https://github.com/jbejenar/prontiq-python/issues/185)) ([6bf1485](https://github.com/jbejenar/prontiq-python/commit/6bf1485271cc7d6465ef254fe58293183cd31681))
+* **email:** allow SES config set sends ([369d62a](https://github.com/jbejenar/prontiq-python/commit/369d62a5eeda891e0f49ec5f4e19c77b492308d9))
+* **email:** interpolate SES config set ARN ([14cdca9](https://github.com/jbejenar/prontiq-python/commit/14cdca92bee115eb9370841f0de7fe4411e07017))
+* **email:** load pulumi in sst run ([61db32f](https://github.com/jbejenar/prontiq-python/commit/61db32f63b31e6ec2c98004fe94e4e14fcae2e83))
+* **email:** log SES send failures ([98abcf8](https://github.com/jbejenar/prontiq-python/commit/98abcf84f84c30bd734d8f70fc01c224b71f0bfb))
+* **email:** use SES client for sends ([a4a54f4](https://github.com/jbejenar/prontiq-python/commit/a4a54f4dd88c9db831bde87ec1058ed1bd83d73c))
+* gate playground demo execution by availability ([#225](https://github.com/jbejenar/prontiq-python/issues/225)) ([f27f1a2](https://github.com/jbejenar/prontiq-python/commit/f27f1a22569a640969bfaf0cdd8fa3fea4245c49))
+* increase OpenSearch request timeout, retry on timeouts ([#23](https://github.com/jbejenar/prontiq-python/issues/23)) ([0c90547](https://github.com/jbejenar/prontiq-python/commit/0c905475b4c98a7ee3f2384ed23680c58ac919e6))
+* **infra:** add dynamodb:*ContinuousBackups to deploy role for PITR ([#79](https://github.com/jbejenar/prontiq-python/issues/79)) ([41a4bab](https://github.com/jbejenar/prontiq-python/commit/41a4babcfd1d9c28a304b396255b6ed963d6c5cf))
+* **infra:** add dynamodb:ListTagsOfResource + UpdateTable + UntagResource ([#80](https://github.com/jbejenar/prontiq-python/issues/80)) ([95c0048](https://github.com/jbejenar/prontiq-python/commit/95c0048fbb89e1a298dec43f0e4b2bd357675549))
+* **infra:** add s3:*ObjectTagging to deploy role ([#69](https://github.com/jbejenar/prontiq-python/issues/69)) ([f87964f](https://github.com/jbejenar/prontiq-python/commit/f87964fe3dee0a7d532d60838c3f348d89cc77cf))
+* **infra:** allow environment:production OIDC sub for prod deploy role ([#71](https://github.com/jbejenar/prontiq-python/issues/71)) ([f64e6f1](https://github.com/jbejenar/prontiq-python/commit/f64e6f1750ae2d08e89efe6462cb21f4dfdce6cf))
+* **infra:** scope s3/dynamodb wildcards by resource pattern ([#81](https://github.com/jbejenar/prontiq-python/issues/81)) ([8c7dc28](https://github.com/jbejenar/prontiq-python/commit/8c7dc283cbab191b79e1790cae2eae9ab34f3ae8))
+* known-good query expected_label_fragment matches addressLabel field ([#27](https://github.com/jbejenar/prontiq-python/issues/27)) ([88cfb01](https://github.com/jbejenar/prontiq-python/commit/88cfb01d46189d205bc56cf8cd0d1c074a766d03))
+* make scalar playground modal opaque ([#224](https://github.com/jbejenar/prontiq-python/issues/224)) ([e5e93f0](https://github.com/jbejenar/prontiq-python/commit/e5e93f0bd56ed4eec80c3ef7a00bd097a72a5fe4))
+* move playground shortcut hint out of filter ([#231](https://github.com/jbejenar/prontiq-python/issues/231)) ([5ca6185](https://github.com/jbejenar/prontiq-python/commit/5ca61859032f14e5a03cb9bdadd50c45b07f4eba))
+* nest navigation groups inside tabs for proper sidebar rendering ([f3de669](https://github.com/jbejenar/prontiq-python/commit/f3de66973b17c7dfc14236f58164bb237e49da4a))
+* **p1b05:** restore stage throttle defaults — prod outage hotfix ([#102](https://github.com/jbejenar/prontiq-python/issues/102)) ([ce71943](https://github.com/jbejenar/prontiq-python/commit/ce7194358b01b01d97814fe313754dba60c18a3b))
+* **P1C.03 PR 1:** explicit ClientRequestToken on key-create transaction ([#174](https://github.com/jbejenar/prontiq-python/issues/174)) ([4d3ca2e](https://github.com/jbejenar/prontiq-python/commit/4d3ca2e3a55b683461d7531c746a8fd0c1a63ae2))
+* **platform:** patch observability follow-ups ([#114](https://github.com/jbejenar/prontiq-python/issues/114)) ([08d428d](https://github.com/jbejenar/prontiq-python/commit/08d428d362c9d05fedf1e7a51106b57b71da3d8e))
+* **platform:** persist observability verification fixes ([#115](https://github.com/jbejenar/prontiq-python/issues/115)) ([1daf0ab](https://github.com/jbejenar/prontiq-python/commit/1daf0abc28b17ef18560fa5a6bce11cd39e498c3))
+* redirect docs root URL to introduction page ([2c9a82c](https://github.com/jbejenar/prontiq-python/commit/2c9a82ccbe86ca4a8cb9cbde671c3dd88e1884a6))
+* reduce batch to 2K docs, increase 429 retry to 8 attempts ([#22](https://github.com/jbejenar/prontiq-python/issues/22)) ([ef12f08](https://github.com/jbejenar/prontiq-python/commit/ef12f0848478bf97d25e126a10bdfe24ad6d84ea))
+* remove "early access" label and broken dashboard links ([#34](https://github.com/jbejenar/prontiq-python/issues/34)) ([8fbf319](https://github.com/jbejenar/prontiq-python/commit/8fbf319c6bd380ce67e75d51fd6423be50046f77))
+* remove unauthenticated /v1/health/opensearch diagnostic endpoint ([#31](https://github.com/jbejenar/prontiq-python/issues/31)) ([acfa253](https://github.com/jbejenar/prontiq-python/commit/acfa2538973eb5b94b7379f6a14d93f4446783fd))
+* retry known-good query after refresh on large indices ([#26](https://github.com/jbejenar/prontiq-python/issues/26)) ([231797e](https://github.com/jbejenar/prontiq-python/commit/231797ec46f0e375a05c4b3c3ffd8f5f41a20231))
+* return HTTP 404 (not 500) for invalid enrich IDs ([#48](https://github.com/jbejenar/prontiq-python/issues/48)) ([a5ab9dd](https://github.com/jbejenar/prontiq-python/commit/a5ab9ddfebda54a181dab9e1c626a1077c223960))
+* send small warmup batch (100 docs) before full-size batches ([#24](https://github.com/jbejenar/prontiq-python/issues/24)) ([3a1a490](https://github.com/jbejenar/prontiq-python/commit/3a1a4907e315e6453a458bb219770ea1f61feb78))
+* skip Speakeasy compile step (oxlint glob bug in monorepo output) ([ddbed93](https://github.com/jbejenar/prontiq-python/commit/ddbed93d8a29b93f193319325c1340596edde6f1))
+* **smoke:** auto-pick freshest session when multiple exist in same org ([#177](https://github.com/jbejenar/prontiq-python/issues/177)) ([7884932](https://github.com/jbejenar/prontiq-python/commit/7884932df50f3fdb64d0a9801d593f054c622d83))
+* Speakeasy SDK compilation — string enum for confidence, pin v1.761.3 ([bb1f04c](https://github.com/jbejenar/prontiq-python/commit/bb1f04cd35d5e913da5ae3598661bd25cca5f82d))
+* stabilize playground mode during clerk hydration ([#228](https://github.com/jbejenar/prontiq-python/issues/228)) ([84dbd88](https://github.com/jbejenar/prontiq-python/commit/84dbd880efdb07744a057b4ff4daf0d6bf4897a1))
+* stage-qualify ECR repo, task family, log group + gate custom domain to prod ([#37](https://github.com/jbejenar/prontiq-python/issues/37)) ([252f7ec](https://github.com/jbejenar/prontiq-python/commit/252f7ec52a3b598d90ad0ba3ea96e4d45fbd098b))
+* state code validation rejects 3-char codes (NSW, VIC, ACT) ([#29](https://github.com/jbejenar/prontiq-python/issues/29)) ([4ee56f1](https://github.com/jbejenar/prontiq-python/commit/4ee56f14628ab6c15211ae71dee0f45888669f84))
+* strip underscore-prefixed fields from NDJSON before indexing ([#20](https://github.com/jbejenar/prontiq-python/issues/20)) ([3f6f0bb](https://github.com/jbejenar/prontiq-python/commit/3f6f0bbda1d0660faf277f33fc4e181f324fcdc0))
+* sync Clerk owner email changes to Lago ([#210](https://github.com/jbejenar/prontiq-python/issues/210)) ([830bd6f](https://github.com/jbejenar/prontiq-python/commit/830bd6f2676588b0ba87684346cfdc5e5aeebffa))
+* sync Lago customer display names from Clerk ([#211](https://github.com/jbejenar/prontiq-python/issues/211)) ([803661d](https://github.com/jbejenar/prontiq-python/commit/803661d0196d86e6e9de8894f49f1923ee868dc0))
+* usage middleware crashes all API requests ([#28](https://github.com/jbejenar/prontiq-python/issues/28)) ([e93ac2b](https://github.com/jbejenar/prontiq-python/commit/e93ac2b5a5a6d6540f95a2b8cda4676eddd65ed4))
 
-- **P1B.22 Clerk-org commercial identity pivot implemented.** Clerk `orgId` is
-  now the active commercial identity across Prontiq and Lago. Lago customer
-  `external_id = orgId`, subscriptions use `lago_sub_${orgId}`, active billing
-  events are `BillingUsageEventV2` with `orgId`, and `/v1/account/setup` is the
-  only active AWS private account route. The former `/v1/account/billing*`
-  routes, generated `pq_cust_*` / `pq_sub_*` identities, and
-  `prontiq-customers` active mapping are retained only as P1B.14-P1B.21
-  migration evidence. Future console billing should use a Vercel server-side
-  BFF calling Lago with server-held credentials.
 
-- **P1B.21 final prod go-live cleanup implemented.** The retained repo-owned
-  prod smoke key produced final accepted Lago event
-  `bevt_f7833d581725b732d04d3eed3fd7c484`, then was disabled. Related
-  customer/subscription, usage, delivery-ledger, and webhook-ledger evidence is
-  retained as audit evidence only. Prod remains in go-live posture with
-  `BILLING_EVENTS_ENABLED=true`, `COUNTER_PERIOD_SOURCE=lago`, and
-  `LAGO_WEBHOOK_RECONCILIATION_ENABLED=true`.
+### Chores
 
-- **P1B.20 legacy Stripe cleanup implemented.** Removed the platform-owned
-  Stripe webhook, billing cron, month-close, Stripe Pricing Table component,
-  `STRIPE_*` deploy env contract, `LEGACY_STRIPE_RUNTIME_ENABLED`, direct
-  `stripe` package dependencies, and private account-setup response
-  `stripeCustomerId`. Stripe remains only the payment rail configured inside
-  Lago.
+* **ci:** add TEMPORARY debug env to deploy-dev step ([#55](https://github.com/jbejenar/prontiq-python/issues/55)) ([d0df5b4](https://github.com/jbejenar/prontiq-python/commit/d0df5b40e0a9a959afb5782adc55a8f448796ff3))
+* **ci:** bump GHA actions to Node 24-native majors ([#75](https://github.com/jbejenar/prontiq-python/issues/75)) ([e0c4036](https://github.com/jbejenar/prontiq-python/commit/e0c4036e239cdc4ba5057148d03093d4fc7821ee))
+* **ci:** debug env v2 — TF_LOG + PULUMI_LOG_VERBOSE for provider visibility ([#56](https://github.com/jbejenar/prontiq-python/issues/56)) ([148f3b8](https://github.com/jbejenar/prontiq-python/commit/148f3b8bab556f2177164a456883bacdce7974f0))
+* **ci:** debug env v3 — real gRPC logging + skip AWS validation + timeout ([#58](https://github.com/jbejenar/prontiq-python/issues/58)) ([9e2d114](https://github.com/jbejenar/prontiq-python/commit/9e2d11412d50aee3cfc69b5252cfcde942280363))
+* **ci:** disable IMDS lookup to unblock CI deploys ([#61](https://github.com/jbejenar/prontiq-python/issues/61)) ([337d0c0](https://github.com/jbejenar/prontiq-python/commit/337d0c04745c45307c2bfc21f9d1b257b818c73d))
+* **ci:** revert pty wrapper + document expected silent-refresh window ([#54](https://github.com/jbejenar/prontiq-python/issues/54)) ([5fbe47b](https://github.com/jbejenar/prontiq-python/commit/5fbe47b312e660a6270f9cad9fc379c932d60610))
+* **ci:** surface .sst/log/pulumi.log on deploy failure ([#63](https://github.com/jbejenar/prontiq-python/issues/63)) ([d251eb1](https://github.com/jbejenar/prontiq-python/commit/d251eb138a32c1b1a065f851cb5bb85447fb80ff))
+* **ci:** wrap sst deploy in script(1) pty for live progress output ([#52](https://github.com/jbejenar/prontiq-python/issues/52)) ([d63dc89](https://github.com/jbejenar/prontiq-python/commit/d63dc89c06fb0d50839296c8450cccd63ea49e34))
+* **deps-dev:** bump the dev-deps group with 5 updates ([#86](https://github.com/jbejenar/prontiq-python/issues/86)) ([55440df](https://github.com/jbejenar/prontiq-python/commit/55440dfbeb148362ed1c09e00e08fbf3075f2cf2))
+* **deps:** bump @clerk/backend from 3.2.12 to 3.3.0 ([#137](https://github.com/jbejenar/prontiq-python/issues/137)) ([f74ec8a](https://github.com/jbejenar/prontiq-python/commit/f74ec8af07442f7b3a544fe9030acdc2a9a06bc9))
+* **deps:** bump @hono/node-server from 1.19.13 to 1.19.14 ([#87](https://github.com/jbejenar/prontiq-python/issues/87)) ([9b50d57](https://github.com/jbejenar/prontiq-python/commit/9b50d579df3bee50fa83de842f76731d9aa39bbc))
+* **deps:** bump @hono/node-server from 1.19.14 to 2.0.0 ([#135](https://github.com/jbejenar/prontiq-python/issues/135)) ([b3245e8](https://github.com/jbejenar/prontiq-python/commit/b3245e8a8f90af3f60e7820ba970084d3046f46a))
+* **deps:** bump @hono/zod-openapi from 1.2.4 to 1.3.0 ([#88](https://github.com/jbejenar/prontiq-python/issues/88)) ([b37cf41](https://github.com/jbejenar/prontiq-python/commit/b37cf41460337a45281f8289786cf1579113c58a))
+* **deps:** bump @opentelemetry/exporter-trace-otlp-http ([#134](https://github.com/jbejenar/prontiq-python/issues/134)) ([0b41ce0](https://github.com/jbejenar/prontiq-python/commit/0b41ce0dbbdb22f087324aa5c1f9adc17584df77))
+* **deps:** bump @opentelemetry/instrumentation from 0.205.0 to 0.215.0 ([#136](https://github.com/jbejenar/prontiq-python/issues/136)) ([c0be143](https://github.com/jbejenar/prontiq-python/commit/c0be143d068154b7c2bd211b42e9aced259e5270))
+* **deps:** bump @opentelemetry/instrumentation-http ([#133](https://github.com/jbejenar/prontiq-python/issues/133)) ([092661d](https://github.com/jbejenar/prontiq-python/commit/092661dd1805b9c9a68e5f28ae7818e062b94575))
+* **deps:** bump hono from 4.12.12 to 4.12.14 ([#89](https://github.com/jbejenar/prontiq-python/issues/89)) ([0404ff6](https://github.com/jbejenar/prontiq-python/commit/0404ff6d585851564c0e14c325fb9b41fbcbb0dc))
+* **deps:** bump lucide-react from 0.542.0 to 1.8.0 ([#138](https://github.com/jbejenar/prontiq-python/issues/138)) ([2b2fa1d](https://github.com/jbejenar/prontiq-python/commit/2b2fa1dba653c020e5b2a1f7f65f0153c1b98e4b))
+* **deps:** bump stripe from 22.0.1 to 22.0.2 ([#139](https://github.com/jbejenar/prontiq-python/issues/139)) ([1b3972d](https://github.com/jbejenar/prontiq-python/commit/1b3972dd364bb41fd98a4276ce52e56934166607))
+* **deps:** bump svix from 1.90.0 to 1.92.2 ([#132](https://github.com/jbejenar/prontiq-python/issues/132)) ([f7f7978](https://github.com/jbejenar/prontiq-python/commit/f7f7978b1a3fb5b0371e4c136bb9c1cea8fbe656))
+* **deps:** bump the aws-sdk group across 1 directory with 6 updates ([#130](https://github.com/jbejenar/prontiq-python/issues/130)) ([5a07dcb](https://github.com/jbejenar/prontiq-python/commit/5a07dcb7329fc355a7f50756b544ea6241ff82e6))
+* **deps:** bump the aws-sdk group with 4 updates ([#85](https://github.com/jbejenar/prontiq-python/issues/85)) ([2238544](https://github.com/jbejenar/prontiq-python/commit/2238544f8d9b29d431f9303776807cddde434f02))
+* disable PqPortal Next.js deploy (CI 15min → 3min) ([#41](https://github.com/jbejenar/prontiq-python/issues/41)) ([88cbd19](https://github.com/jbejenar/prontiq-python/commit/88cbd192cf28e301b4fe7c0590e0d00184be9b61))
+* drop Clerk-authed smoke-prod; defer address-API smoke to P1F.04 ([#178](https://github.com/jbejenar/prontiq-python/issues/178)) ([aba74e1](https://github.com/jbejenar/prontiq-python/commit/aba74e17571bf713c104c969e12520ac762394dc))
+* **infra:** canonical sort_keys ordering for stable drift checks ([#51](https://github.com/jbejenar/prontiq-python/issues/51)) ([49addaf](https://github.com/jbejenar/prontiq-python/commit/49addafb8b6e337ed9b8407dc27c5467f2277511))
+* **infra:** version-control deploy-role policy + add ec2:DescribeVpcAttribute ([#50](https://github.com/jbejenar/prontiq-python/issues/50)) ([78d9e31](https://github.com/jbejenar/prontiq-python/commit/78d9e31c9512c82d7a8c0de5945865c5ac37b031))
+* **p1c-03:** wire post-deploy smoke into dev + prod CI ([#176](https://github.com/jbejenar/prontiq-python/issues/176)) ([b77b09e](https://github.com/jbejenar/prontiq-python/commit/b77b09e5dee9f3f58edebde5b05832cbaafca403))
+* P1C.03 PR 0 — keyId + activeKeyCount backfill script ([#170](https://github.com/jbejenar/prontiq-python/issues/170)) ([165a658](https://github.com/jbejenar/prontiq-python/commit/165a6586946d2bfe1e06c2f2b235b4e82224ea63))
+* post-launch cleanup — mark 15 tickets complete, update sprint ([#30](https://github.com/jbejenar/prontiq-python/issues/30)) ([42cffce](https://github.com/jbejenar/prontiq-python/commit/42cffce654e56d8b210bf0a3f15e6419060959e9))
+* redeploy dev with billing events enabled ([ffc0785](https://github.com/jbejenar/prontiq-python/commit/ffc07858fd4ad78017455bdf287c1c4a82fc2069))
+* remove customer dashboard entirely (clean state) ([#47](https://github.com/jbejenar/prontiq-python/issues/47)) ([a43c9d3](https://github.com/jbejenar/prontiq-python/commit/a43c9d3bec94d4ad4d3a21adca4dc30fdd966cf2))
+* remove key-id + activeKeyCount backfill script ([#171](https://github.com/jbejenar/prontiq-python/issues/171)) ([47e64c0](https://github.com/jbejenar/prontiq-python/commit/47e64c0bb4e7f4b713ae54c8f3803b486bd26e7e))
+* rerun dev deploy after Lago webhook secret setup ([dcf91c5](https://github.com/jbejenar/prontiq-python/commit/dcf91c58e17157585d9b1b00732e9ee7ba3307f6))
+* scrub personal home address from test data + docs ([#73](https://github.com/jbejenar/prontiq-python/issues/73)) ([4735448](https://github.com/jbejenar/prontiq-python/commit/47354483d9a75865dd2d1950f04fc306bd3722b8))
+* smoke scripts for /v1/account/keys ([#173](https://github.com/jbejenar/prontiq-python/issues/173)) ([8c0cd01](https://github.com/jbejenar/prontiq-python/commit/8c0cd017e3efe3d8be1ec13446c8fe2b8a603a80))
+* standardize SST resource naming convention ([#9](https://github.com/jbejenar/prontiq-python/issues/9)) ([78c1ece](https://github.com/jbejenar/prontiq-python/commit/78c1ecebb6d0dc7eca4e1489e4904e8cabdeca72))
+* sync repo ([58c4a2d](https://github.com/jbejenar/prontiq-python/commit/58c4a2d08e28fe1adb565e2a130be96fc295afe9))
+* update endpoint URLs after SST rename ([#10](https://github.com/jbejenar/prontiq-python/issues/10)) ([1a37a27](https://github.com/jbejenar/prontiq-python/commit/1a37a273bb19fef018343e67b0f5d4a8bb6e33fd))
+* update SDK settings ([2349e6d](https://github.com/jbejenar/prontiq-python/commit/2349e6d30aa8bbf7f80223cb0ec325037f2dace9))
+* update SDK settings ([3184c99](https://github.com/jbejenar/prontiq-python/commit/3184c9919b1fe71c1757e31738baf50f8d7d112e))
+* update SDK settings ([4a6f7b6](https://github.com/jbejenar/prontiq-python/commit/4a6f7b66dff0b18df6d6c42c89870d1a99aa0e45))
+* update SDK settings ([5b4e84c](https://github.com/jbejenar/prontiq-python/commit/5b4e84ccbd90e5f35be6350118a389cb613df667))
+* update SDK settings ([828cee7](https://github.com/jbejenar/prontiq-python/commit/828cee7f2c284c708f02bc02f5bbd4f804e28e0f))
+* update SDK settings ([b2e5c07](https://github.com/jbejenar/prontiq-python/commit/b2e5c077d4007c63948cbfc718205af0191e4aec))
+* update SDK settings ([65979cd](https://github.com/jbejenar/prontiq-python/commit/65979cd2ff8e096d26093fb8a1604deba7027126))
+* update SDK settings ([37df60a](https://github.com/jbejenar/prontiq-python/commit/37df60ac89715d01a142eec9358b5e4ef4b10f29))
+* update SDK settings ([1ee687a](https://github.com/jbejenar/prontiq-python/commit/1ee687af331bd0cc69ecd4d015e450df8fc9e082))
+* upgrade Lambda runtime to nodejs24.x (Phase 2) ([#74](https://github.com/jbejenar/prontiq-python/issues/74)) ([bf7141b](https://github.com/jbejenar/prontiq-python/commit/bf7141b9d69bab4149af29cca5d4d7548d125508))
+* upgrade local/CI/Fargate to Node.js 24 (Phase 1) ([#72](https://github.com/jbejenar/prontiq-python/issues/72)) ([c8bbe24](https://github.com/jbejenar/prontiq-python/commit/c8bbe248004d32b7f9873ec8bd849e8a4ca8a954))
+* **webhooks:** remove Unkey code per ADR-001 ([#68](https://github.com/jbejenar/prontiq-python/issues/68)) ([54b5ec1](https://github.com/jbejenar/prontiq-python/commit/54b5ec13ed6eebdad6eb7a4d23db11405c57c52a))
 
-- **P1B.19 Stripe legacy billing runtime retirement implemented.** Provisioning
-  was cut over to Lago-forward mode, bootstrapping Lago Free subscriptions
-  without creating Stripe customers. This temporary compatibility phase used
-  `LEGACY_STRIPE_RUNTIME_ENABLED=false`; P1B.20 subsequently removed the legacy
-  flag, Stripe webhook, billing cron, month-close, and direct Stripe deploy
-  config.
 
-- **P1B.18 account billing API contract implemented for migration-era console
-  planning.** `PqAccount` exposed Prontiq-owned billing summary, Lago portal
-  session, and gated Free/PAYG plan-change routes with Clerk org-admin auth,
-  `Idempotency-Key` replay safety, a `prontiq-billing-actions` ledger, a
-  private OpenAPI contract, and Lago transition handling. These routes were
-  retired from the active AWS private API by P1B.22.
+### Documentation
 
-- **Public/private OpenAPI split added.** Public Mintlify/Speakeasy generation
-  now uses only `packages/docs/openapi.json`, while Clerk-authenticated
-  console/account routes are generated into `packages/api/openapi.private.json`.
+* add AUTOLOOP.md autonomous roadmap execution workflow ([#76](https://github.com/jbejenar/prontiq-python/issues/76)) ([af0861e](https://github.com/jbejenar/prontiq-python/commit/af0861e59a2d0dbc19a55682077fd7127ba9c5e9))
+* add competitor-compatible routers roadmap item ([#169](https://github.com/jbejenar/prontiq-python/issues/169)) ([9f84aba](https://github.com/jbejenar/prontiq-python/commit/9f84aba1399fa45b147a5614b22d6c6dc22cdd45))
+* add P1A.11 — Autocomplete relevance tuning ([4e8a73c](https://github.com/jbejenar/prontiq-python/commit/4e8a73c13898b33644b2c27e0a591c73b3e0627c))
+* add P1F.04 post-deploy smoke coverage extension ticket ([746aeae](https://github.com/jbejenar/prontiq-python/commit/746aeaeb4e6f7878e171a1377e2f2bbe1eb674e3))
+* add pre-go-live Lago cleanup ticket ([5dbc5dd](https://github.com/jbejenar/prontiq-python/commit/5dbc5dd97548f38711f24aecff8bc8439473fe68))
+* add prod Lago go-live cleanup gate ([#150](https://github.com/jbejenar/prontiq-python/issues/150)) ([724027b](https://github.com/jbejenar/prontiq-python/commit/724027bb0aaaeda34c0c46288b8d436c915a57a2))
+* add SDK cards to introduction page ([b25246e](https://github.com/jbejenar/prontiq-python/commit/b25246e94f1758768497d1b355eecdd0a1e58e0f))
+* align ses rollout status ([d2d97d9](https://github.com/jbejenar/prontiq-python/commit/d2d97d92b15d2462e58f733c4213096956c977ab))
+* align stripe rollout status ([#107](https://github.com/jbejenar/prontiq-python/issues/107)) ([d2c5b6d](https://github.com/jbejenar/prontiq-python/commit/d2c5b6d46fc3c565ecdc9a295d6e76f3e97dbef0))
+* **arch:** apply v2.2 spec to ARCHITECTURE.MD ([#57](https://github.com/jbejenar/prontiq-python/issues/57)) ([8c77b65](https://github.com/jbejenar/prontiq-python/commit/8c77b6591efbccf4f540112948eccfec5558c531))
+* **claude:** add hard rules for branch/PR/infra/deploy discipline ([#43](https://github.com/jbejenar/prontiq-python/issues/43)) ([ef88186](https://github.com/jbejenar/prontiq-python/commit/ef88186d885b4d6ff65c6a1cb7c542d57bd1ea29))
+* close out honeycomb rollout and normalize roadmap observability ([#123](https://github.com/jbejenar/prontiq-python/issues/123)) ([b09a739](https://github.com/jbejenar/prontiq-python/commit/b09a739d29aef3679beb1435db37f3ec43efa12e))
+* close out P1B.23 cleanup evidence ([#220](https://github.com/jbejenar/prontiq-python/issues/220)) ([5454901](https://github.com/jbejenar/prontiq-python/commit/54549016c22d299acafd733ae91993c34ad1e934))
+* close out p1f04 smoke evidence ([#222](https://github.com/jbejenar/prontiq-python/issues/222)) ([d3523a3](https://github.com/jbejenar/prontiq-python/commit/d3523a32efb2c12a2053603bb9e31536291201ea))
+* close P1B.18a certification ([#152](https://github.com/jbejenar/prontiq-python/issues/152)) ([85d90f9](https://github.com/jbejenar/prontiq-python/commit/85d90f9d1de185351e7faf78e4a055411f42b62e))
+* defer prod smoke cleanup until go-live ([#151](https://github.com/jbejenar/prontiq-python/issues/151)) ([5dc2bcd](https://github.com/jbejenar/prontiq-python/commit/5dc2bcd775d82a87dea45f1b3573cd247da5001b))
+* define customer identity contract ([#142](https://github.com/jbejenar/prontiq-python/issues/142)) ([3470514](https://github.com/jbejenar/prontiq-python/commit/3470514a4f544478221b00ee9d951693a056e829))
+* **frontend:** adopt console prototype reference ([#117](https://github.com/jbejenar/prontiq-python/issues/117)) ([a81dbd8](https://github.com/jbejenar/prontiq-python/commit/a81dbd81812de9524f6d9c598f3d9ec01b5b592c))
+* plan P1C.02 overview ([#187](https://github.com/jbejenar/prontiq-python/issues/187)) ([891eb95](https://github.com/jbejenar/prontiq-python/commit/891eb955278d6c91c9157fe694abb5709bad03de))
+* ratify frontend two-app architecture ([#116](https://github.com/jbejenar/prontiq-python/issues/116)) ([894ea50](https://github.com/jbejenar/prontiq-python/commit/894ea502dfe412688bc5f67286147340e31fc383))
+* record console playground demo keys ([#226](https://github.com/jbejenar/prontiq-python/issues/226)) ([9cc8d25](https://github.com/jbejenar/prontiq-python/commit/9cc8d2546fd402eaf29f6924d4bfb44b0ca01990))
+* record P1B.18a closeout blocker ([a70f3b6](https://github.com/jbejenar/prontiq-python/commit/a70f3b643d7f15c07c3e3cbd03877a0d30bbf7f3))
+* record P1C.00 merge in next session log ([#120](https://github.com/jbejenar/prontiq-python/issues/120)) ([db26460](https://github.com/jbejenar/prontiq-python/commit/db2646004fb828156f3ebb0a63ce48de484c1a1a))
+* refresh planning + changelog after P1B.05 PR 2/3 prod cutover ([#99](https://github.com/jbejenar/prontiq-python/issues/99)) ([75e1afb](https://github.com/jbejenar/prontiq-python/commit/75e1afb8cd216cad3a67ca859f4379327c11dc73))
+* **roadmap:** rewrite P1B for v2.2 (remove Unkey) ([#59](https://github.com/jbejenar/prontiq-python/issues/59)) ([9e42819](https://github.com/jbejenar/prontiq-python/commit/9e42819b353fd2337c81268dae6284fd6582a8e1))
+* separate credits from pricing ([f7c5ace](https://github.com/jbejenar/prontiq-python/commit/f7c5ace81f72366dadf6c7ea8d3175efd89f18bf))
+* sweep stale "follow-up PR" references after PR [#68](https://github.com/jbejenar/prontiq-python/issues/68) merge ([#70](https://github.com/jbejenar/prontiq-python/issues/70)) ([6774221](https://github.com/jbejenar/prontiq-python/commit/67742219a3c49d9e7156e89bb8bcf82b3c490156))
+* sweep Unkey mentions + v2.2 CHANGELOG ([#60](https://github.com/jbejenar/prontiq-python/issues/60)) ([089c481](https://github.com/jbejenar/prontiq-python/commit/089c481bfa1be41f71f89e9f57eb3e4542fd253e))
+* sync roadmap audit status ([#82](https://github.com/jbejenar/prontiq-python/issues/82)) ([bb14b73](https://github.com/jbejenar/prontiq-python/commit/bb14b73a30eed925922ba02c1f68b07bdef75af3))
+* update SDK pages with real @prontiq/sdk API ([acae299](https://github.com/jbejenar/prontiq-python/commit/acae299b83c233b8cd06e0351f3eda5a4f319340))
 
-- **P1B.18a live smoke certification completed.** Dev/prod have accepted
-  Lago usage-forwarding delivery rows, completed Lago HMAC webhook-ledger rows,
-  replay-safe duplicate webhook checks, inventoried test-only smoke fixtures,
-  and retained calendar-period request enforcement for the next Lago migration
-  tickets.
 
-- **Final prod smoke-fixture retirement gate** (`P1B.21`) closed after the Lago
-  migration sequence. Historical prod smoke fixtures are retained as audit
-  evidence only; the reusable prod smoke key is disabled.
+### Refactors
 
-- **Lago live smoke certification tooling** (`P1B.18a`) added for the
-  rollout-gated Lago migration. `@prontiq/control-plane` has
-  `lago:smoke:event`, which now loads a stage smoke key/org from DynamoDB,
-  validates the active Clerk-org identity contract, derives the billing event id
-  through the production billing-event contract, optionally sends the event to
-  SQS, and prints safe evidence for dev/prod certification. Legacy V1 smoke
-  evidence remains historical P1B.18a-P1B.21 context only.
-
-- **Lago webhook reconciliation** (`P1B.17`) **implemented behind a dedicated
-  rollout gate.** Added `POST /webhooks/lago`, HMAC signature verification,
-  `prontiq-lago-webhook-events` idempotency ledger, consumed subscription /
-  invoice event set, Lago plan/subscription/billing-period denormalization onto
-  local key records, `COUNTER_PERIOD_SOURCE` support for Lago-period counter
-  scopes, `PqLagoWebhookErrors` alarm, and docs/runbooks/ADRs for drift and
-  rollout. PAYG is now explicitly uncapped but tracked.
-
-- **Lago event forwarder** (`P1B.16`) **implemented behind the existing producer
-  rollout gate.** Added `PqLagoEventForwarder`, deterministic Lago
-  `transaction_id = eventId`, minimal credit-delta payloads, the
-  `prontiq-billing-event-deliveries` delivery ledger, CloudWatch forwarder
-  runtime-error alarm/dashboard metric, and GitHub environment deploy config
-  for `LAGO_API_URL` / `LAGO_API_KEY`. P1B.22 updates the active subscription
-  identity to `external_subscription_id = lago_sub_${orgId}`; the earlier
-  `pq_sub_<ulid>` identity is historical migration evidence. After P1B.21,
-  dev/prod are enabled.
-
-- **SQS billing-event buffer** (`P1B.15`) **implemented behind a feature flag.**
-  Added deterministic `bevt_...` event ids, standard SQS source queue + DLQ,
-  CloudWatch queue alarms/dashboard metrics, and queued API-to-Lago forwarding
-  after DynamoDB enforcement succeeds. The migration-era V1 payload,
-  `prontiq-customers` infra, provisioning-time `customerId` writes, and
-  `backfill:customers` utility are superseded by P1B.22 and retained only as
-  historical evidence. Active events are `BillingUsageEventV2` with `orgId`.
-  After P1B.21, dev/prod are enabled.
-
-- **P1B.14 customer identity contract defined for the migration era.** That
-  ticket introduced a platform-owned `customerId` contract (`pq_cust_<ulid>`),
-  a documented `prontiq-customers` mapping table, and Lago
-  `external_id = customerId` semantics. P1B.22 supersedes those as active
-  runtime identity in favor of Clerk `orgId`; the P1B.14 artifacts remain
-  historical migration evidence only.
-
-- **SES deliverability hardening tracked as P1B.08a.** The prod SST
-  configuration now declares custom MAIL FROM for `bounce.prontiq.dev` with
-  `USE_DEFAULT_VALUE` fallback, and the docs/roadmap now require SPF, DMARC
-  relaxed SPF alignment, custom MAIL FROM verification, SES production-access
-  approval, and one normal-recipient transactional send before email delivery
-  is considered production-ready.
-
-- **Commercial architecture pivot documented.** `ARCHITECTURE.MD`, roadmap docs, runbooks, public docs, app guidance, and ADRs now describe Lago as the commercial system of record. The former Stripe-centric webhook / billing cron / month-close path is retained only as historical implementation evidence after P1B.20.
-
-- **Landing page with live autocomplete demo** (`P1C.01`) **implemented.** `apps/landing` now renders the real `prontiq.dev` surface: sticky nav, hero statement, proxy-backed live autocomplete demo via `@prontiq/web-component`, config-owned Prontiq Free/PAYG pricing cards, footer/legal links, and Clerk sign-up modal CTA wrappers. The live demo uses a constrained landing-side proxy route (`/api/demo/address/autocomplete`) with per-IP token-bucket throttling, query/limit clamps, and no client-side API key exposure. Helper-managed local/CI runs remain keyless-safe; missing real Clerk envs degrade to deterministic non-crashing fallback states instead of failing open. The earlier embedded Stripe Pricing Table wrapper was removed by P1B.20.
-- **Frontend base layer** (`P1C.07`) **implemented.** `apps/landing` and `apps/console` now have Tailwind CSS v3.4, app-local shadcn/ui primitives, dark mode via `next-themes`, responsive shell foundations, and app-local Vitest + Testing Library. `apps/console` now includes a real Clerk auth boundary that is enabled only when `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` and `CLERK_SECRET_KEY` are present; keyless local/CI builds render a deterministic disabled-auth fallback instead of crashing. `@prontiq/tokens` now emits semantic HSL theme variables and the Tailwind preset surface those apps consume.
-- **Honeycomb backend telemetry** (`P1F.03`) **implemented and verified.** Added `@prontiq/observability`, wired deployed Lambda handlers for Honeycomb traces behind `HONEYCOMB_API_KEY`, added `HONEYCOMB_ENABLED=false` as the deployed-stage rollback kill switch, kept CloudWatch/SNS and `PqApi` X-Ray during the transition, and added ADR/runbook/docs for the rollout. Honeycomb traces are now verified in both `dev` and `prod` for `prontiq-api`, `prontiq-webhooks`, `prontiq-billing`, and `prontiq-ingestion`.
-- **Frontend foundations** (`P1C.00`) **implemented.** The repo now has `apps/landing` and `apps/console` Next.js 15 workspaces, a shared `@prontiq/tokens` package, and a shared content contract in `packages/shared/src/content.ts`. `pnpm-workspace.yaml` includes `apps/*` and `sdks/typescript`, so the frontend apps consume the existing `@prontiq/sdk` directly.
-- **Burst rate limiter middleware** (`P1B.09`) **implemented and reconciled to the live auth path.** The per-key in-memory token bucket is now extracted into `packages/api/src/middleware/rate-limit.ts` instead of living inline in `auth.ts`, while preserving the same `429 RATE_LIMITED` + `Retry-After` wire contract. New unit coverage verifies token consumption, refill, capacity cap, invalid/null bypass, and key isolation. Auth integration coverage now proves burst exhaustion, refill recovery, isolated buckets, and the invariant that rate-limited requests do not increment `prontiq-usage`. Closes P1B.09.
-- **Historical month-close finalisation** (`PqMonthClose`) **implemented for P1B.11, then removed by P1B.20.** The old EventBridge-scheduled Lambda in SST (`cron(30 0 1 * ? *)`) reused the same replay-safe pending meter identifier model as `PqBillingCron`, performed one final previous-month Stripe meter sweep, and marked the current-hash previous-month scope `closed=true` after the final watermark committed. P1B.20 removed the Lambda, alarm, and active deploy wiring after the Lago cutover.
-- **SES feedback loop + quota emails** (`PqSesFeedback`, `PqQuotaEmailWorker`) **implemented for P1B.08.** SES now uses one shared `prontiq.dev` sender identity in `ap-southeast-2`, owned by the prod stack through SST, plus stage-specific configuration sets (`prontiq-transactional` in prod, `prontiq-transactional-<stage>` elsewhere) that publish bounce and complaint events to each stage’s SNS topic. New `PqSesFeedback` Lambda maintains `prontiq-ses-suppressions` with hard-bounce immediate suppression, third-soft-bounce rolling-window suppression, and permanent complaint suppression. Welcome and quota emails use the shared suppression-aware SES helper; the old Stripe `past_due` email path is historical after P1B.20. New `PqQuotaEmailWorker` sends 80% / 100% credit-threshold emails asynchronously to `ORG#{orgId}.ownerEmail` using per-scope worker leases (`warningEmailPendingAt`, `limitEmailPendingAt`) so the API hot path never blocks on SES. New CloudWatch alarms: `PqSesFeedbackErrors`, `PqQuotaEmailWorkerErrors`. New operator runbook: `docs/runbooks/ses-suppression.md`. Closes P1B.08.
-- **SES rollout verified and hardened (2026-04-19).** `prontiq.dev` is now verified in SES with DKIM active in `ap-southeast-2`. Live simulator sends proved positive-send, bounce, and complaint handling in both `dev` and `prod`, and the quota-email worker finalized sent-state correctly after post-merge fixes switched the send path to the SESv2 client, added explicit SES failure logging, and corrected IAM to include stage configuration-set ARNs. SES remains in sandbox, so simulator verification is complete but arbitrary-recipient delivery still depends on AWS production access.
-- **Historical hourly billing cron** (`PqBillingCron`) **implemented for P1B.10, then removed by P1B.20.** The old EventBridge-scheduled Lambda (`rate(1 hour)`) read `REGISTRY#active-keys` plus `REGISTRY#retired-billing-keys`, walked `newHash-redirect-index` chains, and emitted Stripe meter events. P1B.20 removed the Lambda, alarm, direct Stripe dependency, and active deploy wiring. Lago usage forwarding is now the active billing-event path.
-- **Historical Stripe webhook handler** (`POST /webhooks/stripe`) **implemented for P1B.06, then removed by P1B.20.** The old `PqStripeWebhook` Lambda verified `stripe-signature` and reconciled Stripe subscription events into local state. P1B.20 removed the route, Lambda, alarm, and active deploy secret contract; Lago webhooks are now the platform reconciliation input.
-- **`POST /v1/account/setup` recovery endpoint** **live in dev + prod (2026-04-18, P1B.05 PR 3/3).** Clerk-JWT-authenticated (`Authorization: Bearer <session token>`); calls the same `createProvisioningService().provisionOrg(...)` as the Clerk webhook so a delayed/missed webhook is recoverable from the dashboard. Mirrors the webhook's verified-primary-email invariant via the shared `resolvePrimaryEmail` helper in `@prontiq/control-plane`. New `PqAccount` Lambda separate from address-API `$default` (keeps the hot path bundle minimal: `@clerk/backend` + `@prontiq/control-plane` only land in this one Lambda); mounted via `api.route("ANY /v1/account/{proxy+}", accountFn.arn)` with explicit-route precedence in front of `$default` on the same `PqApi`. CORS extended on `PqApi` (POST + Authorization additive — no rejection of existing GET / X-Api-Key flows). New `PqAccountErrors` CloudWatch alarm wired to the existing `PqIngestAlerts` SNS topic. Operator preconditions are now retained in the private account API docs rather than the public Mintlify reference. Closes P1B.05.
-- **`resolvePrimaryEmail` helper moved to `@prontiq/control-plane`** (P1B.05 PR 3a refactor, prod-cutover 2026-04-18). Originally declared in `packages/webhooks/src/clerk.ts`; lifted verbatim into `packages/control-plane/src/clerk.ts` so the new `/v1/account/setup` endpoint can import it without an `api → webhooks` dep direction. `@clerk/backend` now declared explicitly on `@prontiq/control-plane` rather than inherited transitively from `@prontiq/webhooks`. ADR-002 amended with hardening contract #6.
-- **Clerk webhook handler** (`POST /webhooks/clerk`) **live in dev + prod (2026-04-18).** Wired to the existing `PqApi`; verifies Svix signature; gates on `role ∈ {org:admin, admin}` (Clerk's namespaced creator role); resolves verified primary email via Clerk Backend API (`@clerk/backend.users.getUser` — does NOT trust `public_user_data.identifier` which can be phone/username/OAuth); calls `createProvisioningService().provisionOrg(...)` to write the ORG envelope + audit row + best-effort welcome email. Current deploys require Clerk and Lago secrets only for this path; the historical `STRIPE_SECRET_KEY` requirement was removed by P1B.20. `PqClerkWebhookErrors` is wired to `PqIngestAlerts`. Operator runbook: `docs/runbooks/clerk-webhook.md`. Closes the functional half of P1B.05; recovery endpoint `POST /v1/account/setup` follows in PR 3 of P1B.05.
-- **`@prontiq/control-plane` package** containing the `provisionOrg` service and the `writeAudit` / `buildAuditTransactItem` helpers (closes P1B.07). The original recovered design included direct Stripe client hardening; P1B.20 removed that provider dependency and the current provisioning path bootstraps Lago Free instead. Dual audit API: `buildAuditTransactItem` for atomic grouping inside `TransactWriteItems`; `writeAudit` for standalone callers. Shared types `OrgEnvelopeRecord` + `AuditRecord` added to `@prontiq/shared`. **Powers the live Clerk webhook handler in prod since 2026-04-18.**
-- **Architecture v2.2 docs** — ARCHITECTURE.MD + ROADMAP.md + ADR-001 (`docs/decisions/001-remove-unkey.md`). See sub-bullets below.
-- New ARCHITECTURE.MD top-level sections: §7 Auth & Endpoint Reference (complete endpoint table + §7.5 success response shapes for Speakeasy SDK codegen), §8 Security, §9 Error Taxonomy, §10 Monitoring & Alerting, §11 Retention, §12 Edge Cases & Failure Modes. New §5.10 Brand section.
-- Payment Failure & Grace Period spec (§5.6.3) now mirrors Lago payment/subscription state into `paymentOverdue`; the earlier direct-Stripe 14-day grace path is historical and was removed from active deploys by P1B.20.
-- Burst Rate Limiting spec (§5.4.1) — in-memory token bucket per `apiKeyHash`, with Lambda-concurrency caveat preserved.
-- DynamoDB schema extensions: Stripe subscription snapshot fields on `prontiq-keys` (`stripeCustomerId`, `stripeSubscriptionId`, `subscriptionItems`) plus reserved `REGISTRY#active-keys`, `ORG#{orgId}`, and `WEBHOOK#stripe#{eventId}` items. `prontiq-usage` now carries REDIRECT attribution records plus billing watermarks (`lastPushedCumulativeCount`) and pending meter-push state (`pendingMeterEventIdentifier`, `pendingMeterTargetCumulativeCount`) on current-hash rows. New tables: `prontiq-audit` (365-day TTL) + `prontiq-ses-suppressions`.
-- ROADMAP P1B new tickets: P1B.02 DDB-native key module, P1B.04 DynamoDB tables (4-table infra), P1B.04b data migration, P1B.07 audit writer helper, P1B.08 SES suppressions + bounce handler, P1B.09 burst rate limiter middleware, P1B.11 month-close Lambda.
-- ADR-001 `docs/decisions/001-remove-unkey.md` captures the decision rationale (Status/Context/Decision/Consequences/Alternatives).
-- Search relevance + fuzzy matching across address endpoints (P1A.11):
-  - Autocomplete: `operator: "and"` so all tokens must match (last as prefix)
-  - Autocomplete: `fuzziness: "AUTO"` for typo tolerance in completed words
-  - Validate: `fuzziness: "AUTO"` so typo'd full addresses still validate
-  - Suburb lookup: fuzzy keyword match with `prefix_length: 1`
-  - Suburb lookup: response `suburb` field returns matched name (not input)
-  - Postcode/Suburb lookups: new `limit` query parameter
-
-### Changed
-
-- **CloudWatch email alert actions are ALARM-only.** Email-backed
-  `PqIngestAlerts` alarms no longer publish OK-state notifications, preventing
-  missing-data-to-OK spam for low-traffic webhook routes while preserving ALARM
-  emails and CloudWatch alarm-history visibility.
-
-- **Frontend architecture ratified.** Added `docs/FRONTEND-STRATEGY.md` as the canonical frontend source of truth and re-based the forward-looking docs around a two-app model: future `apps/landing` for `prontiq.dev`, future `apps/console` for `console.prontiq.dev`, and future `packages/tokens` for design tokens. `ARCHITECTURE.MD` no longer presents `packages/web`, `app.prontiq.dev`, or a single `/account` page as the target frontend architecture. `docs/BRAND.md` is now archived historical guidance only, and `ROADMAP.md` starts P1C with `P1C.00 — Frontend Foundations` before the component-library ticket.
-- **Phase 1 observability baseline** (`P1F.02`) is live and verified. `PqIngestAlerts` prod email subscriptions from `ALERT_EMAILS`, new CloudWatch alarms for address API 5xx/Lambda error rate and OpenSearch yellow/red/low-storage, dashboard `prontiq-production`, X-Ray tracing on `PqApi`, and structured JSON logs across Lambda execution paths are now deployed and operator-verified in prod. Email alert delivery was proven by forcing `PqApiLambdaErrorRate-6848399` to `ALARM` and confirming SNS delivery on a subscribed address.
-- **Auth middleware integration coverage** (`P1B.12`) is now reconciled to the shipped hash-based auth path. The existing API integration suite now covers direct unknown/revoked-key failures, REDIRECT success writing usage on `newHash`, no orphan usage writes on pre-increment failure paths, and the atomic free-tier quota race. The roadmap ticket no longer claims a standalone seed script, webhook provisioning idempotency, or first-key creation assertions.
-- ROADMAP P1B ticket count expanded from 9 to 13 (3 Unkey tickets deleted, 7 new DDB-native tickets added). Total ROADMAP ticket count: 72 → 76.
-- ARCHITECTURE.MD numbering flattened: new §7–§12 inserted; existing §7 CI/CD → §13, §8 Phasing → §14, §9 Competitive Position → §15, §10 Design Principles → §16, Licence → §17. §14 Phasing rewritten with security deliverables per phase (v2.2 §18).
-- Endpoint reference (§7.3) canonicalized to live query-param form (`/lookup/postcode?postcode=…`, not path-param). Corrects v2.2 draft spec to match live `packages/api/src/routes/address.ts`.
-- Error taxonomy (§9) canonicalized to live prod codes: `PRODUCT_NOT_ALLOWED` (not `PRODUCT_NOT_ENABLED`). Matches `packages/shared/src/constants.ts`.
-- Monorepo structure (ARCHITECTURE.MD §6) rewritten to match live `packages/` (`api`, `docs`, `ingestion`, `plugins`, `shared`, `webhooks`). `packages/web/` documented as planned P1C addition (neither `packages/web` nor `packages/dashboard` existed in any prior state).
-- P1C.07 aligned with §6 — `@prontiq/web` / `packages/web/` (was `@prontiq/dashboard`).
-- §5.9 renamed to "Dashboard & Account Security" and rewritten to describe Clerk `<UserProfile />` + custom tabs, not a separate dashboard app.
-- §3.2 Stack Decision Table "Dashboard" row renamed "Account page" to match v2.2 architecture.
-- SST version references in ARCHITECTURE.MD updated v3 → v4 across 6 locations (matches live `sst.config.ts`).
-- CHANGELOG (this file) restructured to properly separate Added / Changed / Removed for v2.2 migration.
-- Postcode lookup default page size: 50 → 10 (max 50)
-- Suburb lookup default page size: 20 → 10 (max 20)
-
-### Removed
-
-- **Unkey dependency.** API keys are now DynamoDB-native (SHA-256 hash, ~80 LOC). See `docs/decisions/001-remove-unkey.md`. Code removal of `packages/webhooks/src/unkey.ts`, the `unkeyWebhook` export, the `lastSyncedFromUnkey` field on `ApiKeyRecord`, and the `UNKEY_*` env vars completed in PR #68 (`chore(webhooks): remove Unkey code`).
-- Reconciliation Lambda (15-min Unkey↔DynamoDB sync) — no longer needed; hot-path verification is direct DynamoDB lookup.
-- Legacy v2.1 error-code names (`RATE_LIMIT_EXCEEDED`, `INVALID_PARAMETERS`, `NOT_FOUND`) replaced by v2.2 taxonomy in §9.
-- Stray `dependabot_all.json` (added to `.gitignore`)
-
-### Fixed
-
-- Autocomplete ranking: prefix-matching street types (CRESCENT) no longer ranked equally with non-matching types (ROAD/STREET) when user types a prefix
-- ARCHITECTURE.MD §5.5.1 billing-registry event table no longer contradicts §5.7.3 webhook flow on DOWNGRADE behaviour (paid→paid plan change keeps hash in registry; only paid→free/CANCEL deletes).
-- Past-due billing email copy now comes from shared grace-period constants (`14` days total from first failed renewal, `7` days remaining once the subscription is already `past_due`) instead of a hardcoded string in `stripe-billing.ts`.
-- Re-entering paid billing no longer clears retired-billing discovery prematurely. Hashes can now exist in both `REGISTRY#active-keys` and `REGISTRY#retired-billing-keys` until the billing cron confirms historical current/previous-month deltas across the redirect chain are fully drained, preventing revoked or predecessor-only debt from becoming undiscoverable.
-
-## 2026-04-13
-
-### Added
-
-- `api.prontiq.dev` custom domain (P1F.01) — ACM certificate via Vercel DNS, SST gated to prod stage
-- Speakeasy TypeScript SDK pipeline (P1D.04) — auto-generates `@prontiq/sdk` PR on OpenAPI spec change
-- Mintlify docs site (P1D.01) at `docs.prontiq.dev` — Luma theme, OpenAPI playground, `/llms.txt`
-- OpenAPI response schemas fully describe G-NAF document shape (geocode, location, boundaries, electorates)
-- CI spec-drift gate: blocks merges when public or private OpenAPI specs are stale vs Zod schemas
-- `pnpm generate:openapi` script to regenerate spec from Zod
-
-### Changed
-
-- Validate response `confidence: 0` → `confidence: "none"` (clean string enum for SDK generation)
-- ECR repo, ECS task family, log group: stage-qualified to prevent cross-stack ownership
-- Custom domain only configured on prod stage
-
-## 2026-04-10 and earlier
-
-- See `git log` for the platform bootstrap commits
-
-<!-- Template generated by ariscan --fix. -->
+* **p1b05:** move resolvePrimaryEmail to @prontiq/control-plane ([#100](https://github.com/jbejenar/prontiq-python/issues/100)) ([ad734e3](https://github.com/jbejenar/prontiq-python/commit/ad734e316738fc49b10d2cafdc0e19a16ee86508))

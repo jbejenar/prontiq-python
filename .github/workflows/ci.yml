@@ -1,435 +1,95 @@
 name: CI
-
 on:
   push:
-    branches: [main]
+    branches:
+      - '**'
+      - '!integrated/**'
+      - '!stl-preview-head/**'
+      - '!stl-preview-base/**'
+      - '!generated'
+      - '!codegen/**'
+      - 'codegen/stl/**'
   pull_request:
-    branches: [main]
-
-permissions:
-  contents: read
+    branches-ignore:
+      - 'stl-preview-head/**'
+      - 'stl-preview-base/**'
 
 jobs:
-  check:
-    runs-on: ubuntu-latest
-    env:
-      NEXT_PUBLIC_API_URL: https://api.prontiq.dev
+  lint:
+    timeout-minutes: 10
+    name: lint
+    runs-on: ${{ github.repository == 'stainless-sdks/prontiq-python' && 'depot-ubuntu-24.04' || 'ubuntu-latest' }}
+    if: (github.event_name == 'push' || github.event.pull_request.head.repo.fork) && (github.event_name != 'push' || github.event.head_commit.message != 'codegen metadata')
     steps:
       - uses: actions/checkout@v6
 
-      - uses: pnpm/action-setup@v6
-
-      - uses: actions/setup-node@v6
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
         with:
-          node-version-file: ".nvmrc"
-          cache: "pnpm"
+          version: '0.10.2'
 
-      - run: pnpm install --frozen-lockfile
+      - name: Install dependencies
+        run: uv sync --all-extras
 
-      - run: pnpm lint
+      - name: Run lints
+        run: ./scripts/lint
 
-      - run: pnpm typecheck
-
-      - run: pnpm build
-
-      - name: Verify OpenAPI spec is up to date
-        run: |
-          node scripts/generate-openapi.mjs
-          if ! git diff --exit-code packages/docs/openapi.json packages/api/openapi.private.json; then
-            echo "::error::OpenAPI specs are stale. Run 'pnpm generate:openapi' and commit."
-            exit 1
-          fi
-
-      - run: pnpm test
-
-  integration-test:
-    needs: check
-    runs-on: ubuntu-latest
-    env:
-      NEXT_PUBLIC_API_URL: https://api.prontiq.dev
-    services:
-      opensearch:
-        image: opensearchproject/opensearch:2.19.0
-        env:
-          discovery.type: single-node
-          DISABLE_SECURITY_PLUGIN: true
-          OPENSEARCH_INITIAL_ADMIN_PASSWORD: "NotSecure_Integration_Test_Password_123!"
-        ports:
-          - 9200:9200
-        options: >-
-          --health-cmd "curl -f http://localhost:9200/_cluster/health || exit 1"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 20
-      # DynamoDB Local for the REDIRECT GSI smoke test (P1B.04 DoD).
-      # `amazon/dynamodb-local` has no curl/wget baked in, so no --health-cmd
-      # — the test step polls readiness itself before running node --test.
-      dynamodb:
-        image: amazon/dynamodb-local:2.5.2
-        ports:
-          - 8000:8000
-    steps:
-      - uses: actions/checkout@v6
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v6
-        with:
-          node-version-file: ".nvmrc"
-          cache: "pnpm"
-      - run: pnpm install --frozen-lockfile
-      - name: Wait for OpenSearch
-        run: |
-          for i in {1..30}; do
-            if curl -sf http://localhost:9200/_cluster/health; then
-              echo "OpenSearch ready"
-              exit 0
-            fi
-            sleep 2
-          done
-          echo "OpenSearch never became ready"
-          exit 1
-      - name: Wait for DynamoDB Local
-        run: |
-          for i in {1..30}; do
-            # DDB Local responds 400 to a bare GET /, which proves it's up.
-            if curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/ | grep -q "^400$"; then
-              echo "DynamoDB Local ready"
-              exit 0
-            fi
-            sleep 2
-          done
-          echo "DynamoDB Local never became ready"
-          exit 1
-      - name: Run integration tests
-        env:
-          OPENSEARCH_TEST_URL: http://localhost:9200
-          DYNAMODB_TEST_URL: http://localhost:8000
-        # The scripts build workspace dependencies via `pnpm -w build --filter`
-        # (Turbo handles topological ordering for project references).
-        run: |
-          pnpm --filter @prontiq/api test:integration
-          pnpm --filter @prontiq/control-plane test:integration
-          pnpm --filter @prontiq/webhooks test:integration
-
-  deploy-dev:
-    needs: [check, integration-test]
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    runs-on: ubuntu-latest
-    environment: dev
-    env:
-      NEXT_PUBLIC_API_URL: https://api.prontiq.dev
+  build:
+    if: (github.event_name == 'push' || github.event.pull_request.head.repo.fork) && (github.event_name != 'push' || github.event.head_commit.message != 'codegen metadata')
+    timeout-minutes: 10
+    name: build
     permissions:
-      id-token: write
       contents: read
-    # `api_url` is the deployed API Gateway URL extracted from
-    # `.sst/outputs.json` after `pnpm deploy:dev` completes. The
-    # smoke-dev job consumes this so smoke ALWAYS targets the URL
-    # this run just deployed — no hardcoded host that can drift
-    # when (e.g.) a custom domain is later added or the API stack
-    # is rebuilt with a new gateway id.
-    outputs:
-      api_url: ${{ steps.api-url.outputs.api_url }}
-    # Serialize deploy-dev runs at the GHA layer so two concurrent
-    # pushes can't race the unlock-then-deploy sequence below.
-    # cancel-in-progress: false → second push QUEUES, never cancels
-    # an in-flight deploy.
-    concurrency:
-      group: sst-deploy-dev
-      cancel-in-progress: false
+      id-token: write
+    runs-on: ${{ github.repository == 'stainless-sdks/prontiq-python' && 'depot-ubuntu-24.04' || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v6
 
-      - uses: pnpm/action-setup@v6
-
-      - uses: actions/setup-node@v6
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
         with:
-          node-version-file: ".nvmrc"
-          cache: "pnpm"
+          version: '0.10.2'
 
-      - run: pnpm install --frozen-lockfile
+      - name: Install dependencies
+        run: uv sync --all-extras
 
-      - name: Validate required dev deploy config
-        env:
-          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
-          CLERK_WEBHOOK_SECRET: ${{ secrets.CLERK_WEBHOOK_SECRET }}
-          HONEYCOMB_API_KEY: ${{ secrets.HONEYCOMB_API_KEY }}
-          LAGO_API_KEY: ${{ secrets.LAGO_API_KEY }}
-          LAGO_API_URL: ${{ vars.LAGO_API_URL }}
-          LAGO_PAYMENT_PROVIDER_CODE: ${{ vars.LAGO_PAYMENT_PROVIDER_CODE }}
-          LAGO_RECONCILIATION_ENABLED: ${{ vars.LAGO_RECONCILIATION_ENABLED }}
-          LAGO_WEBHOOK_HMAC_SECRET: ${{ secrets.LAGO_WEBHOOK_HMAC_SECRET }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          missing=()
-          required=(CLERK_WEBHOOK_SECRET CLERK_SECRET_KEY HONEYCOMB_API_KEY LAGO_API_KEY LAGO_API_URL LAGO_PAYMENT_PROVIDER_CODE LAGO_WEBHOOK_HMAC_SECRET)
-          for name in "${required[@]}"; do
-            value="${!name:-}"
-            trimmed="${value#"${value%%[![:space:]]*}"}"
-            trimmed="${trimmed%"${trimmed##*[![:space:]]}"}"
-            if [[ -z "$trimmed" ]]; then
-              missing+=("$name")
-            fi
-          done
-          if (( ${#missing[@]} > 0 )); then
-            echo "::error::Missing or whitespace-only GitHub Environment deploy config for stage dev: ${missing[*]}"
-            echo "::error::Set secrets/vars at Settings → Environments → dev, then re-run CI."
-            exit 1
-          fi
+      - name: Run build
+        run: uv build
 
-      # Build workspace packages BEFORE deploy. SST's esbuild bundler
-      # resolves workspace deps via each package's `main` entry, which
-      # for our shared packages (@prontiq/shared, etc.) points at
-      # `./dist/index.js`. Without `pnpm build`, those `dist/` outputs
-      # don't exist on a fresh runner and esbuild fails with:
-      #   Could not resolve "@prontiq/shared" packages/ingestion/...
-      # That error happens deep inside Pulumi's program runner, gets
-      # surfaced only via .sst/log/pulumi.log, and looks identical to
-      # a generic "deploy hung" from the CI step's perspective.
-      # deploy-prod.yml has had this step from the start; deploy-dev
-      # was missing it.
-      - run: pnpm build
-
-      - uses: aws-actions/configure-aws-credentials@v6
+      - name: Get GitHub OIDC Token
+        if: |-
+          github.repository == 'stainless-sdks/prontiq-python' &&
+          !startsWith(github.ref, 'refs/heads/stl/')
+        id: github-oidc
+        uses: actions/github-script@v8
         with:
-          role-to-assume: arn:aws:iam::493712557159:role/prontiq-platform-deploy-role
-          aws-region: ap-southeast-2
+          script: core.setOutput('github_token', await core.getIDToken());
 
-      # Fail fast if any dev SST lock is held.
-      #
-      # Earlier iteration (in this same PR's history) tried an age-based
-      # auto-unlock — "if lock > 11 minutes old it's stale". Codex
-      # review correctly pointed out the flaw: the 10-minute timeout
-      # only bounds OUR CI deploy. An operator running `sst deploy`
-      # locally, or a future workflow, or any other automation against
-      # the same SST state backend, can legitimately hold the lock
-      # longer than 11 minutes. Auto-clearing those by age would
-      # corrupt their in-flight state.
-      #
-      # SST's lock file is just `{created, updateID, runID, command,
-      # ignore}` — no owner metadata we can use to identify "is this
-      # lock mine or someone else's". Without that, no automatic
-      # heuristic is provably safe.
-      #
-      # So: dev now matches prod. Fail fast if a lock exists; surface
-      # diagnostics; require operator action via `recover-lock.yml`
-      # (with the i-confirm-no-active-deploy gate) for recovery.
-      #
-      # Trade-off: when a CI run leaves a stale lock (timeout-killed
-      # deploy), the next push fails until an operator runs the
-      # recover-lock workflow. Cost: a manual button-click. Benefit:
-      # zero risk of clobbering an external deploy.
-      - name: Fail fast if dev SST lock is held
+      - name: Upload tarball
+        if: |-
+          github.repository == 'stainless-sdks/prontiq-python' &&
+          !startsWith(github.ref, 'refs/heads/stl/')
         env:
-          STATE_BUCKET: sst-state-vbnmvbvmbzkk
-          LOCK_KEY: lock/prontiq/dev.json
-        run: |
-          set -euo pipefail
-          if aws s3api head-object \
-            --bucket "$STATE_BUCKET" \
-            --key "$LOCK_KEY" \
-            --region ap-southeast-2 >/dev/null 2>&1
-          then
-            LOCK_JSON=$(aws s3 cp "s3://$STATE_BUCKET/$LOCK_KEY" - --region ap-southeast-2)
-            echo "::error::Dev SST lock is held. Lock metadata: $LOCK_JSON"
-            echo "::error::To recover: confirm no active dev deploy is running anywhere (CI, local, automation),"
-            echo "::error::then run the 'Recover stale SST lock' workflow with stage=dev."
-            exit 1
-          fi
-          echo "No dev lock held — safe to deploy."
+          URL: https://pkg.stainless.com/s
+          AUTH: ${{ steps.github-oidc.outputs.github_token }}
+          SHA: ${{ github.sha }}
+        run: ./scripts/utils/upload-artifact.sh
 
-      # GitHub's `ubuntu-latest` image has Pulumi pre-installed at
-      # /usr/local/bin/pulumi-language-nodejs. As of Pulumi v3.214.0
-      # (Jan 2026), that binary's `-root` flag was removed:
-      #   https://github.com/pulumi/pulumi/pull/21065
-      # SST (all 3.x and 4.x versions we tested) still passes `-root`.
-      # When SST's child-process invocation finds the system binary
-      # first on PATH, it silently hangs immediately after AWS provider
-      # init — matches our exact symptom (no output after
-      # "Retrieved caller identity from STS", killed by timeout).
-      # Upstream SST issue (still open as of this PR):
-      #   https://github.com/sst/sst/issues/6314
-      # Removing the system binary forces SST to use its OWN bundled
-      # Pulumi (downloaded to ~/.config/sst/bin/ on Linux), which is
-      # a compatible version.
-      - name: Workaround SST/Pulumi version conflict (sst#6314)
-        run: sudo rm -f /usr/local/bin/pulumi-language-nodejs
-
-      # Deploy first — creates ECR repo and all other infrastructure.
-      #
-      # Retained from earlier diagnostic iterations:
-      #   AWS_EC2_METADATA_DISABLED=true
-      #     Bypasses IMDS credential lookup (169.254.169.254 link-local
-      #     is unreachable on GH runners). No cost when env creds exist.
-      #   AWS_SKIP_CREDENTIALS_VALIDATION=true
-      #     Skips the AWS provider's startup STS validation. No cost —
-      #     actual role auth is verified at configure-aws-credentials
-      #     above.
-      #   timeout 10m wrapper
-      #     Belt-and-braces — if the Pulumi fix above is wrong, force
-      #     exit instead of running the runner for hours.
-      - name: Deploy to dev
-        shell: bash
-        env:
-          AWS_EC2_METADATA_DISABLED: "true"
-          AWS_SKIP_CREDENTIALS_VALIDATION: "true"
-          BILLING_EVENTS_ENABLED: ${{ vars.BILLING_EVENTS_ENABLED }}
-          COUNTER_PERIOD_SOURCE: ${{ vars.COUNTER_PERIOD_SOURCE }}
-          HONEYCOMB_ENABLED: ${{ vars.HONEYCOMB_ENABLED }}
-          CLERK_ADMIN_ROLES: ${{ vars.CLERK_ADMIN_ROLES }}
-          CLERK_ISSUER: ${{ vars.CLERK_ISSUER }}
-          CLERK_JWKS_URL: ${{ vars.CLERK_JWKS_URL }}
-          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
-          CLERK_WEBHOOK_SECRET: ${{ secrets.CLERK_WEBHOOK_SECRET }}
-          HONEYCOMB_API_KEY: ${{ secrets.HONEYCOMB_API_KEY }}
-          LAGO_API_KEY: ${{ secrets.LAGO_API_KEY }}
-          LAGO_API_URL: ${{ vars.LAGO_API_URL }}
-          LAGO_PAYMENT_PROVIDER_CODE: ${{ vars.LAGO_PAYMENT_PROVIDER_CODE }}
-          LAGO_RECONCILIATION_ENABLED: ${{ vars.LAGO_RECONCILIATION_ENABLED }}
-          LAGO_WEBHOOK_HMAC_SECRET: ${{ secrets.LAGO_WEBHOOK_HMAC_SECRET }}
-          LAGO_WEBHOOK_RECONCILIATION_ENABLED: ${{ vars.LAGO_WEBHOOK_RECONCILIATION_ENABLED }}
-          PRONTIQ_ACCOUNT_URL: ${{ vars.PRONTIQ_ACCOUNT_URL }}
-          PRONTIQ_BILLING_CATALOG_ENV: ${{ vars.PRONTIQ_BILLING_CATALOG_ENV }}
-          PRONTIQ_BILLING_PLAN_CHANGE_ALLOWED_ORG_IDS: ${{ vars.PRONTIQ_BILLING_PLAN_CHANGE_ALLOWED_ORG_IDS }}
-          PRONTIQ_BILLING_PLAN_CHANGES_ENABLED: ${{ vars.PRONTIQ_BILLING_PLAN_CHANGES_ENABLED }}
-          PRONTIQ_BILLING_URL: ${{ vars.PRONTIQ_BILLING_URL }}
-          PRONTIQ_DOCS_URL: ${{ vars.PRONTIQ_DOCS_URL }}
-          # Some SST hangs trace back to $USER being unset (see sst#5539).
-          # GH runners set USER but defensively pin it.
-          USER: "runner"
-          WELCOME_EMAIL_FROM: ${{ vars.WELCOME_EMAIL_FROM }}
-        run: |
-          set -x
-          timeout --signal=SIGTERM --kill-after=30s 10m pnpm deploy:dev || EXIT=$?
-          echo "deploy exited with code: ${EXIT:-0}"
-          exit "${EXIT:-0}"
-
-      # On any deploy outcome (success OR failure), surface the hidden
-      # SST/Pulumi log file. This is the canonical "what actually went wrong"
-      # data; SST writes it to .sst/log/pulumi.log but never echoes it to
-      # stdout in CI mode. Multiple SST issues recommend grabbing this when
-      # debugging (see sst#5539, sst#6314 thread).
-      - name: Dump SST/Pulumi log on completion
-        if: always()
-        shell: bash
-        run: |
-          echo "=========================================="
-          echo "  .sst/log/pulumi.log (last 500 lines)"
-          echo "=========================================="
-          if [ -f .sst/log/pulumi.log ]; then
-            tail -n 500 .sst/log/pulumi.log
-          else
-            echo "(file does not exist — check if .sst/log/ has anything)"
-            ls -la .sst/log/ 2>&1 || echo "(.sst/log/ also missing)"
-            ls -la .sst/ 2>&1 || echo "(.sst/ also missing)"
-          fi
-          echo "=========================================="
-
-      - name: Upload SST log as artifact
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: sst-log-deploy-dev
-          path: .sst/log/
-          if-no-files-found: warn
-          retention-days: 7
-
-      # Extract the deployed API URL from SST outputs and expose it
-      # as a job output for downstream smoke. Fails the run if the
-      # output is missing or unparseable — better to fail at deploy
-      # than have smoke-dev test a hostname that doesn't exist.
-      - name: Extract deployed API URL
-        id: api-url
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [[ ! -f .sst/outputs.json ]]; then
-            echo "::error::.sst/outputs.json missing after deploy — cannot pass api URL to smoke."
-            exit 1
-          fi
-          API_URL=$(jq -r '.api // empty' .sst/outputs.json)
-          if [[ -z "$API_URL" ]]; then
-            echo "::error::SST output 'api' is missing or empty in .sst/outputs.json."
-            cat .sst/outputs.json
-            exit 1
-          fi
-          # Strip any trailing slash so smoke scripts can do
-          # `${PRONTIQ_API}/v1/...` without producing a double-slash.
-          API_URL="${API_URL%/}"
-          echo "api_url=$API_URL" >> "$GITHUB_OUTPUT"
-          echo "Resolved deployed API URL: $API_URL"
-
-      # Build and push Fargate image AFTER deploy so ECR repo exists
-      - name: Login to Amazon ECR
-        uses: aws-actions/amazon-ecr-login@v2
-
-      - name: Build and push Fargate bulk ingest image
-        run: |
-          ECR_REPO=$(aws ecr describe-repositories --repository-names prontiq-ingest-bulk-dev --query 'repositories[0].repositoryUri' --output text)
-          docker build --platform linux/amd64 -t "$ECR_REPO:${{ github.sha }}" -t "$ECR_REPO:latest" -f packages/ingestion/Dockerfile .
-          docker push "$ECR_REPO:${{ github.sha }}"
-          docker push "$ECR_REPO:latest"
-
-  # Post-deploy smoke against the live dev API. Runs after deploy-dev
-  # completes so smoke failures surface as a red CI check on the merge
-  # commit (no auto-rollback — SST has already deployed; the signal is
-  # the failed run).
-  #
-  # PRONTIQ_API is the URL deploy-dev exposed as a job output, sourced
-  # from .sst/outputs.json#api on the deploy runner. This means smoke
-  # always targets exactly what was deployed; if the dev stack later
-  # gets a custom domain (or the API Gateway is recreated), smoke
-  # follows automatically without workflow edits.
-  #
-  # PRONTIQ_KEY lives in the dev GitHub Environment as a Secret and
-  # belongs to a dedicated labelled smoke org/key. It is used only
-  # by the public Address API smoke; Clerk-authenticated account
-  # smokes keep their existing dev-only session flow.
-  smoke-dev:
-    needs: deploy-dev
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    runs-on: ubuntu-latest
-    environment: dev
-    env:
-      PRONTIQ_API: ${{ needs.deploy-dev.outputs.api_url }}
-      PRONTIQ_KEY: ${{ secrets.PRONTIQ_KEY }}
-      CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
-      CLERK_TEST_USER_ID: ${{ vars.CLERK_TEST_USER_ID }}
+  test:
+    timeout-minutes: 10
+    name: test
+    runs-on: ${{ github.repository == 'stainless-sdks/prontiq-python' && 'depot-ubuntu-24.04' || 'ubuntu-latest' }}
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork
     steps:
       - uses: actions/checkout@v6
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v6
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
         with:
-          node-version-file: ".nvmrc"
-          cache: "pnpm"
-      - name: Validate resolved API URL
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [[ -z "${PRONTIQ_API:-}" ]]; then
-            echo "::error::PRONTIQ_API was not propagated from deploy-dev. Check the deploy-dev outputs.api_url step."
-            exit 1
-          fi
-          if [[ -z "${PRONTIQ_KEY:-}" ]]; then
-            echo "::error::PRONTIQ_KEY is missing from the dev GitHub Environment secrets."
-            exit 1
-          fi
-          # Sanity: dev URL must NOT be the prod custom domain.
-          if [[ "$PRONTIQ_API" == "https://api.prontiq.dev" ]]; then
-            echo "::error::Refusing to run dev smoke against prod URL. Resolved PRONTIQ_API=$PRONTIQ_API"
-            exit 1
-          fi
-          echo "Smoking against: $PRONTIQ_API"
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm build
-      - name: Smoke — address API
-        run: pnpm --filter @prontiq/api smoke
-      - name: Smoke — account setup
-        run: pnpm --filter @prontiq/api smoke:account-setup
-      - name: Smoke — keys list/create
-        run: pnpm --filter @prontiq/api smoke:keys
-      - name: Smoke — keys step-up gate
-        run: pnpm --filter @prontiq/api smoke:keys-stepup
-      - name: Smoke — keys audit
-        run: pnpm --filter @prontiq/api smoke:keys-audit
-      - name: Smoke — account usage
-        run: pnpm --filter @prontiq/api smoke:account-usage
+          version: '0.10.2'
+
+      - name: Bootstrap
+        run: ./scripts/bootstrap
+
+      - name: Run tests
+        run: ./scripts/test

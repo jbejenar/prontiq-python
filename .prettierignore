@@ -1,7 +1,0 @@
-dist/
-node_modules/
-.next/
-.sst/
-.turbo/
-pnpm-lock.yaml
-.claude-loop/
