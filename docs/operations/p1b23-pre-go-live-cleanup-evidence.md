@@ -77,6 +77,11 @@ Development key dispositions:
 
 All other listed dev smoke keys were already inactive before P1B.23 closeout.
 
+Console playground demo execution uses separate hard-capped demo keys recorded
+in `docs/operations/p1c06-console-playground-demo-evidence.md`. The retained
+`org_landing_demo_*` keys above are historical landing-page demo keys and must
+not be reused for console playground execution.
+
 ## Lago Customer And Subscription Evidence
 
 Production active Clerk-org subscriptions:
