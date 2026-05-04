@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState, startTransition } from "react";
-import { Loader2, Send } from "lucide-react";
+import { startTransition, useEffect, useRef, useState } from "react";
+import { KeyRound, X } from "lucide-react";
 
 import type {
   PlaygroundDemoStatus,
@@ -10,35 +10,39 @@ import type {
   PlaygroundRequestConfig,
   PlaygroundResponse,
 } from "../types.js";
+import { buildCurlCommand } from "../lib/curl.js";
 import { executeAccountRequest, executeDemoRequest, PlaygroundRequestError } from "../lib/request.js";
 import { recordPlaygroundTelemetry } from "../lib/telemetry.js";
 import { Button } from "../../../components/ui/button.js";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../../components/ui/card.js";
-import { CurlPreviewPanel } from "./CurlPreviewPanel.js";
+import { Input } from "../../../components/ui/input.js";
 import { OperationInputForm, makeInitialRequestConfig } from "./OperationInputForm.js";
-import { ResponseViewer } from "./ResponseViewer.js";
-import { ScalarAdvancedModal } from "./ScalarAdvancedModal.js";
+import { PlaygroundDarkPanel } from "./PlaygroundDarkPanel.js";
 
 export function PlaygroundExecutionPanel({
   apiKey,
   baseUrl,
+  clearApiKey,
   demoStatus,
   isDemoStatusLoading,
   mode,
   operation,
+  updateApiKey,
 }: {
   apiKey: string;
   baseUrl: string;
+  clearApiKey: () => void;
   demoStatus: PlaygroundDemoStatus | null;
   isDemoStatusLoading: boolean;
   mode: PlaygroundMode;
   operation: PlaygroundOperation;
+  updateApiKey: (value: string) => void;
 }) {
   const [config, setConfig] = useState<PlaygroundRequestConfig>(() =>
     makeInitialRequestConfig(operation),
   );
   const [error, setError] = useState<string | null>(null);
   const [isSending, setIsSending] = useState(false);
+  const [requestDisplayId, setRequestDisplayId] = useState("000000");
   const [response, setResponse] = useState<PlaygroundResponse | null>(null);
   const requestIdRef = useRef(0);
   const abortRef = useRef<AbortController | null>(null);
@@ -72,10 +76,17 @@ export function PlaygroundExecutionPanel({
     demoStatus?.execution === "reference_only"
       ? demoStatus.message
       : "Demo execution availability could not be confirmed for this deployment.";
-  const sendDisabled = isSending || demoChecking || demoReferenceOnly;
-  const sendLabel = demoChecking
-    ? "Checking demo availability..."
+  const runAriaLabel = demoChecking
+    ? "Checking demo availability"
     : `Send ${mode === "demo" ? "demo" : "account"} request`;
+  const command = buildCurlCommand({
+    apiKey,
+    baseUrl,
+    config,
+    includeRealKey: false,
+    mode,
+    operation,
+  });
 
   async function sendRequest() {
     if (demoChecking) return;
@@ -92,8 +103,10 @@ export function PlaygroundExecutionPanel({
     abortRef.current?.abort();
     const abortController = new AbortController();
     abortRef.current = abortController;
+    setRequestDisplayId(makeRequestDisplayId());
     setIsSending(true);
     setError(null);
+    setResponse(null);
     try {
       const nextResponse =
         mode === "demo"
@@ -143,43 +156,85 @@ export function PlaygroundExecutionPanel({
   }
 
   return (
-    <div className="space-y-4">
-      <Card className="bg-card/80">
-        <CardHeader>
-          <CardTitle>{operation.summary}</CardTitle>
-          <CardDescription className="font-mono text-xs">
-            {operation.method} {operation.path}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-5">
-          <OperationInputForm config={config} operation={operation} onConfigChange={setConfig} />
-          {demoReferenceOnly ? (
-            <div className="rounded-lg border border-warn/30 bg-warn/10 p-3 text-sm text-muted-foreground">
-              {demoReferenceOnlyMessage} Curl and endpoint docs remain available; use Your
-              account mode with an API key to execute requests.
-            </div>
-          ) : null}
-          {error ? (
-            <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-              {error}
-            </div>
-          ) : null}
-          <Button disabled={sendDisabled} type="button" onClick={() => void sendRequest()}>
-            {isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-            {sendLabel}
-          </Button>
-        </CardContent>
-      </Card>
+    <div className="flex min-h-0 flex-1 flex-col bg-background">
+      <section className="border-b border-border px-4 pb-3 pt-3.5">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="rounded-[3px] bg-primary/10 px-[7px] py-0.5 font-mono text-[10px] font-medium text-primary">
+            {operation.method}
+          </span>
+          <div className="min-w-0 truncate font-mono text-[13px] font-medium text-foreground">
+            <HighlightedPath path={operation.path} />
+          </div>
+        </div>
+        <p className="mt-1.5 truncate text-[11px] text-muted-foreground">{operation.summary}</p>
+      </section>
 
-      <CurlPreviewPanel
-        apiKey={apiKey}
-        baseUrl={baseUrl}
-        config={config}
+      <section className="border-b border-border px-4 py-3">
+        <div className="space-y-4">
+          {mode === "account" ? (
+            <div className="rounded-md border border-border bg-surface/40 p-3">
+              <div className="mb-2 flex items-center gap-2 text-sm font-medium text-foreground">
+                <KeyRound className="h-4 w-4 text-primary" />
+                API key
+              </div>
+              <div className="flex gap-2">
+                <Input
+                  autoComplete="off"
+                  className="h-7 rounded-[5px] px-2 font-mono text-[12px]"
+                  placeholder="pq_live_..."
+                  type="password"
+                  value={apiKey}
+                  onChange={(event) => updateApiKey(event.target.value)}
+                />
+                <Button size="sm" type="button" variant="outline" onClick={clearApiKey}>
+                  <X className="h-4 w-4" />
+                  Clear
+                </Button>
+              </div>
+              <p className="mt-2 text-xs text-muted-foreground">
+                Stored in memory only. It clears on sign-out, org switch, or manual clear.
+              </p>
+            </div>
+          ) : null}
+          <OperationInputForm config={config} operation={operation} onConfigChange={setConfig} />
+        </div>
+      </section>
+
+      <PlaygroundDarkPanel
+        command={command}
+        demoUnavailableMessage={demoReferenceOnly && !demoChecking ? demoReferenceOnlyMessage : undefined}
+        error={error}
+        isSending={isSending || demoChecking}
         mode={mode}
-        operation={operation}
+        requestDisplayId={requestDisplayId}
+        response={response}
+        runAriaLabel={runAriaLabel}
+        onRun={() => void sendRequest()}
       />
-      <ResponseViewer response={response} />
-      <ScalarAdvancedModal baseUrl={baseUrl} operation={operation} />
     </div>
   );
+}
+
+function HighlightedPath({ path }: { path: string }) {
+  const parts = path.split(/(\{[^}]+\})/g);
+  return (
+    <>
+      {parts.map((part, index) =>
+        part.startsWith("{") && part.endsWith("}") ? (
+          <span
+            className="mx-0.5 rounded-[3px] bg-warn/10 px-1 text-warn"
+            key={`${part}-${index}`}
+          >
+            {part}
+          </span>
+        ) : (
+          <span key={`${part}-${index}`}>{part}</span>
+        ),
+      )}
+    </>
+  );
+}
+
+function makeRequestDisplayId() {
+  return Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, "0");
 }

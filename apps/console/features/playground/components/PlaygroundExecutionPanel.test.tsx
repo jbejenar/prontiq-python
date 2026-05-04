@@ -25,12 +25,6 @@ vi.mock("../lib/request.js", async (importOriginal) => {
 
 vi.mock("../lib/telemetry.js", () => telemetryMocks);
 
-vi.mock("./ScalarAdvancedModal.js", () => ({
-  ScalarAdvancedModal: ({ operation }: { operation: PlaygroundOperation }) => (
-    <div>Scalar {operation.operationId}</div>
-  ),
-}));
-
 import { PlaygroundExecutionPanel } from "./PlaygroundExecutionPanel.js";
 
 beforeEach(() => {
@@ -168,6 +162,19 @@ test("keeps account execution independent of demo reference-only status", async 
   expect(requestMocks.executeAccountRequest).toHaveBeenCalledTimes(1);
 });
 
+test("does not render the raw account key in the redesigned curl panel", () => {
+  render(
+    <PlaygroundExecutionPanelHost
+      apiKey="pq_live_secret_value"
+      mode="account"
+      operation={operation("autocomplete", "Autocomplete")}
+    />,
+  );
+
+  expect(screen.getByText(/X-Api-Key: \{\{YOUR_API_KEY\}\}/i)).toBeInTheDocument();
+  expect(screen.queryByText(/pq_live_secret_value/i)).not.toBeInTheDocument();
+});
+
 function PlaygroundExecutionPanelHost({
   apiKey = "",
   demoStatus = { execution: "enabled" },
@@ -185,10 +192,12 @@ function PlaygroundExecutionPanelHost({
     <PlaygroundExecutionPanel
       apiKey={apiKey}
       baseUrl="https://api.prontiq.dev"
+      clearApiKey={() => undefined}
       demoStatus={demoStatus}
       isDemoStatusLoading={isDemoStatusLoading}
       mode={mode}
       operation={selectedOperation}
+      updateApiKey={() => undefined}
     />
   );
 }

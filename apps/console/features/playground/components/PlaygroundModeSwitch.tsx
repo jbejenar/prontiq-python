@@ -1,7 +1,7 @@
 "use client";
 
 import type { PlaygroundMode } from "../types.js";
-import { Button } from "../../../components/ui/button.js";
+import { cn } from "../../../lib/utils.js";
 
 export function PlaygroundModeSwitch({
   mode,
@@ -11,23 +11,27 @@ export function PlaygroundModeSwitch({
   onModeChange: (mode: PlaygroundMode) => void;
 }) {
   return (
-    <div className="inline-flex rounded-lg border border-border bg-card/80 p-1">
-      <Button
-        size="sm"
+    <div className="inline-flex rounded-[6px] border border-border bg-surface p-0.5">
+      <button
+        className={cn(
+          "h-7 rounded-[5px] px-3 text-sm text-muted-foreground transition active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          mode === "demo" && "border border-border bg-background font-medium text-foreground shadow-sm",
+        )}
         type="button"
-        variant={mode === "demo" ? "default" : "ghost"}
         onClick={() => onModeChange("demo")}
       >
-        Demo data
-      </Button>
-      <Button
-        size="sm"
+        Demo
+      </button>
+      <button
+        className={cn(
+          "h-7 rounded-[5px] px-3 text-sm text-muted-foreground transition active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          mode === "account" && "border border-border bg-background font-medium text-foreground shadow-sm",
+        )}
         type="button"
-        variant={mode === "account" ? "default" : "ghost"}
         onClick={() => onModeChange("account")}
       >
         Your account
-      </Button>
+      </button>
     </div>
   );
 }
