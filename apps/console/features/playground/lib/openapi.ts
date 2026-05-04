@@ -1,8 +1,15 @@
 import type { OpenApiParameter, PlaygroundOperation } from "../types.js";
+import { findJsonContentEntry } from "./json-media.js";
 
 type JsonObject = Record<string, unknown>;
 
 const HTTP_METHODS = new Set(["get", "post", "put", "patch", "delete"]);
+const responseSchemaRegistry = new Map<string, ResponseSchemaRegistryEntry>();
+
+export interface ResponseSchemaRegistryEntry {
+  componentsSchemas: Record<string, unknown>;
+  schemasByStatus: Record<string, unknown>;
+}
 
 function isObject(value: unknown): value is JsonObject {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -40,7 +47,8 @@ function parseParameter(value: unknown): OpenApiParameter | null {
 function findJsonExample(operation: JsonObject) {
   const requestBody = isObject(operation.requestBody) ? operation.requestBody : null;
   const content = requestBody && isObject(requestBody.content) ? requestBody.content : null;
-  const json = content && isObject(content["application/json"]) ? content["application/json"] : null;
+  const jsonEntry = findJsonContentEntry(content);
+  const json = jsonEntry && isObject(jsonEntry.value) ? jsonEntry.value : null;
   if (!json) return undefined;
   if (json.example !== undefined) return json.example;
   const examples = isObject(json.examples) ? Object.values(json.examples) : [];
@@ -53,7 +61,7 @@ function findJsonExample(operation: JsonObject) {
 function hasJsonRequestBody(operation: JsonObject) {
   const requestBody = isObject(operation.requestBody) ? operation.requestBody : null;
   const content = requestBody && isObject(requestBody.content) ? requestBody.content : null;
-  return Boolean(content && isObject(content["application/json"]));
+  return Boolean(findJsonContentEntry(content));
 }
 
 function requiresApiKey(operation: JsonObject, root: JsonObject) {
@@ -62,7 +70,39 @@ function requiresApiKey(operation: JsonObject, root: JsonObject) {
   return security.some((entry) => isObject(entry) && Object.hasOwn(entry, "ApiKeyAuth"));
 }
 
+export function getOperationSchemaCacheKey(operation: Pick<PlaygroundOperation, "method" | "operationId" | "path">) {
+  return operation.operationId || `${operation.method}:${operation.path}`;
+}
+
+function getComponentsSchemas(spec: JsonObject): Record<string, unknown> {
+  const components = isObject(spec.components) ? spec.components : null;
+  const schemas = components && isObject(components.schemas) ? components.schemas : null;
+  return schemas ?? {};
+}
+
+function findJsonResponseSchemas(operation: JsonObject) {
+  const schemasByStatus: Record<string, unknown> = {};
+  const responses = isObject(operation.responses) ? operation.responses : null;
+  if (!responses) return schemasByStatus;
+
+  for (const [status, response] of Object.entries(responses)) {
+    if (!isObject(response)) continue;
+    const content = isObject(response.content) ? response.content : null;
+    const jsonEntry = findJsonContentEntry(content);
+    const json = jsonEntry && isObject(jsonEntry.value) ? jsonEntry.value : null;
+    if (json && json.schema !== undefined) schemasByStatus[status] = json.schema;
+  }
+  return schemasByStatus;
+}
+
+export function getRegisteredResponseSchemas(
+  operation: Pick<PlaygroundOperation, "method" | "operationId" | "path">,
+) {
+  return responseSchemaRegistry.get(getOperationSchemaCacheKey(operation));
+}
+
 export function parsePublicOpenApiOperations(spec: unknown): PlaygroundOperation[] {
+  responseSchemaRegistry.clear();
   if (!isObject(spec) || !isObject(spec.paths)) return [];
 
   const operations: PlaygroundOperation[] = [];
@@ -82,7 +122,7 @@ export function parsePublicOpenApiOperations(spec: unknown): PlaygroundOperation
         .filter((parameter): parameter is OpenApiParameter => parameter !== null);
       const operationId =
         asString(operation.operationId) ?? `${normalizedMethod}_${path.replace(/[^a-zA-Z0-9]+/g, "_")}`;
-      operations.push({
+      const parsedOperation = {
         operationId,
         method: normalizedMethod.toUpperCase(),
         path,
@@ -95,7 +135,12 @@ export function parsePublicOpenApiOperations(spec: unknown): PlaygroundOperation
           ? { requestBodyExample: findJsonExample(operation) }
           : {}),
         requiresApiKey: requiresApiKey(operation, spec),
+      };
+      responseSchemaRegistry.set(getOperationSchemaCacheKey(parsedOperation), {
+        componentsSchemas: getComponentsSchemas(spec),
+        schemasByStatus: findJsonResponseSchemas(operation),
       });
+      operations.push(parsedOperation);
     }
   }
 

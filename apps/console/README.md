@@ -102,6 +102,14 @@ generated from the selected OpenAPI operation and current params/body through a 
 render held raw account keys. Snippet telemetry is allowlisted to language,
 mode, source, and event name only; snippet text is never emitted.
 
+P1C.06e keeps playground documentation strictly spec-driven. Operation
+existence, paths, methods, tags, parameters, descriptions, constraints,
+examples, request shapes, and response-field annotations must come from the
+committed public OpenAPI spec. Do not add endpoint-specific documentation
+overrides in playground components; improve `packages/docs/openapi.json`
+instead, using OpenAPI `x-` extensions only when standard schema fields are not
+enough.
+
 Playground keyboard shortcuts:
 
 - `Cmd/Ctrl+K`: open the playground command palette from playground chrome.

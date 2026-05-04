@@ -13,8 +13,21 @@ const operation: PlaygroundOperation = {
   tag: "Address",
   summary: "Lookup postcode",
   parameters: [
-    { name: "postcode", in: "query", required: true, example: 3000 },
-    { name: "limit", in: "query", required: false, example: 5 },
+    {
+      name: "postcode",
+      in: "query",
+      required: true,
+      description: "Australian 4-digit postcode.",
+      example: 3000,
+      schema: { pattern: "^\\d{4}$", type: "string" },
+    },
+    {
+      name: "limit",
+      in: "query",
+      required: false,
+      example: 5,
+      schema: { default: 5, maximum: 50, minimum: 1, type: "integer" },
+    },
   ],
   hasJsonRequestBody: false,
   requiresApiKey: true,
@@ -35,6 +48,16 @@ test("renders compact parameter fields and updates config", async () => {
   expect(screen.getByText("Query")).toBeInTheDocument();
   expect(screen.getByLabelText("required")).toBeInTheDocument();
   expect(screen.getByDisplayValue("2000")).toBeInTheDocument();
+});
+
+test("shows OpenAPI metadata for parameter names", async () => {
+  render(<OperationInputFormHost />);
+
+  await userEvent.hover(screen.getByText("postcode"));
+
+  expect(await screen.findAllByText("Australian 4-digit postcode.")).not.toHaveLength(0);
+  expect(screen.getAllByText("pattern")).not.toHaveLength(0);
+  expect(screen.getAllByText("^\\d{4}$")).not.toHaveLength(0);
 });
 
 function OperationInputFormHost() {

@@ -1,13 +1,29 @@
 "use client";
 
 import type { OpenApiParameter, PlaygroundOperation, PlaygroundRequestConfig } from "../types.js";
+import { useSchemaMetadata } from "../lib/schema-metadata.js";
 import { Input } from "../../../components/ui/input.js";
+import { SchemaDescriptionTooltip } from "./SchemaDescriptionTooltip.js";
 
 function exampleToString(value: unknown) {
   if (value === undefined || value === null) return "";
   if (typeof value === "string") return value;
   if (typeof value === "number" || typeof value === "boolean") return String(value);
   return JSON.stringify(value);
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function getParameterSchema(parameter: OpenApiParameter) {
+  if (isObject(parameter.schema)) {
+    return {
+      ...parameter.schema,
+      ...(parameter.description ? { description: parameter.description } : {}),
+    };
+  }
+  return parameter.description ? { description: parameter.description } : parameter.schema;
 }
 
 export function makeInitialRequestConfig(operation: PlaygroundOperation): PlaygroundRequestConfig {
@@ -116,7 +132,7 @@ function ParameterSection({
             key={`${parameter.in}-${parameter.name}`}
           >
             <span className="flex items-center gap-1.5 font-mono text-[11px] text-foreground">
-              {parameter.name}
+              <ParameterName parameter={parameter} />
               {parameter.required ? (
                 <span aria-label="required" className="h-1 w-1 rounded-full bg-destructive" />
               ) : null}
@@ -132,5 +148,18 @@ function ParameterSection({
         ))}
       </div>
     </section>
+  );
+}
+
+function ParameterName({ parameter }: { parameter: OpenApiParameter }) {
+  const metadata = useSchemaMetadata(getParameterSchema(parameter), {
+    example: parameter.example,
+    required: parameter.required,
+  });
+
+  return (
+    <SchemaDescriptionTooltip metadata={metadata}>
+      <span>{parameter.name}</span>
+    </SchemaDescriptionTooltip>
   );
 }

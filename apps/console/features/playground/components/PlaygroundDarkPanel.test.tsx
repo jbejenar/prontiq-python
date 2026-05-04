@@ -4,6 +4,7 @@ import { useState } from "react";
 import { beforeEach, expect, test, vi } from "vitest";
 
 import type { PlaygroundHistoryEntry, PlaygroundResponse } from "../types.js";
+import type { SchemaMetadata } from "../lib/schema-metadata.js";
 import { playgroundShortcutLabels } from "../lib/shortcut-labels.js";
 import type { PlaygroundSnippetLanguage } from "../lib/snippets.js";
 
@@ -27,6 +28,27 @@ const response: PlaygroundResponse = {
   status: 200,
   statusText: "OK",
 };
+
+const addressResponse: PlaygroundResponse = {
+  ...response,
+  bodyText: JSON.stringify({
+    suggestions: [
+      { debug: { internal: "x" }, addressLabel: "1 Example Street" },
+      { addressLabel: "2 Example Street" },
+    ],
+  }),
+};
+
+const responseSchemaMetadata = new Map<string, SchemaMetadata>([
+  ["suggestions[].addressLabel", {
+    description: "Street address (number + street name).",
+    rows: [{ label: "type", value: "string" }],
+  }],
+  ["match.geocode.latitude", {
+    description: "Latitude in decimal degrees.",
+    rows: [{ label: "type", value: "number" }],
+  }],
+]);
 
 const historyEntry: PlaygroundHistoryEntry = {
   config: {
@@ -241,6 +263,69 @@ test("keeps request snippet visible beside a successful response", () => {
   expect(screen.getByText(/X-Api-Key: \{\{YOUR_API_KEY\}\}/i)).toBeInTheDocument();
 });
 
+test("annotates response keys from OpenAPI schema metadata", async () => {
+  render(<DarkPanelHost response={addressResponse} responseSchemaMetadata={responseSchemaMetadata} />);
+
+  const [firstAddressLabel] = screen.getAllByText('"addressLabel"');
+  expect(firstAddressLabel).toBeDefined();
+  await userEvent.hover(firstAddressLabel!);
+
+  expect(await screen.findAllByText("Street address (number + street name).")).not.toHaveLength(0);
+});
+
+test("annotates structured-suffix JSON response content types", async () => {
+  render(
+    <DarkPanelHost
+      response={{ ...addressResponse, headers: { "content-type": "application/problem+json; charset=utf-8" } }}
+      responseSchemaMetadata={responseSchemaMetadata}
+    />,
+  );
+
+  const [firstAddressLabel] = screen.getAllByText('"addressLabel"');
+  await userEvent.hover(firstAddressLabel!);
+
+  expect(await screen.findAllByText("Street address (number + street name).")).not.toHaveLength(0);
+});
+
+test("response key annotations are reachable by keyboard focus", async () => {
+  render(<DarkPanelHost response={addressResponse} responseSchemaMetadata={responseSchemaMetadata} />);
+
+  const [firstAddressLabel] = screen.getAllByRole("button", { name: "\"addressLabel\"" });
+  expect(firstAddressLabel).toBeDefined();
+  act(() => {
+    firstAddressLabel!.focus();
+  });
+
+  expect(await screen.findAllByText("Street address (number + street name).")).not.toHaveLength(0);
+});
+
+test("unknown response keys do not break sibling schema lookup", async () => {
+  render(<DarkPanelHost response={addressResponse} responseSchemaMetadata={responseSchemaMetadata} />);
+
+  expect(screen.getByText('"debug"')).toBeInTheDocument();
+  const [firstAddressLabel] = screen.getAllByText('"addressLabel"');
+  await userEvent.hover(firstAddressLabel!);
+
+  expect(await screen.findAllByText("Street address (number + street name).")).not.toHaveLength(0);
+});
+
+test("renders canonical invalid-json and empty-body fallback notes", () => {
+  const invalidResponse = { ...response, bodyText: "{nope" };
+  const invalidNumberResponse = { ...response, bodyText: "{\"count\": 01}" };
+  const emptyResponse = { ...response, bodyText: "" };
+  const { rerender } = render(<DarkPanelHost response={invalidResponse} />);
+
+  expect(screen.getByText("response body is not valid JSON")).toBeInTheDocument();
+
+  rerender(<DarkPanelHost response={invalidNumberResponse} />);
+
+  expect(screen.getByText("response body is not valid JSON")).toBeInTheDocument();
+
+  rerender(<DarkPanelHost response={emptyResponse} />);
+
+  expect(screen.getByText("response body is empty")).toBeInTheDocument();
+});
+
 test("stacks response and snippet panes below the wide breakpoint", () => {
   render(<DarkPanelHost response={response} />);
 
@@ -316,6 +401,7 @@ function DarkPanelHost({
   onRun = vi.fn(),
   onOpenCommandPalette = vi.fn(),
   onSnippetRequest = async () => "",
+  responseSchemaMetadata: renderedResponseSchemaMetadata = null,
   response: renderedResponse = null,
 }: {
   command?: string;
@@ -328,6 +414,7 @@ function DarkPanelHost({
   onOpenCommandPalette?: () => void;
   onRun?: () => void;
   onSnippetRequest?: (language: PlaygroundSnippetLanguage) => Promise<string>;
+  responseSchemaMetadata?: ReadonlyMap<string, SchemaMetadata> | null;
   response?: PlaygroundResponse | null;
 }) {
   return (
@@ -345,6 +432,7 @@ function DarkPanelHost({
       onOpenCommandPalette={onOpenCommandPalette}
       requestDisplayId="abc123"
       response={renderedResponse}
+      responseSchemaMetadata={renderedResponseSchemaMetadata}
       runAriaLabel="Send demo request"
       onSnippetRequest={onSnippetRequest}
       onRun={onRun}

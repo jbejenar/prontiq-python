@@ -55,6 +55,10 @@
   proxy URLs, params, bodies, snippets, or response payloads in telemetry.
   Language/snippet-copy telemetry is allowlisted to event name, language, mode,
   and source only.
+- P1C.06e inline playground documentation must be sourced from the committed
+  public OpenAPI spec. Do not hard-code endpoint descriptions, parameter
+  constraints, examples, or response field meanings in runtime playground
+  components. If a tooltip needs better content, update the spec.
 - Playground keyboard shortcuts are documented centrally in `README.md`. Keep
   new shortcuts there instead of scattering them through feature notes.
 - Playground command-palette telemetry is allowlisted only: event name, mode,

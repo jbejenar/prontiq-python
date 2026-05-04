@@ -23,8 +23,10 @@ import {
   playgroundSnippetLanguages,
   type PlaygroundSnippetLanguage,
 } from "../lib/snippets.js";
+import type { SchemaMetadata } from "../lib/schema-metadata.js";
 import { recordPlaygroundInteractionTelemetry } from "../lib/telemetry.js";
 import { cn } from "../../../lib/utils.js";
+import { AnnotatedJsonBlock } from "./AnnotatedJsonBlock.js";
 
 type PanelState = "empty" | "loading" | "success" | "error" | "demo-unavailable";
 
@@ -115,6 +117,7 @@ export function PlaygroundDarkPanel({
   tabFocusRef,
   requestDisplayId,
   response,
+  responseSchemaMetadata,
 }: {
   command: string;
   demoUnavailableMessage?: string;
@@ -133,6 +136,7 @@ export function PlaygroundDarkPanel({
   tabFocusRef?: RefObject<HTMLButtonElement | null>;
   requestDisplayId: string;
   response: PlaygroundResponse | null;
+  responseSchemaMetadata: ReadonlyMap<string, SchemaMetadata> | null;
 }) {
   const [activeLanguage, setActiveLanguage] = usePlaygroundLanguage();
   const [activeSnippet, setActiveSnippet] = useState(command);
@@ -379,6 +383,12 @@ export function PlaygroundDarkPanel({
               </div>
             ) : panelState === "loading" ? (
               <div className="h-full min-h-[160px]" />
+            ) : response ? (
+              <AnnotatedJsonBlock
+                bodyText={response.bodyText}
+                contentType={response.headers["content-type"]}
+                schemaMetadata={responseSchemaMetadata}
+              />
             ) : (
               <CodeBlock code={bodyText} language="json" />
             )}

@@ -1,6 +1,6 @@
 "use client";
 
-import { startTransition, useCallback, useEffect, useRef, useState } from "react";
+import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { KeyRound, X } from "lucide-react";
 import { toast } from "sonner";
 
@@ -14,6 +14,7 @@ import type {
   PlaygroundResponse,
 } from "../types.js";
 import { buildCurlCommand } from "../lib/curl.js";
+import { getResponseSchemaIndex, selectResponseSchemaMetadata } from "../lib/response-schema-index.js";
 import { executeAccountRequest, executeDemoRequest, PlaygroundRequestError } from "../lib/request.js";
 import { generatePlaygroundSnippet, type PlaygroundSnippetLanguage } from "../lib/snippets.js";
 import { recordPlaygroundTelemetry } from "../lib/telemetry.js";
@@ -124,6 +125,13 @@ export function PlaygroundExecutionPanel({
     mode,
     operation,
   });
+  const responseSchemaMetadata = useMemo(() => {
+    if (!response) return null;
+    return selectResponseSchemaMetadata({
+      index: getResponseSchemaIndex(operation),
+      status: response.status,
+    });
+  }, [operation, response]);
 
   const resetCurrentRequest = useCallback(() => {
     cancelActiveRequest();
@@ -332,6 +340,7 @@ export function PlaygroundExecutionPanel({
         onOpenCommandPalette={onOpenCommandPalette}
         requestDisplayId={requestDisplayId}
         response={response}
+        responseSchemaMetadata={responseSchemaMetadata}
         runAriaLabel={runAriaLabel}
         onSnippetRequest={generateSnippet}
         tabFocusRef={languageTabsRef}
