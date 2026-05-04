@@ -1,10 +1,12 @@
 "use client";
 
-import { startTransition, useEffect, useRef, useState } from "react";
+import { startTransition, useCallback, useEffect, useRef, useState } from "react";
 import { KeyRound, X } from "lucide-react";
+import { toast } from "sonner";
 
 import type {
   PlaygroundDemoStatus,
+  PlaygroundExecutionControls,
   PlaygroundMode,
   PlaygroundOperation,
   PlaygroundRequestConfig,
@@ -26,6 +28,7 @@ export function PlaygroundExecutionPanel({
   isDemoStatusLoading,
   mode,
   operation,
+  onControlsChange,
   updateApiKey,
 }: {
   apiKey: string;
@@ -35,6 +38,7 @@ export function PlaygroundExecutionPanel({
   isDemoStatusLoading: boolean;
   mode: PlaygroundMode;
   operation: PlaygroundOperation;
+  onControlsChange?: (controls: PlaygroundExecutionControls | null) => void;
   updateApiKey: (value: string) => void;
 }) {
   const [config, setConfig] = useState<PlaygroundRequestConfig>(() =>
@@ -46,13 +50,14 @@ export function PlaygroundExecutionPanel({
   const [response, setResponse] = useState<PlaygroundResponse | null>(null);
   const requestIdRef = useRef(0);
   const abortRef = useRef<AbortController | null>(null);
+  const languageTabsRef = useRef<HTMLButtonElement | null>(null);
 
-  function cancelActiveRequest({ clearSending = true }: { clearSending?: boolean } = {}) {
+  const cancelActiveRequest = useCallback(({ clearSending = true }: { clearSending?: boolean } = {}) => {
     requestIdRef.current += 1;
     abortRef.current?.abort();
     abortRef.current = null;
     if (clearSending) setIsSending(false);
-  }
+  }, []);
 
   useEffect(() => {
     cancelActiveRequest();
@@ -61,13 +66,13 @@ export function PlaygroundExecutionPanel({
       setError(null);
       setResponse(null);
     });
-  }, [operation]);
+  }, [cancelActiveRequest, operation]);
 
   useEffect(() => {
     cancelActiveRequest();
-  }, [config, mode]);
+  }, [cancelActiveRequest, config, mode]);
 
-  useEffect(() => () => cancelActiveRequest({ clearSending: false }), []);
+  useEffect(() => () => cancelActiveRequest({ clearSending: false }), [cancelActiveRequest]);
 
   const demoChecking = mode === "demo" && isDemoStatusLoading;
   const demoReferenceOnly =
@@ -88,7 +93,25 @@ export function PlaygroundExecutionPanel({
     operation,
   });
 
-  async function sendRequest() {
+  const resetCurrentRequest = useCallback(() => {
+    cancelActiveRequest();
+    startTransition(() => {
+      setConfig(makeInitialRequestConfig(operation));
+      setError(null);
+      setResponse(null);
+    });
+  }, [cancelActiveRequest, operation]);
+
+  const copyCurl = useCallback(async () => {
+    await navigator.clipboard.writeText(command);
+    toast.success("Copied curl command");
+  }, [command]);
+
+  const focusLanguageTabs = useCallback(() => {
+    languageTabsRef.current?.focus();
+  }, []);
+
+  const sendRequest = useCallback(async () => {
     if (demoChecking) return;
     if (demoReferenceOnly) {
       setError(demoReferenceOnlyMessage);
@@ -153,7 +176,39 @@ export function PlaygroundExecutionPanel({
         setIsSending(false);
       }
     }
-  }
+  }, [
+    apiKey,
+    baseUrl,
+    config,
+    demoChecking,
+    demoReferenceOnly,
+    demoReferenceOnlyMessage,
+    mode,
+    operation,
+  ]);
+
+  useEffect(() => {
+    if (!onControlsChange) return;
+    onControlsChange({
+      canCopyCurl: true,
+      canRun: !demoChecking && !demoReferenceOnly && !isSending,
+      copyCurl,
+      focusLanguageTabs,
+      reset: resetCurrentRequest,
+      run: () => void sendRequest(),
+    });
+  }, [
+    copyCurl,
+    demoChecking,
+    demoReferenceOnly,
+    focusLanguageTabs,
+    isSending,
+    onControlsChange,
+    resetCurrentRequest,
+    sendRequest,
+  ]);
+
+  useEffect(() => () => onControlsChange?.(null), [onControlsChange]);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-background">
@@ -206,9 +261,11 @@ export function PlaygroundExecutionPanel({
         error={error}
         isSending={isSending || demoChecking}
         mode={mode}
+        onCopyCurl={copyCurl}
         requestDisplayId={requestDisplayId}
         response={response}
         runAriaLabel={runAriaLabel}
+        tabFocusRef={languageTabsRef}
         onRun={() => void sendRequest()}
       />
     </div>

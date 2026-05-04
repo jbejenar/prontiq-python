@@ -55,3 +55,42 @@ export interface PlaygroundTelemetryEvent {
   source: "console_playground";
   status?: number;
 }
+
+export type PlaygroundInteractionTelemetryEvent =
+  | {
+      eventName: "palette_opened";
+      mode: PlaygroundMode;
+      source: "console_playground";
+    }
+  | {
+      actionId: PlaygroundCommandActionId;
+      eventName: "palette_action_selected";
+      mode: PlaygroundMode;
+      source: "console_playground";
+    }
+  | {
+      eventName: "palette_operation_selected";
+      mode: PlaygroundMode;
+      operationId: string;
+      source: "console_playground";
+    };
+
+export type PlaygroundCommandActionId =
+  | "switch_to_demo"
+  | "switch_to_account"
+  | "run_request"
+  | "copy_curl"
+  | "clear_api_key"
+  | "open_docs"
+  | "reset_playground"
+  | "focus_filter"
+  | "focus_language_tabs";
+
+export interface PlaygroundExecutionControls {
+  canCopyCurl: boolean;
+  canRun: boolean;
+  copyCurl: () => Promise<void>;
+  focusLanguageTabs: () => void;
+  reset: () => void;
+  run: () => void;
+}

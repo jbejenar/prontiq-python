@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { expect, test, vi } from "vitest";
 
 import type { PlaygroundResponse } from "../types.js";
@@ -37,24 +37,6 @@ test("renders response metadata for successful responses", () => {
   expect(screen.getByText(/request #abc123/i)).toBeInTheDocument();
 });
 
-test("runs with the command-enter shortcut when execution is available", () => {
-  const onRun = vi.fn();
-  render(<DarkPanelHost onRun={onRun} />);
-
-  fireEvent.keyDown(window, { key: "Enter", metaKey: true });
-
-  expect(onRun).toHaveBeenCalledTimes(1);
-});
-
-test("does not run the command-enter shortcut when demo execution is unavailable", () => {
-  const onRun = vi.fn();
-  render(<DarkPanelHost demoUnavailableMessage="demo unavailable" onRun={onRun} />);
-
-  fireEvent.keyDown(window, { key: "Enter", metaKey: true });
-
-  expect(onRun).not.toHaveBeenCalled();
-});
-
 function DarkPanelHost({
   demoUnavailableMessage,
   onRun = vi.fn(),
@@ -71,6 +53,7 @@ function DarkPanelHost({
       error={null}
       isSending={false}
       mode="demo"
+      onCopyCurl={async () => undefined}
       requestDisplayId="abc123"
       response={renderedResponse}
       runAriaLabel="Send demo request"

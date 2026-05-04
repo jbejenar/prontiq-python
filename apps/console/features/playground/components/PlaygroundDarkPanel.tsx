@@ -1,7 +1,7 @@
 "use client";
 
 import { Check, Clock3, Loader2, Play } from "lucide-react";
-import { useEffect, useState } from "react";
+import { type RefObject, useState } from "react";
 import Prism from "prismjs";
 import "prismjs/components/prism-bash.js";
 import "prismjs/components/prism-json.js";
@@ -88,8 +88,10 @@ export function PlaygroundDarkPanel({
   error,
   isSending,
   mode,
+  onCopyCurl,
   onRun,
   runAriaLabel,
+  tabFocusRef,
   requestDisplayId,
   response,
 }: {
@@ -98,8 +100,10 @@ export function PlaygroundDarkPanel({
   error: string | null;
   isSending: boolean;
   mode: PlaygroundMode;
+  onCopyCurl: () => Promise<void>;
   onRun: () => void;
   runAriaLabel: string;
+  tabFocusRef?: RefObject<HTMLButtonElement | null>;
   requestDisplayId: string;
   response: PlaygroundResponse | null;
 }) {
@@ -116,22 +120,6 @@ export function PlaygroundDarkPanel({
   const bodyText = formatBody(response, error);
   const status = response?.status ?? (error ? "ERR" : null);
   const runDisabled = isSending || Boolean(demoUnavailableMessage);
-
-  useEffect(() => {
-    function handleKeyDown(event: KeyboardEvent) {
-      if (!(event.metaKey || event.ctrlKey) || event.key !== "Enter" || runDisabled) return;
-      event.preventDefault();
-      onRun();
-    }
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [onRun, runDisabled]);
-
-  async function copyCurl() {
-    await navigator.clipboard.writeText(command);
-    toast.success("Copied curl command");
-  }
 
   async function copyResponse() {
     await navigator.clipboard.writeText(bodyText || "");
@@ -175,6 +163,7 @@ export function PlaygroundDarkPanel({
                   "bg-playground-panel-accent-tab text-playground-panel-string",
               )}
               key={language}
+              ref={language === "curl" ? tabFocusRef : undefined}
               type="button"
               onClick={() => setActiveLanguage(language)}
             >
@@ -240,7 +229,7 @@ export function PlaygroundDarkPanel({
         <button
           className="font-mono text-[10px] text-playground-panel-muted transition hover:text-playground-panel-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-playground-panel-accent"
           type="button"
-          onClick={() => void (response || error ? copyResponse() : copyCurl())}
+          onClick={() => void (response || error ? copyResponse() : onCopyCurl())}
         >
           copy
         </button>

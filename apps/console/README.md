@@ -68,6 +68,19 @@ API-key policy attached to the demo key/org, not by the console. Account mode
 calls `NEXT_PUBLIC_API_URL` directly from the browser with the memory-held
 `X-Api-Key`.
 
+P1C.06a adds the playground command palette and route-local keyboard shortcut
+foundation. The palette is mounted only under `/playground`, searches the
+public OpenAPI operation list, and triggers the same native Prontiq actions as
+the visible UI. Palette telemetry is allowlisted to event name, mode, source,
+operation id, and action id only.
+
+Playground keyboard shortcuts:
+
+- `Cmd/Ctrl+K`: open the playground command palette from playground chrome.
+- `Cmd/Ctrl+Enter`: run the current playground request from playground chrome
+  or request inputs.
+- `/`: focus the operation filter from playground chrome.
+
 Billing route handlers require these server env vars:
 
 - `LAGO_API_URL`

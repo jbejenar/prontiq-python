@@ -35,6 +35,14 @@
 - P1C.06 playground UI is native-first and spec-driven. Keep visible UI in
   Prontiq components; Scalar imports must remain confined to
   `ScalarAdvancedModal` / `ScalarClientAdapter`.
+- P1C.06a playground command palette work must stay route-local. Do not create
+  a global command system, global shortcut manager, or shared `Command`
+  primitive unless another feature independently needs it.
+- Playground keyboard shortcuts are documented centrally in `README.md`. Keep
+  new shortcuts there instead of scattering them through feature notes.
+- Playground command-palette telemetry is allowlisted only: event name, mode,
+  source, operation id, and action id. Do not add params, bodies, query strings,
+  snippets, raw keys, or response payloads.
 - Playground demo mode must use the console server proxy with Clerk session,
   same-origin, public OpenAPI path/method validation, and a server-held demo
   key. Demo usage, quota, rate limiting, billing events, and abuse controls
