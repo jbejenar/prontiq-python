@@ -48,6 +48,13 @@
   local validation failures, missing-key errors, demo-unavailable states,
   aborts, timeouts, and network errors are excluded. The dark-panel drawer is
   the only history browsing surface; the palette may only open the drawer.
+- P1C.06d playground snippets are generated from the selected public OpenAPI
+  operation and memory-only request config. Keep curl sourced only from
+  `buildCurlCommand`; keep non-curl snippets behind the lazy
+  `@httptoolkit/httpsnippet` boundary; do not include held raw keys, console
+  proxy URLs, params, bodies, snippets, or response payloads in telemetry.
+  Language/snippet-copy telemetry is allowlisted to event name, language, mode,
+  and source only.
 - Playground keyboard shortcuts are documented centrally in `README.md`. Keep
   new shortcuts there instead of scattering them through feature notes.
 - Playground command-palette telemetry is allowlisted only: event name, mode,

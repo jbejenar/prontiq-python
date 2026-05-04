@@ -94,6 +94,14 @@ manual clear, and page reload. Display redacts Prontiq-shaped API keys in
 parameter summaries, but telemetry remains allowlisted and never includes
 params, bodies, query strings, snippets, keys, or response payloads.
 
+P1C.06d makes the playground language tabs real. Curl remains generated only by
+`buildCurlCommand`; `node.js`, `python`, `java`, `go`, and `ruby` snippets are
+generated from the selected OpenAPI operation and current params/body through a lazy
+`@httptoolkit/httpsnippet` import. Snippets are production-shaped, use
+`{{YOUR_API_KEY}}` by default, never use the console demo proxy URL, and do not
+render held raw account keys. Snippet telemetry is allowlisted to language,
+mode, source, and event name only; snippet text is never emitted.
+
 Playground keyboard shortcuts:
 
 - `Cmd/Ctrl+K`: open the playground command palette from playground chrome.

@@ -11,7 +11,8 @@
     "typecheck": "node ../../scripts/run-frontend-task.mjs console typecheck"
   },
   "dependencies": {
-    "@clerk/nextjs": "^6.32.6",
+    "@clerk/nextjs": "^6.39.3",
+    "@httptoolkit/httpsnippet": "3.0.2",
     "@prontiq/sdk": "workspace:*",
     "@prontiq/shared": "workspace:*",
     "@prontiq/tokens": "workspace:*",

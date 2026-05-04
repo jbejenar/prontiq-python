@@ -7,6 +7,7 @@ import "prismjs/components/prism-bash.js";
 import "prismjs/components/prism-json.js";
 import "prismjs/components/prism-javascript.js";
 import "prismjs/components/prism-python.js";
+import "prismjs/components/prism-java.js";
 import "prismjs/components/prism-go.js";
 import "prismjs/components/prism-ruby.js";
 import { toast } from "sonner";
@@ -17,11 +18,15 @@ import {
   formatRelativeHistoryTime,
 } from "../lib/history.js";
 import { playgroundShortcutLabels } from "../lib/shortcut-labels.js";
+import {
+  getSnippetPrismLanguage,
+  playgroundSnippetLanguages,
+  type PlaygroundSnippetLanguage,
+} from "../lib/snippets.js";
+import { recordPlaygroundInteractionTelemetry } from "../lib/telemetry.js";
 import { cn } from "../../../lib/utils.js";
 
 type PanelState = "empty" | "loading" | "success" | "error" | "demo-unavailable";
-
-const languageTabs = ["curl", "node.js", "python", "go", "ruby"] as const;
 
 type ChangedRange = Readonly<{ end: number; start: number }>;
 
@@ -87,27 +92,6 @@ function escapeHtml(value: string) {
     .replace(/'/g, "&#039;");
 }
 
-function getSdkPlaceholder(language: (typeof languageTabs)[number]) {
-  switch (language) {
-    case "node.js":
-      return "// SDK examples coming soon";
-    case "python":
-      return "# SDK examples coming soon";
-    case "go":
-      return "// SDK examples coming soon";
-    case "ruby":
-      return "# SDK examples coming soon";
-    case "curl":
-      return "";
-  }
-}
-
-function getLanguageName(language: (typeof languageTabs)[number]) {
-  if (language === "curl") return "bash";
-  if (language === "node.js") return "javascript";
-  return language;
-}
-
 function getPayloadSize(response: PlaygroundResponse | null) {
   if (!response) return "0 b";
   return `${new Blob([response.bodyText]).size} b`;
@@ -121,12 +105,12 @@ export function PlaygroundDarkPanel({
   historyEntries,
   historyOpen,
   mode,
-  onCopyCurl,
   onClearHistory,
   onHistoryEntrySelect,
   onHistoryOpenChange,
   onOpenCommandPalette,
   onRun,
+  onSnippetRequest,
   runAriaLabel,
   tabFocusRef,
   requestDisplayId,
@@ -140,19 +124,23 @@ export function PlaygroundDarkPanel({
   isSending: boolean;
   mode: PlaygroundMode;
   onClearHistory: () => void;
-  onCopyCurl: () => Promise<void>;
   onHistoryEntrySelect: (entry: PlaygroundHistoryEntry) => void;
   onHistoryOpenChange: (open: boolean) => void;
   onOpenCommandPalette: () => void;
   onRun: () => void;
+  onSnippetRequest: (language: PlaygroundSnippetLanguage) => Promise<string>;
   runAriaLabel: string;
   tabFocusRef?: RefObject<HTMLButtonElement | null>;
   requestDisplayId: string;
   response: PlaygroundResponse | null;
 }) {
   const [activeLanguage, setActiveLanguage] = usePlaygroundLanguage();
+  const [activeSnippet, setActiveSnippet] = useState(command);
+  const [snippetError, setSnippetError] = useState<string | null>(null);
+  const [snippetLoading, setSnippetLoading] = useState(false);
   const previousCommandRef = useRef(command);
   const historyDrawerRef = useRef<HTMLElement | null>(null);
+  const historyTriggerRef = useRef<HTMLButtonElement | null>(null);
   const [curlChangedRange, setCurlChangedRange] = useState<ChangedRange | null>(null);
   const panelState = getPanelState({
     demoUnavailable: Boolean(demoUnavailableMessage),
@@ -160,12 +148,46 @@ export function PlaygroundDarkPanel({
     isSending,
     response,
   });
-  const activeCode =
-    activeLanguage === "curl" ? command : getSdkPlaceholder(activeLanguage);
-  const codeLanguage = getLanguageName(activeLanguage);
+  const activeCode = activeLanguage === "curl" ? command : activeSnippet;
+  const codeLanguage = getSnippetPrismLanguage(activeLanguage);
   const bodyText = formatBody(response, error);
   const status = response?.status ?? (error ? "ERR" : null);
   const runDisabled = isSending || Boolean(demoUnavailableMessage);
+
+  useEffect(() => {
+    if (activeLanguage === "curl") {
+      setActiveSnippet(command);
+      setSnippetError(null);
+      setSnippetLoading(false);
+      return undefined;
+    }
+
+    let cancelled = false;
+    setSnippetLoading(true);
+    setSnippetError(null);
+
+    onSnippetRequest(activeLanguage)
+      .then((snippet) => {
+        if (cancelled) return;
+        setActiveSnippet(snippet);
+      })
+      .catch((generationError: unknown) => {
+        if (cancelled) return;
+        const message =
+          generationError instanceof Error
+            ? generationError.message
+            : "Could not generate this snippet.";
+        setSnippetError(message);
+        setActiveSnippet(getSnippetErrorComment(activeLanguage, message));
+      })
+      .finally(() => {
+        if (!cancelled) setSnippetLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeLanguage, command, onSnippetRequest]);
 
   useEffect(() => {
     const changedRange = getChangedRange(previousCommandRef.current, command);
@@ -196,12 +218,24 @@ export function PlaygroundDarkPanel({
       const target = event.target;
       if (!(target instanceof Node)) return;
       if (historyDrawerRef.current?.contains(target)) return;
+      if (historyTriggerRef.current?.contains(target)) return;
       onHistoryOpenChange(false);
     }
 
     window.addEventListener("pointerdown", closeOnOutsidePointer);
     return () => window.removeEventListener("pointerdown", closeOnOutsidePointer);
   }, [historyOpen, onHistoryOpenChange]);
+
+  async function copySnippet() {
+    await navigator.clipboard.writeText(activeCode || command);
+    recordPlaygroundInteractionTelemetry({
+      eventName: "snippet_copied",
+      language: activeLanguage,
+      mode,
+      source: "console_playground",
+    });
+    toast.success(activeLanguage === "curl" ? "Copied curl command" : "Copied snippet");
+  }
 
   async function copyResponse() {
     await navigator.clipboard.writeText(bodyText || "");
@@ -248,22 +282,8 @@ export function PlaygroundDarkPanel({
         }
       `}</style>
       <div className="flex h-10 shrink-0 items-center justify-between border-b border-playground-panel-border px-3">
-        <div className="flex items-center gap-1">
-          {languageTabs.map((language) => (
-            <button
-              className={cn(
-                "rounded px-[9px] py-1 font-mono text-[11px] text-playground-panel-muted transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-playground-panel-accent",
-                activeLanguage === language &&
-                  "bg-playground-panel-accent-tab text-playground-panel-string",
-              )}
-              key={language}
-              ref={language === "curl" ? tabFocusRef : undefined}
-              type="button"
-              onClick={() => setActiveLanguage(language)}
-            >
-              {language}
-            </button>
-          ))}
+        <div className="font-mono text-[10px] uppercase tracking-[0.06em] text-playground-panel-muted">
+          Playground request
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -282,85 +302,148 @@ export function PlaygroundDarkPanel({
         </div>
       </div>
 
-      <div className="border-b border-playground-panel-border px-3.5 py-3 font-mono text-[11px] leading-[1.75]">
-        <CodeBlock
-          changedRange={activeLanguage === "curl" ? curlChangedRange : null}
-          code={activeCode}
-          language={codeLanguage}
-        />
-      </div>
-
-      <div className="flex min-h-8 shrink-0 items-center justify-between border-b border-playground-panel-border px-3.5 py-2">
-        <div className="flex min-w-0 items-center gap-2">
-          <span className="font-mono text-[10px] uppercase tracking-[0.06em] text-playground-panel-muted">
-            Response
-          </span>
-          {panelState === "loading" ? (
-            <span className="font-mono text-[10px] text-playground-panel-muted">•••</span>
-          ) : status ? (
-            <span
-              className={cn(
-                "inline-flex items-center gap-1.5 font-mono text-[10px]",
-                panelState === "error" ? "text-playground-panel-danger" : "text-playground-panel-accent-light",
-              )}
-            >
-              <span className="h-[5px] w-[5px] rounded-full bg-current" />
-              {status}
-            </span>
-          ) : (
-            <span className="font-mono text-[10px] text-playground-panel-muted">awaiting request</span>
-          )}
-          {response ? (
-            <>
-              <span className="font-mono text-[10px] text-playground-panel-muted">
-                {response.durationMs}ms
-              </span>
-              <span className="font-mono text-[10px] text-playground-panel-muted">
-                {getPayloadSize(response)}
-              </span>
-            </>
-          ) : null}
-          {demoUnavailableMessage ? (
-            <span className="truncate font-mono text-[10px] text-playground-panel-number">
-              {demoUnavailableMessage}
-            </span>
-          ) : null}
-        </div>
-        <div className="flex items-center gap-3">
-          <button
-            aria-label="Open request history"
-            className="inline-flex items-center gap-1 font-mono text-[10px] text-playground-panel-muted transition hover:text-playground-panel-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-playground-panel-accent"
-            type="button"
-            onClick={() => onHistoryOpenChange(!historyOpen)}
-          >
-            <History className="h-[11px] w-[11px]" />
-            history {historyEntries.length}
-          </button>
-          <button
-            className="font-mono text-[10px] text-playground-panel-muted transition hover:text-playground-panel-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-playground-panel-accent"
-            type="button"
-            onClick={() => void (response || error ? copyResponse() : onCopyCurl())}
-          >
-            copy
-          </button>
-        </div>
-      </div>
-
       <div
-        className={cn(
-          "min-h-0 flex-1 overflow-auto px-3.5 py-3 font-mono text-[11px] leading-[1.75]",
-          panelState === "error" && "border-l border-playground-panel-danger-border",
-        )}
+        className="grid min-h-0 flex-1 grid-cols-1 grid-rows-[minmax(260px,3fr)_minmax(220px,2fr)] overflow-hidden xl:grid-cols-[minmax(420px,3fr)_minmax(320px,2fr)] xl:grid-rows-none"
+        data-testid="playground-dark-panel-workspace"
       >
-        {panelState === "empty" || panelState === "demo-unavailable" ? (
-          <div className="flex h-full min-h-[160px] items-center justify-center text-center text-playground-panel-muted/70">
-            Press Run or {playgroundShortcutLabels.run} to send the request.
+        <section className="flex min-h-0 min-w-0 flex-col border-b border-playground-panel-border xl:border-b-0 xl:border-r">
+          <div className="flex min-h-8 shrink-0 items-center justify-between border-b border-playground-panel-border px-3.5 py-2">
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="font-mono text-[10px] uppercase tracking-[0.06em] text-playground-panel-muted">
+                Response
+              </span>
+              {panelState === "loading" ? (
+                <span className="font-mono text-[10px] text-playground-panel-muted">•••</span>
+              ) : status ? (
+                <span
+                  className={cn(
+                    "inline-flex items-center gap-1.5 font-mono text-[10px]",
+                    panelState === "error" ? "text-playground-panel-danger" : "text-playground-panel-accent-light",
+                  )}
+                >
+                  <span className="h-[5px] w-[5px] rounded-full bg-current" />
+                  {status}
+                </span>
+              ) : (
+                <span className="font-mono text-[10px] text-playground-panel-muted">awaiting request</span>
+              )}
+              {response ? (
+                <>
+                  <span className="font-mono text-[10px] text-playground-panel-muted">
+                    {response.durationMs}ms
+                  </span>
+                  <span className="font-mono text-[10px] text-playground-panel-muted">
+                    {getPayloadSize(response)}
+                  </span>
+                </>
+              ) : null}
+              {demoUnavailableMessage ? (
+                <span className="truncate font-mono text-[10px] text-playground-panel-number">
+                  {demoUnavailableMessage}
+                </span>
+              ) : null}
+            </div>
+            <div className="flex items-center gap-3">
+              <button
+                aria-label="Open request history"
+                aria-pressed={historyOpen}
+                className="inline-flex items-center gap-1 font-mono text-[10px] text-playground-panel-muted transition hover:text-playground-panel-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-playground-panel-accent"
+                ref={historyTriggerRef}
+                type="button"
+                onClick={() => onHistoryOpenChange(!historyOpen)}
+              >
+                <History className="h-[11px] w-[11px]" />
+                history {historyEntries.length}
+              </button>
+              <button
+                aria-label="Copy response"
+                className="font-mono text-[10px] text-playground-panel-muted transition hover:text-playground-panel-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-playground-panel-accent disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={!response && !error}
+                type="button"
+                onClick={() => void copyResponse()}
+              >
+                copy
+              </button>
+            </div>
           </div>
-        ) : panelState === "loading" ? (
-          <div className="h-full min-h-[160px]" />
-        ) : (
-          <CodeBlock code={bodyText} language="json" />
-        )}
+
+          <div
+            className={cn(
+              "min-h-0 flex-1 overflow-auto px-3.5 py-3 font-mono text-[11px] leading-[1.75]",
+              panelState === "error" && "border-l border-playground-panel-danger-border",
+            )}
+          >
+            {panelState === "empty" || panelState === "demo-unavailable" ? (
+              <div className="flex h-full min-h-[160px] items-center justify-center text-center text-playground-panel-muted/70">
+                Press Run or {playgroundShortcutLabels.run} to send the request.
+              </div>
+            ) : panelState === "loading" ? (
+              <div className="h-full min-h-[160px]" />
+            ) : (
+              <CodeBlock code={bodyText} language="json" />
+            )}
+          </div>
+        </section>
+
+        <section className="flex min-h-0 min-w-0 flex-col">
+          <div className="border-b border-playground-panel-border px-3 py-2">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex min-w-0 items-center gap-1">
+                {playgroundSnippetLanguages.map((language) => (
+                  <button
+                    className={cn(
+                      "rounded px-[9px] py-1 font-mono text-[11px] text-playground-panel-muted transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-playground-panel-accent",
+                      activeLanguage === language &&
+                        "bg-playground-panel-accent-tab text-playground-panel-string",
+                    )}
+                    key={language}
+                    ref={language === "curl" ? tabFocusRef : undefined}
+                    type="button"
+                    onClick={() => {
+                      setActiveLanguage(language);
+                      recordPlaygroundInteractionTelemetry({
+                        eventName: "language_tab_selected",
+                        language,
+                        mode,
+                        source: "console_playground",
+                      });
+                    }}
+                  >
+                    {language}
+                  </button>
+                ))}
+              </div>
+              <button
+                aria-label="Copy request snippet"
+                className="shrink-0 font-mono text-[10px] text-playground-panel-muted transition hover:text-playground-panel-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-playground-panel-accent disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={snippetLoading}
+                type="button"
+                onClick={() => void copySnippet()}
+              >
+                copy
+              </button>
+            </div>
+            <p className="mt-1.5 truncate font-mono text-[10px] text-playground-panel-muted">
+              Request snippet — production URL, substitute your key.
+            </p>
+          </div>
+          <div className="min-h-0 flex-1 overflow-auto px-3.5 py-3 font-mono text-[11px] leading-[1.75]">
+            {snippetLoading ? (
+              <span className="font-mono text-[11px] text-playground-panel-muted">•••</span>
+            ) : (
+              <CodeBlock
+                changedRange={activeLanguage === "curl" ? curlChangedRange : null}
+                code={activeCode}
+                language={codeLanguage}
+              />
+            )}
+            {snippetError ? (
+              <p className="mt-2 font-mono text-[10px] text-playground-panel-number">
+                {snippetError}
+              </p>
+            ) : null}
+          </div>
+        </section>
       </div>
 
       <div className="flex h-8 shrink-0 items-center justify-between border-t border-playground-panel-border bg-playground-panel-bg-footer px-3.5">
@@ -502,6 +585,11 @@ function getHistoryStatusClass(status: number) {
   return "text-playground-panel-number";
 }
 
+function getSnippetErrorComment(language: PlaygroundSnippetLanguage, message: string) {
+  const prefix = language === "python" || language === "ruby" ? "#" : "//";
+  return `${prefix} ${message}`;
+}
+
 const CodeBlock = memo(function CodeBlock({
   changedRange = null,
   code,
@@ -536,5 +624,5 @@ const CodeBlock = memo(function CodeBlock({
 });
 
 function usePlaygroundLanguage() {
-  return useState<(typeof languageTabs)[number]>("curl");
+  return useState<PlaygroundSnippetLanguage>("curl");
 }

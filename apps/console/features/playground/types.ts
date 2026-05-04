@@ -95,6 +95,12 @@ export type PlaygroundInteractionTelemetryEvent =
       mode: PlaygroundMode;
       operationId: string;
       source: "console_playground";
+    }
+  | {
+      eventName: "language_tab_selected" | "snippet_copied";
+      language: "curl" | "node.js" | "python" | "java" | "go" | "ruby";
+      mode: PlaygroundMode;
+      source: "console_playground";
     };
 
 export type PlaygroundCommandActionId =

@@ -15,6 +15,7 @@ import type {
 } from "../types.js";
 import { buildCurlCommand } from "../lib/curl.js";
 import { executeAccountRequest, executeDemoRequest, PlaygroundRequestError } from "../lib/request.js";
+import { generatePlaygroundSnippet, type PlaygroundSnippetLanguage } from "../lib/snippets.js";
 import { recordPlaygroundTelemetry } from "../lib/telemetry.js";
 import { Button } from "../../../components/ui/button.js";
 import { Input } from "../../../components/ui/input.js";
@@ -137,6 +138,19 @@ export function PlaygroundExecutionPanel({
     await navigator.clipboard.writeText(command);
     toast.success("Copied curl command");
   }, [command]);
+
+  const generateSnippet = useCallback(
+    (language: PlaygroundSnippetLanguage) =>
+      generatePlaygroundSnippet({
+        apiKey,
+        baseUrl,
+        config,
+        language,
+        mode,
+        operation,
+      }),
+    [apiKey, baseUrl, config, mode, operation],
+  );
 
   const focusLanguageTabs = useCallback(() => {
     languageTabsRef.current?.focus();
@@ -313,13 +327,13 @@ export function PlaygroundExecutionPanel({
         isSending={isSending || demoChecking}
         mode={mode}
         onClearHistory={onClearHistory}
-        onCopyCurl={copyCurl}
         onHistoryEntrySelect={onHistoryEntrySelect}
         onHistoryOpenChange={onHistoryOpenChange}
         onOpenCommandPalette={onOpenCommandPalette}
         requestDisplayId={requestDisplayId}
         response={response}
         runAriaLabel={runAriaLabel}
+        onSnippetRequest={generateSnippet}
         tabFocusRef={languageTabsRef}
         onRun={() => void sendRequest()}
       />

@@ -11,7 +11,7 @@
     "typecheck": "node ../../scripts/run-frontend-task.mjs landing typecheck"
   },
   "dependencies": {
-    "@clerk/nextjs": "^6.34.0",
+    "@clerk/nextjs": "^6.39.3",
     "@prontiq/shared": "workspace:*",
     "@prontiq/tokens": "workspace:*",
     "@prontiq/web-component": "workspace:*",
