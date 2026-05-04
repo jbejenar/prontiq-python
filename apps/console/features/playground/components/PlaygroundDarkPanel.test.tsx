@@ -2,7 +2,7 @@ import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test, vi } from "vitest";
 
-import type { PlaygroundResponse } from "../types.js";
+import type { PlaygroundHistoryEntry, PlaygroundResponse } from "../types.js";
 import { playgroundShortcutLabels } from "../lib/shortcut-labels.js";
 import { PlaygroundDarkPanel } from "./PlaygroundDarkPanel.js";
 
@@ -13,6 +13,27 @@ const response: PlaygroundResponse = {
   ok: true,
   status: 200,
   statusText: "OK",
+};
+
+const historyEntry: PlaygroundHistoryEntry = {
+  config: {
+    bodyText: "",
+    pathParams: {},
+    queryParams: { q: "2000" },
+  },
+  id: "hist_1",
+  latencyMs: 42,
+  mode: "demo",
+  operation: {
+    method: "GET",
+    operationId: "addressAutocomplete",
+    path: "/v1/address/autocomplete",
+    summary: "Autocomplete addresses",
+    tag: "Address",
+  },
+  requestDisplayId: "abc123",
+  status: 200,
+  timestamp: new Date(Date.now() - 14_000).toISOString(),
 };
 
 test("renders empty state with production-shaped curl", () => {
@@ -53,6 +74,57 @@ test("opens the command palette from the footer affordance", async () => {
   await userEvent.click(screen.getByRole("button", { name: /open command palette/i }));
 
   expect(onOpenCommandPalette).toHaveBeenCalledTimes(1);
+});
+
+test("renders empty request history drawer", () => {
+  render(<DarkPanelHost historyOpen />);
+
+  expect(screen.getByText(/no requests yet/i)).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /clear/i })).toBeDisabled();
+});
+
+test("selects and clears request history entries", async () => {
+  const onClearHistory = vi.fn();
+  const onHistoryEntrySelect = vi.fn();
+  const onHistoryOpenChange = vi.fn();
+  render(
+    <DarkPanelHost
+      historyEntries={[historyEntry]}
+      historyOpen
+      onClearHistory={onClearHistory}
+      onHistoryEntrySelect={onHistoryEntrySelect}
+      onHistoryOpenChange={onHistoryOpenChange}
+    />,
+  );
+
+  expect(screen.getByText("autocomplete")).toBeInTheDocument();
+  expect(screen.getByText("q=2000")).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: /get autocomplete/i }));
+
+  expect(onHistoryEntrySelect).toHaveBeenCalledWith(historyEntry);
+  expect(onHistoryOpenChange).toHaveBeenCalledWith(false);
+
+  await userEvent.click(screen.getByRole("button", { name: /clear/i }));
+
+  expect(onClearHistory).toHaveBeenCalledTimes(1);
+});
+
+test("toggles and dismisses request history drawer", async () => {
+  const onHistoryOpenChange = vi.fn();
+  render(
+    <DarkPanelHost
+      historyEntries={[historyEntry]}
+      historyOpen
+      onHistoryOpenChange={onHistoryOpenChange}
+    />,
+  );
+
+  await userEvent.click(screen.getByRole("button", { name: /open request history/i }));
+  expect(onHistoryOpenChange).toHaveBeenCalledWith(false);
+
+  onHistoryOpenChange.mockClear();
+  await userEvent.pointer({ keys: "[MouseLeft]", target: screen.getByText(/awaiting request/i) });
+  expect(onHistoryOpenChange).toHaveBeenCalledWith(false);
 });
 
 test("highlights the changed curl segment when the command updates", () => {
@@ -111,12 +183,22 @@ test("renders response metadata for successful responses", () => {
 function DarkPanelHost({
   command = "curl 'https://api.prontiq.dev/v1/address/validate' \\\n  -H 'X-Api-Key: {{YOUR_API_KEY}}'",
   demoUnavailableMessage,
+  historyEntries = [],
+  historyOpen = false,
+  onClearHistory = vi.fn(),
+  onHistoryEntrySelect = vi.fn(),
+  onHistoryOpenChange = vi.fn(),
   onRun = vi.fn(),
   onOpenCommandPalette = vi.fn(),
   response: renderedResponse = null,
 }: {
   command?: string;
   demoUnavailableMessage?: string;
+  historyEntries?: readonly PlaygroundHistoryEntry[];
+  historyOpen?: boolean;
+  onClearHistory?: () => void;
+  onHistoryEntrySelect?: (entry: PlaygroundHistoryEntry) => void;
+  onHistoryOpenChange?: (open: boolean) => void;
   onOpenCommandPalette?: () => void;
   onRun?: () => void;
   response?: PlaygroundResponse | null;
@@ -126,9 +208,14 @@ function DarkPanelHost({
       command={command}
       demoUnavailableMessage={demoUnavailableMessage}
       error={null}
+      historyEntries={historyEntries}
+      historyOpen={historyOpen}
       isSending={false}
       mode="demo"
+      onClearHistory={onClearHistory}
       onCopyCurl={async () => undefined}
+      onHistoryEntrySelect={onHistoryEntrySelect}
+      onHistoryOpenChange={onHistoryOpenChange}
       onOpenCommandPalette={onOpenCommandPalette}
       requestDisplayId="abc123"
       response={renderedResponse}

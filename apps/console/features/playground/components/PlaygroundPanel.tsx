@@ -1,17 +1,19 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
 import { Loader2, RefreshCcw, SquareTerminal } from "lucide-react";
 
 import type {
   PlaygroundCommandActionId,
   PlaygroundExecutionControls,
+  PlaygroundHistoryEntry,
   PlaygroundMode,
   PlaygroundOperation,
 } from "../types.js";
 import { usePlaygroundDemoStatus } from "../hooks/usePlaygroundDemoStatus.js";
 import { usePlaygroundHotkeys } from "../hooks/usePlaygroundHotkeys.js";
 import { usePlaygroundOpenApi } from "../hooks/usePlaygroundOpenApi.js";
+import { playgroundHistoryReducer } from "../lib/history.js";
 import { recordPlaygroundInteractionTelemetry } from "../lib/telemetry.js";
 import { Button } from "../../../components/ui/button.js";
 import { PlaygroundCommandPalette } from "./PlaygroundCommandPalette.js";
@@ -28,6 +30,12 @@ export function PlaygroundPanel({ apiBaseUrl }: { apiBaseUrl: string }) {
   const [manualKey, setManualKey] = useState("");
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [executionControls, setExecutionControls] = useState<PlaygroundExecutionControls | null>(null);
+  const [historyEntries, dispatchHistory] = useReducer(
+    playgroundHistoryReducer,
+    [] as PlaygroundHistoryEntry[],
+  );
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [pendingHistoryEntry, setPendingHistoryEntry] = useState<PlaygroundHistoryEntry | null>(null);
   const [pendingFocusTarget, setPendingFocusTarget] = useState<PendingFocusTarget | null>(null);
   const [selectedOperationId, setSelectedOperationId] = useState<string | null>(null);
   const lastScopeVersion = useRef(scopeVersion);
@@ -58,6 +66,9 @@ export function PlaygroundPanel({ apiBaseUrl }: { apiBaseUrl: string }) {
     lastScopeVersion.current = scopeVersion;
     setManualKey("");
     setMode("demo");
+    setHistoryOpen(false);
+    setPendingHistoryEntry(null);
+    dispatchHistory({ type: "CLEAR" });
   }, [scopeVersion]);
 
   const updateManualKey = useCallback((value: string) => {
@@ -69,6 +80,52 @@ export function PlaygroundPanel({ apiBaseUrl }: { apiBaseUrl: string }) {
     clearHeldKey();
     setManualKey("");
   }, [clearHeldKey]);
+
+  const appendHistory = useCallback((entry: PlaygroundHistoryEntry) => {
+    dispatchHistory({ type: "APPEND", entry });
+  }, []);
+
+  const clearHistory = useCallback(() => {
+    dispatchHistory({ type: "CLEAR" });
+    recordPlaygroundInteractionTelemetry({
+      eventName: "history_cleared",
+      mode,
+      source: "console_playground",
+    });
+  }, [mode]);
+
+  const setHistoryOpenWithTelemetry = useCallback(
+    (open: boolean) => {
+      setHistoryOpen(open);
+      if (open) {
+        recordPlaygroundInteractionTelemetry({
+          eventName: "history_opened",
+          mode,
+          source: "console_playground",
+        });
+      }
+    },
+    [mode],
+  );
+
+  const selectHistoryEntry = useCallback(
+    (entry: PlaygroundHistoryEntry) => {
+      const operationExists = operations.some(
+        (operation) => operation.operationId === entry.operation.operationId,
+      );
+      if (!operationExists) return;
+      setMode(entry.mode);
+      setSelectedOperationId(entry.operation.operationId);
+      setPendingHistoryEntry(entry);
+      recordPlaygroundInteractionTelemetry({
+        eventName: "history_entry_loaded",
+        mode: entry.mode,
+        operationId: entry.operation.operationId,
+        source: "console_playground",
+      });
+    },
+    [operations],
+  );
 
   const focusFilter = useCallback(() => {
     filterInputRef.current?.focus();
@@ -141,6 +198,9 @@ export function PlaygroundPanel({ apiBaseUrl }: { apiBaseUrl: string }) {
         case "open_docs":
           window.open("https://docs.prontiq.dev", "_blank", "noopener,noreferrer");
           break;
+        case "open_history":
+          setHistoryOpenWithTelemetry(true);
+          break;
         case "reset_playground":
           executionControls?.reset();
           break;
@@ -153,10 +213,11 @@ export function PlaygroundPanel({ apiBaseUrl }: { apiBaseUrl: string }) {
       }
       setCommandPaletteOpen(false);
     },
-    [clearApiKey, executionControls, mode],
+    [clearApiKey, executionControls, mode, setHistoryOpenWithTelemetry],
   );
 
   usePlaygroundHotkeys({
+    historyOpen,
     onFocusFilter: focusFilter,
     onOpenPalette: openCommandPalette,
     onRun: () => executionControls?.run(),
@@ -230,11 +291,19 @@ export function PlaygroundPanel({ apiBaseUrl }: { apiBaseUrl: string }) {
               baseUrl={apiBaseUrl}
               clearApiKey={clearApiKey}
               demoStatus={demoStatusQuery.data ?? null}
+              historyEntries={historyEntries}
+              historyOpen={historyOpen}
               isDemoStatusLoading={demoStatusQuery.isPending}
               mode={mode}
               operation={selectedOperation}
+              pendingHistoryEntry={pendingHistoryEntry}
+              onAppendHistory={appendHistory}
+              onClearHistory={clearHistory}
               onControlsChange={setExecutionControls}
+              onHistoryEntrySelect={selectHistoryEntry}
+              onHistoryOpenChange={setHistoryOpenWithTelemetry}
               onOpenCommandPalette={openCommandPalette}
+              onPendingHistoryApplied={() => setPendingHistoryEntry(null)}
               updateApiKey={updateManualKey}
             />
           ) : null}

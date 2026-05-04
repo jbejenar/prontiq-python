@@ -37,10 +37,17 @@
   `ScalarAdvancedModal` / `ScalarClientAdapter`.
 - P1C.06a playground command palette work must stay route-local. Do not create
   a global command system, global shortcut manager, or shared `Command`
-  primitive unless another feature independently needs it.
+  primitive unless another feature independently needs it. The palette contains
+  operations and actions only; do not add request-history browsing to it.
 - P1C.06b curl-preview craft must keep `buildCurlCommand` as the only source
   of truth for generated curl. Do not add duplicate curl builders, diff
   libraries, or shortcut listeners.
+- P1C.06c request history is memory-only and route-local. Do not persist it to
+  localStorage, sessionStorage, IndexedDB, cookies, URL state, React Query
+  persisted cache, or server state. Append only responses with an HTTP status;
+  local validation failures, missing-key errors, demo-unavailable states,
+  aborts, timeouts, and network errors are excluded. The dark-panel drawer is
+  the only history browsing surface; the palette may only open the drawer.
 - Playground keyboard shortcuts are documented centrally in `README.md`. Keep
   new shortcuts there instead of scattering them through feature notes.
 - Playground command-palette telemetry is allowlisted only: event name, mode,

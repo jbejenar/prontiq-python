@@ -71,8 +71,10 @@ calls `NEXT_PUBLIC_API_URL` directly from the browser with the memory-held
 P1C.06a adds the playground command palette and route-local keyboard shortcut
 foundation. The palette is mounted only under `/playground`, searches the
 public OpenAPI operation list, and triggers the same native Prontiq actions as
-the visible UI. Palette telemetry is allowlisted to event name, mode, source,
-operation id, and action id only.
+the visible UI. The palette is intentionally limited to operations and actions;
+request history belongs only in the dark-panel drawer, with the palette exposing
+only an `Open request history` action. Palette telemetry is allowlisted to event
+name, mode, source, operation id, and action id only.
 
 P1C.06b refines the Prontiq-owned curl preview without changing request
 execution semantics. The dark panel keeps `buildCurlCommand` as the source of
@@ -80,6 +82,17 @@ truth, memoizes Prism rendering, briefly highlights changed curl bytes, and
 shows the run shortcut as an inline chip inside the Run button. The dark-panel
 footer exposes a clickable command-palette affordance and the run shortcut for
 discoverability; the operation filter remains a filter-only control.
+
+P1C.06c adds tab-session request history. History is memory-only, route-local,
+and capped at 50 HTTP responses with FIFO eviction. Entries are appended only
+after the server returns an HTTP status; local validation failures, missing-key
+errors, demo-unavailable states, aborts, timeouts, and network failures are not
+history entries. The dark-panel drawer is the only request-history browsing
+surface and can reload an entry's operation, mode, params, and body without
+re-firing the request. History clears on org switch/sign-out scope changes,
+manual clear, and page reload. Display redacts Prontiq-shaped API keys in
+parameter summaries, but telemetry remains allowlisted and never includes
+params, bodies, query strings, snippets, keys, or response payloads.
 
 Playground keyboard shortcuts:
 

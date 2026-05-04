@@ -28,6 +28,17 @@ export interface PlaygroundRequestConfig {
   queryParams: Record<string, string>;
 }
 
+export interface PlaygroundHistoryEntry {
+  config: PlaygroundRequestConfig;
+  id: string;
+  latencyMs: number;
+  mode: PlaygroundMode;
+  operation: Pick<PlaygroundOperation, "method" | "operationId" | "path" | "summary" | "tag">;
+  requestDisplayId: string;
+  status: number;
+  timestamp: string;
+}
+
 export interface PlaygroundResponse {
   bodyText: string;
   durationMs: number;
@@ -73,6 +84,17 @@ export type PlaygroundInteractionTelemetryEvent =
       mode: PlaygroundMode;
       operationId: string;
       source: "console_playground";
+    }
+  | {
+      eventName: "history_opened" | "history_cleared";
+      mode: PlaygroundMode;
+      source: "console_playground";
+    }
+  | {
+      eventName: "history_entry_loaded";
+      mode: PlaygroundMode;
+      operationId: string;
+      source: "console_playground";
     };
 
 export type PlaygroundCommandActionId =
@@ -82,6 +104,7 @@ export type PlaygroundCommandActionId =
   | "copy_curl"
   | "clear_api_key"
   | "open_docs"
+  | "open_history"
   | "reset_playground"
   | "focus_filter"
   | "focus_language_tabs";

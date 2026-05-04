@@ -7,6 +7,7 @@ import {
   BookOpen,
   Copy,
   Eraser,
+  History,
   KeyRound,
   Play,
   RotateCcw,
@@ -95,6 +96,13 @@ export function PlaygroundCommandPalette({
       label: "Copy curl",
       subtitle: "Copy the production-shaped curl command",
       onSelect: () => onActionSelected("copy_curl"),
+    },
+    {
+      icon: History,
+      id: "open_history",
+      label: "Open request history",
+      subtitle: "Show requests fired in this tab session",
+      onSelect: () => onActionSelected("open_history"),
     },
     {
       icon: Eraser,

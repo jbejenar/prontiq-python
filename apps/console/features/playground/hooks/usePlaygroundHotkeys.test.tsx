@@ -60,17 +60,33 @@ test("focuses the filter with slash outside text-entry fields", () => {
   expect(onFocusFilter).toHaveBeenCalledTimes(1);
 });
 
+test("does not run page shortcuts while request history is open", async () => {
+  const onFocusFilter = vi.fn();
+  const onRun = vi.fn();
+  render(<HotkeysHost historyOpen onFocusFilter={onFocusFilter} onRun={onRun} />);
+
+  await userEvent.click(screen.getByLabelText(/postcode/i));
+  await userEvent.keyboard("{Meta>}{Enter}{/Meta}");
+  fireEvent.keyDown(screen.getByRole("button", { name: /chrome action/i }), { key: "/" });
+
+  expect(onFocusFilter).not.toHaveBeenCalled();
+  expect(onRun).not.toHaveBeenCalled();
+});
+
 function HotkeysHost({
+  historyOpen = false,
   onFocusFilter = vi.fn(),
   onOpenPalette = vi.fn(),
   onRun = vi.fn(),
 }: {
+  historyOpen?: boolean;
   onFocusFilter?: () => void;
   onOpenPalette?: () => void;
   onRun?: () => void;
 }) {
   const rootRef = useRef<HTMLElement | null>(null);
   usePlaygroundHotkeys({
+    historyOpen,
     onFocusFilter,
     onOpenPalette,
     onRun,

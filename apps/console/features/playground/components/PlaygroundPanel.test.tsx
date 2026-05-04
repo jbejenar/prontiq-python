@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, test, vi } from "vitest";
 
 import type { PlaygroundOperation } from "../types.js";
+import type * as RequestModule from "../lib/request.js";
 
 const playgroundKeyMocks = vi.hoisted(() => ({
   clearHeldKey: vi.fn(),
@@ -12,6 +13,15 @@ const playgroundKeyMocks = vi.hoisted(() => ({
 const queryMocks = vi.hoisted(() => ({
   usePlaygroundDemoStatus: vi.fn(),
   usePlaygroundOpenApi: vi.fn(),
+}));
+
+const requestMocks = vi.hoisted(() => ({
+  executeDemoRequest: vi.fn(),
+}));
+
+const telemetryMocks = vi.hoisted(() => ({
+  recordPlaygroundInteractionTelemetry: vi.fn(),
+  recordPlaygroundTelemetry: vi.fn(),
 }));
 
 vi.mock("./playground-key-provider.js", () => ({
@@ -25,6 +35,16 @@ vi.mock("../hooks/usePlaygroundDemoStatus.js", () => ({
 vi.mock("../hooks/usePlaygroundOpenApi.js", () => ({
   usePlaygroundOpenApi: queryMocks.usePlaygroundOpenApi,
 }));
+
+vi.mock("../lib/request.js", async (importOriginal) => {
+  const original = await importOriginal<typeof RequestModule>();
+  return {
+    ...original,
+    executeDemoRequest: requestMocks.executeDemoRequest,
+  };
+});
+
+vi.mock("../lib/telemetry.js", () => telemetryMocks);
 
 import { PlaygroundPanel } from "./PlaygroundPanel.js";
 
@@ -50,6 +70,14 @@ const operations: PlaygroundOperation[] = [
 
 beforeEach(() => {
   vi.clearAllMocks();
+  requestMocks.executeDemoRequest.mockResolvedValue({
+    bodyText: JSON.stringify({ ok: true }),
+    durationMs: 20,
+    headers: {},
+    ok: true,
+    status: 200,
+    statusText: "OK",
+  });
   playgroundKeyMocks.usePlaygroundKey.mockReturnValue({
     clearHeldKey: playgroundKeyMocks.clearHeldKey,
     heldKey: null,
@@ -98,4 +126,39 @@ test("focus language tabs palette action leaves focus on curl tab after dialog c
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "curl" })).toHaveFocus();
   });
+});
+
+test("clears memory-only request history on key scope changes", async () => {
+  const { rerender } = render(<PlaygroundPanel apiBaseUrl="https://api.prontiq.dev" />);
+
+  await userEvent.click(screen.getByRole("button", { name: /send demo request/i }));
+
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: /open request history/i })).toHaveTextContent("history 1"),
+  );
+
+  playgroundKeyMocks.usePlaygroundKey.mockReturnValue({
+    clearHeldKey: playgroundKeyMocks.clearHeldKey,
+    heldKey: null,
+    scopeVersion: 1,
+  });
+  rerender(<PlaygroundPanel apiBaseUrl="https://api.prontiq.dev" />);
+
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: /open request history/i })).toHaveTextContent("history 0"),
+  );
+});
+
+test("records history interaction telemetry with allowlisted fields only", async () => {
+  render(<PlaygroundPanel apiBaseUrl="https://api.prontiq.dev" />);
+
+  await userEvent.click(screen.getByRole("button", { name: /open request history/i }));
+
+  const event = telemetryMocks.recordPlaygroundInteractionTelemetry.mock.calls.at(-1)?.[0];
+  expect(event).toEqual({
+    eventName: "history_opened",
+    mode: "demo",
+    source: "console_playground",
+  });
+  expect(Object.keys(event ?? {}).sort()).toEqual(["eventName", "mode", "source"]);
 });

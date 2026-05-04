@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Clock3, Loader2, Play } from "lucide-react";
+import { Check, Clock3, History, Loader2, Play, Trash2, X } from "lucide-react";
 import { memo, type RefObject, useEffect, useMemo, useRef, useState } from "react";
 import Prism from "prismjs";
 import "prismjs/components/prism-bash.js";
@@ -11,7 +11,11 @@ import "prismjs/components/prism-go.js";
 import "prismjs/components/prism-ruby.js";
 import { toast } from "sonner";
 
-import type { PlaygroundMode, PlaygroundResponse } from "../types.js";
+import type { PlaygroundHistoryEntry, PlaygroundMode, PlaygroundResponse } from "../types.js";
+import {
+  displayHistoryParameterSummary,
+  formatRelativeHistoryTime,
+} from "../lib/history.js";
 import { playgroundShortcutLabels } from "../lib/shortcut-labels.js";
 import { cn } from "../../../lib/utils.js";
 
@@ -114,8 +118,13 @@ export function PlaygroundDarkPanel({
   demoUnavailableMessage,
   error,
   isSending,
+  historyEntries,
+  historyOpen,
   mode,
   onCopyCurl,
+  onClearHistory,
+  onHistoryEntrySelect,
+  onHistoryOpenChange,
   onOpenCommandPalette,
   onRun,
   runAriaLabel,
@@ -126,9 +135,14 @@ export function PlaygroundDarkPanel({
   command: string;
   demoUnavailableMessage?: string;
   error: string | null;
+  historyEntries: readonly PlaygroundHistoryEntry[];
+  historyOpen: boolean;
   isSending: boolean;
   mode: PlaygroundMode;
+  onClearHistory: () => void;
   onCopyCurl: () => Promise<void>;
+  onHistoryEntrySelect: (entry: PlaygroundHistoryEntry) => void;
+  onHistoryOpenChange: (open: boolean) => void;
   onOpenCommandPalette: () => void;
   onRun: () => void;
   runAriaLabel: string;
@@ -138,6 +152,7 @@ export function PlaygroundDarkPanel({
 }) {
   const [activeLanguage, setActiveLanguage] = usePlaygroundLanguage();
   const previousCommandRef = useRef(command);
+  const historyDrawerRef = useRef<HTMLElement | null>(null);
   const [curlChangedRange, setCurlChangedRange] = useState<ChangedRange | null>(null);
   const panelState = getPanelState({
     demoUnavailable: Boolean(demoUnavailableMessage),
@@ -163,13 +178,38 @@ export function PlaygroundDarkPanel({
     return () => window.clearTimeout(timeout);
   }, [command]);
 
+  useEffect(() => {
+    if (!historyOpen) return undefined;
+
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") onHistoryOpenChange(false);
+    }
+
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [historyOpen, onHistoryOpenChange]);
+
+  useEffect(() => {
+    if (!historyOpen) return undefined;
+
+    function closeOnOutsidePointer(event: PointerEvent) {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (historyDrawerRef.current?.contains(target)) return;
+      onHistoryOpenChange(false);
+    }
+
+    window.addEventListener("pointerdown", closeOnOutsidePointer);
+    return () => window.removeEventListener("pointerdown", closeOnOutsidePointer);
+  }, [historyOpen, onHistoryOpenChange]);
+
   async function copyResponse() {
     await navigator.clipboard.writeText(bodyText || "");
     toast.success("Copied response");
   }
 
   return (
-    <section className="flex min-h-0 flex-1 flex-col bg-playground-panel-bg text-playground-panel-text">
+    <section className="relative flex min-h-0 flex-1 flex-col overflow-hidden bg-playground-panel-bg text-playground-panel-text">
       <style>{`
         .playground-code .token.keyword,
         .playground-code .token.function,
@@ -286,13 +326,24 @@ export function PlaygroundDarkPanel({
             </span>
           ) : null}
         </div>
-        <button
-          className="font-mono text-[10px] text-playground-panel-muted transition hover:text-playground-panel-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-playground-panel-accent"
-          type="button"
-          onClick={() => void (response || error ? copyResponse() : onCopyCurl())}
-        >
-          copy
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            aria-label="Open request history"
+            className="inline-flex items-center gap-1 font-mono text-[10px] text-playground-panel-muted transition hover:text-playground-panel-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-playground-panel-accent"
+            type="button"
+            onClick={() => onHistoryOpenChange(!historyOpen)}
+          >
+            <History className="h-[11px] w-[11px]" />
+            history {historyEntries.length}
+          </button>
+          <button
+            className="font-mono text-[10px] text-playground-panel-muted transition hover:text-playground-panel-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-playground-panel-accent"
+            type="button"
+            onClick={() => void (response || error ? copyResponse() : onCopyCurl())}
+          >
+            copy
+          </button>
+        </div>
       </div>
 
       <div
@@ -340,8 +391,115 @@ export function PlaygroundDarkPanel({
           <span>request #{requestDisplayId}</span>
         </div>
       </div>
+      {historyOpen ? (
+        <RequestHistoryDrawer
+          drawerRef={historyDrawerRef}
+          entries={historyEntries}
+          onClearHistory={onClearHistory}
+          onClose={() => onHistoryOpenChange(false)}
+          onSelectEntry={(entry) => {
+            onHistoryEntrySelect(entry);
+            onHistoryOpenChange(false);
+          }}
+        />
+      ) : null}
     </section>
   );
+}
+
+const RequestHistoryDrawer = memo(function RequestHistoryDrawer({
+  drawerRef,
+  entries,
+  onClearHistory,
+  onClose,
+  onSelectEntry,
+}: {
+  drawerRef: RefObject<HTMLElement | null>;
+  entries: readonly PlaygroundHistoryEntry[];
+  onClearHistory: () => void;
+  onClose: () => void;
+  onSelectEntry: (entry: PlaygroundHistoryEntry) => void;
+}) {
+  const nowMs = Date.now();
+
+  return (
+    <aside
+      className="absolute bottom-8 right-0 top-10 z-20 flex w-[280px] flex-col border-l border-playground-panel-border bg-playground-panel-bg-footer shadow-lift"
+      ref={drawerRef}
+    >
+      <div className="flex h-10 shrink-0 items-center justify-between border-b border-playground-panel-border px-3">
+        <div className="font-mono text-[11px] text-playground-panel-text">
+          History <span className="text-playground-panel-muted">{entries.length}</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            className="inline-flex items-center gap-1 font-mono text-[10px] text-playground-panel-muted transition hover:text-playground-panel-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-playground-panel-accent disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={entries.length === 0}
+            type="button"
+            onClick={onClearHistory}
+          >
+            <Trash2 className="h-3 w-3" />
+            Clear
+          </button>
+          <button
+            aria-label="Close request history"
+            className="text-playground-panel-muted transition hover:text-playground-panel-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-playground-panel-accent"
+            type="button"
+            onClick={onClose}
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto p-2">
+        {entries.length === 0 ? (
+          <div className="flex h-full items-center justify-center px-6 text-center font-mono text-[11px] text-playground-panel-muted">
+            no requests yet — fire one to get started.
+          </div>
+        ) : (
+          <div className="space-y-1">
+            {entries.map((entry) => (
+              <button
+                className="w-full rounded-md border border-transparent px-2 py-2 text-left transition hover:border-playground-panel-border hover:bg-playground-panel-accent-tab focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-playground-panel-accent"
+                key={entry.id}
+                type="button"
+                onClick={() => onSelectEntry(entry)}
+              >
+                <div className="flex items-center gap-2">
+                  <span className="w-8 shrink-0 font-mono text-[9px] font-medium tracking-[0.04em] text-playground-panel-string">
+                    {entry.operation.method}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-playground-panel-text">
+                    {stripAddressPrefix(entry.operation.path)}
+                  </span>
+                  <span className={cn("font-mono text-[10px]", getHistoryStatusClass(entry.status))}>
+                    {entry.status}
+                  </span>
+                  <span className="rounded border border-playground-panel-border px-1 font-mono text-[9px] text-playground-panel-muted">
+                    {entry.mode === "demo" ? "D" : "A"}
+                  </span>
+                </div>
+                <div className="mt-1 flex items-center justify-between gap-2 font-mono text-[10px] text-playground-panel-muted">
+                  <span className="min-w-0 truncate">{displayHistoryParameterSummary(entry)}</span>
+                  <span className="shrink-0">{formatRelativeHistoryTime(nowMs, entry.timestamp)}</span>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </aside>
+  );
+});
+
+function stripAddressPrefix(path: string) {
+  return path.replace(/^\/v1\/address\/?/, "") || path;
+}
+
+function getHistoryStatusClass(status: number) {
+  if (status >= 200 && status < 300) return "text-playground-panel-accent-light";
+  if (status >= 400) return "text-playground-panel-danger";
+  return "text-playground-panel-number";
 }
 
 const CodeBlock = memo(function CodeBlock({

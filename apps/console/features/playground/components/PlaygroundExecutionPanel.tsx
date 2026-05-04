@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import type {
   PlaygroundDemoStatus,
   PlaygroundExecutionControls,
+  PlaygroundHistoryEntry,
   PlaygroundMode,
   PlaygroundOperation,
   PlaygroundRequestConfig,
@@ -25,22 +26,38 @@ export function PlaygroundExecutionPanel({
   baseUrl,
   clearApiKey,
   demoStatus,
+  historyEntries,
+  historyOpen,
   isDemoStatusLoading,
   mode,
   operation,
+  pendingHistoryEntry,
+  onAppendHistory,
   onControlsChange,
+  onClearHistory,
+  onHistoryEntrySelect,
+  onHistoryOpenChange,
   onOpenCommandPalette,
+  onPendingHistoryApplied,
   updateApiKey,
 }: {
   apiKey: string;
   baseUrl: string;
   clearApiKey: () => void;
   demoStatus: PlaygroundDemoStatus | null;
+  historyEntries: readonly PlaygroundHistoryEntry[];
+  historyOpen: boolean;
   isDemoStatusLoading: boolean;
   mode: PlaygroundMode;
   operation: PlaygroundOperation;
+  pendingHistoryEntry: PlaygroundHistoryEntry | null;
+  onAppendHistory: (entry: PlaygroundHistoryEntry) => void;
+  onClearHistory: () => void;
   onControlsChange?: (controls: PlaygroundExecutionControls | null) => void;
+  onHistoryEntrySelect: (entry: PlaygroundHistoryEntry) => void;
+  onHistoryOpenChange: (open: boolean) => void;
   onOpenCommandPalette: () => void;
+  onPendingHistoryApplied: () => void;
   updateApiKey: (value: string) => void;
 }) {
   const [config, setConfig] = useState<PlaygroundRequestConfig>(() =>
@@ -75,6 +92,18 @@ export function PlaygroundExecutionPanel({
   }, [cancelActiveRequest, config, mode]);
 
   useEffect(() => () => cancelActiveRequest({ clearSending: false }), [cancelActiveRequest]);
+
+  useEffect(() => {
+    if (!pendingHistoryEntry || pendingHistoryEntry.operation.operationId !== operation.operationId) return;
+    cancelActiveRequest();
+    startTransition(() => {
+      setConfig(pendingHistoryEntry.config);
+      setError(null);
+      setResponse(null);
+      setRequestDisplayId(pendingHistoryEntry.requestDisplayId);
+    });
+    onPendingHistoryApplied();
+  }, [cancelActiveRequest, onPendingHistoryApplied, operation.operationId, pendingHistoryEntry]);
 
   const demoChecking = mode === "demo" && isDemoStatusLoading;
   const demoReferenceOnly =
@@ -128,7 +157,8 @@ export function PlaygroundExecutionPanel({
     abortRef.current?.abort();
     const abortController = new AbortController();
     abortRef.current = abortController;
-    setRequestDisplayId(makeRequestDisplayId());
+    const displayId = makeRequestDisplayId();
+    setRequestDisplayId(displayId);
     setIsSending(true);
     setError(null);
     setResponse(null);
@@ -145,6 +175,22 @@ export function PlaygroundExecutionPanel({
             });
       if (requestIdRef.current !== requestId) return;
       setResponse(nextResponse);
+      onAppendHistory({
+        config,
+        id: makeHistoryEntryId(),
+        latencyMs: nextResponse.durationMs,
+        mode,
+        operation: {
+          method: operation.method,
+          operationId: operation.operationId,
+          path: operation.path,
+          summary: operation.summary,
+          tag: operation.tag,
+        },
+        requestDisplayId: displayId,
+        status: nextResponse.status,
+        timestamp: new Date().toISOString(),
+      });
       recordPlaygroundTelemetry({
         latencyMs: nextResponse.durationMs,
         method: operation.method,
@@ -186,6 +232,7 @@ export function PlaygroundExecutionPanel({
     demoReferenceOnly,
     demoReferenceOnlyMessage,
     mode,
+    onAppendHistory,
     operation,
   ]);
 
@@ -261,9 +308,14 @@ export function PlaygroundExecutionPanel({
         command={command}
         demoUnavailableMessage={demoReferenceOnly && !demoChecking ? demoReferenceOnlyMessage : undefined}
         error={error}
+        historyEntries={historyEntries}
+        historyOpen={historyOpen}
         isSending={isSending || demoChecking}
         mode={mode}
+        onClearHistory={onClearHistory}
         onCopyCurl={copyCurl}
+        onHistoryEntrySelect={onHistoryEntrySelect}
+        onHistoryOpenChange={onHistoryOpenChange}
         onOpenCommandPalette={onOpenCommandPalette}
         requestDisplayId={requestDisplayId}
         response={response}
@@ -297,4 +349,9 @@ function HighlightedPath({ path }: { path: string }) {
 
 function makeRequestDisplayId() {
   return Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, "0");
+}
+
+function makeHistoryEntryId() {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
+  return `hist_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 }
