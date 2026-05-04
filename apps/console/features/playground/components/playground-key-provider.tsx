@@ -42,19 +42,28 @@ function MemoryOnlyPlaygroundKeyProvider({ children }: { children: ReactNode }) 
 }
 
 function ClerkScopedPlaygroundKeyProvider({ children }: { children: ReactNode }) {
-  const { orgId, userId } = useAuth();
+  const { isLoaded, orgId, userId } = useAuth();
   const [heldKey, setHeldKeyState] = useState<HeldPlaygroundKey | null>(null);
-  const [scope, setScope] = useState({ orgId: orgId ?? null, userId: userId ?? null });
+  const [scope, setScope] = useState({
+    isResolved: false,
+    orgId: orgId ?? null,
+    userId: userId ?? null,
+  });
   const [scopeVersion, setScopeVersion] = useState(0);
 
   useEffect(() => {
+    if (!isLoaded) return;
     const nextScope = { orgId: orgId ?? null, userId: userId ?? null };
+    if (!scope.isResolved) {
+      setScope({ ...nextScope, isResolved: true });
+      return;
+    }
     if (nextScope.orgId !== scope.orgId || nextScope.userId !== scope.userId) {
       setHeldKeyState(null);
-      setScope(nextScope);
+      setScope({ ...nextScope, isResolved: true });
       setScopeVersion((value) => value + 1);
     }
-  }, [orgId, scope.orgId, scope.userId, userId]);
+  }, [isLoaded, orgId, scope.isResolved, scope.orgId, scope.userId, userId]);
 
   const setHeldKey = useCallback((raw: string) => {
     setHeldKeyState({ raw, receivedAt: Date.now() });
