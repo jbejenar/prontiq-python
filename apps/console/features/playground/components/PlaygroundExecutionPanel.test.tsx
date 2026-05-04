@@ -197,6 +197,7 @@ function PlaygroundExecutionPanelHost({
       isDemoStatusLoading={isDemoStatusLoading}
       mode={mode}
       operation={selectedOperation}
+      onOpenCommandPalette={() => undefined}
       updateApiKey={() => undefined}
     />
   );

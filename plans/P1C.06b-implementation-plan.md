@@ -24,6 +24,7 @@ Keep the existing panel contract and improve only the rendering craft:
 - Wrap the changed range in a short-lived highlighted span using CSS keyframes.
 - Move the `Cmd/Ctrl+Enter` affordance into the Run button as a platform-neutral chip; the actual listener remains owned by `P1C.06a`.
 - Keep visible shortcut labels centralized so the dark panel, command palette, operation rail, and README stay aligned.
+- Expose the command-palette shortcut as a clickable dark-panel footer affordance so it is discoverable outside the operation filter.
 
 ## Phases
 

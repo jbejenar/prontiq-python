@@ -4,7 +4,6 @@ import { Search } from "lucide-react";
 import { type RefObject, useMemo, useState } from "react";
 
 import type { PlaygroundOperation } from "../types.js";
-import { playgroundShortcutLabels } from "../lib/shortcut-labels.js";
 import { cn } from "../../../lib/utils.js";
 
 function getVerbClass(method: string, selected: boolean) {
@@ -29,13 +28,11 @@ function stripAddressPrefix(path: string) {
 
 export function EndpointGroupList({
   filterInputRef,
-  onOpenCommandPalette,
   operations,
   selectedOperationId,
   onSelect,
 }: {
   filterInputRef?: RefObject<HTMLInputElement | null>;
-  onOpenCommandPalette?: () => void;
   operations: PlaygroundOperation[];
   selectedOperationId: string | null;
   onSelect: (operation: PlaygroundOperation) => void;
@@ -59,20 +56,12 @@ export function EndpointGroupList({
           <Search className="pointer-events-none absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
           <input
             aria-label="Filter operations"
-            className="h-[26px] w-full rounded-[5px] border border-border bg-background pl-7 pr-[72px] font-mono text-[11px] text-foreground outline-none transition focus-visible:ring-2 focus-visible:ring-ring"
+            className="h-[26px] w-full rounded-[5px] border border-border bg-background pl-7 pr-2 font-mono text-[11px] text-foreground outline-none transition focus-visible:ring-2 focus-visible:ring-ring"
             placeholder="Filter"
             ref={filterInputRef}
             value={filter}
             onChange={(event) => setFilter(event.target.value)}
           />
-          <button
-            aria-label="Open command palette"
-            className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-[3px] px-1 font-mono text-[10px] text-muted-2 transition hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            type="button"
-            onClick={onOpenCommandPalette}
-          >
-            {playgroundShortcutLabels.commandPaletteChip}
-          </button>
         </label>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-2 py-3">

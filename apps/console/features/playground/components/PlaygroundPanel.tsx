@@ -220,7 +220,6 @@ export function PlaygroundPanel({ apiBaseUrl }: { apiBaseUrl: string }) {
         <div className="grid min-h-0 flex-1 grid-cols-[220px_minmax(0,1fr)]">
           <EndpointGroupList
             filterInputRef={filterInputRef}
-            onOpenCommandPalette={openCommandPalette}
             operations={operations}
             selectedOperationId={selectedOperation?.operationId ?? null}
             onSelect={selectOperation}
@@ -235,6 +234,7 @@ export function PlaygroundPanel({ apiBaseUrl }: { apiBaseUrl: string }) {
               mode={mode}
               operation={selectedOperation}
               onControlsChange={setExecutionControls}
+              onOpenCommandPalette={openCommandPalette}
               updateApiKey={updateManualKey}
             />
           ) : null}

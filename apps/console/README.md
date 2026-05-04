@@ -77,7 +77,9 @@ operation id, and action id only.
 P1C.06b refines the Prontiq-owned curl preview without changing request
 execution semantics. The dark panel keeps `buildCurlCommand` as the source of
 truth, memoizes Prism rendering, briefly highlights changed curl bytes, and
-shows the run shortcut as an inline chip inside the Run button.
+shows the run shortcut as an inline chip inside the Run button. The dark-panel
+footer exposes a clickable command-palette affordance and the run shortcut for
+discoverability; the operation filter remains a filter-only control.
 
 Playground keyboard shortcuts:
 

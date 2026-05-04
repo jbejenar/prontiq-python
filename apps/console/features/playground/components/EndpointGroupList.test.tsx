@@ -3,7 +3,6 @@ import userEvent from "@testing-library/user-event";
 import { expect, test, vi } from "vitest";
 
 import type { PlaygroundOperation } from "../types.js";
-import { playgroundShortcutLabels } from "../lib/shortcut-labels.js";
 import { EndpointGroupList } from "./EndpointGroupList.js";
 
 const operations: PlaygroundOperation[] = [
@@ -48,9 +47,7 @@ test("renders operations grouped by OpenAPI tag with stripped address paths", ()
   expect(screen.getByText("Future")).toBeInTheDocument();
   expect(screen.getByText("autocomplete")).toBeInTheDocument();
   expect(screen.getByText("/v1/future/{id}")).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: /open command palette/i })).toHaveTextContent(
-    playgroundShortcutLabels.commandPaletteChip,
-  );
+  expect(screen.queryByRole("button", { name: /open command palette/i })).not.toBeInTheDocument();
 });
 
 test("filters operations and selects through button semantics", async () => {

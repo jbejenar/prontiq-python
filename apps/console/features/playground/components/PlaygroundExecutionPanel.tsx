@@ -29,6 +29,7 @@ export function PlaygroundExecutionPanel({
   mode,
   operation,
   onControlsChange,
+  onOpenCommandPalette,
   updateApiKey,
 }: {
   apiKey: string;
@@ -39,6 +40,7 @@ export function PlaygroundExecutionPanel({
   mode: PlaygroundMode;
   operation: PlaygroundOperation;
   onControlsChange?: (controls: PlaygroundExecutionControls | null) => void;
+  onOpenCommandPalette: () => void;
   updateApiKey: (value: string) => void;
 }) {
   const [config, setConfig] = useState<PlaygroundRequestConfig>(() =>
@@ -262,6 +264,7 @@ export function PlaygroundExecutionPanel({
         isSending={isSending || demoChecking}
         mode={mode}
         onCopyCurl={copyCurl}
+        onOpenCommandPalette={onOpenCommandPalette}
         requestDisplayId={requestDisplayId}
         response={response}
         runAriaLabel={runAriaLabel}

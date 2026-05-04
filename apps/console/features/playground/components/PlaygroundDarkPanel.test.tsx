@@ -1,4 +1,5 @@
 import { act, render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { expect, test, vi } from "vitest";
 
 import type { PlaygroundResponse } from "../types.js";
@@ -29,8 +30,29 @@ test("renders the run shortcut inside the run button", () => {
 
   expect(within(runButton).getByText(playgroundShortcutLabels.runChip)).toBeInTheDocument();
   expect(
-    screen.getByText((content) => content.includes(playgroundShortcutLabels.run)),
-  ).toBeInTheDocument();
+    screen.getAllByText((content) => content.includes(playgroundShortcutLabels.run)).length,
+  ).toBeGreaterThanOrEqual(1);
+});
+
+test("renders discoverable footer shortcuts for palette and run", () => {
+  render(<DarkPanelHost />);
+
+  expect(screen.getByRole("button", { name: /open command palette/i })).toHaveTextContent(
+    `palette ${playgroundShortcutLabels.commandPalette}`,
+  );
+  expect(screen.getByText("run")).toBeInTheDocument();
+  expect(
+    screen.getAllByText((content) => content.includes(playgroundShortcutLabels.run)).length,
+  ).toBeGreaterThanOrEqual(2);
+});
+
+test("opens the command palette from the footer affordance", async () => {
+  const onOpenCommandPalette = vi.fn();
+  render(<DarkPanelHost onOpenCommandPalette={onOpenCommandPalette} />);
+
+  await userEvent.click(screen.getByRole("button", { name: /open command palette/i }));
+
+  expect(onOpenCommandPalette).toHaveBeenCalledTimes(1);
 });
 
 test("highlights the changed curl segment when the command updates", () => {
@@ -90,10 +112,12 @@ function DarkPanelHost({
   command = "curl 'https://api.prontiq.dev/v1/address/validate' \\\n  -H 'X-Api-Key: {{YOUR_API_KEY}}'",
   demoUnavailableMessage,
   onRun = vi.fn(),
+  onOpenCommandPalette = vi.fn(),
   response: renderedResponse = null,
 }: {
   command?: string;
   demoUnavailableMessage?: string;
+  onOpenCommandPalette?: () => void;
   onRun?: () => void;
   response?: PlaygroundResponse | null;
 }) {
@@ -105,6 +129,7 @@ function DarkPanelHost({
       isSending={false}
       mode="demo"
       onCopyCurl={async () => undefined}
+      onOpenCommandPalette={onOpenCommandPalette}
       requestDisplayId="abc123"
       response={renderedResponse}
       runAriaLabel="Send demo request"

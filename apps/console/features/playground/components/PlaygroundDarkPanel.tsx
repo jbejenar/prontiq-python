@@ -116,6 +116,7 @@ export function PlaygroundDarkPanel({
   isSending,
   mode,
   onCopyCurl,
+  onOpenCommandPalette,
   onRun,
   runAriaLabel,
   tabFocusRef,
@@ -128,6 +129,7 @@ export function PlaygroundDarkPanel({
   isSending: boolean;
   mode: PlaygroundMode;
   onCopyCurl: () => Promise<void>;
+  onOpenCommandPalette: () => void;
   onRun: () => void;
   runAriaLabel: string;
   tabFocusRef?: RefObject<HTMLButtonElement | null>;
@@ -317,6 +319,20 @@ export function PlaygroundDarkPanel({
             {mode === "demo"
               ? "demo proxy · clerk-authed · billed to demo org"
               : "your account · billed to your org"}
+          </span>
+        </div>
+        <div className="flex items-center gap-2 font-mono text-[10px] text-playground-panel-muted">
+          <button
+            aria-label="Open command palette"
+            className="rounded border border-playground-panel-border px-1 py-px text-playground-panel-accent-light transition hover:text-playground-panel-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-playground-panel-accent"
+            type="button"
+            onClick={onOpenCommandPalette}
+          >
+            palette {playgroundShortcutLabels.commandPalette}
+          </button>
+          <span className="hidden lg:inline">run</span>
+          <span className="hidden rounded border border-playground-panel-border px-1 py-px text-playground-panel-accent-light lg:inline">
+            {playgroundShortcutLabels.run}
           </span>
         </div>
         <div className="flex items-center gap-1.5 font-mono text-[10px] text-playground-panel-accent-light">

@@ -71,7 +71,7 @@ beforeEach(() => {
 test("focus operation filter palette action leaves focus on the filter after dialog close", async () => {
   render(<PlaygroundPanel apiBaseUrl="https://api.prontiq.dev" />);
 
-  await userEvent.click(screen.getByRole("button", { name: /open command palette/i }));
+  await userEvent.keyboard("{Meta>}k{/Meta}");
   await userEvent.click(screen.getByText("Focus operation filter"));
 
   await waitFor(() => {
@@ -80,10 +80,18 @@ test("focus operation filter palette action leaves focus on the filter after dia
   });
 });
 
-test("focus language tabs palette action leaves focus on curl tab after dialog close", async () => {
+test("opens command palette from the visible footer affordance", async () => {
   render(<PlaygroundPanel apiBaseUrl="https://api.prontiq.dev" />);
 
   await userEvent.click(screen.getByRole("button", { name: /open command palette/i }));
+
+  expect(screen.getByRole("dialog", { name: /playground command palette/i })).toBeInTheDocument();
+});
+
+test("focus language tabs palette action leaves focus on curl tab after dialog close", async () => {
+  render(<PlaygroundPanel apiBaseUrl="https://api.prontiq.dev" />);
+
+  await userEvent.keyboard("{Meta>}k{/Meta}");
   await userEvent.click(screen.getByText("Focus language tabs"));
 
   await waitFor(() => {
