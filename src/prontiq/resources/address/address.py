@@ -122,11 +122,13 @@ class AddressResource(SyncAPIResource):
         extra_body: Body | None = None,
         timeout: float | httpx.Timeout | None | NotGiven = not_given,
     ) -> AddressEnrichResponse:
-        """
-        Enrich an address by ID
+        """Enrich an address by ID
 
         Args:
           id: G-NAF address document ID.
+
+        Paste an id value returned from Autocomplete or
+              Validate.
 
           extra_headers: Send extra headers
 
@@ -325,11 +327,13 @@ class AsyncAddressResource(AsyncAPIResource):
         extra_body: Body | None = None,
         timeout: float | httpx.Timeout | None | NotGiven = not_given,
     ) -> AddressEnrichResponse:
-        """
-        Enrich an address by ID
+        """Enrich an address by ID
 
         Args:
           id: G-NAF address document ID.
+
+        Paste an id value returned from Autocomplete or
+              Validate.
 
           extra_headers: Send extra headers
 
