@@ -24,7 +24,7 @@ class TestLookup:
     @parametrize
     def test_method_by_postcode(self, client: Prontiq) -> None:
         lookup = client.address.lookup.by_postcode(
-            postcode="7321",
+            postcode="2000",
         )
         assert_matches_type(LookupByPostcodeResponse, lookup, path=["response"])
 
@@ -32,8 +32,8 @@ class TestLookup:
     @parametrize
     def test_method_by_postcode_with_all_params(self, client: Prontiq) -> None:
         lookup = client.address.lookup.by_postcode(
-            postcode="7321",
-            limit=1,
+            postcode="2000",
+            limit=3,
         )
         assert_matches_type(LookupByPostcodeResponse, lookup, path=["response"])
 
@@ -41,7 +41,7 @@ class TestLookup:
     @parametrize
     def test_raw_response_by_postcode(self, client: Prontiq) -> None:
         response = client.address.lookup.with_raw_response.by_postcode(
-            postcode="7321",
+            postcode="2000",
         )
 
         assert response.is_closed is True
@@ -53,7 +53,7 @@ class TestLookup:
     @parametrize
     def test_streaming_response_by_postcode(self, client: Prontiq) -> None:
         with client.address.lookup.with_streaming_response.by_postcode(
-            postcode="7321",
+            postcode="2000",
         ) as response:
             assert not response.is_closed
             assert response.http_request.headers.get("X-Stainless-Lang") == "python"
@@ -67,7 +67,7 @@ class TestLookup:
     @parametrize
     def test_method_by_suburb(self, client: Prontiq) -> None:
         lookup = client.address.lookup.by_suburb(
-            suburb="x",
+            suburb="bondi beach",
         )
         assert_matches_type(LookupBySuburbResponse, lookup, path=["response"])
 
@@ -75,9 +75,9 @@ class TestLookup:
     @parametrize
     def test_method_by_suburb_with_all_params(self, client: Prontiq) -> None:
         lookup = client.address.lookup.by_suburb(
-            suburb="x",
+            suburb="bondi beach",
             limit=1,
-            state="state",
+            state="NSW",
         )
         assert_matches_type(LookupBySuburbResponse, lookup, path=["response"])
 
@@ -85,7 +85,7 @@ class TestLookup:
     @parametrize
     def test_raw_response_by_suburb(self, client: Prontiq) -> None:
         response = client.address.lookup.with_raw_response.by_suburb(
-            suburb="x",
+            suburb="bondi beach",
         )
 
         assert response.is_closed is True
@@ -97,7 +97,7 @@ class TestLookup:
     @parametrize
     def test_streaming_response_by_suburb(self, client: Prontiq) -> None:
         with client.address.lookup.with_streaming_response.by_suburb(
-            suburb="x",
+            suburb="bondi beach",
         ) as response:
             assert not response.is_closed
             assert response.http_request.headers.get("X-Stainless-Lang") == "python"
@@ -117,7 +117,7 @@ class TestAsyncLookup:
     @parametrize
     async def test_method_by_postcode(self, async_client: AsyncProntiq) -> None:
         lookup = await async_client.address.lookup.by_postcode(
-            postcode="7321",
+            postcode="2000",
         )
         assert_matches_type(LookupByPostcodeResponse, lookup, path=["response"])
 
@@ -125,8 +125,8 @@ class TestAsyncLookup:
     @parametrize
     async def test_method_by_postcode_with_all_params(self, async_client: AsyncProntiq) -> None:
         lookup = await async_client.address.lookup.by_postcode(
-            postcode="7321",
-            limit=1,
+            postcode="2000",
+            limit=3,
         )
         assert_matches_type(LookupByPostcodeResponse, lookup, path=["response"])
 
@@ -134,7 +134,7 @@ class TestAsyncLookup:
     @parametrize
     async def test_raw_response_by_postcode(self, async_client: AsyncProntiq) -> None:
         response = await async_client.address.lookup.with_raw_response.by_postcode(
-            postcode="7321",
+            postcode="2000",
         )
 
         assert response.is_closed is True
@@ -146,7 +146,7 @@ class TestAsyncLookup:
     @parametrize
     async def test_streaming_response_by_postcode(self, async_client: AsyncProntiq) -> None:
         async with async_client.address.lookup.with_streaming_response.by_postcode(
-            postcode="7321",
+            postcode="2000",
         ) as response:
             assert not response.is_closed
             assert response.http_request.headers.get("X-Stainless-Lang") == "python"
@@ -160,7 +160,7 @@ class TestAsyncLookup:
     @parametrize
     async def test_method_by_suburb(self, async_client: AsyncProntiq) -> None:
         lookup = await async_client.address.lookup.by_suburb(
-            suburb="x",
+            suburb="bondi beach",
         )
         assert_matches_type(LookupBySuburbResponse, lookup, path=["response"])
 
@@ -168,9 +168,9 @@ class TestAsyncLookup:
     @parametrize
     async def test_method_by_suburb_with_all_params(self, async_client: AsyncProntiq) -> None:
         lookup = await async_client.address.lookup.by_suburb(
-            suburb="x",
+            suburb="bondi beach",
             limit=1,
-            state="state",
+            state="NSW",
         )
         assert_matches_type(LookupBySuburbResponse, lookup, path=["response"])
 
@@ -178,7 +178,7 @@ class TestAsyncLookup:
     @parametrize
     async def test_raw_response_by_suburb(self, async_client: AsyncProntiq) -> None:
         response = await async_client.address.lookup.with_raw_response.by_suburb(
-            suburb="x",
+            suburb="bondi beach",
         )
 
         assert response.is_closed is True
@@ -190,7 +190,7 @@ class TestAsyncLookup:
     @parametrize
     async def test_streaming_response_by_suburb(self, async_client: AsyncProntiq) -> None:
         async with async_client.address.lookup.with_streaming_response.by_suburb(
-            suburb="x",
+            suburb="bondi beach",
         ) as response:
             assert not response.is_closed
             assert response.http_request.headers.get("X-Stainless-Lang") == "python"

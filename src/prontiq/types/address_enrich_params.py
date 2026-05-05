@@ -9,4 +9,7 @@ __all__ = ["AddressEnrichParams"]
 
 class AddressEnrichParams(TypedDict, total=False):
     id: Required[str]
-    """G-NAF address document ID."""
+    """G-NAF address document ID.
+
+    Paste an id value returned from Autocomplete or Validate.
+    """
