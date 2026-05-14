@@ -35,6 +35,7 @@ class TestAddress:
     def test_method_autocomplete_with_all_params(self, client: Prontiq) -> None:
         address = client.address.autocomplete(
             q="9 endeavour cou",
+            debug="false",
             limit=3,
             state="NSW",
         )
@@ -71,6 +72,15 @@ class TestAddress:
     def test_method_enrich(self, client: Prontiq) -> None:
         address = client.address.enrich(
             id="F_GAVIC999000002",
+        )
+        assert_matches_type(AddressEnrichResponse, address, path=["response"])
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    def test_method_enrich_with_all_params(self, client: Prontiq) -> None:
+        address = client.address.enrich(
+            id="F_GAVIC999000002",
+            debug="false",
         )
         assert_matches_type(AddressEnrichResponse, address, path=["response"])
 
@@ -115,6 +125,7 @@ class TestAddress:
         address = client.address.reverse_geocode(
             lat=-33.8568,
             lon=151.2153,
+            debug="false",
             limit=3,
             radius=200,
         )
@@ -153,6 +164,15 @@ class TestAddress:
     def test_method_validate(self, client: Prontiq) -> None:
         address = client.address.validate(
             q="9 endeavour court coffin bay sa 5607",
+        )
+        assert_matches_type(AddressValidateResponse, address, path=["response"])
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    def test_method_validate_with_all_params(self, client: Prontiq) -> None:
+        address = client.address.validate(
+            q="9 endeavour court coffin bay sa 5607",
+            debug="false",
         )
         assert_matches_type(AddressValidateResponse, address, path=["response"])
 
@@ -201,6 +221,7 @@ class TestAsyncAddress:
     async def test_method_autocomplete_with_all_params(self, async_client: AsyncProntiq) -> None:
         address = await async_client.address.autocomplete(
             q="9 endeavour cou",
+            debug="false",
             limit=3,
             state="NSW",
         )
@@ -237,6 +258,15 @@ class TestAsyncAddress:
     async def test_method_enrich(self, async_client: AsyncProntiq) -> None:
         address = await async_client.address.enrich(
             id="F_GAVIC999000002",
+        )
+        assert_matches_type(AddressEnrichResponse, address, path=["response"])
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    async def test_method_enrich_with_all_params(self, async_client: AsyncProntiq) -> None:
+        address = await async_client.address.enrich(
+            id="F_GAVIC999000002",
+            debug="false",
         )
         assert_matches_type(AddressEnrichResponse, address, path=["response"])
 
@@ -281,6 +311,7 @@ class TestAsyncAddress:
         address = await async_client.address.reverse_geocode(
             lat=-33.8568,
             lon=151.2153,
+            debug="false",
             limit=3,
             radius=200,
         )
@@ -319,6 +350,15 @@ class TestAsyncAddress:
     async def test_method_validate(self, async_client: AsyncProntiq) -> None:
         address = await async_client.address.validate(
             q="9 endeavour court coffin bay sa 5607",
+        )
+        assert_matches_type(AddressValidateResponse, address, path=["response"])
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    async def test_method_validate_with_all_params(self, async_client: AsyncProntiq) -> None:
+        address = await async_client.address.validate(
+            q="9 endeavour court coffin bay sa 5607",
+            debug="false",
         )
         assert_matches_type(AddressValidateResponse, address, path=["response"])
 

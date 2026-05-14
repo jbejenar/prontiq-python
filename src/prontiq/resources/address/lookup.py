@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing_extensions import Literal
+
 import httpx
 
 from ..._types import Body, Omit, Query, Headers, NotGiven, omit, not_given
@@ -50,6 +52,7 @@ class LookupResource(SyncAPIResource):
         self,
         *,
         postcode: str,
+        debug: Literal["true", "false"] | Omit = omit,
         limit: int | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
@@ -64,6 +67,10 @@ class LookupResource(SyncAPIResource):
 
         Args:
           postcode: Australian 4-digit postcode.
+
+          debug: Optional diagnostic flag. Send exactly `true` or `false`. Invalid values are
+              rejected; debug diagnostics are for support only and must not be used for
+              business decisions.
 
           limit: Maximum number of localities to return.
 
@@ -85,6 +92,7 @@ class LookupResource(SyncAPIResource):
                 query=maybe_transform(
                     {
                         "postcode": postcode,
+                        "debug": debug,
                         "limit": limit,
                     },
                     lookup_by_postcode_params.LookupByPostcodeParams,
@@ -97,6 +105,7 @@ class LookupResource(SyncAPIResource):
         self,
         *,
         suburb: str,
+        debug: Literal["true", "false"] | Omit = omit,
         limit: int | Omit = omit,
         state: str | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
@@ -113,6 +122,10 @@ class LookupResource(SyncAPIResource):
 
         Args:
           suburb: Suburb/locality name.
+
+          debug: Optional diagnostic flag. Send exactly `true` or `false`. Invalid values are
+              rejected; debug diagnostics are for support only and must not be used for
+              business decisions.
 
           limit: Maximum number of postcodes to return.
 
@@ -138,6 +151,7 @@ class LookupResource(SyncAPIResource):
                 query=maybe_transform(
                     {
                         "suburb": suburb,
+                        "debug": debug,
                         "limit": limit,
                         "state": state,
                     },
@@ -176,6 +190,7 @@ class AsyncLookupResource(AsyncAPIResource):
         self,
         *,
         postcode: str,
+        debug: Literal["true", "false"] | Omit = omit,
         limit: int | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
@@ -190,6 +205,10 @@ class AsyncLookupResource(AsyncAPIResource):
 
         Args:
           postcode: Australian 4-digit postcode.
+
+          debug: Optional diagnostic flag. Send exactly `true` or `false`. Invalid values are
+              rejected; debug diagnostics are for support only and must not be used for
+              business decisions.
 
           limit: Maximum number of localities to return.
 
@@ -211,6 +230,7 @@ class AsyncLookupResource(AsyncAPIResource):
                 query=await async_maybe_transform(
                     {
                         "postcode": postcode,
+                        "debug": debug,
                         "limit": limit,
                     },
                     lookup_by_postcode_params.LookupByPostcodeParams,
@@ -223,6 +243,7 @@ class AsyncLookupResource(AsyncAPIResource):
         self,
         *,
         suburb: str,
+        debug: Literal["true", "false"] | Omit = omit,
         limit: int | Omit = omit,
         state: str | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
@@ -239,6 +260,10 @@ class AsyncLookupResource(AsyncAPIResource):
 
         Args:
           suburb: Suburb/locality name.
+
+          debug: Optional diagnostic flag. Send exactly `true` or `false`. Invalid values are
+              rejected; debug diagnostics are for support only and must not be used for
+              business decisions.
 
           limit: Maximum number of postcodes to return.
 
@@ -264,6 +289,7 @@ class AsyncLookupResource(AsyncAPIResource):
                 query=await async_maybe_transform(
                     {
                         "suburb": suburb,
+                        "debug": debug,
                         "limit": limit,
                         "state": state,
                     },
