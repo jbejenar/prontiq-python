@@ -22,7 +22,11 @@ class Suggestion(BaseModel):
     """Formatted street address."""
 
     confidence: Optional[int] = None
-    """G-NAF source-record confidence code from 0 to 2."""
+    """G-NAF source-record confidence code from 0 to 2.
+
+    This numeric source metadata describes the suggested address record;
+    autocomplete does not return the top-level validate match-confidence label.
+    """
 
     locality_name: Optional[str] = FieldInfo(alias="localityName", default=None)
     """Suburb or locality name."""
@@ -47,7 +51,10 @@ class Suggestion(BaseModel):
 
 
 class AddressAutocompleteResponse(BaseModel):
-    """Autocomplete suggestions for a partial address query."""
+    """Autocomplete suggestions for a partial address query.
+
+    Each suggestion may include numeric G-NAF source-record confidence; autocomplete does not return a top-level validate confidence label.
+    """
 
     suggestions: List[Suggestion]
 
