@@ -85,7 +85,8 @@ class AddressResource(SyncAPIResource):
 
         Use this endpoint for typeahead UI
         flows, then pass the selected `id` to Enrich when you need the full address
-        document.
+        document. `suggestions[].confidence` is numeric G-NAF source-record metadata;
+        autocomplete does not return Validate's top-level match-confidence label.
 
         Args:
           q: Partial address query.
@@ -231,8 +232,11 @@ class AddressResource(SyncAPIResource):
     ) -> AddressValidateResponse:
         """
         Find the best G-NAF match for a submitted address string and classify the match
-        quality. A `high` confidence result is suitable for accepting or pre-filling an
-        address; lower confidence results should be confirmed by the user.
+        quality. The top-level `confidence` field is a string match-quality label for
+        the submitted query. If `match` is present, `match.confidence` is separate
+        numeric G-NAF source-record metadata for the address record. A `high` top-level
+        confidence result is suitable for accepting or pre-filling an address; lower
+        confidence results should be confirmed by the user.
 
         Args:
           q: Full address string to validate.
@@ -306,7 +310,8 @@ class AsyncAddressResource(AsyncAPIResource):
 
         Use this endpoint for typeahead UI
         flows, then pass the selected `id` to Enrich when you need the full address
-        document.
+        document. `suggestions[].confidence` is numeric G-NAF source-record metadata;
+        autocomplete does not return Validate's top-level match-confidence label.
 
         Args:
           q: Partial address query.
@@ -452,8 +457,11 @@ class AsyncAddressResource(AsyncAPIResource):
     ) -> AddressValidateResponse:
         """
         Find the best G-NAF match for a submitted address string and classify the match
-        quality. A `high` confidence result is suitable for accepting or pre-filling an
-        address; lower confidence results should be confirmed by the user.
+        quality. The top-level `confidence` field is a string match-quality label for
+        the submitted query. If `match` is present, `match.confidence` is separate
+        numeric G-NAF source-record metadata for the address record. A `high` top-level
+        confidence result is suitable for accepting or pre-filling an address; lower
+        confidence results should be confirmed by the user.
 
         Args:
           q: Full address string to validate.

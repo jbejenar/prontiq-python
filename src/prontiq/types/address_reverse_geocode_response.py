@@ -239,7 +239,8 @@ class Result(BaseModel):
     confidence: Optional[int] = None
     """G-NAF source-record confidence code from 0 to 2.
 
-    This is source metadata, not validate match confidence.
+    This numeric source metadata describes the address record itself and is distinct
+    from ValidateAddressResponse.confidence, which is a string match-quality label.
     """
 
     distance_m: Optional[float] = None

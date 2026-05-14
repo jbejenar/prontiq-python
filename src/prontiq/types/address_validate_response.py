@@ -241,7 +241,8 @@ class Match(BaseModel):
     confidence: Optional[int] = None
     """G-NAF source-record confidence code from 0 to 2.
 
-    This is source metadata, not validate match confidence.
+    This numeric source metadata describes the address record itself and is distinct
+    from ValidateAddressResponse.confidence, which is a string match-quality label.
     """
 
     geocode: Optional[MatchGeocode] = None
@@ -273,8 +274,9 @@ class AddressValidateResponse(BaseModel):
 
     confidence: Literal["high", "medium", "low", "none"]
     """
-    Match confidence: high (score > 20), medium (10-20), low (< 10), or none (no
-    match).
+    Validate match-confidence label for the submitted query: high (score > 20),
+    medium (10-20), low (< 10), or none (no match). This top-level string is
+    distinct from match.confidence, which is numeric G-NAF source-record metadata.
     """
 
     match: Optional[Match] = None
