@@ -1,6 +1,7 @@
 # File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
 from typing import List, Optional
+from typing_extensions import Literal
 
 from pydantic import Field as FieldInfo
 
@@ -10,29 +11,44 @@ __all__ = ["AddressAutocompleteResponse", "Suggestion"]
 
 
 class Suggestion(BaseModel):
+    """
+    Autocomplete suggestion containing the fields needed to display and select an address.
+    """
+
     id: str
-    """G-NAF persistent identifier."""
+    """Opaque G-NAF persistent identifier for this address record."""
 
     address_label: Optional[str] = FieldInfo(alias="addressLabel", default=None)
-    """Street address (number + street name)."""
+    """Formatted street address."""
 
     confidence: Optional[int] = None
-    """G-NAF confidence level (0-2)."""
+    """G-NAF source-record confidence code from 0 to 2."""
 
     locality_name: Optional[str] = FieldInfo(alias="localityName", default=None)
     """Suburb or locality name."""
 
     postcode: Optional[str] = None
-    """4-digit Australian postcode."""
+    """Four-digit Australian postcode.
+
+    Postcodes are strings so leading zeroes are preserved.
+    """
 
     score: Optional[float] = None
-    """Search relevance score."""
+    """Search relevance score.
 
-    state: Optional[str] = None
-    """Australian state code."""
+    Use it for display diagnostics only, not persisted business logic.
+    """
+
+    state: Optional[Literal["NSW", "VIC", "QLD", "SA", "WA", "TAS", "NT", "ACT"]] = None
+    """Uppercase Australian state or territory code returned by the Address API.
+
+    Allowed values are NSW, VIC, QLD, SA, WA, TAS, NT, and ACT.
+    """
 
 
 class AddressAutocompleteResponse(BaseModel):
+    """Autocomplete suggestions for a partial address query."""
+
     suggestions: List[Suggestion]
 
     total: int

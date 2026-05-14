@@ -36,7 +36,7 @@ class TestAddress:
         address = client.address.autocomplete(
             q="9 endeavour cou",
             limit=3,
-            state="state",
+            state="NSW",
         )
         assert_matches_type(AddressAutocompleteResponse, address, path=["response"])
 
@@ -202,7 +202,7 @@ class TestAsyncAddress:
         address = await async_client.address.autocomplete(
             q="9 endeavour cou",
             limit=3,
-            state="state",
+            state="NSW",
         )
         assert_matches_type(AddressAutocompleteResponse, address, path=["response"])
 

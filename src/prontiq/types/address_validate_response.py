@@ -25,173 +25,252 @@ __all__ = [
 
 
 class MatchBoundariesCommonwealthElectorate(BaseModel):
-    """Federal electoral district."""
+    """
+    Named administrative, electoral, or statistical area associated with an address.
+    """
 
     name: str
-    """Area name."""
+    """Official area name."""
 
     code: Optional[str] = None
-    """ABS area code."""
+    """
+    Official ABS, electoral, or administrative area code when supplied by the source
+    dataset.
+    """
 
 
 class MatchBoundariesGccsa(BaseModel):
-    """Greater Capital City Statistical Area."""
+    """
+    Named administrative, electoral, or statistical area associated with an address.
+    """
 
     name: str
-    """Area name."""
+    """Official area name."""
 
     code: Optional[str] = None
-    """ABS area code."""
+    """
+    Official ABS, electoral, or administrative area code when supplied by the source
+    dataset.
+    """
 
 
 class MatchBoundariesLga(BaseModel):
-    """Local Government Area."""
+    """
+    Named administrative, electoral, or statistical area associated with an address.
+    """
 
     name: str
-    """Area name."""
+    """Official area name."""
 
     code: Optional[str] = None
-    """ABS area code."""
+    """
+    Official ABS, electoral, or administrative area code when supplied by the source
+    dataset.
+    """
 
 
 class MatchBoundariesMeshBlock(BaseModel):
-    """ABS smallest geographic unit."""
+    """
+    ABS Mesh Block identifier and optional land-use category for the address location.
+    """
 
     code: str
-    """ABS mesh block code."""
+    """ABS Mesh Block code. Mesh Blocks are the smallest ABS geographic areas."""
 
     category: Optional[str] = None
-    """Land use category, e.g. Residential, Commercial."""
+    """
+    ABS Mesh Block land-use category when available, for example Residential or
+    Commercial.
+    """
 
 
 class MatchBoundariesSa2(BaseModel):
-    """Statistical Area Level 2."""
+    """
+    Named administrative, electoral, or statistical area associated with an address.
+    """
 
     name: str
-    """Area name."""
+    """Official area name."""
 
     code: Optional[str] = None
-    """ABS area code."""
+    """
+    Official ABS, electoral, or administrative area code when supplied by the source
+    dataset.
+    """
 
 
 class MatchBoundariesSa3(BaseModel):
-    """Statistical Area Level 3."""
+    """
+    Named administrative, electoral, or statistical area associated with an address.
+    """
 
     name: str
-    """Area name."""
+    """Official area name."""
 
     code: Optional[str] = None
-    """ABS area code."""
+    """
+    Official ABS, electoral, or administrative area code when supplied by the source
+    dataset.
+    """
 
 
 class MatchBoundariesSa4(BaseModel):
-    """Statistical Area Level 4."""
+    """
+    Named administrative, electoral, or statistical area associated with an address.
+    """
 
     name: str
-    """Area name."""
+    """Official area name."""
 
     code: Optional[str] = None
-    """ABS area code."""
+    """
+    Official ABS, electoral, or administrative area code when supplied by the source
+    dataset.
+    """
 
 
 class MatchBoundariesStateElectorate(BaseModel):
-    """State electoral district."""
+    """
+    Named administrative, electoral, or statistical area associated with an address.
+    """
 
     name: str
-    """Area name."""
+    """Official area name."""
 
     code: Optional[str] = None
-    """ABS area code."""
+    """
+    Official ABS, electoral, or administrative area code when supplied by the source
+    dataset.
+    """
 
 
 class MatchBoundaries(BaseModel):
-    """Electoral, administrative, and statistical boundaries."""
+    """
+    Administrative, electoral, and ABS statistical geography linked to the address when supplied by G-NAF and ABS source data.
+    """
 
     commonwealth_electorate: Optional[MatchBoundariesCommonwealthElectorate] = FieldInfo(
         alias="commonwealthElectorate", default=None
     )
-    """Federal electoral district."""
+    """
+    Named administrative, electoral, or statistical area associated with an address.
+    """
 
     gccsa: Optional[MatchBoundariesGccsa] = None
-    """Greater Capital City Statistical Area."""
+    """
+    Named administrative, electoral, or statistical area associated with an address.
+    """
 
     lga: Optional[MatchBoundariesLga] = None
-    """Local Government Area."""
+    """
+    Named administrative, electoral, or statistical area associated with an address.
+    """
 
     mesh_block: Optional[MatchBoundariesMeshBlock] = FieldInfo(alias="meshBlock", default=None)
-    """ABS smallest geographic unit."""
+    """
+    ABS Mesh Block identifier and optional land-use category for the address
+    location.
+    """
 
     sa2: Optional[MatchBoundariesSa2] = None
-    """Statistical Area Level 2."""
+    """
+    Named administrative, electoral, or statistical area associated with an address.
+    """
 
     sa3: Optional[MatchBoundariesSa3] = None
-    """Statistical Area Level 3."""
+    """
+    Named administrative, electoral, or statistical area associated with an address.
+    """
 
     sa4: Optional[MatchBoundariesSa4] = None
-    """Statistical Area Level 4."""
+    """
+    Named administrative, electoral, or statistical area associated with an address.
+    """
 
     state_electorate: Optional[MatchBoundariesStateElectorate] = FieldInfo(alias="stateElectorate", default=None)
-    """State electoral district."""
+    """
+    Named administrative, electoral, or statistical area associated with an address.
+    """
 
 
 class MatchGeocode(BaseModel):
-    """Physical location and geocoding metadata."""
+    """G-NAF geocoding metadata and decimal-degree coordinates for the address."""
 
     latitude: float
-    """Latitude in decimal degrees."""
+    """Decimal degree coordinate."""
 
     longitude: float
-    """Longitude in decimal degrees."""
+    """Decimal degree coordinate."""
 
     reliability: Optional[int] = None
-    """G-NAF geocode reliability (0-6, lower is better)."""
+    """
+    G-NAF geocode reliability code from 0 to 6, where lower values are more precise.
+    """
 
     type: Optional[str] = None
-    """Geocoding method, e.g. PROPERTY CENTROID."""
+    """G-NAF geocoding method, for example PROPERTY CENTROID."""
 
 
 class MatchLocation(BaseModel):
-    """OpenSearch geo_point format."""
+    """Compact latitude/longitude point used for proximity queries and map display."""
 
     lat: float
-    """Latitude."""
+    """Decimal degree coordinate."""
 
     lon: float
-    """Longitude."""
+    """Decimal degree coordinate."""
 
 
 class Match(BaseModel):
-    """Best matching address, or null if no match."""
+    """
+    Public address record returned by validate, enrich, and reverse geocode operations.
+    """
 
     id: str
-    """G-NAF persistent identifier."""
+    """Opaque G-NAF persistent identifier for this address record."""
 
     address_label: Optional[str] = FieldInfo(alias="addressLabel", default=None)
-    """Street address (number + street name)."""
+    """Formatted street address, typically street number plus street name."""
 
     boundaries: Optional[MatchBoundaries] = None
-    """Electoral, administrative, and statistical boundaries."""
+    """
+    Administrative, electoral, and ABS statistical geography linked to the address
+    when supplied by G-NAF and ABS source data.
+    """
 
     confidence: Optional[int] = None
-    """G-NAF confidence level (0-2)."""
+    """G-NAF source-record confidence code from 0 to 2.
+
+    This is source metadata, not validate match confidence.
+    """
 
     geocode: Optional[MatchGeocode] = None
-    """Physical location and geocoding metadata."""
+    """G-NAF geocoding metadata and decimal-degree coordinates for the address."""
 
     locality_name: Optional[str] = FieldInfo(alias="localityName", default=None)
     """Suburb or locality name."""
 
     location: Optional[MatchLocation] = None
-    """OpenSearch geo_point format."""
+    """Compact latitude/longitude point used for proximity queries and map display."""
 
     postcode: Optional[str] = None
-    """4-digit Australian postcode."""
+    """Four-digit Australian postcode.
 
-    state: Optional[str] = None
-    """Australian state code (NSW, VIC, QLD, SA, WA, TAS, NT, ACT)."""
+    Postcodes are strings so leading zeroes are preserved.
+    """
+
+    state: Optional[Literal["NSW", "VIC", "QLD", "SA", "WA", "TAS", "NT", "ACT"]] = None
+    """Uppercase Australian state or territory code returned by the Address API.
+
+    Allowed values are NSW, VIC, QLD, SA, WA, TAS, NT, and ACT.
+    """
 
 
 class AddressValidateResponse(BaseModel):
+    """
+    Best address match and match-confidence classification for a submitted address string.
+    """
+
     confidence: Literal["high", "medium", "low", "none"]
     """
     Match confidence: high (score > 20), medium (10-20), low (< 10), or none (no
@@ -199,4 +278,7 @@ class AddressValidateResponse(BaseModel):
     """
 
     match: Optional[Match] = None
-    """Best matching address, or null if no match."""
+    """
+    Public address record returned by validate, enrich, and reverse geocode
+    operations.
+    """

@@ -107,6 +107,9 @@ class Prontiq(SyncAPIClient):
 
     @cached_property
     def address(self) -> AddressResource:
+        """
+        Australian address autocomplete, validation, enrichment, reverse geocoding, postcode lookup, and suburb lookup.
+        """
         from .resources.address import AddressResource
 
         return AddressResource(self)
@@ -290,6 +293,9 @@ class AsyncProntiq(AsyncAPIClient):
 
     @cached_property
     def address(self) -> AsyncAddressResource:
+        """
+        Australian address autocomplete, validation, enrichment, reverse geocoding, postcode lookup, and suburb lookup.
+        """
         from .resources.address import AsyncAddressResource
 
         return AsyncAddressResource(self)
@@ -415,6 +421,9 @@ class ProntiqWithRawResponse:
 
     @cached_property
     def address(self) -> address.AddressResourceWithRawResponse:
+        """
+        Australian address autocomplete, validation, enrichment, reverse geocoding, postcode lookup, and suburb lookup.
+        """
         from .resources.address import AddressResourceWithRawResponse
 
         return AddressResourceWithRawResponse(self._client.address)
@@ -428,6 +437,9 @@ class AsyncProntiqWithRawResponse:
 
     @cached_property
     def address(self) -> address.AsyncAddressResourceWithRawResponse:
+        """
+        Australian address autocomplete, validation, enrichment, reverse geocoding, postcode lookup, and suburb lookup.
+        """
         from .resources.address import AsyncAddressResourceWithRawResponse
 
         return AsyncAddressResourceWithRawResponse(self._client.address)
@@ -441,6 +453,9 @@ class ProntiqWithStreamedResponse:
 
     @cached_property
     def address(self) -> address.AddressResourceWithStreamingResponse:
+        """
+        Australian address autocomplete, validation, enrichment, reverse geocoding, postcode lookup, and suburb lookup.
+        """
         from .resources.address import AddressResourceWithStreamingResponse
 
         return AddressResourceWithStreamingResponse(self._client.address)
@@ -454,6 +469,9 @@ class AsyncProntiqWithStreamedResponse:
 
     @cached_property
     def address(self) -> address.AsyncAddressResourceWithStreamingResponse:
+        """
+        Australian address autocomplete, validation, enrichment, reverse geocoding, postcode lookup, and suburb lookup.
+        """
         from .resources.address import AsyncAddressResourceWithStreamingResponse
 
         return AsyncAddressResourceWithStreamingResponse(self._client.address)

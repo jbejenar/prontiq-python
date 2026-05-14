@@ -38,8 +38,15 @@ __all__ = ["AddressResource", "AsyncAddressResource"]
 
 
 class AddressResource(SyncAPIResource):
+    """
+    Australian address autocomplete, validation, enrichment, reverse geocoding, postcode lookup, and suburb lookup.
+    """
+
     @cached_property
     def lookup(self) -> LookupResource:
+        """
+        Australian address autocomplete, validation, enrichment, reverse geocoding, postcode lookup, and suburb lookup.
+        """
         return LookupResource(self._client)
 
     @cached_property
@@ -74,15 +81,20 @@ class AddressResource(SyncAPIResource):
         extra_body: Body | None = None,
         timeout: float | httpx.Timeout | None | NotGiven = not_given,
     ) -> AddressAutocompleteResponse:
-        """
-        Autocomplete addresses
+        """Suggest Australian addresses as a user types.
+
+        Use this endpoint for typeahead UI
+        flows, then pass the selected `id` to Enrich when you need the full address
+        document.
 
         Args:
           q: Partial address query.
 
           limit: Maximum number of suggestions to return.
 
-          state: Australian state code.
+          state: Australian state or territory filter. Allowed values are NSW, VIC, QLD, SA, WA,
+              TAS, NT, and ACT. Input is case-insensitive and responses normalize state codes
+              to uppercase.
 
           extra_headers: Send extra headers
 
@@ -122,12 +134,12 @@ class AddressResource(SyncAPIResource):
         extra_body: Body | None = None,
         timeout: float | httpx.Timeout | None | NotGiven = not_given,
     ) -> AddressEnrichResponse:
-        """Enrich an address by ID
+        """
+        Return the public address document for a known G-NAF address `id` returned by
+        Autocomplete, Validate, or Reverse geocode.
 
         Args:
-          id: G-NAF address document ID.
-
-        Paste an id value returned from Autocomplete or
+          id: G-NAF address document ID. Paste an id value returned from Autocomplete or
               Validate.
 
           extra_headers: Send extra headers
@@ -164,8 +176,10 @@ class AddressResource(SyncAPIResource):
         extra_body: Body | None = None,
         timeout: float | httpx.Timeout | None | NotGiven = not_given,
     ) -> AddressReverseGeocodeResponse:
-        """
-        Reverse geocode nearby addresses
+        """Find addresses near a latitude and longitude.
+
+        Results are ordered by distance
+        and include `distance_m` in meters.
 
         Args:
           lat: Latitude in decimal degrees.
@@ -216,7 +230,9 @@ class AddressResource(SyncAPIResource):
         timeout: float | httpx.Timeout | None | NotGiven = not_given,
     ) -> AddressValidateResponse:
         """
-        Validate an address
+        Find the best G-NAF match for a submitted address string and classify the match
+        quality. A `high` confidence result is suitable for accepting or pre-filling an
+        address; lower confidence results should be confirmed by the user.
 
         Args:
           q: Full address string to validate.
@@ -243,8 +259,15 @@ class AddressResource(SyncAPIResource):
 
 
 class AsyncAddressResource(AsyncAPIResource):
+    """
+    Australian address autocomplete, validation, enrichment, reverse geocoding, postcode lookup, and suburb lookup.
+    """
+
     @cached_property
     def lookup(self) -> AsyncLookupResource:
+        """
+        Australian address autocomplete, validation, enrichment, reverse geocoding, postcode lookup, and suburb lookup.
+        """
         return AsyncLookupResource(self._client)
 
     @cached_property
@@ -279,15 +302,20 @@ class AsyncAddressResource(AsyncAPIResource):
         extra_body: Body | None = None,
         timeout: float | httpx.Timeout | None | NotGiven = not_given,
     ) -> AddressAutocompleteResponse:
-        """
-        Autocomplete addresses
+        """Suggest Australian addresses as a user types.
+
+        Use this endpoint for typeahead UI
+        flows, then pass the selected `id` to Enrich when you need the full address
+        document.
 
         Args:
           q: Partial address query.
 
           limit: Maximum number of suggestions to return.
 
-          state: Australian state code.
+          state: Australian state or territory filter. Allowed values are NSW, VIC, QLD, SA, WA,
+              TAS, NT, and ACT. Input is case-insensitive and responses normalize state codes
+              to uppercase.
 
           extra_headers: Send extra headers
 
@@ -327,12 +355,12 @@ class AsyncAddressResource(AsyncAPIResource):
         extra_body: Body | None = None,
         timeout: float | httpx.Timeout | None | NotGiven = not_given,
     ) -> AddressEnrichResponse:
-        """Enrich an address by ID
+        """
+        Return the public address document for a known G-NAF address `id` returned by
+        Autocomplete, Validate, or Reverse geocode.
 
         Args:
-          id: G-NAF address document ID.
-
-        Paste an id value returned from Autocomplete or
+          id: G-NAF address document ID. Paste an id value returned from Autocomplete or
               Validate.
 
           extra_headers: Send extra headers
@@ -369,8 +397,10 @@ class AsyncAddressResource(AsyncAPIResource):
         extra_body: Body | None = None,
         timeout: float | httpx.Timeout | None | NotGiven = not_given,
     ) -> AddressReverseGeocodeResponse:
-        """
-        Reverse geocode nearby addresses
+        """Find addresses near a latitude and longitude.
+
+        Results are ordered by distance
+        and include `distance_m` in meters.
 
         Args:
           lat: Latitude in decimal degrees.
@@ -421,7 +451,9 @@ class AsyncAddressResource(AsyncAPIResource):
         timeout: float | httpx.Timeout | None | NotGiven = not_given,
     ) -> AddressValidateResponse:
         """
-        Validate an address
+        Find the best G-NAF match for a submitted address string and classify the match
+        quality. A `high` confidence result is suitable for accepting or pre-filling an
+        address; lower confidence results should be confirmed by the user.
 
         Args:
           q: Full address string to validate.
@@ -466,6 +498,9 @@ class AddressResourceWithRawResponse:
 
     @cached_property
     def lookup(self) -> LookupResourceWithRawResponse:
+        """
+        Australian address autocomplete, validation, enrichment, reverse geocoding, postcode lookup, and suburb lookup.
+        """
         return LookupResourceWithRawResponse(self._address.lookup)
 
 
@@ -488,6 +523,9 @@ class AsyncAddressResourceWithRawResponse:
 
     @cached_property
     def lookup(self) -> AsyncLookupResourceWithRawResponse:
+        """
+        Australian address autocomplete, validation, enrichment, reverse geocoding, postcode lookup, and suburb lookup.
+        """
         return AsyncLookupResourceWithRawResponse(self._address.lookup)
 
 
@@ -510,6 +548,9 @@ class AddressResourceWithStreamingResponse:
 
     @cached_property
     def lookup(self) -> LookupResourceWithStreamingResponse:
+        """
+        Australian address autocomplete, validation, enrichment, reverse geocoding, postcode lookup, and suburb lookup.
+        """
         return LookupResourceWithStreamingResponse(self._address.lookup)
 
 
@@ -532,4 +573,7 @@ class AsyncAddressResourceWithStreamingResponse:
 
     @cached_property
     def lookup(self) -> AsyncLookupResourceWithStreamingResponse:
+        """
+        Australian address autocomplete, validation, enrichment, reverse geocoding, postcode lookup, and suburb lookup.
+        """
         return AsyncLookupResourceWithStreamingResponse(self._address.lookup)

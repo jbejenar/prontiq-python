@@ -23,6 +23,10 @@ __all__ = ["LookupResource", "AsyncLookupResource"]
 
 
 class LookupResource(SyncAPIResource):
+    """
+    Australian address autocomplete, validation, enrichment, reverse geocoding, postcode lookup, and suburb lookup.
+    """
+
     @cached_property
     def with_raw_response(self) -> LookupResourceWithRawResponse:
         """
@@ -55,7 +59,8 @@ class LookupResource(SyncAPIResource):
         timeout: float | httpx.Timeout | None | NotGiven = not_given,
     ) -> LookupByPostcodeResponse:
         """
-        Look up localities by postcode
+        List suburbs or localities that have address records in a four-digit Australian
+        postcode, including address counts per locality.
 
         Args:
           postcode: Australian 4-digit postcode.
@@ -101,15 +106,19 @@ class LookupResource(SyncAPIResource):
         extra_body: Body | None = None,
         timeout: float | httpx.Timeout | None | NotGiven = not_given,
     ) -> LookupBySuburbResponse:
-        """
-        Look up postcodes by suburb
+        """Find postcodes for an Australian suburb or locality.
+
+        Add `state` to disambiguate
+        common locality names that exist in multiple states.
 
         Args:
           suburb: Suburb/locality name.
 
           limit: Maximum number of postcodes to return.
 
-          state: Australian state code.
+          state: Australian state or territory filter. Allowed values are NSW, VIC, QLD, SA, WA,
+              TAS, NT, and ACT. Input is case-insensitive and responses normalize state codes
+              to uppercase.
 
           extra_headers: Send extra headers
 
@@ -140,6 +149,10 @@ class LookupResource(SyncAPIResource):
 
 
 class AsyncLookupResource(AsyncAPIResource):
+    """
+    Australian address autocomplete, validation, enrichment, reverse geocoding, postcode lookup, and suburb lookup.
+    """
+
     @cached_property
     def with_raw_response(self) -> AsyncLookupResourceWithRawResponse:
         """
@@ -172,7 +185,8 @@ class AsyncLookupResource(AsyncAPIResource):
         timeout: float | httpx.Timeout | None | NotGiven = not_given,
     ) -> LookupByPostcodeResponse:
         """
-        Look up localities by postcode
+        List suburbs or localities that have address records in a four-digit Australian
+        postcode, including address counts per locality.
 
         Args:
           postcode: Australian 4-digit postcode.
@@ -218,15 +232,19 @@ class AsyncLookupResource(AsyncAPIResource):
         extra_body: Body | None = None,
         timeout: float | httpx.Timeout | None | NotGiven = not_given,
     ) -> LookupBySuburbResponse:
-        """
-        Look up postcodes by suburb
+        """Find postcodes for an Australian suburb or locality.
+
+        Add `state` to disambiguate
+        common locality names that exist in multiple states.
 
         Args:
           suburb: Suburb/locality name.
 
           limit: Maximum number of postcodes to return.
 
-          state: Australian state code.
+          state: Australian state or territory filter. Allowed values are NSW, VIC, QLD, SA, WA,
+              TAS, NT, and ACT. Input is case-insensitive and responses normalize state codes
+              to uppercase.
 
           extra_headers: Send extra headers
 
