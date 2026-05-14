@@ -1,6 +1,7 @@
 # File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
 from typing import List, Optional
+from typing_extensions import Literal
 
 from ..._models import BaseModel
 
@@ -8,36 +9,38 @@ __all__ = ["LookupBySuburbResponse", "Bounds", "BoundsBottomRight", "BoundsTopLe
 
 
 class BoundsBottomRight(BaseModel):
-    """South-east corner of bounding box."""
+    """Compact latitude/longitude point used for proximity queries and map display."""
 
     lat: float
-    """Latitude."""
+    """Decimal degree coordinate."""
 
     lon: float
-    """Longitude."""
+    """Decimal degree coordinate."""
 
 
 class BoundsTopLeft(BaseModel):
-    """North-west corner of bounding box."""
+    """Compact latitude/longitude point used for proximity queries and map display."""
 
     lat: float
-    """Latitude."""
+    """Decimal degree coordinate."""
 
     lon: float
-    """Longitude."""
+    """Decimal degree coordinate."""
 
 
 class Bounds(BaseModel):
     """Geographic bounding box of the suburb."""
 
     bottom_right: BoundsBottomRight
-    """South-east corner of bounding box."""
+    """Compact latitude/longitude point used for proximity queries and map display."""
 
     top_left: BoundsTopLeft
-    """North-west corner of bounding box."""
+    """Compact latitude/longitude point used for proximity queries and map display."""
 
 
 class LookupBySuburbResponse(BaseModel):
+    """Postcodes, bounds, and address count for a suburb or locality."""
+
     address_count: int
     """Total addresses in this suburb."""
 
@@ -50,5 +53,8 @@ class LookupBySuburbResponse(BaseModel):
     bounds: Optional[Bounds] = None
     """Geographic bounding box of the suburb."""
 
-    state: Optional[str] = None
-    """State filter applied, if any."""
+    state: Optional[Literal["NSW", "VIC", "QLD", "SA", "WA", "TAS", "NT", "ACT"]] = None
+    """Uppercase Australian state or territory code returned by the Address API.
+
+    Allowed values are NSW, VIC, QLD, SA, WA, TAS, NT, and ACT.
+    """
