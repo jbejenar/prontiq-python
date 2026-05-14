@@ -33,6 +33,7 @@ class TestLookup:
     def test_method_by_postcode_with_all_params(self, client: Prontiq) -> None:
         lookup = client.address.lookup.by_postcode(
             postcode="2000",
+            debug="false",
             limit=3,
         )
         assert_matches_type(LookupByPostcodeResponse, lookup, path=["response"])
@@ -76,6 +77,7 @@ class TestLookup:
     def test_method_by_suburb_with_all_params(self, client: Prontiq) -> None:
         lookup = client.address.lookup.by_suburb(
             suburb="bondi beach",
+            debug="false",
             limit=3,
             state="NSW",
         )
@@ -126,6 +128,7 @@ class TestAsyncLookup:
     async def test_method_by_postcode_with_all_params(self, async_client: AsyncProntiq) -> None:
         lookup = await async_client.address.lookup.by_postcode(
             postcode="2000",
+            debug="false",
             limit=3,
         )
         assert_matches_type(LookupByPostcodeResponse, lookup, path=["response"])
@@ -169,6 +172,7 @@ class TestAsyncLookup:
     async def test_method_by_suburb_with_all_params(self, async_client: AsyncProntiq) -> None:
         lookup = await async_client.address.lookup.by_suburb(
             suburb="bondi beach",
+            debug="false",
             limit=3,
             state="NSW",
         )

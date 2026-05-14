@@ -1,6 +1,6 @@
 # File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
-from typing import Optional
+from typing import Dict, List, Optional
 from typing_extensions import Literal
 
 from pydantic import Field as FieldInfo
@@ -21,6 +21,7 @@ __all__ = [
     "MatchBoundariesStateElectorate",
     "MatchGeocode",
     "MatchLocation",
+    "Debug",
 ]
 
 
@@ -239,10 +240,10 @@ class Match(BaseModel):
     """
 
     confidence: Optional[int] = None
-    """G-NAF source-record confidence code from 0 to 2.
+    """G-NAF source-record confidence metadata.
 
-    This numeric source metadata describes the address record itself and is distinct
-    from ValidateAddressResponse.confidence, which is a string match-quality label.
+    -1 represents retired records; 0, 1, and 2 correspond to one, two, or three
+    supporting contributor datasets. This is not Prontiq match quality.
     """
 
     geocode: Optional[MatchGeocode] = None
@@ -267,16 +268,40 @@ class Match(BaseModel):
     """
 
 
-class AddressValidateResponse(BaseModel):
-    """
-    Best address match and match-confidence classification for a submitted address string.
+class Debug(BaseModel):
+    """Optional diagnostic metadata returned only when `debug=true` is supplied."""
+
+    query_mode: Literal["autocomplete", "validate", "enrich", "reverse", "lookup"] = FieldInfo(alias="queryMode")
+    """Address API operation mode that produced this diagnostic object."""
+
+    scoring_version: Literal["address-match-v1"] = FieldInfo(alias="scoringVersion")
+    """Version of the public Prontiq match-scoring algorithm used for diagnostics."""
+
+    matched_components: Optional[Dict[str, Literal["exact", "prefix", "fuzzy", "none"]]] = FieldInfo(
+        alias="matchedComponents", default=None
+    )
+    """Per-component match classification for diagnostics.
+
+    Shape may evolve between scoring versions.
     """
 
-    confidence: Literal["high", "medium", "low", "none"]
+    score_caps: Optional[List[str]] = FieldInfo(alias="scoreCaps", default=None)
     """
-    Validate match-confidence label for the submitted query: high (score > 20),
-    medium (10-20), low (< 10), or none (no match). This top-level string is
-    distinct from match.confidence, which is numeric G-NAF source-record metadata.
+    Diagnostic list of caps applied to the score, such as explicit postcode or state
+    mismatches.
+    """
+
+    search_score: Optional[float] = FieldInfo(alias="searchScore", default=None)
+    """Internal search relevance score when available.
+
+    This value is unstable and must not be stored, sorted by, or used for business
+    decisions.
+    """
+
+
+class AddressValidateResponse(BaseModel):
+    """
+    Best address match and Prontiq match-quality classification for a submitted address string.
     """
 
     match: Optional[Match] = None
@@ -284,3 +309,15 @@ class AddressValidateResponse(BaseModel):
     Public address record returned by validate, enrich, and reverse geocode
     operations.
     """
+
+    prontiq_match_quality: Literal["high", "medium", "low", "none"] = FieldInfo(alias="prontiqMatchQuality")
+    """Human-readable Prontiq match-quality bucket derived from prontiqMatchScore.
+
+    This is distinct from match.confidence, which is G-NAF source-record metadata.
+    """
+
+    prontiq_match_score: int = FieldInfo(alias="prontiqMatchScore")
+    """Prontiq-computed request match score from 0 to 100."""
+
+    debug: Optional[Debug] = None
+    """Optional diagnostic metadata returned only when `debug=true` is supplied."""

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing_extensions import Literal
+
 import httpx
 
 from .lookup import (
@@ -72,6 +74,7 @@ class AddressResource(SyncAPIResource):
         self,
         *,
         q: str,
+        debug: Literal["true", "false"] | Omit = omit,
         limit: int | Omit = omit,
         state: str | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
@@ -85,11 +88,15 @@ class AddressResource(SyncAPIResource):
 
         Use this endpoint for typeahead UI
         flows, then pass the selected `id` to Enrich when you need the full address
-        document. `suggestions[].confidence` is numeric G-NAF source-record metadata;
-        autocomplete does not return Validate's top-level match-confidence label.
+        document. Suggestions include Prontiq match-quality fields; G-NAF confidence and
+        internal search relevance are omitted from default responses.
 
         Args:
           q: Partial address query.
+
+          debug: Optional diagnostic flag. Send exactly `true` or `false`. Invalid values are
+              rejected; debug diagnostics are for support only and must not be used for
+              business decisions.
 
           limit: Maximum number of suggestions to return.
 
@@ -115,6 +122,7 @@ class AddressResource(SyncAPIResource):
                 query=maybe_transform(
                     {
                         "q": q,
+                        "debug": debug,
                         "limit": limit,
                         "state": state,
                     },
@@ -128,6 +136,7 @@ class AddressResource(SyncAPIResource):
         self,
         *,
         id: str,
+        debug: Literal["true", "false"] | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
         extra_headers: Headers | None = None,
@@ -142,6 +151,10 @@ class AddressResource(SyncAPIResource):
         Args:
           id: G-NAF address document ID. Paste an id value returned from Autocomplete or
               Validate.
+
+          debug: Optional diagnostic flag. Send exactly `true` or `false`. Invalid values are
+              rejected; debug diagnostics are for support only and must not be used for
+              business decisions.
 
           extra_headers: Send extra headers
 
@@ -158,7 +171,13 @@ class AddressResource(SyncAPIResource):
                 extra_query=extra_query,
                 extra_body=extra_body,
                 timeout=timeout,
-                query=maybe_transform({"id": id}, address_enrich_params.AddressEnrichParams),
+                query=maybe_transform(
+                    {
+                        "id": id,
+                        "debug": debug,
+                    },
+                    address_enrich_params.AddressEnrichParams,
+                ),
             ),
             cast_to=AddressEnrichResponse,
         )
@@ -168,6 +187,7 @@ class AddressResource(SyncAPIResource):
         *,
         lat: float,
         lon: float,
+        debug: Literal["true", "false"] | Omit = omit,
         limit: int | Omit = omit,
         radius: float | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
@@ -186,6 +206,10 @@ class AddressResource(SyncAPIResource):
           lat: Latitude in decimal degrees.
 
           lon: Longitude in decimal degrees.
+
+          debug: Optional diagnostic flag. Send exactly `true` or `false`. Invalid values are
+              rejected; debug diagnostics are for support only and must not be used for
+              business decisions.
 
           limit: Maximum number of nearby addresses to return.
 
@@ -210,6 +234,7 @@ class AddressResource(SyncAPIResource):
                     {
                         "lat": lat,
                         "lon": lon,
+                        "debug": debug,
                         "limit": limit,
                         "radius": radius,
                     },
@@ -223,6 +248,7 @@ class AddressResource(SyncAPIResource):
         self,
         *,
         q: str,
+        debug: Literal["true", "false"] | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
         extra_headers: Headers | None = None,
@@ -231,15 +257,18 @@ class AddressResource(SyncAPIResource):
         timeout: float | httpx.Timeout | None | NotGiven = not_given,
     ) -> AddressValidateResponse:
         """
-        Find the best G-NAF match for a submitted address string and classify the match
-        quality. The top-level `confidence` field is a string match-quality label for
-        the submitted query. If `match` is present, `match.confidence` is separate
-        numeric G-NAF source-record metadata for the address record. A `high` top-level
-        confidence result is suitable for accepting or pre-filling an address; lower
-        confidence results should be confirmed by the user.
+        Find the best G-NAF match for a submitted address string and classify the
+        request match quality. Use `prontiqMatchScore` and `prontiqMatchQuality` for
+        acceptance thresholds and user prompts. If `match` is present,
+        `match.confidence` is separate G-NAF source-record metadata for the address
+        record.
 
         Args:
           q: Full address string to validate.
+
+          debug: Optional diagnostic flag. Send exactly `true` or `false`. Invalid values are
+              rejected; debug diagnostics are for support only and must not be used for
+              business decisions.
 
           extra_headers: Send extra headers
 
@@ -256,7 +285,13 @@ class AddressResource(SyncAPIResource):
                 extra_query=extra_query,
                 extra_body=extra_body,
                 timeout=timeout,
-                query=maybe_transform({"q": q}, address_validate_params.AddressValidateParams),
+                query=maybe_transform(
+                    {
+                        "q": q,
+                        "debug": debug,
+                    },
+                    address_validate_params.AddressValidateParams,
+                ),
             ),
             cast_to=AddressValidateResponse,
         )
@@ -297,6 +332,7 @@ class AsyncAddressResource(AsyncAPIResource):
         self,
         *,
         q: str,
+        debug: Literal["true", "false"] | Omit = omit,
         limit: int | Omit = omit,
         state: str | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
@@ -310,11 +346,15 @@ class AsyncAddressResource(AsyncAPIResource):
 
         Use this endpoint for typeahead UI
         flows, then pass the selected `id` to Enrich when you need the full address
-        document. `suggestions[].confidence` is numeric G-NAF source-record metadata;
-        autocomplete does not return Validate's top-level match-confidence label.
+        document. Suggestions include Prontiq match-quality fields; G-NAF confidence and
+        internal search relevance are omitted from default responses.
 
         Args:
           q: Partial address query.
+
+          debug: Optional diagnostic flag. Send exactly `true` or `false`. Invalid values are
+              rejected; debug diagnostics are for support only and must not be used for
+              business decisions.
 
           limit: Maximum number of suggestions to return.
 
@@ -340,6 +380,7 @@ class AsyncAddressResource(AsyncAPIResource):
                 query=await async_maybe_transform(
                     {
                         "q": q,
+                        "debug": debug,
                         "limit": limit,
                         "state": state,
                     },
@@ -353,6 +394,7 @@ class AsyncAddressResource(AsyncAPIResource):
         self,
         *,
         id: str,
+        debug: Literal["true", "false"] | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
         extra_headers: Headers | None = None,
@@ -367,6 +409,10 @@ class AsyncAddressResource(AsyncAPIResource):
         Args:
           id: G-NAF address document ID. Paste an id value returned from Autocomplete or
               Validate.
+
+          debug: Optional diagnostic flag. Send exactly `true` or `false`. Invalid values are
+              rejected; debug diagnostics are for support only and must not be used for
+              business decisions.
 
           extra_headers: Send extra headers
 
@@ -383,7 +429,13 @@ class AsyncAddressResource(AsyncAPIResource):
                 extra_query=extra_query,
                 extra_body=extra_body,
                 timeout=timeout,
-                query=await async_maybe_transform({"id": id}, address_enrich_params.AddressEnrichParams),
+                query=await async_maybe_transform(
+                    {
+                        "id": id,
+                        "debug": debug,
+                    },
+                    address_enrich_params.AddressEnrichParams,
+                ),
             ),
             cast_to=AddressEnrichResponse,
         )
@@ -393,6 +445,7 @@ class AsyncAddressResource(AsyncAPIResource):
         *,
         lat: float,
         lon: float,
+        debug: Literal["true", "false"] | Omit = omit,
         limit: int | Omit = omit,
         radius: float | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
@@ -411,6 +464,10 @@ class AsyncAddressResource(AsyncAPIResource):
           lat: Latitude in decimal degrees.
 
           lon: Longitude in decimal degrees.
+
+          debug: Optional diagnostic flag. Send exactly `true` or `false`. Invalid values are
+              rejected; debug diagnostics are for support only and must not be used for
+              business decisions.
 
           limit: Maximum number of nearby addresses to return.
 
@@ -435,6 +492,7 @@ class AsyncAddressResource(AsyncAPIResource):
                     {
                         "lat": lat,
                         "lon": lon,
+                        "debug": debug,
                         "limit": limit,
                         "radius": radius,
                     },
@@ -448,6 +506,7 @@ class AsyncAddressResource(AsyncAPIResource):
         self,
         *,
         q: str,
+        debug: Literal["true", "false"] | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
         extra_headers: Headers | None = None,
@@ -456,15 +515,18 @@ class AsyncAddressResource(AsyncAPIResource):
         timeout: float | httpx.Timeout | None | NotGiven = not_given,
     ) -> AddressValidateResponse:
         """
-        Find the best G-NAF match for a submitted address string and classify the match
-        quality. The top-level `confidence` field is a string match-quality label for
-        the submitted query. If `match` is present, `match.confidence` is separate
-        numeric G-NAF source-record metadata for the address record. A `high` top-level
-        confidence result is suitable for accepting or pre-filling an address; lower
-        confidence results should be confirmed by the user.
+        Find the best G-NAF match for a submitted address string and classify the
+        request match quality. Use `prontiqMatchScore` and `prontiqMatchQuality` for
+        acceptance thresholds and user prompts. If `match` is present,
+        `match.confidence` is separate G-NAF source-record metadata for the address
+        record.
 
         Args:
           q: Full address string to validate.
+
+          debug: Optional diagnostic flag. Send exactly `true` or `false`. Invalid values are
+              rejected; debug diagnostics are for support only and must not be used for
+              business decisions.
 
           extra_headers: Send extra headers
 
@@ -481,7 +543,13 @@ class AsyncAddressResource(AsyncAPIResource):
                 extra_query=extra_query,
                 extra_body=extra_body,
                 timeout=timeout,
-                query=await async_maybe_transform({"q": q}, address_validate_params.AddressValidateParams),
+                query=await async_maybe_transform(
+                    {
+                        "q": q,
+                        "debug": debug,
+                    },
+                    address_validate_params.AddressValidateParams,
+                ),
             ),
             cast_to=AddressValidateResponse,
         )

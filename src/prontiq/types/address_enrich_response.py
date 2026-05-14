@@ -1,6 +1,6 @@
 # File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
-from typing import Optional
+from typing import Dict, List, Optional
 from typing_extensions import Literal
 
 from pydantic import Field as FieldInfo
@@ -18,6 +18,7 @@ __all__ = [
     "BoundariesSa3",
     "BoundariesSa4",
     "BoundariesStateElectorate",
+    "Debug",
     "Geocode",
     "Location",
 ]
@@ -192,6 +193,37 @@ class Boundaries(BaseModel):
     """
 
 
+class Debug(BaseModel):
+    """Optional diagnostic metadata returned only when `debug=true` is supplied."""
+
+    query_mode: Literal["autocomplete", "validate", "enrich", "reverse", "lookup"] = FieldInfo(alias="queryMode")
+    """Address API operation mode that produced this diagnostic object."""
+
+    scoring_version: Literal["address-match-v1"] = FieldInfo(alias="scoringVersion")
+    """Version of the public Prontiq match-scoring algorithm used for diagnostics."""
+
+    matched_components: Optional[Dict[str, Literal["exact", "prefix", "fuzzy", "none"]]] = FieldInfo(
+        alias="matchedComponents", default=None
+    )
+    """Per-component match classification for diagnostics.
+
+    Shape may evolve between scoring versions.
+    """
+
+    score_caps: Optional[List[str]] = FieldInfo(alias="scoreCaps", default=None)
+    """
+    Diagnostic list of caps applied to the score, such as explicit postcode or state
+    mismatches.
+    """
+
+    search_score: Optional[float] = FieldInfo(alias="searchScore", default=None)
+    """Internal search relevance score when available.
+
+    This value is unstable and must not be stored, sorted by, or used for business
+    decisions.
+    """
+
+
 class Geocode(BaseModel):
     """G-NAF geocoding metadata and decimal-degree coordinates for the address."""
 
@@ -221,9 +253,7 @@ class Location(BaseModel):
 
 
 class AddressEnrichResponse(BaseModel):
-    """
-    Public address record returned by validate, enrich, and reverse geocode operations.
-    """
+    """Public address document, with optional diagnostic metadata when debug=true."""
 
     id: str
     """Opaque G-NAF persistent identifier for this address record."""
@@ -238,11 +268,14 @@ class AddressEnrichResponse(BaseModel):
     """
 
     confidence: Optional[int] = None
-    """G-NAF source-record confidence code from 0 to 2.
+    """G-NAF source-record confidence metadata.
 
-    This numeric source metadata describes the address record itself and is distinct
-    from ValidateAddressResponse.confidence, which is a string match-quality label.
+    -1 represents retired records; 0, 1, and 2 correspond to one, two, or three
+    supporting contributor datasets. This is not Prontiq match quality.
     """
+
+    debug: Optional[Debug] = None
+    """Optional diagnostic metadata returned only when `debug=true` is supplied."""
 
     geocode: Optional[Geocode] = None
     """G-NAF geocoding metadata and decimal-degree coordinates for the address."""
