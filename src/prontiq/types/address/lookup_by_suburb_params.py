@@ -24,6 +24,6 @@ class LookupBySuburbParams(TypedDict, total=False):
     state: str
     """Australian state or territory filter.
 
-    Allowed values are NSW, VIC, QLD, SA, WA, TAS, NT, and ACT. Input is
-    case-insensitive and responses normalize state codes to uppercase.
+    Allowed values are `NSW`, `VIC`, `QLD`, `SA`, `WA`, `TAS`, `NT`, and `ACT`.
+    Input is case-insensitive and responses normalize state codes to uppercase.
     """

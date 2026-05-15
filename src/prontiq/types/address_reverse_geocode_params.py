@@ -9,10 +9,10 @@ __all__ = ["AddressReverseGeocodeParams"]
 
 class AddressReverseGeocodeParams(TypedDict, total=False):
     lat: Required[float]
-    """Latitude in decimal degrees."""
+    """Latitude in WGS84 decimal degrees for the reverse-geocode search point."""
 
     lon: Required[float]
-    """Longitude in decimal degrees."""
+    """Longitude in WGS84 decimal degrees for the reverse-geocode search point."""
 
     debug: Literal["true", "false"]
     """Optional diagnostic flag.

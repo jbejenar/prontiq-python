@@ -11,7 +11,10 @@ __all__ = ["AddressAutocompleteResponse", "Suggestion", "SuggestionDebug", "Debu
 
 
 class SuggestionDebug(BaseModel):
-    """Optional diagnostic metadata returned only when `debug=true` is supplied."""
+    """Optional diagnostic metadata returned only when `debug=true` is supplied.
+
+    Debug values are for support and troubleshooting, not production decision-making.
+    """
 
     query_mode: Literal["autocomplete", "validate", "enrich", "reverse", "lookup"] = FieldInfo(alias="queryMode")
     """Address API operation mode that produced this diagnostic object."""
@@ -43,49 +46,64 @@ class SuggestionDebug(BaseModel):
 
 class Suggestion(BaseModel):
     """
-    Autocomplete suggestion containing display fields and Prontiq-computed match quality. G-NAF confidence and raw search score are not returned in default suggestions.
+    Autocomplete suggestion containing display fields and Prontiq-computed match quality. G-NAF confidence and internal search relevance are not returned in default suggestions.
     """
 
     id: str
-    """Opaque G-NAF persistent identifier for this address record."""
+    """Opaque G-NAF persistent identifier for this suggestion.
+
+    Store it when a user selects the suggestion, then pass it to Enrich for the full
+    address document.
+    """
 
     prontiq_match_quality: Literal["high", "medium", "low", "none"] = FieldInfo(alias="prontiqMatchQuality")
     """
-    Human-readable Prontiq match-quality bucket derived from prontiqMatchScore: high
-    is 67-100, medium is 34-66, low is 1-33, and none is 0.
+    Human-readable Prontiq match-quality bucket derived from `prontiqMatchScore`:
+    `high` is 67-100, `medium` is 34-66, `low` is 1-33, and `none` is 0.
     """
 
     prontiq_match_score: int = FieldInfo(alias="prontiqMatchScore")
     """Prontiq-computed request match score from 0 to 100.
 
-    Use this for thresholds, sorting, and analytics. It is not G-NAF source
-    confidence, deliverability, or geocode precision.
+    Use it to decide whether to accept, confirm, or reject a returned address for
+    the submitted request. It is not G-NAF source confidence, deliverability, or
+    geocode precision.
     """
 
     address_label: Optional[str] = FieldInfo(alias="addressLabel", default=None)
-    """Formatted street address."""
+    """Formatted street-address line for display in autocomplete results."""
 
     debug: Optional[SuggestionDebug] = None
-    """Optional diagnostic metadata returned only when `debug=true` is supplied."""
+    """Optional diagnostic metadata returned only when `debug=true` is supplied.
+
+    Debug values are for support and troubleshooting, not production
+    decision-making.
+    """
 
     locality_name: Optional[str] = FieldInfo(alias="localityName", default=None)
-    """Suburb or locality name."""
+    """Official suburb or locality name for the suggested address."""
 
     postcode: Optional[str] = None
     """Four-digit Australian postcode.
 
-    Postcodes are strings so leading zeroes are preserved.
+    Store postcodes as strings; integer coercion can remove leading zeroes used by
+    some Australian postcodes.
     """
 
     state: Optional[Literal["NSW", "VIC", "QLD", "SA", "WA", "TAS", "NT", "ACT"]] = None
     """Uppercase Australian state or territory code returned by the Address API.
 
-    Allowed values are NSW, VIC, QLD, SA, WA, TAS, NT, and ACT.
+    Allowed values are `NSW` New South Wales, `VIC` Victoria, `QLD` Queensland, `SA`
+    South Australia, `WA` Western Australia, `TAS` Tasmania, `NT` Northern
+    Territory, and `ACT` Australian Capital Territory.
     """
 
 
 class Debug(BaseModel):
-    """Optional diagnostic metadata returned only when `debug=true` is supplied."""
+    """Optional diagnostic metadata returned only when `debug=true` is supplied.
+
+    Debug values are for support and troubleshooting, not production decision-making.
+    """
 
     query_mode: Literal["autocomplete", "validate", "enrich", "reverse", "lookup"] = FieldInfo(alias="queryMode")
     """Address API operation mode that produced this diagnostic object."""
@@ -118,13 +136,24 @@ class Debug(BaseModel):
 class AddressAutocompleteResponse(BaseModel):
     """Autocomplete suggestions for a partial address query.
 
-    Suggestions include Prontiq-computed match quality; G-NAF confidence and raw search score are not returned in default responses.
+    Suggestions include Prontiq-computed match quality; G-NAF confidence and internal search relevance are not returned in default responses.
     """
 
     suggestions: List[Suggestion]
+    """Suggested address records ordered for autocomplete display.
+
+    The array may be empty when no candidate addresses match the query.
+    """
 
     total: int
-    """Total matching addresses."""
+    """
+    Total matching address records found for the query before the response `limit`
+    is applied. This can be greater than `suggestions.length`.
+    """
 
     debug: Optional[Debug] = None
-    """Optional diagnostic metadata returned only when `debug=true` is supplied."""
+    """Optional diagnostic metadata returned only when `debug=true` is supplied.
+
+    Debug values are for support and troubleshooting, not production
+    decision-making.
+    """
