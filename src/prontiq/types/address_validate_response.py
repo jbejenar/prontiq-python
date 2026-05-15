@@ -31,7 +31,7 @@ class MatchBoundariesCommonwealthElectorate(BaseModel):
     """
 
     name: str
-    """Official area name."""
+    """Official administrative, electoral, or statistical area name."""
 
     code: Optional[str] = None
     """
@@ -46,7 +46,7 @@ class MatchBoundariesGccsa(BaseModel):
     """
 
     name: str
-    """Official area name."""
+    """Official administrative, electoral, or statistical area name."""
 
     code: Optional[str] = None
     """
@@ -61,7 +61,7 @@ class MatchBoundariesLga(BaseModel):
     """
 
     name: str
-    """Official area name."""
+    """Official administrative, electoral, or statistical area name."""
 
     code: Optional[str] = None
     """
@@ -76,12 +76,16 @@ class MatchBoundariesMeshBlock(BaseModel):
     """
 
     code: str
-    """ABS Mesh Block code. Mesh Blocks are the smallest ABS geographic areas."""
+    """ABS Mesh Block code.
+
+    Mesh Blocks are the smallest Australian Bureau of Statistics geographic areas
+    used to build larger statistical regions.
+    """
 
     category: Optional[str] = None
     """
-    ABS Mesh Block land-use category when available, for example Residential or
-    Commercial.
+    ABS Mesh Block land-use category when available, such as Residential,
+    Commercial, Parkland, or Education.
     """
 
 
@@ -91,7 +95,7 @@ class MatchBoundariesSa2(BaseModel):
     """
 
     name: str
-    """Official area name."""
+    """Official administrative, electoral, or statistical area name."""
 
     code: Optional[str] = None
     """
@@ -106,7 +110,7 @@ class MatchBoundariesSa3(BaseModel):
     """
 
     name: str
-    """Official area name."""
+    """Official administrative, electoral, or statistical area name."""
 
     code: Optional[str] = None
     """
@@ -121,7 +125,7 @@ class MatchBoundariesSa4(BaseModel):
     """
 
     name: str
-    """Official area name."""
+    """Official administrative, electoral, or statistical area name."""
 
     code: Optional[str] = None
     """
@@ -136,7 +140,7 @@ class MatchBoundariesStateElectorate(BaseModel):
     """
 
     name: str
-    """Official area name."""
+    """Official administrative, electoral, or statistical area name."""
 
     code: Optional[str] = None
     """
@@ -147,7 +151,7 @@ class MatchBoundariesStateElectorate(BaseModel):
 
 class MatchBoundaries(BaseModel):
     """
-    Administrative, electoral, and ABS statistical geography linked to the address when supplied by G-NAF and ABS source data.
+    Administrative, electoral, and ABS statistical geography linked to the address when supplied by G-NAF and ABS source data. Boundary values can change between official data releases without the address `id` changing.
     """
 
     commonwealth_electorate: Optional[MatchBoundariesCommonwealthElectorate] = FieldInfo(
@@ -198,78 +202,112 @@ class MatchGeocode(BaseModel):
     """G-NAF geocoding metadata and decimal-degree coordinates for the address."""
 
     latitude: float
-    """Decimal degree coordinate."""
+    """
+    WGS84 decimal-degree coordinate used for Australian address locations and
+    reverse-geocode queries.
+    """
 
     longitude: float
-    """Decimal degree coordinate."""
+    """
+    WGS84 decimal-degree coordinate used for Australian address locations and
+    reverse-geocode queries.
+    """
 
     reliability: Optional[int] = None
     """
-    G-NAF geocode reliability code from 0 to 6, where lower values are more precise.
+    G-NAF geocode reliability code from 0 to 6, where lower values indicate more
+    precise location evidence. Treat this as geocode precision metadata, not address
+    match quality.
     """
 
     type: Optional[str] = None
-    """G-NAF geocoding method, for example PROPERTY CENTROID."""
+    """
+    G-NAF geocoding method when supplied by the source record, such as a frontage,
+    property centroid, or locality-level point.
+    """
 
 
 class MatchLocation(BaseModel):
-    """Compact latitude/longitude point used for proximity queries and map display."""
+    """Compact latitude/longitude point used for proximity workflows and map display."""
 
     lat: float
-    """Decimal degree coordinate."""
+    """
+    WGS84 decimal-degree coordinate used for Australian address locations and
+    reverse-geocode queries.
+    """
 
     lon: float
-    """Decimal degree coordinate."""
+    """
+    WGS84 decimal-degree coordinate used for Australian address locations and
+    reverse-geocode queries.
+    """
 
 
 class Match(BaseModel):
-    """
-    Public address record returned by validate, enrich, and reverse geocode operations.
+    """Public address record returned by Validate, Enrich, and Reverse geocode.
+
+    Optional fields may be absent or null when the source data does not provide that attribute.
     """
 
     id: str
-    """Opaque G-NAF persistent identifier for this address record."""
+    """Opaque G-NAF persistent identifier for this address record.
+
+    Store it as a string and pass it to Enrich when you need the full public address
+    document.
+    """
 
     address_label: Optional[str] = FieldInfo(alias="addressLabel", default=None)
-    """Formatted street address, typically street number plus street name."""
+    """Formatted street-address line for display and form population.
+
+    It usually contains the street number, street name, and any unit or building
+    text available in the source record.
+    """
 
     boundaries: Optional[MatchBoundaries] = None
     """
     Administrative, electoral, and ABS statistical geography linked to the address
-    when supplied by G-NAF and ABS source data.
+    when supplied by G-NAF and ABS source data. Boundary values can change between
+    official data releases without the address `id` changing.
     """
 
     confidence: Optional[int] = None
     """G-NAF source-record confidence metadata.
 
-    -1 represents retired records; 0, 1, and 2 correspond to one, two, or three
-    supporting contributor datasets. This is not Prontiq match quality.
+    `-1` represents a retired record; `0`, `1`, and `2` indicate one, two, or three
+    supporting contributor datasets. This is provenance metadata, not Prontiq match
+    quality.
     """
 
     geocode: Optional[MatchGeocode] = None
     """G-NAF geocoding metadata and decimal-degree coordinates for the address."""
 
     locality_name: Optional[str] = FieldInfo(alias="localityName", default=None)
-    """Suburb or locality name."""
+    """Official suburb or locality name associated with the address."""
 
     location: Optional[MatchLocation] = None
-    """Compact latitude/longitude point used for proximity queries and map display."""
+    """Compact latitude/longitude point used for proximity workflows and map display."""
 
     postcode: Optional[str] = None
     """Four-digit Australian postcode.
 
-    Postcodes are strings so leading zeroes are preserved.
+    Store postcodes as strings; integer coercion can remove leading zeroes used by
+    some Australian postcodes.
     """
 
     state: Optional[Literal["NSW", "VIC", "QLD", "SA", "WA", "TAS", "NT", "ACT"]] = None
     """Uppercase Australian state or territory code returned by the Address API.
 
-    Allowed values are NSW, VIC, QLD, SA, WA, TAS, NT, and ACT.
+    Allowed values are `NSW` New South Wales, `VIC` Victoria, `QLD` Queensland, `SA`
+    South Australia, `WA` Western Australia, `TAS` Tasmania, `NT` Northern
+    Territory, and `ACT` Australian Capital Territory.
     """
 
 
 class Debug(BaseModel):
-    """Optional diagnostic metadata returned only when `debug=true` is supplied."""
+    """Optional diagnostic metadata returned only when `debug=true` is supplied.
+
+    Debug values are for support and troubleshooting, not production decision-making.
+    """
 
     query_mode: Literal["autocomplete", "validate", "enrich", "reverse", "lookup"] = FieldInfo(alias="queryMode")
     """Address API operation mode that produced this diagnostic object."""
@@ -305,19 +343,28 @@ class AddressValidateResponse(BaseModel):
     """
 
     match: Optional[Match] = None
-    """
-    Public address record returned by validate, enrich, and reverse geocode
-    operations.
+    """Public address record returned by Validate, Enrich, and Reverse geocode.
+
+    Optional fields may be absent or null when the source data does not provide that
+    attribute.
     """
 
     prontiq_match_quality: Literal["high", "medium", "low", "none"] = FieldInfo(alias="prontiqMatchQuality")
-    """Human-readable Prontiq match-quality bucket derived from prontiqMatchScore.
+    """Human-readable Prontiq match-quality bucket derived from `prontiqMatchScore`.
 
-    This is distinct from match.confidence, which is G-NAF source-record metadata.
+    This is distinct from `match.confidence`, which is G-NAF source-record metadata.
     """
 
     prontiq_match_score: int = FieldInfo(alias="prontiqMatchScore")
-    """Prontiq-computed request match score from 0 to 100."""
+    """Prontiq-computed request match score from 0 to 100.
+
+    Use it to decide whether to accept the match, ask the user to confirm, or
+    request correction.
+    """
 
     debug: Optional[Debug] = None
-    """Optional diagnostic metadata returned only when `debug=true` is supplied."""
+    """Optional diagnostic metadata returned only when `debug=true` is supplied.
+
+    Debug values are for support and troubleshooting, not production
+    decision-making.
+    """

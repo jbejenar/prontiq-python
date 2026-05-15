@@ -9,7 +9,11 @@ __all__ = ["AddressValidateParams"]
 
 class AddressValidateParams(TypedDict, total=False):
     q: Required[str]
-    """Full address string to validate."""
+    """Free-text address to validate against G-NAF.
+
+    Include suburb, state, and postcode when available for the strongest match
+    signal.
+    """
 
     debug: Literal["true", "false"]
     """Optional diagnostic flag.

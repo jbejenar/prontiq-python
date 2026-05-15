@@ -11,37 +11,52 @@ __all__ = ["LookupBySuburbResponse", "Bounds", "BoundsBottomRight", "BoundsTopLe
 
 
 class BoundsBottomRight(BaseModel):
-    """Compact latitude/longitude point used for proximity queries and map display."""
+    """Compact latitude/longitude point used for proximity workflows and map display."""
 
     lat: float
-    """Decimal degree coordinate."""
+    """
+    WGS84 decimal-degree coordinate used for Australian address locations and
+    reverse-geocode queries.
+    """
 
     lon: float
-    """Decimal degree coordinate."""
+    """
+    WGS84 decimal-degree coordinate used for Australian address locations and
+    reverse-geocode queries.
+    """
 
 
 class BoundsTopLeft(BaseModel):
-    """Compact latitude/longitude point used for proximity queries and map display."""
+    """Compact latitude/longitude point used for proximity workflows and map display."""
 
     lat: float
-    """Decimal degree coordinate."""
+    """
+    WGS84 decimal-degree coordinate used for Australian address locations and
+    reverse-geocode queries.
+    """
 
     lon: float
-    """Decimal degree coordinate."""
+    """
+    WGS84 decimal-degree coordinate used for Australian address locations and
+    reverse-geocode queries.
+    """
 
 
 class Bounds(BaseModel):
-    """Geographic bounding box of the suburb."""
+    """Approximate bounding box for the suburb or locality when available."""
 
     bottom_right: BoundsBottomRight
-    """Compact latitude/longitude point used for proximity queries and map display."""
+    """Compact latitude/longitude point used for proximity workflows and map display."""
 
     top_left: BoundsTopLeft
-    """Compact latitude/longitude point used for proximity queries and map display."""
+    """Compact latitude/longitude point used for proximity workflows and map display."""
 
 
 class Debug(BaseModel):
-    """Optional diagnostic metadata returned only when `debug=true` is supplied."""
+    """Optional diagnostic metadata returned only when `debug=true` is supplied.
+
+    Debug values are for support and troubleshooting, not production decision-making.
+    """
 
     query_mode: Literal["autocomplete", "validate", "enrich", "reverse", "lookup"] = FieldInfo(alias="queryMode")
     """Address API operation mode that produced this diagnostic object."""
@@ -75,22 +90,31 @@ class LookupBySuburbResponse(BaseModel):
     """Postcodes, bounds, and address count for a suburb or locality."""
 
     address_count: int
-    """Total addresses in this suburb."""
+    """Total address records in this suburb or locality.
+
+    This is dataset cardinality, not credit usage.
+    """
 
     postcodes: List[str]
-    """Postcodes covering this suburb."""
+    """Postcodes associated with this suburb or locality."""
 
     suburb: str
-    """Normalised suburb name (uppercase)."""
+    """Normalized suburb or locality name returned in uppercase."""
 
     bounds: Optional[Bounds] = None
-    """Geographic bounding box of the suburb."""
+    """Approximate bounding box for the suburb or locality when available."""
 
     debug: Optional[Debug] = None
-    """Optional diagnostic metadata returned only when `debug=true` is supplied."""
+    """Optional diagnostic metadata returned only when `debug=true` is supplied.
+
+    Debug values are for support and troubleshooting, not production
+    decision-making.
+    """
 
     state: Optional[Literal["NSW", "VIC", "QLD", "SA", "WA", "TAS", "NT", "ACT"]] = None
     """Uppercase Australian state or territory code returned by the Address API.
 
-    Allowed values are NSW, VIC, QLD, SA, WA, TAS, NT, and ACT.
+    Allowed values are `NSW` New South Wales, `VIC` Victoria, `QLD` Queensland, `SA`
+    South Australia, `WA` Western Australia, `TAS` Tasmania, `NT` Northern
+    Territory, and `ACT` Australian Capital Territory.
     """
