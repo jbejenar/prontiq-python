@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.2.0 (2026-05-15)
+
+Full Changelog: [v0.1.0...v0.2.0](https://github.com/jbejenar/prontiq-python/compare/v0.1.0...v0.2.0)
+
+### Features
+
+* Clarify public Address API match contract ([f7da83d](https://github.com/jbejenar/prontiq-python/commit/f7da83d76691871612b3986ff502b5e6204a2f5a))
+* Clarify public Address confidence fields ([13d00c6](https://github.com/jbejenar/prontiq-python/commit/13d00c6f8ca25b328445617fc5e1392882b34225))
+* **internal/types:** support eagerly validating pydantic iterators ([419f71f](https://github.com/jbejenar/prontiq-python/commit/419f71f316bf0996331d13edd6482917982b2369))
+* P1D.04a Mintlify developer playground ([6c0f521](https://github.com/jbejenar/prontiq-python/commit/6c0f521e2e1480255cd6928c9029932c5c84526f))
+* Polish public Address API contract ([e50ae77](https://github.com/jbejenar/prontiq-python/commit/e50ae77e2ae3813204e1138844105c7c0e80e1a9))
+
+
+### Bug Fixes
+
+* **client:** add missing f-string prefix in file type error message ([4489be8](https://github.com/jbejenar/prontiq-python/commit/4489be878dfd3b13b959c42a75625daf78d1fd23))
+
 ## 0.1.0 (2026-05-04)
 
 Full Changelog: [v0.0.1...v0.1.0](https://github.com/jbejenar/prontiq-python/compare/v0.0.1...v0.1.0)
