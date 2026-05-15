@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing_extensions import Literal
+
 import httpx
 
 from ..._types import Body, Omit, Query, Headers, NotGiven, omit, not_given
@@ -23,6 +25,10 @@ __all__ = ["LookupResource", "AsyncLookupResource"]
 
 
 class LookupResource(SyncAPIResource):
+    """
+    Australian address autocomplete, validation, enrichment, reverse geocoding, postcode lookup, and suburb lookup.
+    """
+
     @cached_property
     def with_raw_response(self) -> LookupResourceWithRawResponse:
         """
@@ -46,6 +52,7 @@ class LookupResource(SyncAPIResource):
         self,
         *,
         postcode: str,
+        debug: Literal["true", "false"] | Omit = omit,
         limit: int | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
@@ -55,10 +62,15 @@ class LookupResource(SyncAPIResource):
         timeout: float | httpx.Timeout | None | NotGiven = not_given,
     ) -> LookupByPostcodeResponse:
         """
-        Look up localities by postcode
+        List suburbs or localities that have address records in a four-digit Australian
+        postcode, including address counts per locality.
 
         Args:
           postcode: Australian 4-digit postcode.
+
+          debug: Optional diagnostic flag. Send exactly `true` or `false`. Invalid values are
+              rejected; debug diagnostics are for support only and must not be used for
+              business decisions.
 
           limit: Maximum number of localities to return.
 
@@ -80,6 +92,7 @@ class LookupResource(SyncAPIResource):
                 query=maybe_transform(
                     {
                         "postcode": postcode,
+                        "debug": debug,
                         "limit": limit,
                     },
                     lookup_by_postcode_params.LookupByPostcodeParams,
@@ -92,6 +105,7 @@ class LookupResource(SyncAPIResource):
         self,
         *,
         suburb: str,
+        debug: Literal["true", "false"] | Omit = omit,
         limit: int | Omit = omit,
         state: str | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
@@ -101,15 +115,23 @@ class LookupResource(SyncAPIResource):
         extra_body: Body | None = None,
         timeout: float | httpx.Timeout | None | NotGiven = not_given,
     ) -> LookupBySuburbResponse:
-        """
-        Look up postcodes by suburb
+        """Find postcodes for an Australian suburb or locality.
+
+        Add `state` to disambiguate
+        common locality names that exist in multiple states.
 
         Args:
           suburb: Suburb/locality name.
 
+          debug: Optional diagnostic flag. Send exactly `true` or `false`. Invalid values are
+              rejected; debug diagnostics are for support only and must not be used for
+              business decisions.
+
           limit: Maximum number of postcodes to return.
 
-          state: Australian state code.
+          state: Australian state or territory filter. Allowed values are NSW, VIC, QLD, SA, WA,
+              TAS, NT, and ACT. Input is case-insensitive and responses normalize state codes
+              to uppercase.
 
           extra_headers: Send extra headers
 
@@ -129,6 +151,7 @@ class LookupResource(SyncAPIResource):
                 query=maybe_transform(
                     {
                         "suburb": suburb,
+                        "debug": debug,
                         "limit": limit,
                         "state": state,
                     },
@@ -140,6 +163,10 @@ class LookupResource(SyncAPIResource):
 
 
 class AsyncLookupResource(AsyncAPIResource):
+    """
+    Australian address autocomplete, validation, enrichment, reverse geocoding, postcode lookup, and suburb lookup.
+    """
+
     @cached_property
     def with_raw_response(self) -> AsyncLookupResourceWithRawResponse:
         """
@@ -163,6 +190,7 @@ class AsyncLookupResource(AsyncAPIResource):
         self,
         *,
         postcode: str,
+        debug: Literal["true", "false"] | Omit = omit,
         limit: int | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
@@ -172,10 +200,15 @@ class AsyncLookupResource(AsyncAPIResource):
         timeout: float | httpx.Timeout | None | NotGiven = not_given,
     ) -> LookupByPostcodeResponse:
         """
-        Look up localities by postcode
+        List suburbs or localities that have address records in a four-digit Australian
+        postcode, including address counts per locality.
 
         Args:
           postcode: Australian 4-digit postcode.
+
+          debug: Optional diagnostic flag. Send exactly `true` or `false`. Invalid values are
+              rejected; debug diagnostics are for support only and must not be used for
+              business decisions.
 
           limit: Maximum number of localities to return.
 
@@ -197,6 +230,7 @@ class AsyncLookupResource(AsyncAPIResource):
                 query=await async_maybe_transform(
                     {
                         "postcode": postcode,
+                        "debug": debug,
                         "limit": limit,
                     },
                     lookup_by_postcode_params.LookupByPostcodeParams,
@@ -209,6 +243,7 @@ class AsyncLookupResource(AsyncAPIResource):
         self,
         *,
         suburb: str,
+        debug: Literal["true", "false"] | Omit = omit,
         limit: int | Omit = omit,
         state: str | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
@@ -218,15 +253,23 @@ class AsyncLookupResource(AsyncAPIResource):
         extra_body: Body | None = None,
         timeout: float | httpx.Timeout | None | NotGiven = not_given,
     ) -> LookupBySuburbResponse:
-        """
-        Look up postcodes by suburb
+        """Find postcodes for an Australian suburb or locality.
+
+        Add `state` to disambiguate
+        common locality names that exist in multiple states.
 
         Args:
           suburb: Suburb/locality name.
 
+          debug: Optional diagnostic flag. Send exactly `true` or `false`. Invalid values are
+              rejected; debug diagnostics are for support only and must not be used for
+              business decisions.
+
           limit: Maximum number of postcodes to return.
 
-          state: Australian state code.
+          state: Australian state or territory filter. Allowed values are NSW, VIC, QLD, SA, WA,
+              TAS, NT, and ACT. Input is case-insensitive and responses normalize state codes
+              to uppercase.
 
           extra_headers: Send extra headers
 
@@ -246,6 +289,7 @@ class AsyncLookupResource(AsyncAPIResource):
                 query=await async_maybe_transform(
                     {
                         "suburb": suburb,
+                        "debug": debug,
                         "limit": limit,
                         "state": state,
                     },

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing_extensions import Required, TypedDict
+from typing_extensions import Literal, Required, TypedDict
 
 __all__ = ["LookupByPostcodeParams"]
 
@@ -10,6 +10,13 @@ __all__ = ["LookupByPostcodeParams"]
 class LookupByPostcodeParams(TypedDict, total=False):
     postcode: Required[str]
     """Australian 4-digit postcode."""
+
+    debug: Literal["true", "false"]
+    """Optional diagnostic flag.
+
+    Send exactly `true` or `false`. Invalid values are rejected; debug diagnostics
+    are for support only and must not be used for business decisions.
+    """
 
     limit: int
     """Maximum number of localities to return."""

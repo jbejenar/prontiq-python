@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing_extensions import Literal
+
 import httpx
 
 from .lookup import (
@@ -38,8 +40,15 @@ __all__ = ["AddressResource", "AsyncAddressResource"]
 
 
 class AddressResource(SyncAPIResource):
+    """
+    Australian address autocomplete, validation, enrichment, reverse geocoding, postcode lookup, and suburb lookup.
+    """
+
     @cached_property
     def lookup(self) -> LookupResource:
+        """
+        Australian address autocomplete, validation, enrichment, reverse geocoding, postcode lookup, and suburb lookup.
+        """
         return LookupResource(self._client)
 
     @cached_property
@@ -65,6 +74,7 @@ class AddressResource(SyncAPIResource):
         self,
         *,
         q: str,
+        debug: Literal["true", "false"] | Omit = omit,
         limit: int | Omit = omit,
         state: str | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
@@ -74,15 +84,25 @@ class AddressResource(SyncAPIResource):
         extra_body: Body | None = None,
         timeout: float | httpx.Timeout | None | NotGiven = not_given,
     ) -> AddressAutocompleteResponse:
-        """
-        Autocomplete addresses
+        """Suggest Australian addresses as a user types.
+
+        Use this endpoint for typeahead UI
+        flows, then pass the selected `id` to Enrich when you need the full address
+        document. Suggestions include Prontiq match-quality fields; G-NAF confidence and
+        internal search relevance are omitted from default responses.
 
         Args:
           q: Partial address query.
 
+          debug: Optional diagnostic flag. Send exactly `true` or `false`. Invalid values are
+              rejected; debug diagnostics are for support only and must not be used for
+              business decisions.
+
           limit: Maximum number of suggestions to return.
 
-          state: Australian state code.
+          state: Australian state or territory filter. Allowed values are NSW, VIC, QLD, SA, WA,
+              TAS, NT, and ACT. Input is case-insensitive and responses normalize state codes
+              to uppercase.
 
           extra_headers: Send extra headers
 
@@ -102,6 +122,7 @@ class AddressResource(SyncAPIResource):
                 query=maybe_transform(
                     {
                         "q": q,
+                        "debug": debug,
                         "limit": limit,
                         "state": state,
                     },
@@ -115,6 +136,7 @@ class AddressResource(SyncAPIResource):
         self,
         *,
         id: str,
+        debug: Literal["true", "false"] | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
         extra_headers: Headers | None = None,
@@ -123,10 +145,16 @@ class AddressResource(SyncAPIResource):
         timeout: float | httpx.Timeout | None | NotGiven = not_given,
     ) -> AddressEnrichResponse:
         """
-        Enrich an address by ID
+        Return the public address document for a known G-NAF address `id` returned by
+        Autocomplete, Validate, or Reverse geocode.
 
         Args:
-          id: G-NAF address document ID.
+          id: G-NAF address document ID. Paste an id value returned from Autocomplete or
+              Validate.
+
+          debug: Optional diagnostic flag. Send exactly `true` or `false`. Invalid values are
+              rejected; debug diagnostics are for support only and must not be used for
+              business decisions.
 
           extra_headers: Send extra headers
 
@@ -143,7 +171,13 @@ class AddressResource(SyncAPIResource):
                 extra_query=extra_query,
                 extra_body=extra_body,
                 timeout=timeout,
-                query=maybe_transform({"id": id}, address_enrich_params.AddressEnrichParams),
+                query=maybe_transform(
+                    {
+                        "id": id,
+                        "debug": debug,
+                    },
+                    address_enrich_params.AddressEnrichParams,
+                ),
             ),
             cast_to=AddressEnrichResponse,
         )
@@ -153,6 +187,7 @@ class AddressResource(SyncAPIResource):
         *,
         lat: float,
         lon: float,
+        debug: Literal["true", "false"] | Omit = omit,
         limit: int | Omit = omit,
         radius: float | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
@@ -162,13 +197,19 @@ class AddressResource(SyncAPIResource):
         extra_body: Body | None = None,
         timeout: float | httpx.Timeout | None | NotGiven = not_given,
     ) -> AddressReverseGeocodeResponse:
-        """
-        Reverse geocode nearby addresses
+        """Find addresses near a latitude and longitude.
+
+        Results are ordered by distance
+        and include `distance_m` in meters.
 
         Args:
           lat: Latitude in decimal degrees.
 
           lon: Longitude in decimal degrees.
+
+          debug: Optional diagnostic flag. Send exactly `true` or `false`. Invalid values are
+              rejected; debug diagnostics are for support only and must not be used for
+              business decisions.
 
           limit: Maximum number of nearby addresses to return.
 
@@ -193,6 +234,7 @@ class AddressResource(SyncAPIResource):
                     {
                         "lat": lat,
                         "lon": lon,
+                        "debug": debug,
                         "limit": limit,
                         "radius": radius,
                     },
@@ -206,6 +248,7 @@ class AddressResource(SyncAPIResource):
         self,
         *,
         q: str,
+        debug: Literal["true", "false"] | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
         extra_headers: Headers | None = None,
@@ -214,10 +257,18 @@ class AddressResource(SyncAPIResource):
         timeout: float | httpx.Timeout | None | NotGiven = not_given,
     ) -> AddressValidateResponse:
         """
-        Validate an address
+        Find the best G-NAF match for a submitted address string and classify the
+        request match quality. Use `prontiqMatchScore` and `prontiqMatchQuality` for
+        acceptance thresholds and user prompts. If `match` is present,
+        `match.confidence` is separate G-NAF source-record metadata for the address
+        record.
 
         Args:
           q: Full address string to validate.
+
+          debug: Optional diagnostic flag. Send exactly `true` or `false`. Invalid values are
+              rejected; debug diagnostics are for support only and must not be used for
+              business decisions.
 
           extra_headers: Send extra headers
 
@@ -234,15 +285,28 @@ class AddressResource(SyncAPIResource):
                 extra_query=extra_query,
                 extra_body=extra_body,
                 timeout=timeout,
-                query=maybe_transform({"q": q}, address_validate_params.AddressValidateParams),
+                query=maybe_transform(
+                    {
+                        "q": q,
+                        "debug": debug,
+                    },
+                    address_validate_params.AddressValidateParams,
+                ),
             ),
             cast_to=AddressValidateResponse,
         )
 
 
 class AsyncAddressResource(AsyncAPIResource):
+    """
+    Australian address autocomplete, validation, enrichment, reverse geocoding, postcode lookup, and suburb lookup.
+    """
+
     @cached_property
     def lookup(self) -> AsyncLookupResource:
+        """
+        Australian address autocomplete, validation, enrichment, reverse geocoding, postcode lookup, and suburb lookup.
+        """
         return AsyncLookupResource(self._client)
 
     @cached_property
@@ -268,6 +332,7 @@ class AsyncAddressResource(AsyncAPIResource):
         self,
         *,
         q: str,
+        debug: Literal["true", "false"] | Omit = omit,
         limit: int | Omit = omit,
         state: str | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
@@ -277,15 +342,25 @@ class AsyncAddressResource(AsyncAPIResource):
         extra_body: Body | None = None,
         timeout: float | httpx.Timeout | None | NotGiven = not_given,
     ) -> AddressAutocompleteResponse:
-        """
-        Autocomplete addresses
+        """Suggest Australian addresses as a user types.
+
+        Use this endpoint for typeahead UI
+        flows, then pass the selected `id` to Enrich when you need the full address
+        document. Suggestions include Prontiq match-quality fields; G-NAF confidence and
+        internal search relevance are omitted from default responses.
 
         Args:
           q: Partial address query.
 
+          debug: Optional diagnostic flag. Send exactly `true` or `false`. Invalid values are
+              rejected; debug diagnostics are for support only and must not be used for
+              business decisions.
+
           limit: Maximum number of suggestions to return.
 
-          state: Australian state code.
+          state: Australian state or territory filter. Allowed values are NSW, VIC, QLD, SA, WA,
+              TAS, NT, and ACT. Input is case-insensitive and responses normalize state codes
+              to uppercase.
 
           extra_headers: Send extra headers
 
@@ -305,6 +380,7 @@ class AsyncAddressResource(AsyncAPIResource):
                 query=await async_maybe_transform(
                     {
                         "q": q,
+                        "debug": debug,
                         "limit": limit,
                         "state": state,
                     },
@@ -318,6 +394,7 @@ class AsyncAddressResource(AsyncAPIResource):
         self,
         *,
         id: str,
+        debug: Literal["true", "false"] | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
         extra_headers: Headers | None = None,
@@ -326,10 +403,16 @@ class AsyncAddressResource(AsyncAPIResource):
         timeout: float | httpx.Timeout | None | NotGiven = not_given,
     ) -> AddressEnrichResponse:
         """
-        Enrich an address by ID
+        Return the public address document for a known G-NAF address `id` returned by
+        Autocomplete, Validate, or Reverse geocode.
 
         Args:
-          id: G-NAF address document ID.
+          id: G-NAF address document ID. Paste an id value returned from Autocomplete or
+              Validate.
+
+          debug: Optional diagnostic flag. Send exactly `true` or `false`. Invalid values are
+              rejected; debug diagnostics are for support only and must not be used for
+              business decisions.
 
           extra_headers: Send extra headers
 
@@ -346,7 +429,13 @@ class AsyncAddressResource(AsyncAPIResource):
                 extra_query=extra_query,
                 extra_body=extra_body,
                 timeout=timeout,
-                query=await async_maybe_transform({"id": id}, address_enrich_params.AddressEnrichParams),
+                query=await async_maybe_transform(
+                    {
+                        "id": id,
+                        "debug": debug,
+                    },
+                    address_enrich_params.AddressEnrichParams,
+                ),
             ),
             cast_to=AddressEnrichResponse,
         )
@@ -356,6 +445,7 @@ class AsyncAddressResource(AsyncAPIResource):
         *,
         lat: float,
         lon: float,
+        debug: Literal["true", "false"] | Omit = omit,
         limit: int | Omit = omit,
         radius: float | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
@@ -365,13 +455,19 @@ class AsyncAddressResource(AsyncAPIResource):
         extra_body: Body | None = None,
         timeout: float | httpx.Timeout | None | NotGiven = not_given,
     ) -> AddressReverseGeocodeResponse:
-        """
-        Reverse geocode nearby addresses
+        """Find addresses near a latitude and longitude.
+
+        Results are ordered by distance
+        and include `distance_m` in meters.
 
         Args:
           lat: Latitude in decimal degrees.
 
           lon: Longitude in decimal degrees.
+
+          debug: Optional diagnostic flag. Send exactly `true` or `false`. Invalid values are
+              rejected; debug diagnostics are for support only and must not be used for
+              business decisions.
 
           limit: Maximum number of nearby addresses to return.
 
@@ -396,6 +492,7 @@ class AsyncAddressResource(AsyncAPIResource):
                     {
                         "lat": lat,
                         "lon": lon,
+                        "debug": debug,
                         "limit": limit,
                         "radius": radius,
                     },
@@ -409,6 +506,7 @@ class AsyncAddressResource(AsyncAPIResource):
         self,
         *,
         q: str,
+        debug: Literal["true", "false"] | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
         extra_headers: Headers | None = None,
@@ -417,10 +515,18 @@ class AsyncAddressResource(AsyncAPIResource):
         timeout: float | httpx.Timeout | None | NotGiven = not_given,
     ) -> AddressValidateResponse:
         """
-        Validate an address
+        Find the best G-NAF match for a submitted address string and classify the
+        request match quality. Use `prontiqMatchScore` and `prontiqMatchQuality` for
+        acceptance thresholds and user prompts. If `match` is present,
+        `match.confidence` is separate G-NAF source-record metadata for the address
+        record.
 
         Args:
           q: Full address string to validate.
+
+          debug: Optional diagnostic flag. Send exactly `true` or `false`. Invalid values are
+              rejected; debug diagnostics are for support only and must not be used for
+              business decisions.
 
           extra_headers: Send extra headers
 
@@ -437,7 +543,13 @@ class AsyncAddressResource(AsyncAPIResource):
                 extra_query=extra_query,
                 extra_body=extra_body,
                 timeout=timeout,
-                query=await async_maybe_transform({"q": q}, address_validate_params.AddressValidateParams),
+                query=await async_maybe_transform(
+                    {
+                        "q": q,
+                        "debug": debug,
+                    },
+                    address_validate_params.AddressValidateParams,
+                ),
             ),
             cast_to=AddressValidateResponse,
         )
@@ -462,6 +574,9 @@ class AddressResourceWithRawResponse:
 
     @cached_property
     def lookup(self) -> LookupResourceWithRawResponse:
+        """
+        Australian address autocomplete, validation, enrichment, reverse geocoding, postcode lookup, and suburb lookup.
+        """
         return LookupResourceWithRawResponse(self._address.lookup)
 
 
@@ -484,6 +599,9 @@ class AsyncAddressResourceWithRawResponse:
 
     @cached_property
     def lookup(self) -> AsyncLookupResourceWithRawResponse:
+        """
+        Australian address autocomplete, validation, enrichment, reverse geocoding, postcode lookup, and suburb lookup.
+        """
         return AsyncLookupResourceWithRawResponse(self._address.lookup)
 
 
@@ -506,6 +624,9 @@ class AddressResourceWithStreamingResponse:
 
     @cached_property
     def lookup(self) -> LookupResourceWithStreamingResponse:
+        """
+        Australian address autocomplete, validation, enrichment, reverse geocoding, postcode lookup, and suburb lookup.
+        """
         return LookupResourceWithStreamingResponse(self._address.lookup)
 
 
@@ -528,4 +649,7 @@ class AsyncAddressResourceWithStreamingResponse:
 
     @cached_property
     def lookup(self) -> AsyncLookupResourceWithStreamingResponse:
+        """
+        Australian address autocomplete, validation, enrichment, reverse geocoding, postcode lookup, and suburb lookup.
+        """
         return AsyncLookupResourceWithStreamingResponse(self._address.lookup)
