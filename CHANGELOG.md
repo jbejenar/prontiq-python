@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.1 (2026-05-15)
+
+Full Changelog: [v0.2.0...v0.2.1](https://github.com/prontiq/prontiq-python/compare/v0.2.0...v0.2.1)
+
+### Chores
+
+* sync repo ([89b6e4f](https://github.com/prontiq/prontiq-python/commit/89b6e4fa36dcaaca184662af8f918ce9662e845a))
+* update SDK settings ([121471d](https://github.com/prontiq/prontiq-python/commit/121471db2507f18a9d74352a722231d045a19a2d))
+
 ## 0.2.0 (2026-05-15)
 
 Full Changelog: [v0.1.0...v0.2.0](https://github.com/jbejenar/prontiq-python/compare/v0.1.0...v0.2.0)
