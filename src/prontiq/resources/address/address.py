@@ -147,9 +147,10 @@ class AddressResource(SyncAPIResource):
         timeout: float | httpx.Timeout | None | NotGiven = not_given,
     ) -> AddressEnrichResponse:
         """
-        Return the public address document for a known G-NAF address `id` returned by
-        Autocomplete, Validate, or Reverse geocode. Use this after a user selects an
-        address when you need geocode, boundary, and source-record metadata.
+        Return the richest public address document for a known G-NAF address `id`
+        returned by Autocomplete, Validate, or Reverse geocode. Use this after a user
+        selects an address when you need structured components, geocodes, boundaries,
+        locality and street context, aliases, secondaries, and source-record metadata.
 
         Args:
           id: G-NAF address document ID. Paste an id value returned from Autocomplete or
@@ -409,9 +410,10 @@ class AsyncAddressResource(AsyncAPIResource):
         timeout: float | httpx.Timeout | None | NotGiven = not_given,
     ) -> AddressEnrichResponse:
         """
-        Return the public address document for a known G-NAF address `id` returned by
-        Autocomplete, Validate, or Reverse geocode. Use this after a user selects an
-        address when you need geocode, boundary, and source-record metadata.
+        Return the richest public address document for a known G-NAF address `id`
+        returned by Autocomplete, Validate, or Reverse geocode. Use this after a user
+        selects an address when you need structured components, geocodes, boundaries,
+        locality and street context, aliases, secondaries, and source-record metadata.
 
         Args:
           id: G-NAF address document ID. Paste an id value returned from Autocomplete or
