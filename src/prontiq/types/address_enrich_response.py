@@ -9,6 +9,8 @@ from .._models import BaseModel
 
 __all__ = [
     "AddressEnrichResponse",
+    "Alias",
+    "AllGeocode",
     "Boundaries",
     "BoundariesCommonwealthElectorate",
     "BoundariesGccsa",
@@ -18,10 +20,56 @@ __all__ = [
     "BoundariesSa3",
     "BoundariesSa4",
     "BoundariesStateElectorate",
+    "BoundariesWard",
+    "Components",
     "Debug",
     "Geocode",
+    "Locality",
     "Location",
+    "Secondary",
+    "Street",
 ]
+
+
+class Alias(BaseModel):
+    """Alternative address label associated with the enriched address."""
+
+    id: Optional[str] = None
+    """Public identifier for the alternate address record when available."""
+
+    address_label: Optional[str] = FieldInfo(alias="addressLabel", default=None)
+    """Alternate display label for the address."""
+
+    type: Optional[str] = None
+    """Alias type label when available."""
+
+
+class AllGeocode(BaseModel):
+    """One geocode associated with an enriched address record.
+
+    Enrich preserves the source order after filtering invalid coordinates.
+    """
+
+    latitude: float
+    """
+    WGS84 decimal-degree coordinate used for Australian address locations and
+    reverse-geocode queries.
+    """
+
+    longitude: float
+    """
+    WGS84 decimal-degree coordinate used for Australian address locations and
+    reverse-geocode queries.
+    """
+
+    reliability: Optional[float] = None
+    """Source geocode reliability value when available.
+
+    Lower values usually indicate more precise location evidence.
+    """
+
+    type: Optional[str] = None
+    """Geocode method or level for this additional geocode when available."""
 
 
 class BoundariesCommonwealthElectorate(BaseModel):
@@ -148,9 +196,17 @@ class BoundariesStateElectorate(BaseModel):
     """
 
 
+class BoundariesWard(BaseModel):
+    """Council ward associated with an enriched address when available."""
+
+    name: Optional[str] = None
+    """Council ward name when available."""
+
+
 class Boundaries(BaseModel):
-    """
-    Administrative, electoral, and ABS statistical geography linked to the address when supplied by G-NAF and ABS source data. Boundary values can change between official data releases without the address `id` changing.
+    """Administrative, electoral, and ABS geography returned by Enrich.
+
+    This is a strict superset of the standard address boundary object.
     """
 
     commonwealth_electorate: Optional[BoundariesCommonwealthElectorate] = FieldInfo(
@@ -176,6 +232,12 @@ class Boundaries(BaseModel):
     location.
     """
 
+    sa1: Optional[str] = None
+    """ABS Statistical Area Level 1 code when available.
+
+    SA1 is useful for downstream statistical joins such as SEIFA.
+    """
+
     sa2: Optional[BoundariesSa2] = None
     """
     Named administrative, electoral, or statistical area associated with an address.
@@ -195,6 +257,52 @@ class Boundaries(BaseModel):
     """
     Named administrative, electoral, or statistical area associated with an address.
     """
+
+    ward: Optional[BoundariesWard] = None
+    """Council ward associated with an enriched address when available."""
+
+
+class Components(BaseModel):
+    """Structured address components when available for the enriched record."""
+
+    address_site_name: Optional[str] = FieldInfo(alias="addressSiteName", default=None)
+    """
+    Site name associated with the address when available, such as a shopping centre,
+    hospital, or campus.
+    """
+
+    building_name: Optional[str] = FieldInfo(alias="buildingName", default=None)
+    """Building name associated with the address when available."""
+
+    flat_number: Optional[str] = FieldInfo(alias="flatNumber", default=None)
+    """Unit, flat, shop, or suite number without the type prefix."""
+
+    flat_type: Optional[str] = FieldInfo(alias="flatType", default=None)
+    """Unit, flat, shop, or suite type when the address has a subaddress component."""
+
+    level_number: Optional[str] = FieldInfo(alias="levelNumber", default=None)
+    """Level or floor number without the level type prefix."""
+
+    level_type: Optional[str] = FieldInfo(alias="levelType", default=None)
+    """Level type when the address has a floor or level component."""
+
+    lot_number: Optional[str] = FieldInfo(alias="lotNumber", default=None)
+    """Lot number for rural, unsubdivided, or lot-based addressing when available."""
+
+    street_name: Optional[str] = FieldInfo(alias="streetName", default=None)
+    """Street name without street type or suffix."""
+
+    street_number_first: Optional[str] = FieldInfo(alias="streetNumberFirst", default=None)
+    """First or only street number for the address."""
+
+    street_number_last: Optional[str] = FieldInfo(alias="streetNumberLast", default=None)
+    """Last street number when the address is represented as a range."""
+
+    street_suffix: Optional[str] = FieldInfo(alias="streetSuffix", default=None)
+    """Street suffix or directional suffix when available."""
+
+    street_type: Optional[str] = FieldInfo(alias="streetType", default=None)
+    """Street type in its expanded public form when available."""
 
 
 class Debug(BaseModel):
@@ -260,6 +368,22 @@ class Geocode(BaseModel):
     """
 
 
+class Locality(BaseModel):
+    """Locality context when available for the enriched address."""
+
+    id: Optional[str] = None
+    """Public locality identifier when available."""
+
+    aliases: Optional[List[str]] = None
+    """Alternative locality names when available."""
+
+    classification: Optional[str] = None
+    """Locality classification label when available."""
+
+    neighbours: Optional[List[str]] = None
+    """Neighbouring locality names when available."""
+
+
 class Location(BaseModel):
     """Compact latitude/longitude point used for proximity workflows and map display."""
 
@@ -276,8 +400,33 @@ class Location(BaseModel):
     """
 
 
+class Secondary(BaseModel):
+    """Secondary or child address associated with an enriched primary address."""
+
+    id: Optional[str] = None
+    """Public identifier for the secondary address record when available."""
+
+    address_label: Optional[str] = FieldInfo(alias="addressLabel", default=None)
+    """Display label for the secondary address."""
+
+
+class Street(BaseModel):
+    """Street context when available for the enriched address."""
+
+    id: Optional[str] = None
+    """Public street identifier when available."""
+
+    aliases: Optional[List[str]] = None
+    """Alternative street names when available."""
+
+    classification: Optional[str] = None
+    """Street classification or confirmation label when available."""
+
+
 class AddressEnrichResponse(BaseModel):
-    """Public address document, with optional diagnostic metadata when debug=true."""
+    """
+    Enrich-only address document with structured components, extra geocodes, locality and street context, aliases, secondaries, extended boundaries, and optional diagnostic metadata when debug=true.
+    """
 
     id: str
     """Opaque G-NAF persistent identifier for this address record.
@@ -293,12 +442,30 @@ class AddressEnrichResponse(BaseModel):
     text available in the source record.
     """
 
+    address_role: Optional[Literal["PRIMARY", "SECONDARY"]] = FieldInfo(alias="addressRole", default=None)
+    """Primary or secondary address role when available.
+
+    Primary records are parent or building-level addresses; secondary records are
+    child or unit-level addresses.
+    """
+
+    aliases: Optional[List[Alias]] = None
+    """Alternative address labels associated with the enriched address."""
+
+    all_geocodes: Optional[List[AllGeocode]] = FieldInfo(alias="allGeocodes", default=None)
+    """Additional geocodes associated with the address.
+
+    The array preserves source order after invalid coordinates are removed.
+    """
+
     boundaries: Optional[Boundaries] = None
+    """Administrative, electoral, and ABS geography returned by Enrich.
+
+    This is a strict superset of the standard address boundary object.
     """
-    Administrative, electoral, and ABS statistical geography linked to the address
-    when supplied by G-NAF and ABS source data. Boundary values can change between
-    official data releases without the address `id` changing.
-    """
+
+    components: Optional[Components] = None
+    """Structured address components when available for the enriched record."""
 
     confidence: Optional[int] = None
     """G-NAF source-record confidence metadata.
@@ -318,6 +485,15 @@ class AddressEnrichResponse(BaseModel):
     geocode: Optional[Geocode] = None
     """G-NAF geocoding metadata and decimal-degree coordinates for the address."""
 
+    legal_parcel_id: Optional[str] = FieldInfo(alias="legalParcelId", default=None)
+    """Parcel or legal-property reference when available for the address.
+
+    Coverage varies by address and source data.
+    """
+
+    locality: Optional[Locality] = None
+    """Locality context when available for the enriched address."""
+
     locality_name: Optional[str] = FieldInfo(alias="localityName", default=None)
     """Official suburb or locality name associated with the address."""
 
@@ -331,6 +507,15 @@ class AddressEnrichResponse(BaseModel):
     some Australian postcodes.
     """
 
+    secondaries: Optional[List[Secondary]] = None
+    """Secondary or child addresses associated with the enriched address."""
+
+    source_data_release: Optional[str] = FieldInfo(alias="sourceDataRelease", default=None)
+    """
+    Source data release or version used to produce the enriched address record when
+    available. This is not the Prontiq API version.
+    """
+
     state: Optional[Literal["NSW", "VIC", "QLD", "SA", "WA", "TAS", "NT", "ACT"]] = None
     """Uppercase Australian state or territory code returned by the Address API.
 
@@ -338,3 +523,6 @@ class AddressEnrichResponse(BaseModel):
     South Australia, `WA` Western Australia, `TAS` Tasmania, `NT` Northern
     Territory, and `ACT` Australian Capital Territory.
     """
+
+    street: Optional[Street] = None
+    """Street context when available for the enriched address."""

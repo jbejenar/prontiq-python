@@ -244,9 +244,8 @@ class MatchLocation(BaseModel):
 
 
 class Match(BaseModel):
-    """Public address record returned by Validate, Enrich, and Reverse geocode.
-
-    Optional fields may be absent or null when the source data does not provide that attribute.
+    """
+    Standard public address record returned by Validate and Reverse geocode, and used as the base for Enrich. Optional fields may be absent or null when the source data does not provide that attribute.
     """
 
     id: str
@@ -343,10 +342,10 @@ class AddressValidateResponse(BaseModel):
     """
 
     match: Optional[Match] = None
-    """Public address record returned by Validate, Enrich, and Reverse geocode.
-
-    Optional fields may be absent or null when the source data does not provide that
-    attribute.
+    """
+    Standard public address record returned by Validate and Reverse geocode, and
+    used as the base for Enrich. Optional fields may be absent or null when the
+    source data does not provide that attribute.
     """
 
     prontiq_match_quality: Literal["high", "medium", "low", "none"] = FieldInfo(alias="prontiqMatchQuality")
