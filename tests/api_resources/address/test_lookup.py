@@ -68,7 +68,7 @@ class TestLookup:
     @parametrize
     def test_method_by_suburb(self, client: Prontiq) -> None:
         lookup = client.address.lookup.by_suburb(
-            suburb="bondi beach",
+            suburb="sydney",
         )
         assert_matches_type(LookupBySuburbResponse, lookup, path=["response"])
 
@@ -76,10 +76,10 @@ class TestLookup:
     @parametrize
     def test_method_by_suburb_with_all_params(self, client: Prontiq) -> None:
         lookup = client.address.lookup.by_suburb(
-            suburb="bondi beach",
+            suburb="sydney",
             debug="false",
             limit=3,
-            state="NSW",
+            state="QLD",
         )
         assert_matches_type(LookupBySuburbResponse, lookup, path=["response"])
 
@@ -87,7 +87,7 @@ class TestLookup:
     @parametrize
     def test_raw_response_by_suburb(self, client: Prontiq) -> None:
         response = client.address.lookup.with_raw_response.by_suburb(
-            suburb="bondi beach",
+            suburb="sydney",
         )
 
         assert response.is_closed is True
@@ -99,7 +99,7 @@ class TestLookup:
     @parametrize
     def test_streaming_response_by_suburb(self, client: Prontiq) -> None:
         with client.address.lookup.with_streaming_response.by_suburb(
-            suburb="bondi beach",
+            suburb="sydney",
         ) as response:
             assert not response.is_closed
             assert response.http_request.headers.get("X-Stainless-Lang") == "python"
@@ -163,7 +163,7 @@ class TestAsyncLookup:
     @parametrize
     async def test_method_by_suburb(self, async_client: AsyncProntiq) -> None:
         lookup = await async_client.address.lookup.by_suburb(
-            suburb="bondi beach",
+            suburb="sydney",
         )
         assert_matches_type(LookupBySuburbResponse, lookup, path=["response"])
 
@@ -171,10 +171,10 @@ class TestAsyncLookup:
     @parametrize
     async def test_method_by_suburb_with_all_params(self, async_client: AsyncProntiq) -> None:
         lookup = await async_client.address.lookup.by_suburb(
-            suburb="bondi beach",
+            suburb="sydney",
             debug="false",
             limit=3,
-            state="NSW",
+            state="QLD",
         )
         assert_matches_type(LookupBySuburbResponse, lookup, path=["response"])
 
@@ -182,7 +182,7 @@ class TestAsyncLookup:
     @parametrize
     async def test_raw_response_by_suburb(self, async_client: AsyncProntiq) -> None:
         response = await async_client.address.lookup.with_raw_response.by_suburb(
-            suburb="bondi beach",
+            suburb="sydney",
         )
 
         assert response.is_closed is True
@@ -194,7 +194,7 @@ class TestAsyncLookup:
     @parametrize
     async def test_streaming_response_by_suburb(self, async_client: AsyncProntiq) -> None:
         async with async_client.address.lookup.with_streaming_response.by_suburb(
-            suburb="bondi beach",
+            suburb="sydney",
         ) as response:
             assert not response.is_closed
             assert response.http_request.headers.get("X-Stainless-Lang") == "python"

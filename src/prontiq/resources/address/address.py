@@ -87,12 +87,14 @@ class AddressResource(SyncAPIResource):
         """Suggest Australian addresses as a user types.
 
         Use this endpoint for typeahead UI
-        flows, then pass the selected `id` to Enrich when you need the full address
-        document. Suggestions include Prontiq match-quality fields; G-NAF confidence and
-        internal search relevance are omitted from default responses.
+        flows, then pass the selected `id` to [Enrich](/api-reference/enrich) when you
+        need coordinates, boundaries, and full record metadata. Suggestions include
+        Prontiq match-quality fields; G-NAF confidence and internal search relevance are
+        omitted from default responses.
 
         Args:
-          q: Partial address query.
+          q: Partial address text typed by the user. Send 1-200 characters; omit coordinates
+              and use `state` when you already know the state.
 
           debug: Optional diagnostic flag. Send exactly `true` or `false`. Invalid values are
               rejected; debug diagnostics are for support only and must not be used for
@@ -100,9 +102,9 @@ class AddressResource(SyncAPIResource):
 
           limit: Maximum number of suggestions to return.
 
-          state: Australian state or territory filter. Allowed values are NSW, VIC, QLD, SA, WA,
-              TAS, NT, and ACT. Input is case-insensitive and responses normalize state codes
-              to uppercase.
+          state: Australian state or territory filter. Allowed values are `NSW`, `VIC`, `QLD`,
+              `SA`, `WA`, `TAS`, `NT`, and `ACT`. Input is case-insensitive and responses
+              normalize state codes to uppercase.
 
           extra_headers: Send extra headers
 
@@ -145,8 +147,10 @@ class AddressResource(SyncAPIResource):
         timeout: float | httpx.Timeout | None | NotGiven = not_given,
     ) -> AddressEnrichResponse:
         """
-        Return the public address document for a known G-NAF address `id` returned by
-        Autocomplete, Validate, or Reverse geocode.
+        Return the richest public address document for a known G-NAF address `id`
+        returned by Autocomplete, Validate, or Reverse geocode. Use this after a user
+        selects an address when you need structured components, geocodes, boundaries,
+        locality and street context, aliases, secondaries, and source-record metadata.
 
         Args:
           id: G-NAF address document ID. Paste an id value returned from Autocomplete or
@@ -199,13 +203,14 @@ class AddressResource(SyncAPIResource):
     ) -> AddressReverseGeocodeResponse:
         """Find addresses near a latitude and longitude.
 
-        Results are ordered by distance
-        and include `distance_m` in meters.
+        Use this when a workflow starts
+        from a map pin, device coordinate, or spatial search. Results are ordered by
+        distance and include `distance_m` in metres.
 
         Args:
-          lat: Latitude in decimal degrees.
+          lat: Latitude in WGS84 decimal degrees for the reverse-geocode search point.
 
-          lon: Longitude in decimal degrees.
+          lon: Longitude in WGS84 decimal degrees for the reverse-geocode search point.
 
           debug: Optional diagnostic flag. Send exactly `true` or `false`. Invalid values are
               rejected; debug diagnostics are for support only and must not be used for
@@ -257,14 +262,14 @@ class AddressResource(SyncAPIResource):
         timeout: float | httpx.Timeout | None | NotGiven = not_given,
     ) -> AddressValidateResponse:
         """
-        Find the best G-NAF match for a submitted address string and classify the
-        request match quality. Use `prontiqMatchScore` and `prontiqMatchQuality` for
-        acceptance thresholds and user prompts. If `match` is present,
-        `match.confidence` is separate G-NAF source-record metadata for the address
-        record.
+        Find the best G-NAF match for a submitted address string and classify request
+        match quality. Use `prontiqMatchScore` and `prontiqMatchQuality` for acceptance
+        thresholds and user prompts. If `match` is present, `match.confidence` is
+        separate G-NAF source-record metadata for the address record.
 
         Args:
-          q: Full address string to validate.
+          q: Free-text address to validate against G-NAF. Include suburb, state, and postcode
+              when available for the strongest match signal.
 
           debug: Optional diagnostic flag. Send exactly `true` or `false`. Invalid values are
               rejected; debug diagnostics are for support only and must not be used for
@@ -345,12 +350,14 @@ class AsyncAddressResource(AsyncAPIResource):
         """Suggest Australian addresses as a user types.
 
         Use this endpoint for typeahead UI
-        flows, then pass the selected `id` to Enrich when you need the full address
-        document. Suggestions include Prontiq match-quality fields; G-NAF confidence and
-        internal search relevance are omitted from default responses.
+        flows, then pass the selected `id` to [Enrich](/api-reference/enrich) when you
+        need coordinates, boundaries, and full record metadata. Suggestions include
+        Prontiq match-quality fields; G-NAF confidence and internal search relevance are
+        omitted from default responses.
 
         Args:
-          q: Partial address query.
+          q: Partial address text typed by the user. Send 1-200 characters; omit coordinates
+              and use `state` when you already know the state.
 
           debug: Optional diagnostic flag. Send exactly `true` or `false`. Invalid values are
               rejected; debug diagnostics are for support only and must not be used for
@@ -358,9 +365,9 @@ class AsyncAddressResource(AsyncAPIResource):
 
           limit: Maximum number of suggestions to return.
 
-          state: Australian state or territory filter. Allowed values are NSW, VIC, QLD, SA, WA,
-              TAS, NT, and ACT. Input is case-insensitive and responses normalize state codes
-              to uppercase.
+          state: Australian state or territory filter. Allowed values are `NSW`, `VIC`, `QLD`,
+              `SA`, `WA`, `TAS`, `NT`, and `ACT`. Input is case-insensitive and responses
+              normalize state codes to uppercase.
 
           extra_headers: Send extra headers
 
@@ -403,8 +410,10 @@ class AsyncAddressResource(AsyncAPIResource):
         timeout: float | httpx.Timeout | None | NotGiven = not_given,
     ) -> AddressEnrichResponse:
         """
-        Return the public address document for a known G-NAF address `id` returned by
-        Autocomplete, Validate, or Reverse geocode.
+        Return the richest public address document for a known G-NAF address `id`
+        returned by Autocomplete, Validate, or Reverse geocode. Use this after a user
+        selects an address when you need structured components, geocodes, boundaries,
+        locality and street context, aliases, secondaries, and source-record metadata.
 
         Args:
           id: G-NAF address document ID. Paste an id value returned from Autocomplete or
@@ -457,13 +466,14 @@ class AsyncAddressResource(AsyncAPIResource):
     ) -> AddressReverseGeocodeResponse:
         """Find addresses near a latitude and longitude.
 
-        Results are ordered by distance
-        and include `distance_m` in meters.
+        Use this when a workflow starts
+        from a map pin, device coordinate, or spatial search. Results are ordered by
+        distance and include `distance_m` in metres.
 
         Args:
-          lat: Latitude in decimal degrees.
+          lat: Latitude in WGS84 decimal degrees for the reverse-geocode search point.
 
-          lon: Longitude in decimal degrees.
+          lon: Longitude in WGS84 decimal degrees for the reverse-geocode search point.
 
           debug: Optional diagnostic flag. Send exactly `true` or `false`. Invalid values are
               rejected; debug diagnostics are for support only and must not be used for
@@ -515,14 +525,14 @@ class AsyncAddressResource(AsyncAPIResource):
         timeout: float | httpx.Timeout | None | NotGiven = not_given,
     ) -> AddressValidateResponse:
         """
-        Find the best G-NAF match for a submitted address string and classify the
-        request match quality. Use `prontiqMatchScore` and `prontiqMatchQuality` for
-        acceptance thresholds and user prompts. If `match` is present,
-        `match.confidence` is separate G-NAF source-record metadata for the address
-        record.
+        Find the best G-NAF match for a submitted address string and classify request
+        match quality. Use `prontiqMatchScore` and `prontiqMatchQuality` for acceptance
+        thresholds and user prompts. If `match` is present, `match.confidence` is
+        separate G-NAF source-record metadata for the address record.
 
         Args:
-          q: Full address string to validate.
+          q: Free-text address to validate against G-NAF. Include suburb, state, and postcode
+              when available for the strongest match signal.
 
           debug: Optional diagnostic flag. Send exactly `true` or `false`. Invalid values are
               rejected; debug diagnostics are for support only and must not be used for

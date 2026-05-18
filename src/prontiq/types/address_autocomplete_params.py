@@ -9,7 +9,11 @@ __all__ = ["AddressAutocompleteParams"]
 
 class AddressAutocompleteParams(TypedDict, total=False):
     q: Required[str]
-    """Partial address query."""
+    """Partial address text typed by the user.
+
+    Send 1-200 characters; omit coordinates and use `state` when you already know
+    the state.
+    """
 
     debug: Literal["true", "false"]
     """Optional diagnostic flag.
@@ -24,6 +28,6 @@ class AddressAutocompleteParams(TypedDict, total=False):
     state: str
     """Australian state or territory filter.
 
-    Allowed values are NSW, VIC, QLD, SA, WA, TAS, NT, and ACT. Input is
-    case-insensitive and responses normalize state codes to uppercase.
+    Allowed values are `NSW`, `VIC`, `QLD`, `SA`, `WA`, `TAS`, `NT`, and `ACT`.
+    Input is case-insensitive and responses normalize state codes to uppercase.
     """

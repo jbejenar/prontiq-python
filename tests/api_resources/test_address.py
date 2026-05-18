@@ -37,7 +37,7 @@ class TestAddress:
             q="9 endeavour cou",
             debug="false",
             limit=3,
-            state="NSW",
+            state="QLD",
         )
         assert_matches_type(AddressAutocompleteResponse, address, path=["response"])
 
@@ -71,7 +71,7 @@ class TestAddress:
     @parametrize
     def test_method_enrich(self, client: Prontiq) -> None:
         address = client.address.enrich(
-            id="F_GAVIC999000002",
+            id="GAQLD156786950",
         )
         assert_matches_type(AddressEnrichResponse, address, path=["response"])
 
@@ -79,7 +79,7 @@ class TestAddress:
     @parametrize
     def test_method_enrich_with_all_params(self, client: Prontiq) -> None:
         address = client.address.enrich(
-            id="F_GAVIC999000002",
+            id="GAQLD156786950",
             debug="false",
         )
         assert_matches_type(AddressEnrichResponse, address, path=["response"])
@@ -88,7 +88,7 @@ class TestAddress:
     @parametrize
     def test_raw_response_enrich(self, client: Prontiq) -> None:
         response = client.address.with_raw_response.enrich(
-            id="F_GAVIC999000002",
+            id="GAQLD156786950",
         )
 
         assert response.is_closed is True
@@ -100,7 +100,7 @@ class TestAddress:
     @parametrize
     def test_streaming_response_enrich(self, client: Prontiq) -> None:
         with client.address.with_streaming_response.enrich(
-            id="F_GAVIC999000002",
+            id="GAQLD156786950",
         ) as response:
             assert not response.is_closed
             assert response.http_request.headers.get("X-Stainless-Lang") == "python"
@@ -114,8 +114,8 @@ class TestAddress:
     @parametrize
     def test_method_reverse_geocode(self, client: Prontiq) -> None:
         address = client.address.reverse_geocode(
-            lat=-33.8568,
-            lon=151.2153,
+            lat=-23.1601,
+            lon=150.7596,
         )
         assert_matches_type(AddressReverseGeocodeResponse, address, path=["response"])
 
@@ -123,8 +123,8 @@ class TestAddress:
     @parametrize
     def test_method_reverse_geocode_with_all_params(self, client: Prontiq) -> None:
         address = client.address.reverse_geocode(
-            lat=-33.8568,
-            lon=151.2153,
+            lat=-23.1601,
+            lon=150.7596,
             debug="false",
             limit=3,
             radius=200,
@@ -135,8 +135,8 @@ class TestAddress:
     @parametrize
     def test_raw_response_reverse_geocode(self, client: Prontiq) -> None:
         response = client.address.with_raw_response.reverse_geocode(
-            lat=-33.8568,
-            lon=151.2153,
+            lat=-23.1601,
+            lon=150.7596,
         )
 
         assert response.is_closed is True
@@ -148,8 +148,8 @@ class TestAddress:
     @parametrize
     def test_streaming_response_reverse_geocode(self, client: Prontiq) -> None:
         with client.address.with_streaming_response.reverse_geocode(
-            lat=-33.8568,
-            lon=151.2153,
+            lat=-23.1601,
+            lon=150.7596,
         ) as response:
             assert not response.is_closed
             assert response.http_request.headers.get("X-Stainless-Lang") == "python"
@@ -163,7 +163,7 @@ class TestAddress:
     @parametrize
     def test_method_validate(self, client: Prontiq) -> None:
         address = client.address.validate(
-            q="9 endeavour court coffin bay sa 5607",
+            q="9 endeavour court lammermoor qld 4703",
         )
         assert_matches_type(AddressValidateResponse, address, path=["response"])
 
@@ -171,7 +171,7 @@ class TestAddress:
     @parametrize
     def test_method_validate_with_all_params(self, client: Prontiq) -> None:
         address = client.address.validate(
-            q="9 endeavour court coffin bay sa 5607",
+            q="9 endeavour court lammermoor qld 4703",
             debug="false",
         )
         assert_matches_type(AddressValidateResponse, address, path=["response"])
@@ -180,7 +180,7 @@ class TestAddress:
     @parametrize
     def test_raw_response_validate(self, client: Prontiq) -> None:
         response = client.address.with_raw_response.validate(
-            q="9 endeavour court coffin bay sa 5607",
+            q="9 endeavour court lammermoor qld 4703",
         )
 
         assert response.is_closed is True
@@ -192,7 +192,7 @@ class TestAddress:
     @parametrize
     def test_streaming_response_validate(self, client: Prontiq) -> None:
         with client.address.with_streaming_response.validate(
-            q="9 endeavour court coffin bay sa 5607",
+            q="9 endeavour court lammermoor qld 4703",
         ) as response:
             assert not response.is_closed
             assert response.http_request.headers.get("X-Stainless-Lang") == "python"
@@ -223,7 +223,7 @@ class TestAsyncAddress:
             q="9 endeavour cou",
             debug="false",
             limit=3,
-            state="NSW",
+            state="QLD",
         )
         assert_matches_type(AddressAutocompleteResponse, address, path=["response"])
 
@@ -257,7 +257,7 @@ class TestAsyncAddress:
     @parametrize
     async def test_method_enrich(self, async_client: AsyncProntiq) -> None:
         address = await async_client.address.enrich(
-            id="F_GAVIC999000002",
+            id="GAQLD156786950",
         )
         assert_matches_type(AddressEnrichResponse, address, path=["response"])
 
@@ -265,7 +265,7 @@ class TestAsyncAddress:
     @parametrize
     async def test_method_enrich_with_all_params(self, async_client: AsyncProntiq) -> None:
         address = await async_client.address.enrich(
-            id="F_GAVIC999000002",
+            id="GAQLD156786950",
             debug="false",
         )
         assert_matches_type(AddressEnrichResponse, address, path=["response"])
@@ -274,7 +274,7 @@ class TestAsyncAddress:
     @parametrize
     async def test_raw_response_enrich(self, async_client: AsyncProntiq) -> None:
         response = await async_client.address.with_raw_response.enrich(
-            id="F_GAVIC999000002",
+            id="GAQLD156786950",
         )
 
         assert response.is_closed is True
@@ -286,7 +286,7 @@ class TestAsyncAddress:
     @parametrize
     async def test_streaming_response_enrich(self, async_client: AsyncProntiq) -> None:
         async with async_client.address.with_streaming_response.enrich(
-            id="F_GAVIC999000002",
+            id="GAQLD156786950",
         ) as response:
             assert not response.is_closed
             assert response.http_request.headers.get("X-Stainless-Lang") == "python"
@@ -300,8 +300,8 @@ class TestAsyncAddress:
     @parametrize
     async def test_method_reverse_geocode(self, async_client: AsyncProntiq) -> None:
         address = await async_client.address.reverse_geocode(
-            lat=-33.8568,
-            lon=151.2153,
+            lat=-23.1601,
+            lon=150.7596,
         )
         assert_matches_type(AddressReverseGeocodeResponse, address, path=["response"])
 
@@ -309,8 +309,8 @@ class TestAsyncAddress:
     @parametrize
     async def test_method_reverse_geocode_with_all_params(self, async_client: AsyncProntiq) -> None:
         address = await async_client.address.reverse_geocode(
-            lat=-33.8568,
-            lon=151.2153,
+            lat=-23.1601,
+            lon=150.7596,
             debug="false",
             limit=3,
             radius=200,
@@ -321,8 +321,8 @@ class TestAsyncAddress:
     @parametrize
     async def test_raw_response_reverse_geocode(self, async_client: AsyncProntiq) -> None:
         response = await async_client.address.with_raw_response.reverse_geocode(
-            lat=-33.8568,
-            lon=151.2153,
+            lat=-23.1601,
+            lon=150.7596,
         )
 
         assert response.is_closed is True
@@ -334,8 +334,8 @@ class TestAsyncAddress:
     @parametrize
     async def test_streaming_response_reverse_geocode(self, async_client: AsyncProntiq) -> None:
         async with async_client.address.with_streaming_response.reverse_geocode(
-            lat=-33.8568,
-            lon=151.2153,
+            lat=-23.1601,
+            lon=150.7596,
         ) as response:
             assert not response.is_closed
             assert response.http_request.headers.get("X-Stainless-Lang") == "python"
@@ -349,7 +349,7 @@ class TestAsyncAddress:
     @parametrize
     async def test_method_validate(self, async_client: AsyncProntiq) -> None:
         address = await async_client.address.validate(
-            q="9 endeavour court coffin bay sa 5607",
+            q="9 endeavour court lammermoor qld 4703",
         )
         assert_matches_type(AddressValidateResponse, address, path=["response"])
 
@@ -357,7 +357,7 @@ class TestAsyncAddress:
     @parametrize
     async def test_method_validate_with_all_params(self, async_client: AsyncProntiq) -> None:
         address = await async_client.address.validate(
-            q="9 endeavour court coffin bay sa 5607",
+            q="9 endeavour court lammermoor qld 4703",
             debug="false",
         )
         assert_matches_type(AddressValidateResponse, address, path=["response"])
@@ -366,7 +366,7 @@ class TestAsyncAddress:
     @parametrize
     async def test_raw_response_validate(self, async_client: AsyncProntiq) -> None:
         response = await async_client.address.with_raw_response.validate(
-            q="9 endeavour court coffin bay sa 5607",
+            q="9 endeavour court lammermoor qld 4703",
         )
 
         assert response.is_closed is True
@@ -378,7 +378,7 @@ class TestAsyncAddress:
     @parametrize
     async def test_streaming_response_validate(self, async_client: AsyncProntiq) -> None:
         async with async_client.address.with_streaming_response.validate(
-            q="9 endeavour court coffin bay sa 5607",
+            q="9 endeavour court lammermoor qld 4703",
         ) as response:
             assert not response.is_closed
             assert response.http_request.headers.get("X-Stainless-Lang") == "python"

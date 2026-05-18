@@ -31,7 +31,7 @@ class ResultBoundariesCommonwealthElectorate(BaseModel):
     """
 
     name: str
-    """Official area name."""
+    """Official administrative, electoral, or statistical area name."""
 
     code: Optional[str] = None
     """
@@ -46,7 +46,7 @@ class ResultBoundariesGccsa(BaseModel):
     """
 
     name: str
-    """Official area name."""
+    """Official administrative, electoral, or statistical area name."""
 
     code: Optional[str] = None
     """
@@ -61,7 +61,7 @@ class ResultBoundariesLga(BaseModel):
     """
 
     name: str
-    """Official area name."""
+    """Official administrative, electoral, or statistical area name."""
 
     code: Optional[str] = None
     """
@@ -76,12 +76,16 @@ class ResultBoundariesMeshBlock(BaseModel):
     """
 
     code: str
-    """ABS Mesh Block code. Mesh Blocks are the smallest ABS geographic areas."""
+    """ABS Mesh Block code.
+
+    Mesh Blocks are the smallest Australian Bureau of Statistics geographic areas
+    used to build larger statistical regions.
+    """
 
     category: Optional[str] = None
     """
-    ABS Mesh Block land-use category when available, for example Residential or
-    Commercial.
+    ABS Mesh Block land-use category when available, such as Residential,
+    Commercial, Parkland, or Education.
     """
 
 
@@ -91,7 +95,7 @@ class ResultBoundariesSa2(BaseModel):
     """
 
     name: str
-    """Official area name."""
+    """Official administrative, electoral, or statistical area name."""
 
     code: Optional[str] = None
     """
@@ -106,7 +110,7 @@ class ResultBoundariesSa3(BaseModel):
     """
 
     name: str
-    """Official area name."""
+    """Official administrative, electoral, or statistical area name."""
 
     code: Optional[str] = None
     """
@@ -121,7 +125,7 @@ class ResultBoundariesSa4(BaseModel):
     """
 
     name: str
-    """Official area name."""
+    """Official administrative, electoral, or statistical area name."""
 
     code: Optional[str] = None
     """
@@ -136,7 +140,7 @@ class ResultBoundariesStateElectorate(BaseModel):
     """
 
     name: str
-    """Official area name."""
+    """Official administrative, electoral, or statistical area name."""
 
     code: Optional[str] = None
     """
@@ -147,7 +151,7 @@ class ResultBoundariesStateElectorate(BaseModel):
 
 class ResultBoundaries(BaseModel):
     """
-    Administrative, electoral, and ABS statistical geography linked to the address when supplied by G-NAF and ABS source data.
+    Administrative, electoral, and ABS statistical geography linked to the address when supplied by G-NAF and ABS source data. Boundary values can change between official data releases without the address `id` changing.
     """
 
     commonwealth_electorate: Optional[ResultBoundariesCommonwealthElectorate] = FieldInfo(
@@ -198,79 +202,115 @@ class ResultGeocode(BaseModel):
     """G-NAF geocoding metadata and decimal-degree coordinates for the address."""
 
     latitude: float
-    """Decimal degree coordinate."""
+    """
+    WGS84 decimal-degree coordinate used for Australian address locations and
+    reverse-geocode queries.
+    """
 
     longitude: float
-    """Decimal degree coordinate."""
+    """
+    WGS84 decimal-degree coordinate used for Australian address locations and
+    reverse-geocode queries.
+    """
 
     reliability: Optional[int] = None
     """
-    G-NAF geocode reliability code from 0 to 6, where lower values are more precise.
+    G-NAF geocode reliability code from 0 to 6, where lower values indicate more
+    precise location evidence. Treat this as geocode precision metadata, not address
+    match quality.
     """
 
     type: Optional[str] = None
-    """G-NAF geocoding method, for example PROPERTY CENTROID."""
+    """
+    G-NAF geocoding method when supplied by the source record, such as a frontage,
+    property centroid, or locality-level point.
+    """
 
 
 class ResultLocation(BaseModel):
-    """Compact latitude/longitude point used for proximity queries and map display."""
+    """Compact latitude/longitude point used for proximity workflows and map display."""
 
     lat: float
-    """Decimal degree coordinate."""
+    """
+    WGS84 decimal-degree coordinate used for Australian address locations and
+    reverse-geocode queries.
+    """
 
     lon: float
-    """Decimal degree coordinate."""
+    """
+    WGS84 decimal-degree coordinate used for Australian address locations and
+    reverse-geocode queries.
+    """
 
 
 class Result(BaseModel):
     """Address document plus distance from the reverse-geocode query point."""
 
     id: str
-    """Opaque G-NAF persistent identifier for this address record."""
+    """Opaque G-NAF persistent identifier for this address record.
+
+    Store it as a string and pass it to Enrich when you need the full public address
+    document.
+    """
 
     address_label: Optional[str] = FieldInfo(alias="addressLabel", default=None)
-    """Formatted street address, typically street number plus street name."""
+    """Formatted street-address line for display and form population.
+
+    It usually contains the street number, street name, and any unit or building
+    text available in the source record.
+    """
 
     boundaries: Optional[ResultBoundaries] = None
     """
     Administrative, electoral, and ABS statistical geography linked to the address
-    when supplied by G-NAF and ABS source data.
+    when supplied by G-NAF and ABS source data. Boundary values can change between
+    official data releases without the address `id` changing.
     """
 
     confidence: Optional[int] = None
     """G-NAF source-record confidence metadata.
 
-    -1 represents retired records; 0, 1, and 2 correspond to one, two, or three
-    supporting contributor datasets. This is not Prontiq match quality.
+    `-1` represents a retired record; `0`, `1`, and `2` indicate one, two, or three
+    supporting contributor datasets. This is provenance metadata, not Prontiq match
+    quality.
     """
 
     distance_m: Optional[float] = None
-    """Distance from query point in meters."""
+    """
+    Distance from the submitted reverse-geocode coordinate to this address point,
+    measured in metres.
+    """
 
     geocode: Optional[ResultGeocode] = None
     """G-NAF geocoding metadata and decimal-degree coordinates for the address."""
 
     locality_name: Optional[str] = FieldInfo(alias="localityName", default=None)
-    """Suburb or locality name."""
+    """Official suburb or locality name associated with the address."""
 
     location: Optional[ResultLocation] = None
-    """Compact latitude/longitude point used for proximity queries and map display."""
+    """Compact latitude/longitude point used for proximity workflows and map display."""
 
     postcode: Optional[str] = None
     """Four-digit Australian postcode.
 
-    Postcodes are strings so leading zeroes are preserved.
+    Store postcodes as strings; integer coercion can remove leading zeroes used by
+    some Australian postcodes.
     """
 
     state: Optional[Literal["NSW", "VIC", "QLD", "SA", "WA", "TAS", "NT", "ACT"]] = None
     """Uppercase Australian state or territory code returned by the Address API.
 
-    Allowed values are NSW, VIC, QLD, SA, WA, TAS, NT, and ACT.
+    Allowed values are `NSW` New South Wales, `VIC` Victoria, `QLD` Queensland, `SA`
+    South Australia, `WA` Western Australia, `TAS` Tasmania, `NT` Northern
+    Territory, and `ACT` Australian Capital Territory.
     """
 
 
 class Debug(BaseModel):
-    """Optional diagnostic metadata returned only when `debug=true` is supplied."""
+    """Optional diagnostic metadata returned only when `debug=true` is supplied.
+
+    Debug values are for support and troubleshooting, not production decision-making.
+    """
 
     query_mode: Literal["autocomplete", "validate", "enrich", "reverse", "lookup"] = FieldInfo(alias="queryMode")
     """Address API operation mode that produced this diagnostic object."""
@@ -304,9 +344,17 @@ class AddressReverseGeocodeResponse(BaseModel):
     """Addresses nearest to the supplied latitude and longitude."""
 
     results: List[Result]
+    """Nearby address documents sorted by distance from the submitted coordinate.
+
+    The array may be empty when no address falls within the radius.
+    """
 
     total: int
-    """Total addresses within radius."""
+    """Total address records found within the requested radius."""
 
     debug: Optional[Debug] = None
-    """Optional diagnostic metadata returned only when `debug=true` is supplied."""
+    """Optional diagnostic metadata returned only when `debug=true` is supplied.
+
+    Debug values are for support and troubleshooting, not production
+    decision-making.
+    """
